@@ -83,36 +83,35 @@ on this Mac, turns it into text: nothing leaves it.
   only when it was kept. Time and account are taken when the key is let go.
   Strut's sessions are not used: they keep the recogniser's raw text with
   no app or outcome, and cannot be cleared.
-- **Vocabulary** (`DictationLingo`; the pure parts are PeelUI's
-  `Lingo.swift`). The user's words live in the memory graph on Peel's own
-  strut (stakwork/strut#297): a `Lingo` entity type for jargon, acronyms and
-  product words, and on any entity `heard_as` facts, how dictation mishears
-  it ("stack work" for Stakwork), kept out of strut's alias matching. Peel
-  reads it all with `memory/lexicon` when the strut starts and after each
-  write, and before typing rewrites each known mishearing (longest first,
-  on word boundaries), then catches new spellings of a taught word (one or
-  two words whose letters, spaces and case aside, are a known form's, or
-  one long word a quarter off at most: "Stockwork" → Stakwork), and gives
-  written forms their casing; a mishearing
-  that is one everyday word ("fix" for Sphinx) is never applied on its own.
+- **Vocabulary** (`DictationLingo`, a thin client: strut is the brain).
+  The user's words live in the memory graph on Peel's own strut: a `Lingo`
+  entity type for jargon, acronyms and product words, and on any entity
+  `heard_as` facts, how dictation mishears it ("stack work" for Stakwork),
+  kept out of strut's alias matching (stakwork/strut#297). All the judging
+  is strut's too (stakwork/strut#301, its `plans/native-dictation-client.md`
+  §7a, the contract any client follows): `/audio/transcribe` returns the
+  text with the vocabulary applied (known mishearings, new spellings of a
+  taught word, casing; never one everyday word on its own) and `heard`,
+  what the recogniser wrote, when that changed it. Peel types `text` and
+  keeps `heard` in History. Peel has no rules of its own.
   - **Learning.** After typing, `DictationEditWatch` rereads the field every
-    0.5 s while it keeps the focus (until an edit has been left alone for
-    2 s, the field loses focus, the next dictation starts, or 45 s) and takes the span between the text that was around Peel's,
-    from the last reading that still had that text: a field emptied by
-    Return (a chat sending) keeps the fix made just before. `LingoClassifier`
-    diffs it word by word: a rewrite of the whole is ignored; a correction
-    is learned only when the corrected word is name- or term-shaped, sounds
-    like what was written (same letters split or run together, or the same
-    sounds spelled out: "p eight" / "P8") and what dictation wrote is
-    nothing the user would write themselves. "PH" for P8, "their" for
-    "there", "BTC" for "Bitcoin" teach nothing. A learn is one
-    `memory/remember` with only the pair, and the HUD says "Learned P8"
-    with Undo for 5 s; Undo forgets it with reason `undone`, and an undone
-    pair is never learned again.
+    0.5 s while it keeps the focus (until an edit strut says teaches
+    something — `dictation/correction` with `dry_run` — has been left alone
+    for 2 s, the field loses focus, the next dictation starts, or 45 s) and
+    takes the span between the text that was around Peel's, from the last
+    reading that still had that text: a field emptied by Return (a chat
+    sending) keeps the fix made just before. It sends `{typed, edited}` to
+    `dictation/correction`, which classifies and writes each mishearing
+    (only the pair, never the sentence) and returns what it learned with
+    the ids to undo; the HUD says "Learned P8" with Undo for 5 s, and Undo
+    is `dictation/undo`. Only while Peel is unlocked, never for Peel's own
+    fields, and only where Accessibility can read the field (not most
+    Electron apps; the rewrite still works there).
   - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
-    word with how it is misheard, Remove, a switch to leave it alone, and
-    Add (the word and how dictation writes it). A view over the graph, not
-    a second list.
+    word with how it is misheard (`memory/lexicon`), Remove
+    (`dictation/remove`), a switch to leave it alone (`memory/attributes`),
+    and Add (`dictation/add`, which says when what was added is an everyday
+    word it will never rewrite). A view over the graph, not a second list.
 - **Typing it** (`DictationTextInserter`; the decision is
   `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
   are read when the key goes down (just the element and whether it is a
@@ -180,6 +179,10 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-23: the vocabulary's rewrite, classifier and common-word test
+  moved from Peel (Swift) to strut (stakwork/strut#301), so any client gets
+  them; Peel calls `/audio/transcribe`, `dictation/correction`, `add`,
+  `remove`, `undo`.
 - 2026-10-23: Vocabulary (steps 1–4 of the dictation lingo design): strut
   pinned at #297; the rewrite, the edit watch, the classifier (spoken forms
   for acronyms and numbers; nothing learned when dictation's text is

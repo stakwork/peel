@@ -64,13 +64,16 @@ public struct StrutSpeech: Sendable {
         }
     }
 
-    /// The text of the WAV at `file`, cased and punctuated; empty when
-    /// nothing was heard. Read here, off the main thread.
-    public func transcribe(wavAt file: URL) async throws -> String {
+    /// The text of the WAV at `file`, cased and punctuated, with the user's
+    /// vocabulary applied by strut (stakwork/strut#301); `heard`, what the
+    /// recogniser wrote, only when the vocabulary changed it. Empty text
+    /// when nothing was heard. Read here, off the main thread.
+    public func transcribe(wavAt file: URL) async throws -> (text: String, heard: String?) {
         let wav = try Data(contentsOf: file)
         let reply = try await call("POST", "audio/transcribe?model=\(Self.model)", body: (wav, "audio/wav"))
         guard let text = reply["text"]?.string else { throw Failure.refused("its reply had no text") }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let heard = reply["heard"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (text.trimmingCharacters(in: .whitespacesAndNewlines), heard)
     }
 
     // MARK: HTTP

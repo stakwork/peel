@@ -1,16 +1,15 @@
 import AgentKit
-import AppKit
 import Observation
 import os
 import PeelAgent
-import PeelCore
 import PeelUI
 
-/// Dictation's vocabulary on the Mac (docs/dictation-lingo.md): the user's
-/// words and how dictation mishears them, read from Peel's own strut
-/// (`memory/lexicon`, stakwork/strut#297) and kept in memory for the rewrite;
-/// learning, Undo and the Vocabulary window write through strut's memory
-/// steps. Refreshed when the strut starts or changes, and after each write.
+/// Dictation's vocabulary on the Mac: a thin client of Peel's own strut,
+/// which does all the judging (stakwork/strut#301; strut's
+/// `plans/native-dictation-client.md` §7a). `/audio/transcribe` already
+/// returns the corrected text; this sends what the user did to it
+/// (`dictation/correction`), undoes a learn (`dictation/undo`), and reads
+/// and edits the vocabulary for the Vocabulary window.
 @MainActor @Observable
 final class DictationLingo {
     private(set) var lexicon = LingoLexicon.empty
@@ -18,21 +17,6 @@ final class DictationLingo {
     private(set) var problem: String?
     @ObservationIgnored private var server: MemoryServer?
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
-
-    /// An everyday word: macOS's English spell checker knows it (and the
-    /// words the user taught macOS). Never rewritten on its own, never learned.
-    nonisolated static let isCommon: IsCommonWord = { word in
-        guard word.count > 1 else { return word == "a" || word == "i" }
-        return MainActor.assumeIsolated {
-            if let known = commonWords[word] { return known }
-            // In the user's own spelling language, with what they taught macOS.
-            let common = NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound
-            commonWords[word] = common
-            return common
-        }
-    }
-    /// What the spell checker said, per word; forgotten at each refresh.
-    private static var commonWords: [String: Bool] = [:]
 
     /// Peel's strut, from `AppModel.strutChanged`.
     func use(_ new: MemoryServer?) {
@@ -43,8 +27,8 @@ final class DictationLingo {
         Task { await refresh() }
     }
 
+    /// The vocabulary, for the Vocabulary window.
     func refresh() async {
-        Self.commonWords = [:]
         guard let server else { return }
         do {
             let read = LingoLexicon(lexicon: try await server.run("lexicon", [:]))
@@ -54,57 +38,55 @@ final class DictationLingo {
             problem = nil
         } catch {
             guard server == self.server else { return }
-            // An older strut has no `memory/lexicon`: dictation goes on without it.
             problem = "Your vocabulary couldn't be read from Peel's strut"
             log.error("lexicon not read: \(String(describing: error))")
         }
     }
 
-    /// Dictation's text with known mishearings and casing put right.
-    func rewrite(_ text: String) -> String {
-        LingoRewriter.rewrite(text, with: lexicon, isCommon: Self.isCommon).text
+    /// Whether strut would learn from turning `typed` into `edited`, writing nothing.
+    func teaches(typed: String, edited: String) async -> Bool {
+        guard let output = try? await call("dictation/correction", ["typed": .string(typed), "edited": .string(edited), "dry_run": true])
+        else { return false }
+        return !LingoLearned.list(from: output).isEmpty
     }
 
-    /// The lessons in the user's edit of what Peel typed.
-    func lessons(typed: String, edited: String) -> [LingoLesson] {
-        LingoClassifier.lessons(typed: typed, edited: edited, lexicon: lexicon, isCommon: Self.isCommon)
+    /// Strut learns what it can from the user's edit of `typed`.
+    func correct(typed: String, edited: String) async throws -> [LingoLearned] {
+        let output = try await call("dictation/correction", ["typed": .string(typed), "edited": .string(edited)])
+        await refresh()
+        return LingoLearned.list(from: output)
     }
 
-    /// Writes a mishearing; what to forget on Undo (empty: strut had it).
-    func learn(heard: String, written: String) async throws -> [String] {
-        LingoWrites.undoIDs(of: try await write("remember", LingoWrites.learn(heard: heard, written: written, in: lexicon)))
-    }
-
-    /// Undo of a learn: forgotten with reason `undone`, so it is never learned again.
+    /// Undo of a learn: never learned again.
     func undo(_ ids: [String]) async {
-        for id in ids {
-            do { _ = try await write("forget", LingoWrites.undo(id)) } catch {
-                log.error("lingo undo failed: \(String(describing: error))")
-            }
+        do { _ = try await call("dictation/undo", ["undo": .array(ids.map(AgentKit.JSONValue.string))]) } catch {
+            log.error("lingo undo failed: \(String(describing: error))")
         }
+        await refresh()
     }
 
-    /// The Vocabulary's Add: dictation writes `heard` where the user means `written`.
-    func add(written: String, heard: String) async throws {
-        _ = try await learn(heard: heard, written: written)
+    /// The Vocabulary's Add: dictation writes `heard` where the user means
+    /// `written`. False when strut says `heard` alone is an everyday word it
+    /// will never rewrite.
+    func add(written: String, heard: String) async throws -> Bool {
+        let output = try await call("dictation/add", ["written": .string(written), "heard": .string(heard)])
+        await refresh()
+        return output["applies"] != .bool(false)
     }
 
-    /// Removes one mishearing; a Lingo left with none goes with it, so no
-    /// hidden word keeps changing what is typed.
-    func remove(heard: LingoLexicon.Heard, of entry: LingoLexicon.Entry) async throws {
-        let last = entry.type == "Lingo" && entry.heard.count == 1
-        _ = try await write("forget", LingoWrites.remove(last ? entry.refID : heard.refID))
+    /// A mishearing, or a taught word (with what is known of it).
+    func remove(_ refID: String) async throws {
+        _ = try await call("dictation/remove", ["ref_id": .string(refID)])
+        await refresh()
     }
 
     func setDictation(_ entry: LingoLexicon.Entry, on: Bool) async throws {
-        _ = try await write("attributes", LingoWrites.dictation(entry.refID, on: on))
+        _ = try await server?.run("attributes", ["ref_id": .string(entry.refID), "set": ["dictation": on ? .null : "off"]])
+        await refresh()
     }
 
-    /// One memory step on Peel's strut, then the vocabulary read again.
-    private func write(_ step: String, _ input: AgentKit.JSONValue) async throws -> AgentKit.JSONValue {
+    private func call(_ step: String, _ input: AgentKit.JSONValue) async throws -> AgentKit.JSONValue {
         guard let server else { throw StrutSpeech.Failure.unreachable }
-        let output = try await server.run(step, input)
-        await refresh()
-        return output
+        return try await server.run(step: step, input)
     }
 }

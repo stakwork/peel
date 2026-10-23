@@ -291,23 +291,22 @@ final class DictationController {
         let previous = insertion
         insertion = Task {
             defer { try? FileManager.default.removeItem(at: session.audioURL) }
-            let heard: String
+            let transcript: DictationTranscript
             do {
-                heard = try await transcriber.transcribe(audioFileURL: session.audioURL)
+                // Strut has already put the user's vocabulary right ("stack work" → "Stakwork").
+                transcript = try await transcriber.transcribe(audioFileURL: session.audioURL)
             } catch {
                 let why = (error as? StrutSpeech.Failure).map(String.init(describing:)) ?? "Couldn't transcribe"
                 await entry.keep(nil, .failed, note: why)
                 hud.show(.message(why))
                 return
             }
-            guard !heard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            let text = transcript.text, rewritten = transcript.heard
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 await entry.keep(nil, .failed, note: "Nothing was heard")
                 hud.show(.message("Nothing was heard"))
                 return
             }
-            // What the user means, from their vocabulary: "stack work" → "Stakwork".
-            let text = lingo.rewrite(heard)
-            let rewritten = text == heard ? nil : heard
             await previous?.value
             let outcome = await DictationTextInserter.insert(text, startedIn: start)
             let note = Self.message(for: outcome)
@@ -330,37 +329,29 @@ final class DictationController {
 }
 
 extension DictationController {
-    /// Watches the field for what the user does to `typed`, then learns any
-    /// mishearing it shows, with Undo in the HUD.
+    /// Watches the field for what the user does to `typed`, then has strut
+    /// learn what it can from it, with Undo in the HUD.
     fileprivate func watchForCorrections(of typed: String) {
         watch?.cancel()
-        let teaches: @MainActor (String) -> Bool = { [weak self] edited in
-            self?.lingo.lessons(typed: typed, edited: edited).contains { if case .misheard = $0 { true } else { false } } ?? false
-        }
-        watch = DictationEditWatch.watch(typed: typed, teaches: teaches) { [weak self] edited in
+        let lingo = lingo
+        watch = DictationEditWatch.watch(typed: typed, teaches: { edited in
+            await lingo.teaches(typed: typed, edited: edited)
+        }) { [weak self] edited in
             // Only while unlocked (`history` is the unlocked account's database).
             guard let self, let edited, edited != typed, history() != nil else { return }
-            let learned = lingo.lessons(typed: typed, edited: edited).compactMap { lesson -> (String, String)? in
-                if case .misheard(let heard, let written) = lesson { (heard, written) } else { nil }
-            }
-            guard !learned.isEmpty else { return }
-            Task { await self.learn(learned) }
+            Task { await self.learn(typed: typed, edited: edited) }
         }
     }
 
-    private func learn(_ pairs: [(heard: String, written: String)]) async {
-        var undo: [String] = []
-        var words: [String] = []
-        for pair in pairs {
-            do {
-                let ids = try await lingo.learn(heard: pair.heard, written: pair.written)
-                guard !ids.isEmpty else { continue }
-                undo += ids
-                words.append(pair.written)
-            } catch {
-                log.error("lingo not learned: \(String(describing: error))")
-            }
+    private func learn(typed: String, edited: String) async {
+        let learned: [LingoLearned]
+        do { learned = try await lingo.correct(typed: typed, edited: edited) } catch {
+            log.error("lingo not learned: \(String(describing: error))")
+            return
         }
+        // Only what strut wrote now: a pair it already had needs no Undo.
+        let new = learned.filter { !$0.undo.isEmpty }
+        let undo = new.flatMap(\.undo), words = new.map(\.written)
         guard !words.isEmpty else { return }
         // Not over a dictation under way: once it is done (the usual case,
         // as the next dictation is what ends the watch).

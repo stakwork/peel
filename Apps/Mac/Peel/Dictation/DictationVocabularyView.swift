@@ -70,15 +70,11 @@ struct DictationVocabularyView: View {
     }
 
     private func addPair() async {
-        guard LingoWrites.applies(heard: heard.trimmed, isCommon: DictationLingo.isCommon) else {
-            problem = "“\(heard.trimmed)” is an everyday word: dictation won't rewrite it on its own"
-            return
-        }
         do {
-            try await lingo.add(written: word.trimmed, heard: heard.trimmed)
+            let applies = try await lingo.add(written: word.trimmed, heard: heard.trimmed)
+            problem = applies ? nil : "Added, but “\(heard.trimmed)” is an everyday word: dictation won't rewrite it on its own"
             word = ""
             heard = ""
-            problem = nil
         } catch {
             problem = "That couldn't be added: Peel's strut didn't take it"
         }
@@ -106,7 +102,7 @@ private struct VocabularyRow: View {
                             .foregroundStyle(Theme.secondaryText)
                         Button("Remove") {
                             Task {
-                                do { try await lingo.remove(heard: heard, of: entry) } catch { problem = "That couldn't be removed" }
+                                do { try await lingo.remove(heard.refID) } catch { problem = "That couldn't be removed" }
                             }
                         }
                         .buttonStyle(.plain)

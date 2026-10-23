@@ -28,7 +28,7 @@ final class DictationEditWatch {
     /// `teaches`: whether an edit so far has something to learn; only then
     /// does a pause end the watch (a word deleted, its fix not yet typed, does not).
     static func watch(
-        typed: String, teaches: @escaping @MainActor (String) -> Bool, done: @escaping @MainActor (String?) -> Void
+        typed: String, teaches: @escaping @MainActor (String) async -> Bool, done: @escaping @MainActor (String?) -> Void
     ) -> Task<Void, Never> {
         Task { @MainActor in
             try? await Task.sleep(for: settle)
@@ -64,7 +64,7 @@ final class DictationEditWatch {
                 if value != latest {
                     latest = value
                     changedAt = clock.now
-                } else if latest != before, clock.now - changedAt >= settled, teaches(span(latest)) {
+                } else if latest != before, clock.now - changedAt >= settled, await teaches(span(latest)) {
                     // Edited, then left alone: done.
                     break
                 }

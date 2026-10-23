@@ -191,9 +191,16 @@ private struct DictationModelSummary: View {
                 status
             }
         } trailing: {
-            Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true, edge: .trailing) }
-                .buttonStyle(.peel(.outline))
-                .menuAnchor(anchor)
+            HStack(spacing: Theme.Space.xs) {
+                Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true, edge: .trailing) }
+                    .buttonStyle(.peel(.outline))
+                    .menuAnchor(anchor)
+                // Removing what is on this Mac but not in use: apart from choosing.
+                if choices.contains(where: \.removable) {
+                    MenuButton(systemImage: "ellipsis", help: "More", source: "dictation-models-\(kind)", edge: .trailing,
+                               entries: removals)
+                }
+            }
         }
     }
 
@@ -244,12 +251,17 @@ private struct DictationModelSummary: View {
                 Task { await models.select(model) }
             })
         }
-        let removals: [MenuEntry] = choices.filter(\.removable).map { model in
-            .destructive("Remove \(model.name)", confirm: "Remove \(model.name) from this Mac") {
+        return picks
+    }
+
+    /// The models on this Mac that aren't in use, to remove, each with the space it frees.
+    private func removals() -> [MenuEntry] {
+        choices.filter(\.removable).map { model in
+            .destructive("Remove \(model.name)", subtitle: AttachmentFormat.size(model.bytes).map { "Frees \($0)" },
+                         confirm: "Remove \(model.name) from this Mac") {
                 Task { await models.remove(model) }
             }
         }
-        return .sections(picks, removals)
     }
 
     static let offText = "No clean-up, nothing learned."

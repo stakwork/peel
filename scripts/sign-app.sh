@@ -18,7 +18,8 @@
 # now asks for. Re-signing with a new profile keeps the Keychain items.
 #
 # Frameworks in Contents/Frameworks (LiveKit's WebRTC), the strut in
-# Contents/Strut (Node, its native addons and their libraries) and the
+# Contents/Strut (Node, its native addons and their libraries, in native/
+# and its folders) and the
 # bridge in Contents/Bridge are signed first with the same identity,
 # so hardened runtime's library validation accepts them. Node alone gets an
 # entitlement: allow-jit, which V8 needs.
@@ -115,9 +116,10 @@ for framework in "$APP"/Contents/Frameworks/*.framework; do
   sign "$framework"
 done
 if [ -d "$APP/Contents/Strut/native" ]; then
-  for code in "$APP"/Contents/Strut/native/*; do
-    case "$(basename "$code"):$(file -b "$code")" in
-      node:*) ;;
+  # native/ and its folders (the dictation fixer's in native/llama/<platform>).
+  find "$APP/Contents/Strut/native" -type f | while IFS= read -r code; do
+    case "$code:$(file -b "$code")" in
+      "$APP/Contents/Strut/native/node":*) ;;
       *:Mach-O*) sign "$code" ;;
     esac
   done

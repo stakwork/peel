@@ -11,10 +11,13 @@ public enum DictationDefaults {
     public static let maxRecording: TimeInterval = 5 * 60
     /// What a recording is stored as: 16 kHz mono PCM16.
     public static let sampleRate: Double = 16_000
-    /// How far the HUD sits above the bottom edge of the screen's visible area.
-    public static let hudBottomInset: CGFloat = 56
-    /// How long the stub's text shows in the HUD.
+    /// How far the HUD sits above the bottom edge of the screen's visible
+    /// area: just clear of the Dock, or of the screen's edge when it is hidden.
+    public static let hudBottomInset: CGFloat = 10
+    /// How long a message shows in the HUD.
     public static let resultDisplay: TimeInterval = 3
+    /// How long "Learned X" shows with its Undo.
+    public static let learnedDisplay: TimeInterval = 5
     /// How often the state machine is told the time while a key is held or a recording runs.
     public static let tickInterval: TimeInterval = 0.05
 

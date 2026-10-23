@@ -18,8 +18,20 @@ public struct DictationSession: Equatable, Sendable {
 
 /// Turns a recording into text. Milestone 0 has only the stub; the real one
 /// (milestone 1) is not part of this feature.
+/// What a recording said: the text to type, and what was heard when the
+/// user's vocabulary changed it (strut's rewrite, stakwork/strut#301).
+public struct DictationTranscript: Equatable, Sendable {
+    public var text: String
+    public var heard: String?
+
+    public init(text: String, heard: String? = nil) {
+        self.text = text
+        self.heard = heard
+    }
+}
+
 public protocol Transcriber: Sendable {
-    func transcribe(audioFileURL: URL) async throws -> String
+    func transcribe(audioFileURL: URL) async throws -> DictationTranscript
 }
 
 /// Canned text, for the demo.
@@ -29,5 +41,5 @@ public struct StubTranscriber: Transcriber {
 
     public init(result: String = StubTranscriber.text) { self.result = result }
 
-    public func transcribe(audioFileURL: URL) async throws -> String { result }
+    public func transcribe(audioFileURL: URL) async throws -> DictationTranscript { DictationTranscript(text: result) }
 }

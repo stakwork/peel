@@ -74,13 +74,14 @@ final class DictationSpeech {
     }
 
     /// The recording's text.
-    func transcribe(_ wav: URL) async throws -> String {
+    func transcribe(_ wav: URL) async throws -> DictationTranscript {
         let server = try await strut()
         waiting += 1
         defer { waiting -= 1 }
         if model == .downloading { onDownloadWait() }
         try await ensureModel()
-        return try await StrutSpeech(server: server).transcribe(wavAt: wav)
+        let reply = try await StrutSpeech(server: server).transcribe(wavAt: wav)
+        return DictationTranscript(text: reply.text, heard: reply.heard)
     }
 
     /// Peel's strut, waiting a little if it is still starting.
@@ -99,7 +100,7 @@ final class DictationSpeech {
 struct StrutTranscriber: Transcriber {
     let speech: DictationSpeech
 
-    func transcribe(audioFileURL: URL) async throws -> String {
+    func transcribe(audioFileURL: URL) async throws -> DictationTranscript {
         try await speech.transcribe(audioFileURL)
     }
 }

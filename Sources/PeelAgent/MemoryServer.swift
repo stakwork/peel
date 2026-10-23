@@ -53,8 +53,15 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     /// `snapshot`: the step carries a whole memory snapshot (`MemoryMove`),
     /// so its reply may be one too and it is given minutes, not seconds.
     public func run(_ verb: String, _ arguments: AgentKit.JSONValue, snapshot: Bool = false) async throws -> AgentKit.JSONValue {
+        try await run(step: "memory/\(verb)", arguments, snapshot: snapshot)
+    }
+
+    /// Any strut step by its path (`dictation/correction`), through the same
+    /// door, key and whole-string `{{ input }}` as the memory steps: what a
+    /// user dictated is never read as a template.
+    public func run(step path: String, _ arguments: AgentKit.JSONValue, snapshot: Bool = false) async throws -> AgentKit.JSONValue {
         let body = Data(AgentKit.JSONValue.object(["input": arguments, "config": "{{ input }}"]).jsonString.utf8)
-        return try await post(verb, body: body, snapshot: snapshot)
+        return try await post(path, body: body, snapshot: snapshot)
     }
 
     /// `memory/import` of a snapshot as base64 text. The body is put together
@@ -66,21 +73,21 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
         var body = Data(#"{"config":"{{ input }}","input":{"data":""#.utf8)
         body.append(base64)
         body.append(contentsOf: (replace ? #"","replace":true}}"# : #""}}"#).utf8)
-        return try await post("import", body: body, snapshot: true)
+        return try await post("memory/import", body: body, snapshot: true)
     }
 
     /// The most a reply carrying a whole snapshot may be: 100 MB is about
     /// 134 MB of base64.
     static let snapshotReplyLimit = 150 * 1024 * 1024
 
-    private func post(_ verb: String, body: Data, snapshot: Bool) async throws -> AgentKit.JSONValue {
-        let url = base.appending(path: "steps/memory/\(verb)/run")
+    private func post(_ path: String, body: Data, snapshot: Bool) async throws -> AgentKit.JSONValue {
+        let url = base.appending(path: "steps/\(path)/run")
         let reply: Data
         do {
             reply = try await Web.postToStrut(url, json: body, bearer: key, limit: snapshot ? Self.snapshotReplyLimit : Self.replyLimit,
-                                              what: "memory/\(verb)", slow: snapshot)
+                                              what: path, slow: snapshot)
         } catch {
-            let action = "run memory/\(verb) on the memory server at \(base.absoluteString)"
+            let action = "run \(path) on the memory server at \(base.absoluteString)"
             // A home server is never stood in for (`docs/peel-brain.md`): a
             // refused key, or no answer at all, is said as such; any other
             // refusal is the server's own answer.

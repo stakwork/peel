@@ -14,6 +14,16 @@ final class DictationHUDModel {
         case locked
         /// A line of text for a moment (where the text went, a problem).
         case message(String)
+        /// A word learned from the user's edit, with Undo, for a few seconds.
+        case learned(String)
+
+        /// It has something to click: the X and tick, or Undo.
+        var takesClicks: Bool {
+            switch self {
+            case .locked, .learned: true
+            case .hidden, .recording, .message: false
+            }
+        }
     }
 
     private static let silence = [Float](repeating: 0, count: 8)
@@ -32,6 +42,8 @@ final class DictationHUDModel {
     }
     var accept: () -> Void = {}
     var cancel: () -> Void = {}
+    /// Undo of what `.learned` says was learned.
+    var undo: () -> Void = {}
     /// The panel's, to fit and recentre itself when the content changes size.
     @ObservationIgnored var resized: () -> Void = {}
 
@@ -86,9 +98,9 @@ struct DictationHUDView: View {
                 .hudCapsule()
         case .locked:
             HStack(spacing: Theme.Space.sm) {
-                HUDButton(symbol: "xmark", label: "Cancel dictation", filled: false, action: model.cancel)
+                HUDButton(.symbol("xmark"), label: "Cancel dictation", filled: false, action: model.cancel)
                 DictationWaveform(model: model)
-                HUDButton(symbol: "checkmark", label: "Finish dictation", filled: true, action: model.accept)
+                HUDButton(.symbol("checkmark"), label: "Finish dictation", filled: true, action: model.accept)
             }
             .padding(.horizontal, Theme.Space.xs)
             .frame(height: 28)
@@ -103,6 +115,18 @@ struct DictationHUDView: View {
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, 6)
+            .hudCapsule()
+        case .learned(let text):
+            HStack(spacing: Theme.Space.sm) {
+                Text(text)
+                    .font(Theme.font(12))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                HUDButton(.text("Undo"), label: "Undo", filled: true, action: model.undo)
+            }
+            .padding(.leading, Theme.Space.md)
+            .padding(.trailing, Theme.Space.xs)
+            .frame(height: 28)
             .hudCapsule()
         }
     }
@@ -161,24 +185,49 @@ private struct DictationWaveform: View {
     }
 }
 
-/// A 20 pt round button: grey for X, white for the tick.
+/// A 20 pt button: round with a symbol (grey for X, white for the tick),
+/// or a capsule with a word (Undo).
 private struct HUDButton: View {
-    let symbol: String
+    enum Content {
+        case symbol(String)
+        case text(String)
+    }
+
+    let content: Content
     let label: String
     let filled: Bool
     let action: () -> Void
 
+    init(_ content: Content, label: String, filled: Bool, action: @escaping () -> Void) {
+        self.content = content
+        self.label = label
+        self.filled = filled
+        self.action = action
+    }
+
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 9, weight: .bold))
+            face
                 .foregroundStyle(filled ? Color.black : .white)
-                .frame(width: 20, height: 20)
-                .background(filled ? Color.white : Color.white.opacity(0.22), in: Circle())
-                .contentShape(Circle())
+                .frame(height: 20)
+                .background(filled ? Color.white : Color.white.opacity(0.22), in: Capsule())
+                .contentShape(Capsule())
         }
         .buttonStyle(HUDPress())
         .accessibilityLabel(label)
+    }
+
+    @ViewBuilder private var face: some View {
+        switch content {
+        case .symbol(let name):
+            Image(systemName: name)
+                .font(.system(size: 9, weight: .bold))
+                .frame(width: 20)
+        case .text(let text):
+            Text(text)
+                .font(Theme.font(12, .semibold))
+                .padding(.horizontal, Theme.Space.sm)
+        }
     }
 }
 
@@ -238,7 +287,7 @@ final class DictationHUDPanel: NSPanel {
         if mode == .recording, model.mode != .locked { model.clearLevels() }
         model.mode = mode
         // Mouse only while there is something to click.
-        ignoresMouseEvents = mode != .locked
+        ignoresMouseEvents = !mode.takesClicks
         place()
         orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
@@ -246,9 +295,14 @@ final class DictationHUDPanel: NSPanel {
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             animator().alphaValue = 1
         }
-        if case .message = mode {
+        let display: TimeInterval? = switch mode {
+        case .message: DictationDefaults.resultDisplay
+        case .learned: DictationDefaults.learnedDisplay
+        default: nil
+        }
+        if let display {
             hideTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(DictationDefaults.resultDisplay))
+                try? await Task.sleep(for: .seconds(display))
                 guard !Task.isCancelled else { return }
                 self?.hide()
             }

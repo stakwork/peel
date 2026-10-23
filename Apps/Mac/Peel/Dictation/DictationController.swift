@@ -38,6 +38,15 @@ final class DictationController {
     @ObservationIgnored private let hud = DictationHUDPanel()
     /// Speech-to-text on Peel's own strut, and its model.
     let speech = DictationSpeech()
+    /// The user's vocabulary: rewrites what dictation mishears, learns from edits.
+    let lingo = DictationLingo()
+    /// The speech model and the fixer the user picked, on Peel's strut.
+    let models = DictationModels()
+    /// The field Peel last typed into, watched for the user's corrections.
+    @ObservationIgnored private var watch: Task<Void, Never>?
+    /// What strut learned from the last edit, for the HUD once no dictation
+    /// is under way (`showLearned`).
+    @ObservationIgnored private var learned: Learned?
     /// Dictation History keeps each dictation in the open account's database.
     private(set) var historyOn: Bool
     /// The open account's database; nil while it is locked or closed, when
@@ -49,6 +58,8 @@ final class DictationController {
     /// The insertion under way: one at a time, so a second one never saves
     /// the first's text as the clipboard to put back.
     @ObservationIgnored private var insertion: Task<Void, Never>?
+    /// Insertions started and not yet done.
+    @ObservationIgnored private var inserting = 0
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var poll: Timer?
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
@@ -65,6 +76,7 @@ final class DictationController {
     // MARK: - Lifecycle
 
     func start() {
+        lingo.isUnlocked = { [weak self] in self?.history() != nil }
         hud.model.accept = { [weak self] in self?.send(.accept) }
         hud.model.cancel = { [weak self] in self?.send(.cancel) }
         speech.onDownloadWait = { [weak self] in
@@ -95,8 +107,27 @@ final class DictationController {
 
     /// Peel's strut started, stopped or changed (`AppModel.strutChanged`).
     func strutChanged(_ server: MemoryServer?) {
+        // An edit of text typed with the last strut is not this one's to learn.
+        watch?.cancel()
+        watch = nil
+        learned = nil
         speech.use(server)
+        lingo.use(server)
+        models.use(server)
         if isEnabled { speech.prepare() }
+    }
+
+    /// The account unlocked, or locked or closed (`AppModel.phase`): nothing
+    /// of its vocabulary is watched, learned or kept in memory while locked.
+    func accountChanged(unlocked: Bool) {
+        if unlocked {
+            Task { await lingo.refresh() }
+        } else {
+            watch?.cancel()
+            watch = nil
+            learned = nil
+            lingo.lock()
+        }
     }
 
     func setEnabled(_ on: Bool) {
@@ -223,12 +254,15 @@ final class DictationController {
                 hud.hide()
             }
         }
+        showLearned()
     }
 
     private func beginCapture() {
         // Delivered after the key went down: dictation may have been turned
         // off, or the press already ended, in between.
         guard isListening, !machine.isIdle else { return }
+        // A new dictation: what the user did to the last one is as it is now.
+        watch?.cancel()
         let focus = DictationFocus.current(full: false).facts
         target = focus
         // The machine needs the time to know a hold from a tap, and a recording's end.
@@ -276,6 +310,7 @@ final class DictationController {
         capture.discardRecording()
         capture.stop()
         hud.show(.message(text))
+        showLearned()
     }
 
     private func stopTicking() {
@@ -308,32 +343,44 @@ final class DictationController {
         log.info("dictation \(session.id.uuidString) \(session.mode.rawValue) \(session.duration)s")
         let transcriber = StrutTranscriber(speech: speech)
         let previous = insertion
+        inserting += 1
         insertion = Task {
-            defer { try? FileManager.default.removeItem(at: session.audioURL) }
-            let text: String
+            defer {
+                try? FileManager.default.removeItem(at: session.audioURL)
+                inserting -= 1
+                showLearned()
+            }
+            let transcript: DictationTranscript
             do {
-                text = try await transcriber.transcribe(audioFileURL: session.audioURL)
+                // Strut has already put the user's vocabulary right ("stack work" → "Stakwork").
+                transcript = try await transcriber.transcribe(audioFileURL: session.audioURL)
             } catch {
                 let why = (error as? StrutSpeech.Failure).map(String.init(describing:)) ?? "Couldn't transcribe"
                 await entry.keep(nil, .failed, note: why)
                 hud.show(.message(why))
                 return
             }
+            let text = transcript.text, rewritten = transcript.heard
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 await entry.keep(nil, .failed, note: "Nothing was heard")
                 hud.show(.message("Nothing was heard"))
                 return
             }
             await previous?.value
+            // The last field's watch ends before Peel types again, so it never reads this text as an edit.
+            watch?.cancel()
             let outcome = await DictationTextInserter.insert(text, startedIn: start)
             let note = Self.message(for: outcome)
             var copied = false
             let kept: Bool
             switch outcome {
-            case .inserted: kept = await entry.keep(text, .typed)
+            case .inserted:
+                kept = await entry.keep(text, .typed, heard: rewritten)
+                // Not Peel's own fields: asking Accessibility would wait on this very thread.
+                if start.pid != getpid() { watchForCorrections(of: text) }
             case .copied(let why):
                 copied = true
-                kept = await entry.keep(text, .copied, note: Self.historyNote(why))
+                kept = await entry.keep(text, .copied, note: Self.historyNote(why), heard: rewritten)
             case .blocked(let secureEntry): kept = await entry.keep(nil, .blocked, note: Self.secureMessage(entry: secureEntry))
             }
             // Only a message: by now another dictation may be under way.
@@ -343,6 +390,65 @@ final class DictationController {
 }
 
 extension DictationController {
+    /// A learn waiting for the HUD, with the strut and account it was made on.
+    fileprivate struct Learned {
+        let words: [String]
+        let undo: [String]
+        let server: MemoryServer
+        let account: ObjectIdentifier
+    }
+
+    /// Watches the field for what the user does to `typed`, then, once the
+    /// edit has settled, has strut learn what it can from it (one call: it
+    /// runs a model), with Undo in the HUD. Only with a fixer running (without
+    /// one strut learns nothing), while unlocked, and only for the strut and
+    /// account there when the text went in.
+    fileprivate func watchForCorrections(of typed: String) {
+        watch?.cancel()
+        watch = nil
+        // A pick that was downloading when last read may be in use by now: read again for next time.
+        if models.downloading { Task { await models.load() } }
+        guard models.hasActiveFixer, let server = lingo.server, let storage = history() else { return }
+        let account = ObjectIdentifier(storage)
+        watch = DictationEditWatch.watch(typed: typed) { [weak self] edited in
+            guard let self, let edited, edited != typed, isCurrent(server, account) else { return }
+            Task { await self.learn(typed: typed, edited: edited, on: server, account: account) }
+        }
+    }
+
+    /// Still the strut and the unlocked account a learn began with.
+    private func isCurrent(_ server: MemoryServer, _ account: ObjectIdentifier) -> Bool {
+        lingo.server == server && history().map(ObjectIdentifier.init) == account
+    }
+
+    private func learn(typed: String, edited: String, on server: MemoryServer, account: ObjectIdentifier) async {
+        let learned: [LingoLearned]
+        do { learned = try await lingo.correct(typed: typed, edited: edited, on: server) } catch {
+            log.error("lingo not learned: \(String(describing: error))")
+            return
+        }
+        // Only what strut wrote now: a pair it already had needs no Undo.
+        let new = learned.filter { !$0.undo.isEmpty }
+        guard !new.isEmpty, isCurrent(server, account) else { return }
+        self.learned = Learned(words: new.map(\.written), undo: new.flatMap(\.undo), server: server, account: account)
+        showLearned()
+    }
+
+    /// Says what was learned, with Undo, once no dictation is under way and
+    /// no insertion (the usual case: the next dictation is what ends the
+    /// watch); called again whenever either finishes.
+    private func showLearned() {
+        guard let learned, machine.isIdle, inserting == 0 else { return }
+        self.learned = nil
+        // Not if the account locked or the strut changed since.
+        guard isCurrent(learned.server, learned.account) else { return }
+        hud.model.undo = { [weak self] in
+            self?.hud.hide()
+            Task { await self?.lingo.undo(learned.undo, on: learned.server) }
+        }
+        hud.show(.learned("Learned " + ListFormatter.localizedString(byJoining: learned.words)))
+    }
+
     /// Why a dictation was copied rather than typed, for its History row.
     fileprivate static func historyNote(_ why: DictationTextInserter.Outcome.Why) -> String {
         switch why {
@@ -366,11 +472,12 @@ private struct HistoryEntry {
 
     /// Keeps it, never anything from a password field; whether it was kept.
     @discardableResult
-    func keep(_ text: String?, _ outcome: DictationRecord.Outcome, note: String? = nil) async -> Bool {
+    /// `heard`: what dictation heard, when the vocabulary rewrote it into `text`.
+    func keep(_ text: String?, _ outcome: DictationRecord.Outcome, note: String? = nil, heard: String? = nil) async -> Bool {
         guard let storage else { return false }
         let record = DictationRecord(
             id: id, startedAt: startedAt, duration: duration, text: text, appID: appID, appName: appName,
-            outcome: outcome, note: note
+            outcome: outcome, note: note, heard: heard
         )
         do {
             try await storage.addDictation(record, keep: DictationDefaults.historyKeep)

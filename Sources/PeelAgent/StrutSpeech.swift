@@ -7,8 +7,8 @@ import PeelCore
 /// `plans/native-dictation-client.md` §3 and §6). Nothing here is logged:
 /// what was said is the user's.
 public struct StrutSpeech: Sendable {
-    /// The finals model: cased and punctuated, takes custom words. The
-    /// one-shot endpoint needs no other.
+    /// The default speech model, kept on this Mac: strut transcribes with it
+    /// until the user's pick (Account › Dictation › Speech model) is installed.
     public static let model = "zipformer-en-kroko"
     /// Its download, as the person is told it.
     public static let modelSize = "57 MB"
@@ -64,13 +64,18 @@ public struct StrutSpeech: Sendable {
         }
     }
 
-    /// The text of the WAV at `file`, cased and punctuated; empty when
-    /// nothing was heard. Read here, off the main thread.
-    public func transcribe(wavAt file: URL) async throws -> String {
+    /// The text of the WAV at `file`, cased and punctuated, with the user's
+    /// vocabulary applied by strut (stakwork/strut#301); `heard`, what the
+    /// recogniser wrote, only when the vocabulary changed it. Empty text
+    /// when nothing was heard. Read here, off the main thread.
+    public func transcribe(wavAt file: URL) async throws -> (text: String, heard: String?) {
         let wav = try Data(contentsOf: file)
-        let reply = try await call("POST", "audio/transcribe?model=\(Self.model)", body: (wav, "audio/wav"))
+        // No `model`: strut uses the user's pick (`dictation/use`) once it is
+        // installed, its default until then; a model named here would win.
+        let reply = try await call("POST", "audio/transcribe", body: (wav, "audio/wav"))
         guard let text = reply["text"]?.string else { throw Failure.refused("its reply had no text") }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let heard = reply["heard"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (text.trimmingCharacters(in: .whitespacesAndNewlines), heard)
     }
 
     // MARK: HTTP

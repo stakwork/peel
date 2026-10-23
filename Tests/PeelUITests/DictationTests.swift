@@ -260,7 +260,7 @@ struct DictationAudioTests {
 
     @Test func theStubAnswersWithCannedText() async throws {
         let text = try await StubTranscriber().transcribe(audioFileURL: URL(fileURLWithPath: "/dev/null"))
-        #expect(text == StubTranscriber.text)
+        #expect(text == DictationTranscript(text: StubTranscriber.text))
     }
 }
 

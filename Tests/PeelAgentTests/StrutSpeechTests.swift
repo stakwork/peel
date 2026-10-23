@@ -19,14 +19,18 @@ struct StrutSpeechTests {
     }
 
     @Test func aRecordingGoesAsAWAVWithTheKeyAndComesBackAsText() async throws {
-        let stub = try await HTTPStub { _ in #"{"text":" Ask Jamie about the canvas. ","segments":[],"model":"zipformer-en-kroko"}"# }
+        let stub = try await HTTPStub { _ in
+            #"{"text":" Ask Jamie about the Stakwork canvas. ","heard":"Ask Jamie about the stack work canvas.","segments":[],"model":"zipformer-en-kroko","fixer":"qwen3-1.7b-q4"}"#
+        }
         defer { stub.stop() }
         let file = try wav("RIFF-wav-bytes")
         defer { try? FileManager.default.removeItem(at: file) }
         let text = try await speech(stub).transcribe(wavAt: file)
-        #expect(text == "Ask Jamie about the canvas.")
+        // Strut applied the vocabulary; what it heard comes too.
+        #expect(text.text == "Ask Jamie about the Stakwork canvas.")
+        #expect(text.heard == "Ask Jamie about the stack work canvas.")
         let request = try #require(stub.requests.first)
-        #expect(request.hasPrefix("POST /audio/transcribe?model=zipformer-en-kroko "))
+        #expect(request.hasPrefix("POST /audio/transcribe "))
         #expect(request.contains("Authorization: Bearer k"))
         #expect(request.contains("Content-Type: audio/wav"))
         #expect(request.hasSuffix("RIFF-wav-bytes"))

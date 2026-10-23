@@ -1664,8 +1664,12 @@ org and draws it.
   strut#313, at the new pin (`Vendor/strut.lock`, strut main at #303's
   merge, after #313, #314 and #312; #303 makes `strut/run-workflow` take its
   `input` as an object, so a model's JSON text no longer reaches an org, or
-  a proposal's card, as a string); sphinx#391 (the bridge adds the handle), at
-  the new `Vendor/runner.lock` (no dependency changed, so
+  a proposal's card, as a string); sphinx#391 (the bridge adds the handle)
+  and #392 (a proposal card Peel answers as not shown is turned down on
+  strut with Peel's reason, once, and said in the DM, instead of left
+  pending; an approved hand-off to an org is told as that org's reply,
+  with its question and its deliverables' handles), at the new
+  `Vendor/runner.lock`, sphinx master at #392's merge (no dependency changed, so
   `Vendor/runner.Cargo.lock` stays: `cargo metadata --locked` passes on
   that commit with it). An org needs nothing new: its job files and apps
   are read with the person's token as #368's apps are. strut#312 moved

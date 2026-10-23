@@ -442,6 +442,14 @@ public final class AppModel {
         destination = .chat(chat)
     }
 
+    /// The open account's database while it is unlocked; nil when locked,
+    /// though locking leaves the engine open, or when no account is open.
+    /// What may be read or written for the person outside the main window
+    /// (the Mac's Dictation History).
+    public var unlockedStorage: Storage? {
+        phase == .ready && !isLockDue ? engine?.storage : nil
+    }
+
     /// Whether a menu command may act on the main window: unlocked, the
     /// main window key (not the call window or a Peel panel), no Peel menu
     /// or panel and no image viewer up.

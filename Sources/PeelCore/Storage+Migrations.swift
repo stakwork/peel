@@ -524,6 +524,22 @@ extension Storage {
                 try db.cachedStatement(sql: "UPDATE message SET isControl = 1 WHERE id = ?").execute(arguments: [id])
             }
         }
+        migrator.registerMigration("v28") { db in
+            // Dictation History on the Mac (`DictationRecord`): one row per
+            // dictation while history is on, dropped after its keep time.
+            try db.execute(sql: """
+                CREATE TABLE dictation (
+                    id BLOB PRIMARY KEY NOT NULL,
+                    startedAt INTEGER NOT NULL,
+                    duration DOUBLE NOT NULL,
+                    text TEXT,
+                    appID TEXT,
+                    appName TEXT,
+                    outcome TEXT NOT NULL,
+                    note TEXT);
+                CREATE INDEX dictation_startedAt ON dictation (startedAt);
+                """)
+        }
         return migrator
     }
 }

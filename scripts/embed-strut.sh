@@ -70,11 +70,18 @@ echo "embed-strut: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'st
 ditto "$STRUT_STAGE" "$DEST"
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ] && [ -d "$DEST/native" ]; then
   # native/ and its folders (the dictation fixer's in native/llama/<platform>).
+  # node and esbuild are standalone executables; a sandboxed build's App
+  # Store validation requires com.apple.security.app-sandbox on each one
+  # directly, not just on the app that launches them. Everything else
+  # under native/ is a dylib/bundle the parent process loads in-process,
+  # which needs no entitlements of its own.
   find "$DEST/native" -type f | while IFS= read -r code; do
     case "$code:$(file -b "$code")" in
-      "$DEST/native/node":*) ;;
+      "$DEST/native/node":*|"$DEST/native/esbuild":*) ;;
       *:Mach-O*) sign "$code" ;;
     esac
   done
-  sign --entitlements "$ROOT/scripts/${PEEL_STRUT_ENTITLEMENTS:-strut-node.entitlements}" "$DEST/native/node"
+  for code in "$DEST/native/node" "$DEST/native/esbuild"; do
+    [ -e "$code" ] && sign --entitlements "$ROOT/scripts/${PEEL_STRUT_ENTITLEMENTS:-strut-node.entitlements}" "$code"
+  done
 fi

@@ -98,6 +98,10 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
     public let cost: Double?
     /// Why it failed, in strut's words, without the provider's raw reply.
     public let error: String?
+    /// It finished with nothing said: an agent's NOTHING_TO_REPORT, which its
+    /// workflow writes as blank lines, or a system automation's quiet end.
+    /// On Peel's old workflow a success came with Peel's reply, so never there.
+    public let nothing: Bool
     /// Why it did not finish, as the Automations view says it: a sentence
     /// of Peel's or strut's own ("Didn't run: …") as it is, any other
     /// reason after "Didn't finish: ". Anything shaped like a key is masked
@@ -112,7 +116,8 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         startedAt = json["startedAt"]?.string.flatMap(Automation.date)
         reply = json["output"]?["body"].flatMap { try? $0.decoded(as: AutomationReply.self) }
         // An empty one says nothing: "Finished".
-        text = json["output"]?["text"]?.string.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        let said = json["output"]?["text"]?.string
+        text = said.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         // A number, or one a template wrote as text.
         cost = switch json["output"]?["cost"] {
         case .number(let dollars)?: dollars
@@ -121,6 +126,8 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         }
         let peels = (json["workflow"]?.string ?? workflow) == AutomationsClient.legacyWorkflow
         error = json["error"]?["message"]?.string.map { Self.shortened($0, peels: peels) }
+        // Text strut wrote and left blank, with no error: not a run with no output at all.
+        nothing = status == "success" && reply == nil && said != nil && text == nil && error == nil && !peels
         let why = Self.maskingKeys(reply?.error ?? error ?? "no reason given")
         failure = AutomationFailure.isSentence(why) ? why : "Didn't finish: " + why
     }

@@ -336,16 +336,18 @@ private struct AutomationRuns: View {
     @ViewBuilder
     private func outcome(_ run: AutomationRunRecord) -> some View {
         switch (run.status, run.reply?.status) {
-        case ("success", nil) where run.text != nil:
+        case ("success", nil) where run.text != nil || run.nothing || automation.isSystem:
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                // strut's agent wrote it, not Peel's: its links open nothing in Peel.
-                MessageText(text: run.text ?? "", chat: nil, agentLinks: false)
+                if let text = run.text {
+                    // strut's agent wrote it, not Peel's: its links open nothing in Peel.
+                    MessageText(text: text, chat: nil, agentLinks: false)
+                } else {
+                    Text(automation.isSystem ? "Finished" : "Nothing to report").muted()
+                }
                 if let cost = run.cost {
                     Text(cost.formatted(.currency(code: "USD").precision(.fractionLength(2...4)))).muted()
                 }
             }
-        case ("success", nil) where automation.isSystem:
-            Text("Finished").muted()
         case (_, .delivered?):
             MessageText(text: run.reply?.text ?? "", chat: nil, agentLinks: true)
         case (_, .nothing?):

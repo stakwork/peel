@@ -94,6 +94,12 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     /// In the agent's DM: a request to this Mac as one row, how it ended
     /// folded in (no ack or result lines of its own).
     public var agentRequest: AgentRequest?
+    /// In the agent's DM: reads asked back to back and done, as one row
+    /// (`AgentReads`), oldest first, this row's own first; empty for a
+    /// row that stands alone.
+    public var agentReads: [AgentRead] = []
+    /// Its folded reads as one line and steps; nil for a row that stands alone.
+    public var reads: AgentReads? { agentReads.isEmpty ? nil : AgentReads(agentReads) }
     /// For a payment request: its invoice and whether it is paid.
     public var paymentRequest: PaymentRequest?
     /// For a paid attachment: locked, being bought, unlocked, or ours for sale.
@@ -117,6 +123,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     /// collapsed thread's newest, else its own.
     public var shown: [Message] {
         if let latest { return [latest] }
+        if !agentReads.isEmpty { return agentReads.map(\.message) }
         return images.isEmpty ? [message] : images
     }
 
@@ -265,6 +272,7 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         // never draws: blank space under the newest message.
         var seen = Set<String>()
         rows = rows.reversed().filter { seen.insert($0.id).inserted }.reversed()
+        if agentDM { rows = foldingReads(rows) }
         // Every message row, a collapsed thread's and a thread's original included.
         for index in rows.indices where rows[index].kind == .message {
             rows[index].call = callServer.flatMap { CallLink(in: rows[index].message, server: $0) }
@@ -301,6 +309,39 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         return rows
     }
 
+    /// Reads asked back to back, no more than `AgentReads.gap` apart on one
+    /// day, as their first row (`agentReads`): an agent's look around the
+    /// chats is one line, not one per chat. One still on this Mac folds too,
+    /// so a run's reads land in its line rather than as rows that then go;
+    /// a read that failed or was refused stays a row of its own between them.
+    private static func foldingReads(_ rows: [ChatRow]) -> [ChatRow] {
+        var folded: [ChatRow] = []
+        folded.reserveCapacity(rows.count)
+        let calendar = Calendar.current
+        for row in rows {
+            let head = folded.count - 1
+            if let read = row.quietRead, !row.startsNew, head >= 0, let first = folded[head].quietRead {
+                let previous = (folded[head].agentReads.last?.message ?? folded[head].message).date
+                if row.date.timeIntervalSince(previous) <= AgentReads.gap, calendar.isDate(row.date, inSameDayAs: previous) {
+                    if folded[head].agentReads.isEmpty {
+                        folded[head].agentReads = [AgentRead(message: folded[head].message, request: first)]
+                    }
+                    folded[head].agentReads.append(AgentRead(message: row.message, request: read))
+                    continue
+                }
+            }
+            folded.append(row)
+        }
+        return folded
+    }
+
+    /// This row's request when it is a read done or not yet answered: one that may fold.
+    private var quietRead: AgentRequest? {
+        guard approval == nil, let request = agentRequest, request.asker == nil, request.status == .done || request.status == nil,
+              AgentReads.Kind(request.kind) != nil else { return nil }
+        return request
+    }
+
     /// A row for one message, its sender worked out once.
     private static func row(_ message: Message, kind: Kind, id: String, inTribe: Bool, people: People) -> ChatRow {
         ChatRow(id: id, kind: kind, message: message, inTribe: inTribe,
@@ -327,7 +368,8 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         case .message, .payment, .paymentRequest, .control: break
         default: return []
         }
-        return ([message.uuid] + images.map(\.uuid) + [summary?.original.uuid]).compactMap { $0 }
+        return ([message.uuid] + images.map(\.uuid) + agentReads.dropFirst().map(\.message.uuid)
+                + [summary?.original.uuid]).compactMap { $0 }
     }
 
     /// Whether this is the row a jump to the message with `uuid` goes to.

@@ -85,6 +85,18 @@ struct AutomationsClientTests {
         // Nothing said reads as no text, so the row says "Finished".
         let silent = #"{"runId":"7","status":"success","output":{"text":""}}"#
         #expect(AutomationRunRecord(try AgentKit.JSONValue(parsing: silent))?.text == nil)
+        // An agent's NOTHING_TO_REPORT, which its workflow writes as blank lines:
+        // nothing said, not a failure; on Peel's old workflow, still one.
+        let quiet = #"{"runId":"8","status":"success","output":{"text":"\n\n","cost":0.11}}"#
+        let said = try #require(AutomationRunRecord(try AgentKit.JSONValue(parsing: quiet), workflow: Orchestrator.automationWorkflow))
+        #expect(said.nothing && said.text == nil && said.cost == 0.11)
+        #expect(AutomationRunRecord(try AgentKit.JSONValue(parsing: quiet))?.nothing == false)
+        // No output at all, or an error beside it: not nothing said.
+        for broken in [#"{"runId":"9","status":"success"}"#,
+                       #"{"runId":"10","status":"success","output":{"text":""},"error":{"message":"agent: overloaded"}}"#] {
+            let record = try #require(AutomationRunRecord(try AgentKit.JSONValue(parsing: broken), workflow: Orchestrator.automationWorkflow))
+            #expect(!record.nothing)
+        }
     }
 
     /// A failed run reads as one plain sentence: never strut's step prefix,

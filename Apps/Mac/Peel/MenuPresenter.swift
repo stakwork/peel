@@ -464,11 +464,13 @@ private struct MenuRow: View {
                 Text(confirming ? item.confirm ?? item.title : item.title)
                     .font(Theme.font(13, confirming ? .bold : .regular))
                     .lineLimit(1)
-                if let subtitle = item.subtitle, !confirming {
+                if let subtitle = item.subtitle {
+                    // Kept, unseen, while confirming: the row keeps its height.
                     Text(subtitle)
                         .font(Theme.font(12))
                         .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
                         .lineLimit(1)
+                        .opacity(confirming ? 0 : 1)
                 }
             }
             Spacer(minLength: 16)
@@ -491,8 +493,9 @@ private struct MenuRow: View {
         }
         .foregroundStyle(item.destructive ? Theme.destructive : Theme.text)
         .padding(.horizontal, Theme.Space.sm)
+        // One line fits the 28 pt; a second takes the row past it, with room above and below.
+        .padding(.vertical, 4)
         .frame(minHeight: 28)
-        .padding(.vertical, item.subtitle == nil ? 0 : 4)
         .background(highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

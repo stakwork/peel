@@ -10,23 +10,15 @@ public struct LingoLexicon: Equatable, Sendable {
         public var refID: String
         public var type: String
         public var name: String
-        /// Correct ways to write it, the name first ("Bitcoin", "BTC").
-        public var written: [String]
         public var heard: [Heard]
         public var dictationOff: Bool
-        /// A word taught to dictation (strut's `lingo_type`), rather than a
-        /// person or project that also has mishearings.
-        public var isLingo: Bool
 
-        public init(refID: String, type: String, name: String, written: [String], heard: [Heard] = [],
-                    dictationOff: Bool = false, isLingo: Bool = false) {
+        public init(refID: String, type: String, name: String, heard: [Heard] = [], dictationOff: Bool = false) {
             self.refID = refID
             self.type = type
             self.name = name
-            self.written = written
             self.heard = heard
             self.dictationOff = dictationOff
-            self.isLingo = isLingo
         }
     }
 
@@ -49,34 +41,36 @@ public struct LingoLexicon: Equatable, Sendable {
 
     public static let empty = LingoLexicon()
 
-    /// `memory/lexicon`'s output: `{ lingo_type, entities: [...] }`.
+    /// The vocabulary's words: what dictation mishears, and what the user
+    /// told it to leave alone. One rule for the Vocabulary window's list and
+    /// every count of it.
+    public var words: [Entry] { entries.filter { !$0.heard.isEmpty || $0.dictationOff } }
+
+    public var wordCount: Int { words.count }
+
+    /// `memory/lexicon`'s output: `{ entities: [...] }`.
     public init(lexicon output: AgentKit.JSONValue) {
-        let lingoType = output["lingo_type"]?.string ?? "Lingo"
         entries = (output["entities"]?.array ?? []).compactMap { entity -> Entry? in
             guard let id = entity["ref_id"]?.string, let name = entity["name"]?.string else { return nil }
             let heard = (entity["heard"]?.array ?? []).compactMap { heard -> Heard? in
                 guard let id = heard["ref_id"]?.string, let value = heard["value"]?.string else { return nil }
                 return Heard(refID: id, value: value, form: heard["form"]?.string)
             }
-            let type = entity["type"]?.string ?? ""
             return Entry(
-                refID: id, type: type, name: name,
-                written: entity["written"]?.array?.compactMap(\.string) ?? [name], heard: heard,
-                dictationOff: entity["dictation_off"] == .bool(true), isLingo: type == lingoType
+                refID: id, type: entity["type"]?.string ?? "", name: name, heard: heard,
+                dictationOff: entity["dictation_off"] == .bool(true)
             )
         }
     }
 }
 
-/// What strut's `dictation/correction` learned from an edit: each pair, and
-/// what to pass to `dictation/undo` (empty when strut already had it).
+/// What strut's `dictation/correction` learned from an edit: each word as
+/// written, and what to pass to `dictation/undo` (empty when strut already had it).
 public struct LingoLearned: Equatable, Sendable {
-    public var heard: String
     public var written: String
     public var undo: [String]
 
-    public init(heard: String, written: String, undo: [String]) {
-        self.heard = heard
+    public init(written: String, undo: [String]) {
         self.written = written
         self.undo = undo
     }
@@ -84,8 +78,8 @@ public struct LingoLearned: Equatable, Sendable {
     /// `dictation/correction`'s output: `{ learned: [{ heard, written, undo }] }`.
     public static func list(from output: AgentKit.JSONValue) -> [LingoLearned] {
         (output["learned"]?.array ?? []).compactMap { pair in
-            guard let heard = pair["heard"]?.string, let written = pair["written"]?.string else { return nil }
-            return LingoLearned(heard: heard, written: written, undo: pair["undo"]?.array?.compactMap(\.string) ?? [])
+            guard let written = pair["written"]?.string else { return nil }
+            return LingoLearned(written: written, undo: pair["undo"]?.array?.compactMap(\.string) ?? [])
         }
     }
 }
@@ -101,27 +95,45 @@ public struct DictationModel: Equatable, Sendable, Identifiable {
 
     public var id: String
     public var kind: Kind
+    /// Strut's name for it ("Kroko"), and what it does for you in a line.
+    public var name: String
+    public var summary: String
     /// The download's size.
     public var bytes: Int64
-    /// Strut's own description, for a model Peel has no words for.
+    /// Strut's longer description.
     public var description: String
     public var state: State
     /// 0...1 while downloading, when strut knows.
     public var progress: Double?
+    /// How much has come down, while downloading.
+    public var downloaded: Int64?
     /// The user's pick for its kind.
     public var selected: Bool
+    /// In use now: the pick once it is installed, until then the one before.
+    public var active: Bool
+    /// Strut's choice for its kind.
+    public var recommended: Bool
+    /// On this Mac and safe to remove (not in use, not what dictation falls back on).
+    public var removable: Bool
     /// Why its last download failed.
     public var error: String?
 
-    public init(id: String, kind: Kind, bytes: Int64, description: String = "", state: State,
-                progress: Double? = nil, selected: Bool = false, error: String? = nil) {
+    public init(id: String, kind: Kind, name: String? = nil, summary: String = "", bytes: Int64, description: String = "",
+                state: State, progress: Double? = nil, downloaded: Int64? = nil, selected: Bool = false,
+                active: Bool = false, recommended: Bool = false, removable: Bool = false, error: String? = nil) {
         self.id = id
         self.kind = kind
+        self.name = name ?? id
+        self.summary = summary
         self.bytes = bytes
         self.description = description
         self.state = state
         self.progress = progress
+        self.downloaded = downloaded
         self.selected = selected
+        self.active = active
+        self.recommended = recommended
+        self.removable = removable
         self.error = error
     }
 
@@ -132,10 +144,14 @@ public struct DictationModel: Equatable, Sendable, Identifiable {
             guard let id = model["id"]?.string,
                   let kind = model["kind"]?.string.flatMap(Kind.init(rawValue:)),
                   let state = model["state"]?.string.flatMap(State.init(rawValue:)) else { return nil }
+            let description = model["description"]?.string ?? ""
             return DictationModel(
-                id: id, kind: kind, bytes: Int64(model["bytes"]?.int ?? 0), description: model["description"]?.string ?? "",
-                state: state, progress: number(model["progress"]).map { min(max($0, 0), 1) },
-                selected: model["selected"] == .bool(true), error: model["error"]?.string
+                id: id, kind: kind, name: model["name"]?.string, summary: model["summary"]?.string ?? description,
+                bytes: Int64(model["bytes"]?.int ?? 0), description: description, state: state,
+                progress: number(model["progress"]).map { min(max($0, 0), 1) },
+                downloaded: model["downloaded"]?.int.map(Int64.init), selected: model["selected"] == .bool(true),
+                active: model["active"] == .bool(true), recommended: model["recommended"] == .bool(true),
+                removable: model["removable"] == .bool(true), error: model["error"]?.string
             )
         }
     }

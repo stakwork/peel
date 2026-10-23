@@ -86,9 +86,12 @@ public final class AppModel {
             if phase != oldValue {
                 TimelineLog.log("app phase \(oldValue) -> \(phase)")
                 calls.watchesRecent = phase == .ready
+                phaseChanged(phase)
             }
         }
     }
+    /// The Mac's dictation drops what it holds of the account when it locks or closes.
+    @ObservationIgnored public var phaseChanged: @MainActor (Phase) -> Void = { _ in }
     public var connection: Engine.ConnectionState = .offline(retryIn: nil)
     public var conversations: [Conversation] = []
     /// The open chat's main conversation: in a tribe with threads collapsed,

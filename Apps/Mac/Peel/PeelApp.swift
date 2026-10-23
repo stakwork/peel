@@ -163,7 +163,10 @@ enum MainWindow {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel? {
-        didSet { openLinks() }
+        didSet {
+            model?.phaseChanged = { DictationController.shared.accountChanged(unlocked: $0 == .ready) }
+            openLinks()
+        }
     }
     private var quitting = false
     /// Links opened before the model was here (one that launched Peel).

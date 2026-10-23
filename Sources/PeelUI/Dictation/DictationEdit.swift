@@ -7,12 +7,16 @@ import Foundation
 ///
 /// Strut runs a model on each edit (`dictation/correction`), so it is sent
 /// once, when it has settled: left alone for `settled`, the field emptied
-/// (Return sending a chat message, whose last reading before it stands), or
-/// the watch ended by the caller (the focus left, the next dictation, the
-/// time cap).
+/// (Return sending a chat message, whose last reading before it stands),
+/// words written on after it, or the watch ended by the caller (the focus
+/// left, the next dictation, the time cap). What is written after the
+/// dictation is never part of the edit.
 public struct DictationEdit: Sendable {
     /// An edit left alone this long is done.
     public static let settled: Duration = .seconds(2)
+    /// A span this many UTF-16 units longer than the dictation is new
+    /// writing, whatever its words: the backstop to `writesOn`.
+    static let longer = 200
 
     public enum Next: Equatable, Sendable {
         case watch
@@ -21,6 +25,10 @@ public struct DictationEdit: Sendable {
 
     private let prefix: String
     private let suffix: String
+    /// The UTF-16 lengths of `prefix` and `suffix`, `typed` and the field's value.
+    private let prefixLength: Int
+    private let suffixLength: Int
+    private let typedLength: Int
     private let before: String
     private var latest: String
     private var changedAt: Duration = .zero
@@ -34,6 +42,9 @@ public struct DictationEdit: Sendable {
               text.substring(with: NSRange(location: caret - length, length: length)) == typed else { return nil }
         prefix = text.substring(to: caret - length)
         suffix = text.substring(from: caret)
+        prefixLength = caret - length
+        suffixLength = text.length - caret
+        typedLength = length
         before = value
         latest = value
     }
@@ -44,6 +55,10 @@ public struct DictationEdit: Sendable {
         if value.isEmpty, !before.isEmpty { return .done }
         // The text around Peel's changed too: not this edit's; wait for it back.
         guard surrounds(value) else { return .watch }
+        let now = span(value)
+        // Writing on past the dictation (or past the fix of it): the edit,
+        // if any, is the reading before; what was added is never sent.
+        if Self.writesOn(span(latest), now) || (now as NSString).length > typedLength + Self.longer { return .done }
         if value != latest {
             latest = value
             changedAt = time
@@ -57,14 +72,24 @@ public struct DictationEdit: Sendable {
         latest == before ? nil : span(latest)
     }
 
+    /// `now` is `was` with words added after it: the same words first
+    /// (punctuation on them aside, so "team." then "Thanks" counts), then more.
+    private static func writesOn(_ was: String, _ now: String) -> Bool {
+        let was = words(was), now = words(now)
+        return now.count > was.count && now.starts(with: was)
+    }
+
+    private static func words(_ text: String) -> [String] {
+        text.split(whereSeparator: \.isWhitespace).map { $0.trimmingCharacters(in: .punctuationCharacters) }
+            .filter { !$0.isEmpty }
+    }
+
     private func surrounds(_ value: String) -> Bool {
-        value.hasPrefix(prefix) && value.hasSuffix(suffix)
-            && (value as NSString).length >= (prefix as NSString).length + (suffix as NSString).length
+        (value as NSString).length >= prefixLength + suffixLength && value.hasPrefix(prefix) && value.hasSuffix(suffix)
     }
 
     private func span(_ value: String) -> String {
-        let start = (prefix as NSString).length
-        let end = (value as NSString).length - (suffix as NSString).length
-        return (value as NSString).substring(with: NSRange(location: start, length: end - start))
+        let length = (value as NSString).length
+        return (value as NSString).substring(with: NSRange(location: prefixLength, length: length - prefixLength - suffixLength))
     }
 }

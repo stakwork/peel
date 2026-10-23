@@ -1,3 +1,4 @@
+import PeelCore
 import PeelUI
 import SwiftUI
 
@@ -42,16 +43,18 @@ struct DictationVocabularyView: View {
                     .buttonStyle(.peel(.primary))
                     .disabled(word.trimmed.isEmpty || heard.trimmed.isEmpty)
             }
-            Text(problem ?? "Dictation types the word wherever it hears it written this way. Corrections you make after dictating add to this too.")
-                .font(Theme.font(12))
-                .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.text)
-                .fixedSize(horizontal: false, vertical: true)
+            if let problem {
+                ProblemText(problem)
+            } else {
+                Text("Dictation types the word wherever it hears it written this way. Corrections you make after dictating add to this too.")
+                    .muted()
+            }
         }
         .padding(Theme.Space.lg)
     }
 
     @ViewBuilder private var list: some View {
-        let entries = lingo.lexicon.entries.filter { !$0.heard.isEmpty || $0.dictationOff }
+        let entries = lingo.lexicon.words
         if let problem = lingo.problem {
             EmptyState(problem)
         } else if entries.isEmpty {
@@ -76,7 +79,7 @@ struct DictationVocabularyView: View {
             word = ""
             heard = ""
         } catch {
-            problem = "That couldn't be added: Peel's strut didn't take it"
+            problem = PeelError.problem(error, couldNot: "add it")
         }
     }
 }
@@ -89,42 +92,43 @@ private struct VocabularyRow: View {
     private var lingo: DictationLingo { DictationController.shared.lingo }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.md) {
+        ListRow(size: .md, alignment: .firstTextBaseline) {
+            EmptyView()
+        } title: {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
+                Text(entry.name).font(Theme.font(13, .semibold))
+                Text(entry.type).font(Theme.font(11)).foregroundStyle(Theme.secondaryText)
+            }
+        } detail: {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
-                    Text(entry.name).font(Theme.font(13, .semibold))
-                    Text(entry.type).font(Theme.font(11)).foregroundStyle(Theme.secondaryText)
-                }
                 ForEach(entry.heard, id: \.refID) { heard in
                     HStack(spacing: Theme.Space.sm) {
                         Text("“\(heard.value)”" + (heard.form.map { " → \($0)" } ?? ""))
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
                         Button("Remove") {
                             Task {
-                                do { try await lingo.remove(heard.refID) } catch { problem = "That couldn't be removed" }
+                                do { try await lingo.remove(heard.refID) } catch {
+                                    problem = PeelError.problem(error, couldNot: "remove it")
+                                }
                             }
                         }
-                        .buttonStyle(.plain)
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.accent)
+                        .buttonStyle(.peel(.link, size: .sm))
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Toggle("Use in dictation", isOn: Binding(
+        } trailing: {
+            PeelSwitch(isOn: Binding(
                 get: { !entry.dictationOff },
                 set: { on in
                     Task {
-                        do { try await lingo.setDictation(entry, on: on) } catch { problem = "That couldn't be changed" }
+                        do { try await lingo.setDictation(entry, on: on) } catch {
+                            problem = PeelError.problem(error, couldNot: "change it")
+                        }
                     }
                 }
             ))
-            .toggleStyle(.switch)
-            .labelsHidden()
+            .accessibilityLabel("Use in dictation")
             .help(entry.dictationOff ? "Dictation leaves this word alone" : "Dictation puts this word right")
         }
-        .padding(.horizontal, Theme.Space.lg)
-        .padding(.vertical, Theme.Space.md)
+        .padding(.horizontal, Theme.Space.xs)
     }
 }

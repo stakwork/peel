@@ -22,11 +22,8 @@ struct LingoTests {
     @Test func readsTheVocabulary() throws {
         let lexicon = LingoLexicon(lexicon: try JSONValue(parsing: Self.lexiconReply))
         #expect(lexicon.entries.map(\.name) == ["Bitcoin", "Stakwork"])
-        #expect(lexicon.entries[0].written == ["Bitcoin", "BTC"])
         #expect(lexicon.entries[0].heard == [.init(refID: "f2", value: "bee tee see", form: "BTC"),
                                              .init(refID: "f9", value: "bit coin", form: nil)])
-        // A taught word, against a known organisation that also has mishearings.
-        #expect(lexicon.entries.map(\.isLingo) == [true, false])
         #expect(lexicon.entries.map(\.dictationOff) == [false, true])
     }
 
@@ -36,9 +33,9 @@ struct LingoTests {
                         {"heard":"stack work","written":"Stakwork","undo":[]}]}
             """#)
         #expect(LingoLearned.list(from: output) == [
-            .init(heard: "p eight", written: "P8", undo: ["e9"]),
+            .init(written: "P8", undo: ["e9"]),
             // Strut already had it: nothing to undo.
-            .init(heard: "stack work", written: "Stakwork", undo: []),
+            .init(written: "Stakwork", undo: []),
         ])
         #expect(LingoLearned.list(from: try JSONValue(parsing: #"{"learned":[]}"#)).isEmpty)
     }
@@ -47,20 +44,26 @@ struct LingoTests {
     @Test func readsTheModels() throws {
         let output = try JSONValue(parsing: #"""
             {"models":[
-              {"id":"zipformer-en-kroko","kind":"speech","bytes":57267600,"description":"Kroko","state":"installed","selected":true},
-              {"id":"parakeet-tdt-en-0.6b-v2","kind":"speech","bytes":482468385,"description":"Parakeet","state":"downloading","progress":0.42,"selected":false},
+              {"id":"zipformer-en-kroko","kind":"speech","name":"Kroko","summary":"Fastest and smallest.","bytes":57267600,
+               "description":"Kroko","state":"installed","selected":false,"active":true,"removable":false},
+              {"id":"parakeet-tdt-en-0.6b-v2","kind":"speech","name":"Parakeet","bytes":482468385,"description":"Parakeet",
+               "state":"downloading","progress":0.42,"downloaded":202636721,"selected":true},
               {"id":"qwen3-0.6b-q4","kind":"fixer","bytes":396705472,"description":"small","state":"available","selected":false,"error":"checksum mismatch"},
-              {"id":"qwen3-1.7b-q4","kind":"fixer","bytes":1107409472,"description":"large","state":"downloading","selected":true},
+              {"id":"qwen3-1.7b-q4","kind":"fixer","bytes":1107409472,"description":"large","state":"installed","selected":true,
+               "active":true,"recommended":true},
               {"id":"whisper","kind":"translator","bytes":1,"description":"","state":"available","selected":false}]}
             """#)
         let models = DictationModel.list(from: output)
         #expect(models.map(\.id) == ["zipformer-en-kroko", "parakeet-tdt-en-0.6b-v2", "qwen3-0.6b-q4", "qwen3-1.7b-q4"])
-        #expect(models[0] == .init(id: "zipformer-en-kroko", kind: .speech, bytes: 57_267_600, description: "Kroko",
-                                   state: .installed, selected: true))
-        #expect(models[1].state == .downloading && models[1].progress == 0.42 && !models[1].selected)
-        #expect(models[2].kind == .fixer && models[2].error == "checksum mismatch")
-        // Downloading with no progress yet.
-        #expect(models[3].progress == nil && models[3].selected)
+        #expect(models[0] == .init(id: "zipformer-en-kroko", kind: .speech, name: "Kroko", summary: "Fastest and smallest.",
+                                   bytes: 57_267_600, description: "Kroko", state: .installed, active: true))
+        // The pick still downloading; the one before stays in use.
+        #expect(models[1].state == .downloading && models[1].progress == 0.42 && models[1].downloaded == 202_636_721)
+        #expect(models[1].selected && !models[1].active)
+        // Strut gave no name or summary: its id and description stand in.
+        #expect(models[2].kind == .fixer && models[2].name == "qwen3-0.6b-q4" && models[2].summary == "small")
+        #expect(models[2].error == "checksum mismatch" && !models[2].removable)
+        #expect(models[3].recommended && models[3].active && models[3].selected)
         #expect(DictationModel.list(from: try JSONValue(parsing: #"{"error":"no stt"}"#)).isEmpty)
     }
 }
@@ -101,6 +104,30 @@ struct DictationEditTests {
         var edit = try #require(DictationEdit(value: "stack work", typed: "stack work", caret: 10))
         #expect(edit.read("Stakwork", at: .seconds(0.5)) == .watch)
         #expect(edit.read("", at: .seconds(1)) == .done)
+        #expect(edit.edited == "Stakwork")
+    }
+
+    @Test func writingOnPastTheFixEndsTheEditBeforeIt() throws {
+        var edit = try #require(DictationEdit(value: "stack work", typed: "stack work", caret: 10))
+        #expect(edit.read("Stakwork", at: .seconds(0.5)) == .watch)
+        #expect(edit.read("Stakwork is", at: .seconds(1)) == .done)
+        // What was written on is never sent.
+        #expect(edit.edited == "Stakwork")
+    }
+
+    /// Words added after an unchanged dictation are the user's own writing, not a fix: nothing is sent.
+    @Test(arguments: ["Hi. Ask the stack work team about it!", "Hi. Ask the stack work team. Thanks!"])
+    func writingOnAfterTheDictationIsNotAnEdit(_ reading: String) throws {
+        var edit = try Self.edit()
+        #expect(edit.read(reading, at: .seconds(1)) == .done)
+        #expect(edit.edited == nil)
+    }
+
+    @Test func aLongSpanEndsTheEditWhateverItsWords() throws {
+        var edit = try #require(DictationEdit(value: "stack work", typed: "stack work", caret: 10))
+        #expect(edit.read("Stakwork", at: .seconds(0.5)) == .watch)
+        let rewritten = String(repeating: "x", count: 10 + DictationEdit.longer + 1)
+        #expect(edit.read(rewritten, at: .seconds(1)) == .done)
         #expect(edit.edited == "Stakwork")
     }
 

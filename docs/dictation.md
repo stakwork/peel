@@ -59,8 +59,9 @@ on this Mac, turns it into text: nothing leaves it.
   its strut starts, stops or changes (`AppModel.strutChanged`), which
   checks the model again for that strut. A recording that finds it still
   downloading says so in the HUD, and one made while the strut is starting
-  waits up to 10 s for it. Account › Dictation › Speech shows the state,
-  with Try again after a failure. Strut's refusals come back as
+  waits up to 10 s for it. Account › Dictation › Speech to text shows the
+  model in use, or, before strut has listed its models, the default
+  model's state; Try again after the default model failed. Strut's refusals come back as
   `StrutSpeech.Failure`, in Peel's words for the HUD, never strut's own
   (which can carry its paths). Nothing said is logged; what is kept is
   History's, below. `embed-strut.sh`
@@ -101,17 +102,30 @@ on this Mac, turns it into text: nothing leaves it.
     edit is sent **once**, when it has settled, because strut runs the
     user's fixer model on it: 2 s after the last change, when the field is
     emptied (Return in a chat sending it: the last reading before stands),
-    when the focus leaves the field, or when the next dictation starts.
-    Nothing is sent when the text is unchanged. It goes as `{typed, edited}`
+    when words are written on after it, when the focus leaves the field, or
+    when the next dictation or insertion starts. Nothing is sent when the
+    text is unchanged. Words added after the dictation (by word: the same
+    words first, then more) are the user's own writing, never sent: the
+    edit is the reading before them, and a span 200 characters longer than
+    the dictation ends it whatever its words. No watch without a fixer in
+    use (`active` in `dictation/models`; with none strut learns nothing), in
+    a terminal (Terminal, iTerm2, Warp, kitty, Ghostty, Alacritty, WezTerm:
+    the field's value is the scrollback) or in a password field. The watch
+    takes the strut and the unlocked account as it starts and drops the
+    edit if either changed; it ends when the strut changes or the account
+    locks, and the learn and its Undo go to that strut. A field over 100,000
+    characters is not read (its length is asked first). It goes as `{typed, edited}`
     to `dictation/correction`, which judges and writes each mishearing
     (only the pair, never the sentence) and returns what it learned with
     the ids to undo; the HUD says "Learned P8" with Undo for 5 s, and Undo
-    is `dictation/undo`. Only while Peel is unlocked, never for Peel's own
+    is `dictation/undo`. "Learned" waits for a dictation under way and its
+    insertion to finish. Only while Peel is unlocked (locking also drops
+    the vocabulary read for Settings and the window), never for Peel's own
     fields, and only where Accessibility can read the field (not most
     Electron apps; the rewrite still works there).
   - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
     word with how it is misheard (`memory/lexicon`), Remove
-    (`dictation/remove`), a switch to leave it alone (`memory/attributes`),
+    (`dictation/remove`), a switch to leave it alone (`dictation/enable`),
     and Add (`dictation/add`). A view over the graph, not a second list.
 - **Models** (`DictationModels`; Account › Dictation › Speech to text and
   Clean-up and learning). Strut runs dictation on a small local model for
@@ -119,15 +133,19 @@ on this Mac, turns it into text: nothing leaves it.
   the default) or Parakeet (`parakeet-tdt-en-0.6b-v2`, 482 MB); clean-up
   Off, Qwen3 0.6B (`qwen3-0.6b-q4`, 397 MB) or Qwen3 1.7B (`qwen3-1.7b-q4`,
   1.1 GB, recommended). Clean-up is what puts dictation right and learns
-  from the user's edits. Each job is one row: the picked model, what it does,
-  its size, and for clean-up how many words it has learned; Change opens
-  Peel's menu beside it with every choice and what it means (a second line
-  per item), and Remove for an installed model not in use (never Kroko,
-  which dictation falls back on). Choosing calls `dictation/use` (`{speech}`
-  or `{fixer}`, `fixer: null` for Off), which downloads a model that is not
-  installed, and strut switches to it once it is there. While a model
-  downloads its progress shows under the row, from `dictation/models` read
-  every second, and only then; a failed download shows strut's reason.
+  from the user's edits. Strut names and describes each model (`name`,
+  `summary`, `recommended`); Peel's only words are Off's. Each job is one
+  row: the model in use (`active`), what it does, its size, and for
+  clean-up how many words it has learned; Change opens Peel's menu beside
+  it with every choice, what it means (a second line, "Recommended." first
+  for strut's choice) and its size on the right, and Remove for what strut
+  says can go (`removable`). Choosing calls `dictation/use` (`{speech}` or
+  `{fixer}`, `fixer: null` for Off), which downloads a model that is not
+  installed, and strut switches to it once it is there. While the pick
+  downloads its progress shows under the row (`downloaded`), from
+  `dictation/models` read every second, only then and only while the
+  section is on screen; a failed download shows strut's reason. Before
+  strut lists a speech model the row shows the default model's state.
   Every step returns the whole list. `/audio/transcribe` goes without a
   `model`, so the pick is used, and its reply names the `fixer` that ran.
 - **Typing it** (`DictationTextInserter`; the decision is
@@ -193,6 +211,17 @@ desktops and input methods for non-Latin scripts, untried;
 macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
+
+- 2026-10-23: review fixes to learning: no watch without a fixer in use,
+  in a terminal, or across a strut or account switch (the learn and Undo
+  go to the strut the text was typed with); words written on after the
+  dictation are never sent; a cancelled watch never reads the next
+  insertion; the vocabulary is dropped on lock; the 30-day prune overwrites
+  (`secure_delete`); "Learned" waits for the dictation under way without a
+  poll. Strut owns the models' names, summaries, recommendation and what
+  can be removed; the Vocabulary's switch is `dictation/enable`. Unit
+  tested: appends, the size backstop, the new model fields. Not yet run
+  against a strut with these fields.
 
 - 2026-10-23: strut judges with a local model the user picks (speech and
   fixer): the Speech to text and Clean-up and learning rows in Account › Dictation; the

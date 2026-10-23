@@ -25,9 +25,7 @@ struct DictationFocus {
         let pid = app?.processIdentifier ?? 0
         // Peel itself: asking would wait on this very thread. Its own fields
         // take the paste like any app's.
-        let element = pid == getpid() ? nil : value(system, kAXFocusedUIElementAttribute).flatMap { focused in
-            CFGetTypeID(focused) == AXUIElementGetTypeID() ? (focused as! AXUIElement) : nil
-        }
+        let element = pid == getpid() ? nil : focusedElement()
         let facts = FocusFacts(
             pid: pid,
             bundleID: app?.bundleIdentifier,
@@ -40,6 +38,20 @@ struct DictationFocus {
             secureInput: SecureInput.isEnabled
         )
         return DictationFocus(facts: facts, element: element)
+    }
+
+    /// The element with the keyboard focus, in whichever app has it.
+    static func focusedElement() -> AXUIElement? {
+        value(system, kAXFocusedUIElementAttribute).flatMap { focused in
+            CFGetTypeID(focused) == AXUIElementGetTypeID() ? (focused as! AXUIElement) : nil
+        }
+    }
+
+    /// The selection in a text field, in UTF-16 units: the caret when its length is 0.
+    static func selectedRange(of element: AXUIElement) -> CFRange? {
+        guard let value = value(element, kAXSelectedTextRangeAttribute), CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var range = CFRange()
+        return AXValueGetValue(value as! AXValue, .cfRange, &range) ? range : nil
     }
 
     static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
@@ -95,7 +107,7 @@ enum DictationTextInserter {
     /// Reading the whole value back would copy a long note across processes,
     /// and text already in it would pass for inserted.
     private static func setSelectedText(_ text: String, in element: AXUIElement) -> Bool {
-        guard let before = length(of: element), let selected = selectionLength(of: element),
+        guard let before = length(of: element), let selected = DictationFocus.selectedRange(of: element)?.length,
               AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success
         else { return false }
         return length(of: element) == before - selected + text.utf16.count
@@ -103,13 +115,6 @@ enum DictationTextInserter {
 
     private static func length(of element: AXUIElement) -> Int? {
         DictationFocus.value(element, kAXNumberOfCharactersAttribute) as? Int
-    }
-
-    private static func selectionLength(of element: AXUIElement) -> Int? {
-        guard let value = DictationFocus.value(element, kAXSelectedTextRangeAttribute),
-              CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        var range = CFRange()
-        return AXValueGetValue(value as! AXValue, .cfRange, &range) ? range.length : nil
     }
 
     /// ⌘V with the text on the clipboard, marked so clipboard managers skip

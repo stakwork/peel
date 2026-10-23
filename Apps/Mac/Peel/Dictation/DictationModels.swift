@@ -2,19 +2,20 @@ import AgentKit
 import Observation
 import os
 import PeelAgent
+import PeelCore
 import PeelUI
 
 /// The models dictation runs on Peel's strut, for Account › Dictation's
 /// picker: a speech model and a fixer, each picked, downloaded and removed
-/// by strut (`dictation/models`, `use`, `remove-model`). Read again every
-/// second only while one is downloading.
+/// by strut (`dictation/models`, `use`, `remove-model`). Strut names and
+/// describes them; Peel only shows what it says. Read again every second
+/// while one downloads and the picker is on screen (`follow`).
 @MainActor @Observable
 final class DictationModels {
     private(set) var models: [DictationModel] = []
     /// Why the last call failed; nil once one worked.
     private(set) var problem: String?
     @ObservationIgnored private var server: MemoryServer?
-    @ObservationIgnored private var poll: Task<Void, Never>?
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
 
     private static let every: Duration = .seconds(1)
@@ -25,33 +26,47 @@ final class DictationModels {
         server = new
         models = []
         problem = nil
-        poll?.cancel()
-        poll = nil
         if new != nil { Task { await load() } }
     }
 
+    var downloading: Bool { models.contains { $0.state == .downloading } }
+
+    /// A fixer is running: only then does an edit teach dictation anything.
+    var hasActiveFixer: Bool { models.contains { $0.kind == .fixer && $0.active } }
+
     func load() async {
-        await call("dictation/models", [:], failure: "The models couldn't be read from Peel's strut")
+        await call("dictation/models", [:], couldNot: "read the models from Peel's strut")
+    }
+
+    /// The picker's: reads the list, then again every second while a model
+    /// downloads. Run by the view's `.task`, so it stops when the picker goes.
+    func follow() async {
+        await load()
+        while downloading, problem == nil {
+            try? await Task.sleep(for: Self.every)
+            guard !Task.isCancelled else { return }
+            await load()
+        }
     }
 
     /// Picks `model` for its kind; strut downloads it first if it has to.
     func select(_ model: DictationModel) async {
-        await call("dictation/use", [model.kind.rawValue: .string(model.id)], failure: "That model couldn't be chosen")
+        await call("dictation/use", [model.kind.rawValue: .string(model.id)], couldNot: "choose \(model.name)")
     }
 
     /// No fixer: dictation keeps to the vocabulary alone.
     func selectNoFixer() async {
-        await call("dictation/use", ["fixer": .null], failure: "That couldn't be changed")
+        await call("dictation/use", ["fixer": .null], couldNot: "turn clean-up off")
     }
 
     func remove(_ model: DictationModel) async {
-        await call("dictation/remove-model", ["id": .string(model.id)], failure: "That model couldn't be removed")
+        await call("dictation/remove-model", ["id": .string(model.id)], couldNot: "remove \(model.name)")
     }
 
     /// Each step returns the whole list.
-    private func call(_ step: String, _ input: AgentKit.JSONValue, failure: String) async {
+    private func call(_ step: String, _ input: AgentKit.JSONValue, couldNot action: String) async {
         guard let server else {
-            problem = "Peel's strut isn't running"
+            problem = PeelError.problem("Peel's strut isn't running", couldNot: action)
             return
         }
         do {
@@ -60,29 +75,10 @@ final class DictationModels {
             guard server == self.server else { return }
             models = list
             problem = nil
-            followDownloads()
         } catch {
             guard server == self.server else { return }
-            problem = failure
+            problem = PeelError.problem(error, couldNot: action)
             log.error("\(step, privacy: .public) failed: \(String(describing: error))")
-        }
-    }
-
-    private var downloading: Bool { models.contains { $0.state == .downloading } }
-
-    /// Reads the list again every second while a model downloads, then stops.
-    private func followDownloads() {
-        guard downloading, poll == nil else { return }
-        poll = Task { [weak self] in
-            while true {
-                try? await Task.sleep(for: Self.every)
-                guard let self, !Task.isCancelled else { return }
-                await self.load()
-                // `use` cancels and replaces this poll.
-                guard !Task.isCancelled else { return }
-                if !self.downloading || self.problem != nil { break }
-            }
-            self?.poll = nil
         }
     }
 }

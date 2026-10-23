@@ -24,7 +24,7 @@ final class DictationHotkeyTap: @unchecked Sendable {
     private let handler: Handler
     private let isActive: IsActive
     private let lock = NSLock()
-    private var hotkey: HotkeyConfig
+    private let hotkey: HotkeyConfig
     private var thread: Thread?
     private var runLoop: CFRunLoop?
     private var tap: CFMachPort?
@@ -42,8 +42,6 @@ final class DictationHotkeyTap: @unchecked Sendable {
 
     var isRunning: Bool { lock.withLock { thread != nil } }
 
-    func setHotkey(_ new: HotkeyConfig) { lock.withLock { hotkey = new } }
-    private var currentHotkey: HotkeyConfig { lock.withLock { hotkey } }
 
     func start() {
         guard !isRunning else { return }
@@ -124,7 +122,7 @@ final class DictationHotkeyTap: @unchecked Sendable {
     /// the system's flags say it is not down, so end it.
     private func releaseIfStuck() {
         guard isActive() else { return }
-        let key = currentHotkey
+        let key = hotkey
         let down = key.isDown(flags: CGEventSource.flagsState(.combinedSessionState).rawValue)
             ?? CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(key.keyCode))
         if !down { _ = handler(.hotkeyUp) }
@@ -140,7 +138,7 @@ final class DictationHotkeyTap: @unchecked Sendable {
             releaseIfStuck()
             return false
         case .flagsChanged:
-            let key = currentHotkey
+            let key = hotkey
             guard key.isModifier, Int64(key.keyCode) == event.getIntegerValueField(.keyboardEventKeycode),
                   let down = key.isDown(flags: event.flags.rawValue) else { return false }
             return handler(down ? .hotkeyDown(isRepeat: false) : .hotkeyUp)
@@ -150,13 +148,13 @@ final class DictationHotkeyTap: @unchecked Sendable {
             if code == Self.spaceKey { return handler(.spaceDown(isRepeat: isRepeat)) }
             if code == Self.escapeKey { return handler(.escapeDown) }
             if Self.returnKeys.contains(code) { return isRepeat ? false : handler(.returnDown) }
-            let key = currentHotkey
+            let key = hotkey
             if !key.isModifier, code == Int64(key.keyCode) { return handler(.hotkeyDown(isRepeat: isRepeat)) }
             return isRepeat ? false : handler(.otherKeyDown)
         case .keyUp:
             let code = event.getIntegerValueField(.keyboardEventKeycode)
             if code == Self.spaceKey { return handler(.spaceUp) }
-            let key = currentHotkey
+            let key = hotkey
             if !key.isModifier, code == Int64(key.keyCode) { return handler(.hotkeyUp) }
             return false
         default:

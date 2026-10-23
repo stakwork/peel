@@ -204,9 +204,6 @@ struct HotkeyConfigTests {
     @Test func settingsPersistAndDefault() throws {
         let defaults = try #require(UserDefaults(suiteName: "dictation-test-\(UUID().uuidString)"))
         let settings = DictationSettings(defaults: defaults)
-        #expect(settings.hotkey == DictationDefaults.hotkey)
-        settings.hotkey = .fn
-        #expect(settings.hotkey == .fn)
         #expect(settings.storedEnabled == nil)
         settings.storedEnabled = false
         #expect(settings.storedEnabled == false)

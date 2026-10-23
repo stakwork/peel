@@ -18,8 +18,8 @@ final class DictationController {
     var isEnabled: Bool {
         DictationSettings.isEnabled(stored: stored, permissionsGranted: permissions.requiredGranted)
     }
-    /// The hotkey, kept in step with the settings.
-    private(set) var hotkey: HotkeyConfig
+    /// Right Option for now; choosing another key comes back once its recorder works.
+    let hotkey = DictationDefaults.hotkey
     private(set) var secureInput = false
     /// The tap is running.
     private(set) var isListening = false
@@ -44,7 +44,6 @@ final class DictationController {
         // @Observable makes `settings` computed, so read a local copy before init completes.
         let settings = DictationSettings()
         self.settings = settings
-        hotkey = settings.hotkey
         stored = settings.storedEnabled
         offerDismissed = settings.offerDismissed
     }
@@ -84,13 +83,6 @@ final class DictationController {
     func dismissOffer() {
         offerDismissed = true
         settings.offerDismissed = true
-    }
-
-    func setHotkey(_ new: HotkeyConfig) {
-        guard new.canBeHotkey else { return }
-        hotkey = new
-        settings.hotkey = new
-        tap?.setHotkey(new)
     }
 
     private func checkSecureInput() {

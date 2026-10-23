@@ -24,7 +24,6 @@ public enum DictationDefaults {
     /// How often the state machine is told the time while a key is held or a recording runs.
     public static let tickInterval: TimeInterval = 0.05
 
-    public static let hotkeyKey = "dictation.hotkey"
     public static let enabledKey = "dictation.enabled"
     public static let offerDismissedKey = "dictation.offerDismissed"
     public static let askedInputMonitoringKey = "dictation.askedInputMonitoring"
@@ -35,13 +34,6 @@ public struct DictationSettings {
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
-
-    public var hotkey: HotkeyConfig {
-        get {
-            defaults.data(forKey: DictationDefaults.hotkeyKey).flatMap(HotkeyConfig.decode) ?? DictationDefaults.hotkey
-        }
-        nonmutating set { defaults.set(newValue.encoded(), forKey: DictationDefaults.hotkeyKey) }
-    }
 
     /// Nil until the user chooses.
     public var storedEnabled: Bool? {

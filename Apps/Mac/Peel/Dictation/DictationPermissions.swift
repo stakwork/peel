@@ -79,7 +79,7 @@ struct DictationPermissionRows: View {
             button(permissions.microphone) { Task { await permissions.requestMicrophone() } }
         }
         Fact("Input Monitoring") {
-            state(permissions.inputMonitoring, needed: "Needed to see the dictation key")
+            state(permissions.inputMonitoring, needed: "Needed to see the dictation key. Peel may need a restart after you allow it.")
         } trailing: {
             button(permissions.inputMonitoring) { permissions.requestInputMonitoring() }
         }

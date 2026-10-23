@@ -49,7 +49,7 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 
 | | |
 |---|---|
-| Key | Right Option (changeable in Settings; stored in UserDefaults `dictation.hotkey`) |
+| Key | Right Option (fixed for now) |
 | Hold threshold | 200 ms |
 | Longest recording | 5 min, then submitted |
 | Pre-roll | 200 ms |
@@ -57,9 +57,12 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | HUD | bottom centre, 56 pt above the visible area |
 | Mic kept warm | yes (the mic indicator stays on while dictation is on) |
 
-Only a modifier on its own or a function key can be the hotkey: any other
-key would type itself in every app. Fn needs System Settings › Keyboard › Press
-🌐 key › Do Nothing.
+The key is Right Option for now. Choosing another (R3) is open: the
+Settings recorder, an `NSEvent` local monitor, never received a key when
+tried on a Mac, so it was taken out. `HotkeyConfig` keeps the rule for
+when it comes back: a modifier on its own or a function key, since any
+other key would type itself in every app; Fn needs System Settings ›
+Keyboard › Press 🌐 key › Do Nothing.
 
 ## Open
 
@@ -80,4 +83,7 @@ macOS 13+ is already the minimum (the project targets 15.6).
   recording, so the hotkey's own shortcuts work; Return submits when locked;
   the hotkey is limited to modifiers and function keys; the tap is made again
   once Accessibility is granted; a microphone failure ends the recording and
-  says so. Still not run by hand: the real tap, capture, HUD focus.
+  says so.
+- 2026-10-23, tried on a Mac: push-to-talk, locking, the HUD and the
+  permissions work. The key recorder in Settings received no key, so the
+  key is fixed to Right Option until it is rebuilt.

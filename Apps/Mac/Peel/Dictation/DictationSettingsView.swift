@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import PeelUI
 
-/// Account › Dictation: on or off, the key, and what macOS has been asked for.
+/// Account › Dictation: on or off, the key (Right Option for now), and what macOS has been asked for.
 struct DictationSettingsSection: View {
     private var dictation: DictationController { .shared }
 
@@ -23,14 +23,8 @@ struct DictationSettingsSection: View {
                     Text(dictation.hotkey.label)
                     Text("Hold to dictate, let go to finish. Press Space while holding to keep going hands-free.").muted()
                 }
-            } trailing: {
-                HotkeyRecorder(current: dictation.hotkey) { dictation.setHotkey($0) }
             }
             DictationPermissionRows(permissions: dictation.permissions)
-            Text("macOS may ask you to restart Peel after you allow Input Monitoring. "
-                + "To use Fn, set System Settings › Keyboard › Press 🌐 key to Do Nothing.")
-                .muted()
-                .fixedSize(horizontal: false, vertical: true)
         }
         .onAppear { dictation.refresh() }
     }
@@ -47,56 +41,6 @@ struct DictationSettingsSection: View {
             return "Without Accessibility, the Space that keeps dictation going also types a space."
         }
         return nil
-    }
-}
-
-/// Press a key to choose it: a modifier on its own (Right Option, Fn …) or
-/// a function key. Escape stops choosing.
-private struct HotkeyRecorder: View {
-    let current: HotkeyConfig
-    let choose: (HotkeyConfig) -> Void
-    @State private var recording = false
-    @State private var monitor: Any?
-    @State private var problem: String?
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Button(recording ? "Press a key…" : "Change") { recording ? stop() : start() }
-                .buttonStyle(.peel(.outline))
-            if let problem { Text(problem).muted() }
-        }
-        .onDisappear(perform: stop)
-    }
-
-    private func start() {
-        problem = nil
-        recording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
-            if event.type == .keyDown, event.keyCode == KeyCode.escape {
-                stop()
-                return nil
-            }
-            let key = HotkeyConfig.key(code: event.keyCode, character: event.charactersIgnoringModifiers)
-            if event.type == .flagsChanged {
-                // Only the press of a modifier counts, not its release.
-                guard key.isModifier, key.isDown(flags: UInt64(event.modifierFlags.rawValue)) == true else { return nil }
-            } else if event.isARepeat {
-                return nil
-            }
-            if !key.canBeHotkey {
-                problem = "Choose a modifier, such as Right Option, or a function key."
-            } else {
-                choose(key)
-                stop()
-            }
-            return nil
-        }
-    }
-
-    private func stop() {
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = nil
-        recording = false
     }
 }
 

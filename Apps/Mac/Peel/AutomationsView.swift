@@ -25,7 +25,7 @@ struct AutomationsView: View {
                 }
             } else if model.automationsClient == nil {
                 EmptyState("It keeps the schedule.", title: "Connect strut") {
-                    Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.primary))
+                    Button("Open Account") { model.openAccount(.brain) }.buttonStyle(.peel(.primary))
                 }
             } else {
                 SegmentedChoice(selection: $model.automationsTab, options: [(.yours, "Yours"), (.system, "System")])
@@ -60,7 +60,7 @@ struct AutomationsView: View {
         if state.loaded, state.yours.isEmpty, state.problem == nil {
             if onHomeServer {
                 EmptyState(Self.homeServerNote, title: "Not on a home server yet") {
-                    Button("Open Account") { model.openAgentSettings() }.buttonStyle(.peel(.outline))
+                    Button("Open Account") { model.openAccount(.brain) }.buttonStyle(.peel(.outline))
                 }
             } else {
                 EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {

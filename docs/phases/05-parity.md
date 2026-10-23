@@ -4,7 +4,9 @@
 
 **Built:** the Account screen (#10): name, photo (upload from this Mac
 came with #13; since 2026-10-09 picked, never typed as a link), contact QR,
-twelve words, PIN, forget. See "Account screen" below.
+twelve words, PIN, forget. See "Account screen" below. Since 2026-10-23
+in categories, with the chats' column swapped for them while it is open
+("Account in categories" below).
 The web pane (#73): links and a tribe's apps
 open beside the chat. See "Web window" below.
 
@@ -493,3 +495,57 @@ Not applied, with reasons:
   either; the slow derivation is the only brake.
 - Requiring the PIN to forget from the account screen: the lock screen can
   forget without it (for a lost PIN), so it would add no protection.
+
+### Account in categories (2026-10-23)
+
+The one long page had grown to eleven sections (agent, brain, connections,
+Stadeum, dictation on top of the original rows), so it is split. Tom chose
+direction A of three prototyped (categories in the sidebar's place; a status
+overview with drill-in pages; one page of folded sections).
+
+- `AppModel.AccountPage`: Profile, Payments, Assistant, Brain, Connections,
+  Dictation, Notifications, Privacy and security. The agent's three are
+  listed only while there is an agent. `accountPage` is kept while Account
+  is closed; `openAccount(_:)` is the one way in at a category (the agent
+  chat's gear and Automations' Open Account at Assistant, a `peel://brain`
+  link at Brain, the dictation offer at Dictation, `{"mcp": "open"}` at
+  Connections). It replaces `showsAgentSettings` and
+  `ConnectionsState.opened`, which scrolled the long page.
+- `SidebarColumn` (Sidebar.swift): `SidebarHeader` (you, balance, the
+  bolt) and the search are one view each in both modes, so only your row
+  moves: as Account opens the back arrow (⌘[) slides in before you and the
+  bolt slides out after, and `AccountCategories` fades in for the chats.
+  (Tom's call, after two tries: two headers matched by geometry ghosted;
+  one header pushed down by a "‹ Chats" row moved too much.) Your row is
+  Account's Profile row while it is open, and a call's bar and a restore's
+  sit under either list.
+- The search stays put and, while Account is open, searches it ("Search
+  settings"): each category's title and the labels of its rows
+  (`AccountPage.matching`); Return opens the first found. It starts empty
+  each time Account opens, and the chats' search is kept meanwhile. ⌘F
+  focuses it there as elsewhere. Chats is `AppModel.closeAccount`: back to what was
+  open before (recorded as `destination` becomes `.account`), or nothing if
+  that chat went meanwhile; the rebuilt chat list scrolls the open chat
+  into view.
+- Each category is its own page under a `DetailHeader` with its title.
+  `SettingsSection`'s title is optional: a page with one section has none.
+  The server moved into Profile.
+- The dictation offer says what it is for: "Dictation that works
+  everywhere and stays local and private." (Tom's words.)
+- Offscreen driver: `{"open": "account-<category>"}`; `brain-form` and
+  `brain-leave` set `brainAsk` (replacing the two counters, which a page
+  not yet shown could not hear) and open Brain, which takes it as it shows.
+- Back is also ⌘[ (checked offscreen with the real key: back to the screen
+  open before; and ⌘F, "pin", Return opening Privacy and security). The chat list's keys stop as
+  Account opens, so a fading list cannot open a chat. Where Chats goes back
+  to follows the agent chat as the brain moves, and Account's category and
+  `brainAsk` reset with the account. Automations' Open Account opens Brain,
+  where the strut and the home server are.
+- Kept, from /simplify and the independent review: the chat list is
+  rebuilt on each return rather than kept mounted and hidden, since a hidden
+  list would keep its focus and arrow keys; that drops a half-typed Join or
+  Create a tribe form. `AccountPage` stays in PeelUI next to `Destination`.
+  No arrow keys over the categories yet. No unit test for `closeAccount`:
+  nothing builds an `AppModel` in tests today.
+- Not done: "Payments" names both a category and the sidebar's payments
+  screen; kept for now. The search finds categories, not the row itself.

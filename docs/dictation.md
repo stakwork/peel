@@ -3,9 +3,10 @@
 Last updated 2026-10-23. **Milestone 0 built (unverified on a Mac):** the
 global hotkey and the capture. A stub stands in for transcription.
 
-Hold a key anywhere on the Mac, speak, let go. Peel records on this Mac,
-nothing leaves it. Milestone 1 (not built) sends the recording to a
-transcriber; a later feature types the text into the focused field.
+Hold a key anywhere on the Mac, speak, let go, and the text is typed where
+you were typing. Peel records on this Mac, nothing leaves it. Milestone 1
+(not built) sends the recording to a transcriber; until then the stub's
+words are typed.
 
 ## How it works
 
@@ -33,13 +34,36 @@ transcriber; a later feature types the text into the focused field.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
 - **Hand-off:** `DictationSession { id, audioURL, duration, mode }` to a
-  `Transcriber`; `StubTranscriber` returns canned text, shown in the HUD
-  for 3 s and logged.
+  `Transcriber`; `StubTranscriber` returns canned text.
+- **Typing it** (`DictationTextInserter`; the decision is
+  `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
+  are read when the key goes down (just the element and whether it is a
+  password field) and again, in full, when the text is ready:
+  - a password field (`AXSecureTextField`) or secure keyboard entry at
+    either end: nothing is recorded, typed or copied; the HUD says which;
+  - another app, or another field in the same app, took the focus
+    meanwhile, or the focus is a control that takes no text (a button, a
+    list): the text is left on the clipboard and the HUD says ⌘V;
+  - a text field in Notes, TextEdit, Mail or Messages: Accessibility's
+    selected text, checked by the field's length (it must grow by the text
+    less the selection), else a paste;
+  - everywhere else, an app that shows Accessibility no focused element and
+    Peel itself included: ⌘V with the clipboard saved (every item and type),
+    the text marked transient and concealed for clipboard managers, and the
+    old contents put back 750 ms later, unless something new was copied
+    meanwhile or what was there was itself concealed or transient (a
+    password: putting it back would outlive its manager's clear).
+  The ⌘V carries a marker so Peel's own tap lets it by. One insertion at a
+  time. Without Accessibility the ⌘V would be dropped, so the text is copied
+  instead. Plain text, replacing the selection; never Return, no trailing
+  space. Known gap: a paste that lands nowhere (focus on nothing
+  Accessibility can see) loses the text once the clipboard is put back.
 
 ## Turning it on
 
 Account › Dictation. Allow Microphone, Input Monitoring and Accessibility
-(without it Space and Esc also reach the app), then the switch. With no choice made it
+(without it the text is only copied, and Space and Esc also reach the app),
+then the switch. With no choice made it
 is on once Microphone and Input Monitoring are granted. A bar offers it once.
 The app menu has Turn Dictation On/Off. macOS may need Peel restarted after
 Input Monitoring is granted, and a stable signature (Developer ID) for the
@@ -67,8 +91,8 @@ Keyboard › Press 🌐 key › Do Nothing.
 ## Open
 
 Start and stop sounds; muting system audio while recording; a login item
-(SMAppService); the real transcriber (milestone 1); typing the text
-(Accessibility); whether a warm mic is acceptable or should start at key-down
+(SMAppService); the real transcriber (milestone 1); terminals' bracketed
+paste, remote desktops and input methods for non-Latin scripts, untried; whether a warm mic is acceptable or should start at key-down
 (a warm Bluetooth headset mic holds AirPods in call quality);
 macOS 13+ is already the minimum (the project targets 15.6).
 
@@ -87,3 +111,9 @@ macOS 13+ is already the minimum (the project targets 15.6).
 - 2026-10-23, tried on a Mac: push-to-talk, locking, the HUD and the
   permissions work. The key recorder in Settings received no key, so the
   key is fixed to Right Option until it is rebuilt.
+- 2026-10-23: typing the text (R2, R11–R14): Accessibility in four native
+  apps, else paste with the clipboard put back, else the clipboard; nothing
+  in password fields. Unit tested: the plan. Review fixes: another field
+  in the same app counts as moved focus, the Accessibility check is by
+  length, the restore waits 750 ms and never puts a secret back, Peel's
+  tap ignores the ⌘V. Not run by hand yet.

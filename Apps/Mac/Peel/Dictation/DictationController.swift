@@ -36,6 +36,11 @@ final class DictationController {
     @ObservationIgnored private let hud = DictationHUDPanel()
     @ObservationIgnored private let transcriber: any Transcriber = StubTranscriber()
     @ObservationIgnored private var tap: DictationHotkeyTap?
+    /// What had the keyboard when the key went down: where the text goes.
+    @ObservationIgnored private var target: FocusFacts?
+    /// The insertion under way: one at a time, so a second one never saves
+    /// the first's text as the clipboard to put back.
+    @ObservationIgnored private var insertion: Task<Void, Never>?
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var poll: Timer?
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
@@ -154,16 +159,20 @@ final class DictationController {
             switch effect {
             case .beginCapture:
                 beginCapture()
-            case .showHUD:
+            case .showHUD, .enterLocked:
                 // Not after a start that failed: the machine was reset.
-                if !machine.isIdle { hud.show(.recording) }
-            case .enterLocked:
-                if !machine.isIdle { hud.show(.locked) }
+                guard !machine.isIdle else { break }
+                if let target, target.isSecure {
+                    abandon(Self.secureMessage(entry: target.secureInput))
+                } else {
+                    hud.show(effect == .enterLocked ? .locked : .recording)
+                }
             case .submit(let mode):
                 stopTicking()
                 submit(mode)
             case .discard:
                 stopTicking()
+                target = nil
                 capture.discardRecording()
                 hud.hide()
             }
@@ -174,6 +183,14 @@ final class DictationController {
         // Delivered after the key went down: dictation may have been turned
         // off, or the press already ended, in between.
         guard isListening, !machine.isIdle else { return }
+        let focus = DictationFocus.current(full: false).facts
+        target = focus
+        // The machine needs the time to know a hold from a tap, and a recording's end.
+        ticker?.invalidate()
+        ticker = repeating(every: DictationDefaults.tickInterval) { $0.send(.tick) }
+        // A password field: not a word is recorded. Said once the hold is
+        // past the threshold, so typing an Option character there stays quiet.
+        guard !focus.isSecure else { return }
         do {
             try capture.start()
             try capture.beginRecording()
@@ -185,15 +202,28 @@ final class DictationController {
             abandon("The microphone is not available")
             return
         }
-        // The machine needs the time to know a hold from a tap, and a recording's end.
-        ticker?.invalidate()
-        ticker = repeating(every: DictationDefaults.tickInterval) { $0.send(.tick) }
+    }
+
+    private static func secureMessage(entry: Bool) -> String {
+        entry ? "Another app has secure typing on, so dictation is off" : "Dictation is off in password fields"
+    }
+
+    /// Where the text went, when the HUD has something to say about it.
+    private static func message(for outcome: DictationTextInserter.Outcome) -> String? {
+        switch outcome {
+        case .inserted: nil
+        case .blocked(let entry): secureMessage(entry: entry)
+        case .copied(.focusMoved): "The focus moved, so it's on the clipboard: press ⌘V"
+        case .copied(.noAccessibility): "Copied: press ⌘V. Allow Accessibility for Peel to type it."
+        case .copied(.noField), .copied(.notPosted): "Copied: press ⌘V"
+        }
     }
 
     /// The microphone failed: whatever was under way ends, and the user is told.
     private func abandon(_ text: String) {
         machine.reset()
         stopTicking()
+        target = nil
         capture.discardRecording()
         hud.show(.message(text))
     }
@@ -205,6 +235,11 @@ final class DictationController {
 
     private func submit(_ mode: DictationMode) {
         hud.hide()
+        guard let start = target, !start.isSecure else {
+            capture.discardRecording()
+            return
+        }
+        target = nil
         guard let recorded = capture.finishRecording() else {
             hud.show(.message("The recording could not be saved"))
             return
@@ -213,14 +248,24 @@ final class DictationController {
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
         log.info("dictation \(session.id.uuidString) \(session.mode.rawValue) \(session.duration)s")
         let transcriber = self.transcriber
-        Task {
+        let previous = insertion
+        insertion = Task {
             defer { try? FileManager.default.removeItem(at: session.audioURL) }
+            let text: String
             do {
-                let text = try await transcriber.transcribe(audioFileURL: session.audioURL)
-                log.info("dictation result: \(text)")
-                hud.show(.message(text))
+                text = try await transcriber.transcribe(audioFileURL: session.audioURL)
             } catch {
                 hud.show(.message("Could not transcribe"))
+                return
+            }
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                hud.show(.message("Nothing was heard"))
+                return
+            }
+            await previous?.value
+            // Only a message: by now another dictation may be under way.
+            if let note = Self.message(for: await DictationTextInserter.insert(text, startedIn: start)) {
+                hud.show(.message(note))
             }
         }
     }

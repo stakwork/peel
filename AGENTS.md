@@ -443,6 +443,8 @@ is a short plan. Update the status and the journal when you finish something.
   `Dictation/` (system-wide dictation, milestone 0, `docs/dictation.md`:
   `DictationController` the glue, `DictationHotkeyTap` the CGEventTap on
   its own thread, `DictationAudioCapture`, `DictationHUD`,
+  `DictationTextInserter` (the focused element, Accessibility or ⌘V with
+  the clipboard put back),
   `DictationPermissions`, and the Account section, offer and menu item in
   `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
@@ -733,7 +735,8 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them) and `DictationTests` (the hotkey's
-  state machine, the hotkey's encoding, the pre-roll ring, the WAV writer)
+  state machine, the hotkey's encoding, the pre-roll ring, the WAV writer,
+  where dictated text goes)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,

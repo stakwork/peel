@@ -272,3 +272,39 @@ struct DictationAudioTests {
         #expect(text == StubTranscriber.text)
     }
 }
+
+/// Where dictated text goes: R2 and R11 (typed into the field), R13 (never
+/// lost) and R14 (never into a password field, not even the clipboard).
+struct TextInsertionPlanTests {
+    private static let field = AnyHashableSendable("note body")
+    private static let notes = FocusFacts(pid: 1, bundleID: "com.apple.Notes", element: field, role: "AXTextArea")
+    private static let slack = FocusFacts(pid: 2, bundleID: "com.tinyspeck.slackmacgap")
+
+    @Test(arguments: [
+        // A native app on the list, focus on a text field: Accessibility.
+        (notes, notes, TextInsertionPlan.accessibility),
+        // An app not on the list: paste.
+        (FocusFacts(pid: 4, role: "AXTextArea"), FocusFacts(pid: 4, role: "AXTextArea"), .paste),
+        // An Electron app that shows no focused element: paste.
+        (slack, slack, .paste),
+        // A group or web area (web editors, Electron with Accessibility on): paste.
+        (slack, FocusFacts(pid: 2, role: "AXGroup"), .paste),
+        (slack, FocusFacts(pid: 2, role: "AXWebArea"), .paste),
+        // On the list but not a text field (Mail's compose web view): paste.
+        (notes, FocusFacts(pid: 1, bundleID: "com.apple.Notes", element: field, role: "AXGroup"), .paste),
+        // A control that takes no text: the clipboard.
+        (notes, FocusFacts(pid: 1, bundleID: "com.apple.Notes", element: field, role: "AXButton"), .copy(.noField)),
+        // Another app came to the front meanwhile: the clipboard, not the new app.
+        (notes, slack, .copy(.focusMoved)),
+        // Another field in the same app (another note, channel or tab): the clipboard too.
+        (notes, FocusFacts(pid: 1, bundleID: "com.apple.Notes", element: AnyHashableSendable("other"), role: "AXTextArea"),
+         .copy(.focusMoved)),
+        // A password field at either end, or secure entry on: nothing at all.
+        (FocusFacts(pid: 3, role: "AXTextField", subrole: "AXSecureTextField"), notes, .blocked),
+        (notes, FocusFacts(pid: 1, element: field, role: "AXTextField", subrole: "AXSecureTextField"), .blocked),
+        (notes, FocusFacts(pid: 1, bundleID: "com.apple.Terminal", role: "AXTextArea", secureInput: true), .blocked),
+    ])
+    func plans(start: FocusFacts, now: FocusFacts, plan: TextInsertionPlan) {
+        #expect(TextInsertionPlan.plan(from: start, to: now) == plan)
+    }
+}

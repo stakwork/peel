@@ -119,21 +119,33 @@ struct DeviceRequestLine: View {
             AgentApprovalCard(intent: intent) { model.macAgent.deviceCards.answer(id, $0) }
                 .padding(.vertical, Theme.Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let reads = row.reads {
+            // Reads back to back: one line, opening into a step per kind; its own
+            // key, so a lone read's open row does not open the group it joins.
+            AgentDisclosureRow(AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("reads")) {
+                Text(reads.summary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(reads.summary)
+                // A read still on this Mac: how it stands.
+                AgentRequestStatus(request: reads.waiting)
+                if reads.span >= 1 {
+                    Text("· " + AgentToolTitle.duration(.seconds(reads.span)))
+                        .monospacedDigit()
+                        .fixedSize()
+                }
+            } detail: {
+                AgentReadSteps(reads: reads)
+            }
+            .padding(.leading, MessageRow.avatarSize + MessageRow.gutterSpacing)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else if let request = row.agentRequest {
             // One quiet row, as an agent's tool, in line with the messages' text;
             // a click opens what it read or did.
             AgentDisclosureRow(AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("request")) {
                 Text(request.label)
-                // Unanswered, it turns too late at its expiry.
-                TimelineView(.redrawing(at: request.changesAt)) { context in
-                    if let outcome = request.outcome(at: context.date) {
-                        Text("· " + outcome)
-                    } else {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .semibold))
-                            .accessibilityLabel("Done")
-                    }
-                }
+                AgentRequestStatus(request: request)
             } detail: {
                 DeviceRequestDetail(request: request)
             }
@@ -142,6 +154,110 @@ struct DeviceRequestLine: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             NoteLine(text: line)
+        }
+    }
+}
+
+/// How a request to this Mac stands, after its words: a tick once done
+/// (nil: all done), else its outcome, turning too late at its expiry.
+private struct AgentRequestStatus: View {
+    let request: AgentRequest?
+
+    var body: some View {
+        TimelineView(.redrawing(at: request?.changesAt)) { context in
+            if let outcome = request?.outcome(at: context.date) {
+                Text("· " + outcome).fixedSize()
+            } else {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .accessibilityLabel("Done")
+            }
+        }
+    }
+}
+
+/// A chat a read covered, opening it.
+private struct ChatLink: View {
+    @Environment(AppModel.self) private var model
+    let chat: ChatDataReading.Chat
+
+    var body: some View {
+        Button(chat.name) { model.destination = .chat(chat.chat) }
+            .buttonStyle(.peel(.link))
+            .help("Open \(chat.isTribe ? "the tribe" : "the chat")")
+    }
+}
+
+/// Folded reads, opened: a step per kind of read, joined by a line, each
+/// with the chats it covered, each opening its chat (or, before this Mac's
+/// answer names them, as the agent asked for them), or a search's words.
+private struct AgentReadSteps: View {
+    let reads: AgentReads
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(reads.steps.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(spacing: 0) {
+                        Image(systemName: Self.symbol(step.kind))
+                            .font(.system(size: 10))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(Theme.panel))
+                            .overlay(Circle().strokeBorder(Theme.divider))
+                            .accessibilityHidden(true)
+                        if index < reads.steps.count - 1 {
+                            Theme.divider.frame(width: 1).frame(maxHeight: .infinity)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(step.title).foregroundStyle(Theme.text)
+                            if step.done {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .accessibilityLabel("Done")
+                            }
+                        }
+                        subjects(of: step)
+                    }
+                    .padding(.top, 3)
+                    .padding(.bottom, index < reads.steps.count - 1 ? 10 : 0)
+                }
+            }
+        }
+        .font(Theme.font(12))
+        .foregroundStyle(Theme.secondaryText)
+    }
+
+    /// The chats this Mac's answers named, each a link; else what the agent named.
+    @ViewBuilder private func subjects(of step: AgentReads.Step) -> some View {
+        let chats = step.kind == .search ? [] : Self.chats(in: step.requests)
+        if !chats.isEmpty {
+            ChipFlow(spacing: 8) {
+                ForEach(chats.prefix(DeviceRequestDetail.chats), id: \.chat) { ChatLink(chat: $0) }
+                if chats.count > DeviceRequestDetail.chats {
+                    Text("and \(chats.count - DeviceRequestDetail.chats) more")
+                }
+            }
+        } else if !step.subjects.isEmpty {
+            Text(step.subjects.joined(separator: ", "))
+        }
+    }
+
+    /// Each chat the answers read, once, in the order read.
+    private static func chats(in requests: [AgentRequest]) -> [ChatDataReading.Chat] {
+        var seen = Set<String>()
+        return requests.flatMap { ChatDataReading($0.text ?? "").chats }.filter { seen.insert($0.chat).inserted }
+    }
+
+    private static func symbol(_ kind: AgentReads.Kind) -> String {
+        switch kind {
+        case .unseen: "tray"
+        case .chats: "list.bullet"
+        case .chat: "bubble.left"
+        case .threads: "arrowshape.turn.up.left"
+        case .search: "magnifyingglass"
+        case .calendar: "calendar"
         }
     }
 }
@@ -155,7 +271,7 @@ private struct DeviceRequestDetail: View {
     let request: AgentRequest
 
     /// The most chats, and messages in each, shown; the rest counted.
-    private static let chats = 8
+    static let chats = 8
     private static let lines = 5
 
     var body: some View {
@@ -204,9 +320,7 @@ private struct DeviceRequestDetail: View {
         ForEach(Array(read.chats.prefix(Self.chats).enumerated()), id: \.offset) { _, chat in
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Button(chat.name) { model.destination = .chat(chat.chat) }
-                        .buttonStyle(.peel(.link))
-                        .help("Open \(chat.isTribe ? "the tribe" : "the chat")")
+                    ChatLink(chat: chat)
                     if let detail = chat.detail { Text(detail).foregroundStyle(Theme.secondaryText) }
                 }
                 ForEach(Array(chat.messages.prefix(Self.lines).enumerated()), id: \.offset) { _, line in

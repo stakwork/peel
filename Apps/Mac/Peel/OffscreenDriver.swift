@@ -403,9 +403,9 @@ final class OffscreenDriver {
             }
             _ = model.openAgentLink(url)
         case "request-rows":
-            // A click on every device request's row in the open chat.
+            // A click on every device request's row in the open chat, a group of reads' too.
             for row in model.chatRows where row.agentRequest != nil {
-                AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("request").set(true)
+                AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open(row.reads == nil ? "request" : "reads").set(true)
             }
         case "device-allow":
             // A click on Allow once on a card waiting in the agent's DM.

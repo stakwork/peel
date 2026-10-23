@@ -84,7 +84,7 @@ struct DictationPermissionRows: View {
             button(permissions.inputMonitoring) { permissions.requestInputMonitoring() }
         }
         Fact("Accessibility") {
-            state(permissions.accessibility, needed: "Keeps Space and Esc from reaching the app while you dictate")
+            state(permissions.accessibility, needed: "Needed to type what you said, and to keep Space and Esc from reaching the app")
         } trailing: {
             button(permissions.accessibility) { permissions.requestAccessibility() }
         }

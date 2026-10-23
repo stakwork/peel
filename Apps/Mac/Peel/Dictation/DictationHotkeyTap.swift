@@ -132,6 +132,8 @@ final class DictationHotkeyTap: @unchecked Sendable {
 
     /// Returns whether to swallow the event.
     private func receive(type: CGEventType, event: CGEvent) -> Bool {
+        // Peel's own ⌘V, typing dictated text: not the user's key.
+        if event.getIntegerValueField(.eventSourceUserData) == DictationTextInserter.eventMarker { return false }
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let tap = lock.withLock({ self.tap }) { CGEvent.tapEnable(tap: tap, enable: true) }

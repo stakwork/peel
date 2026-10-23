@@ -766,7 +766,7 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them) and `DictationTests` (the hotkey's
-  state machine, the hotkey's encoding, the pre-roll ring, the WAV writer,
+  state machine, the hotkey's encoding, the WAV writer,
   where dictated text goes)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,

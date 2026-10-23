@@ -218,22 +218,6 @@ struct HotkeyConfigTests {
 }
 
 struct DictationAudioTests {
-    @Test func preRollKeepsTheLastSamplesOldestFirst() {
-        var buffer = PreRollBuffer(capacity: 4)
-        buffer.append([1, 2])
-        #expect(buffer.snapshot() == [1, 2])
-        buffer.append([3, 4, 5])
-        #expect(buffer.snapshot() == [2, 3, 4, 5])
-        buffer.append([6, 7, 8, 9, 10, 11])
-        #expect(buffer.snapshot() == [8, 9, 10, 11])
-        buffer.removeAll()
-        #expect(buffer.snapshot().isEmpty)
-    }
-
-    @Test func preRollSizeFollowsSeconds() {
-        #expect(PreRollBuffer(seconds: 0.2, sampleRate: 16_000).capacity == 3200)
-    }
-
     @Test func levelRisesWithLoudness() {
         #expect(PCM16.level(of: []) == 0)
         #expect(PCM16.level(of: [0, 0, 0]) == 0)

@@ -9,14 +9,8 @@ public enum DictationDefaults {
     public static let holdThreshold: TimeInterval = 0.2
     /// A recording ends and is submitted at this length.
     public static let maxRecording: TimeInterval = 5 * 60
-    /// Audio from before the key went down that is kept in front of a recording.
-    public static let preRoll: TimeInterval = 0.2
     /// What a recording is stored as: 16 kHz mono PCM16.
     public static let sampleRate: Double = 16_000
-    /// Keep the microphone engine running while dictation is on, so the first
-    /// words are not clipped. The mic indicator is then on all the time; the
-    /// audio before a key press stays in memory and is dropped.
-    public static let keepMicWarm = true
     /// How far the HUD sits above the bottom edge of the screen's visible area.
     public static let hudBottomInset: CGFloat = 56
     /// How long the stub's text shows in the HUD.

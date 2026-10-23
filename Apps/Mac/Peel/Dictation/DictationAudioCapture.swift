@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 import PeelUI
 
@@ -6,6 +7,12 @@ import PeelUI
 /// whole time the engine does, filling a short pre-roll ring; a recording
 /// starts with that ring and goes on into a temporary WAV file. Used from
 /// the main thread; the audio thread only touches `lock`ed state.
+///
+/// An engine stays on the input it started with, so when the input changes
+/// (AirPods connect, another mic is chosen) a new one is made: on macOS's
+/// word that the default input changed and on the engine's that its
+/// configuration did; as a fallback, should both be missed, when a recording
+/// starts on an engine that has gone quiet.
 final class DictationAudioCapture: @unchecked Sendable {
     enum Failure: Error { case permissionDenied, noInput, formatUnavailable }
 
@@ -14,13 +21,32 @@ final class DictationAudioCapture: @unchecked Sendable {
     /// The microphone stopped working, on the main thread.
     var onProblem: (@Sendable (String) -> Void)?
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let lock = NSLock()
     private var converter: AVAudioConverter?
     private var preRoll = PreRollBuffer(seconds: DictationDefaults.preRoll, sampleRate: DictationDefaults.sampleRate)
     private var writer: WAVFileWriter?
     private var observer: (any NSObjectProtocol)?
+    private var inputListener: AudioObjectPropertyListenerBlock?
+    private var pendingRebuild: DispatchWorkItem?
+    /// The input the engine was made on.
+    private var device: AudioDeviceID?
+    /// When the input last delivered audio (`systemUptime`), under `lock`.
+    private var lastAudio: TimeInterval = 0
     private(set) var isRunning = false
+
+    /// Buffers come every 100–250 ms; this long without one, the engine is deaf.
+    private static let quietAfter: TimeInterval = 1
+    /// Device changes come in bursts (a Bluetooth headset switches profile as
+    /// its mic opens): one new engine for the burst.
+    private static let settle: TimeInterval = 0.25
+
+    private static var defaultInput: AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+    }
 
     private let outputFormat = AVAudioFormat(
         commonFormat: .pcmFormatInt16, sampleRate: DictationDefaults.sampleRate, channels: 1, interleaved: true
@@ -31,17 +57,20 @@ final class DictationAudioCapture: @unchecked Sendable {
         guard !isRunning else { return }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { throw Failure.permissionDenied }
         try install()
-        observer = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
-        ) { [weak self] _ in self?.configurationChanged() }
+        var address = Self.defaultInput
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.rebuildSoon() }
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        inputListener = listener
         isRunning = true
     }
 
     func stop() {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
-        observer = nil
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        if let inputListener {
+            var address = Self.defaultInput
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, inputListener)
+        }
+        inputListener = nil
+        tearDown()
         isRunning = false
         lock.withLock {
             preRoll.removeAll()
@@ -52,6 +81,12 @@ final class DictationAudioCapture: @unchecked Sendable {
 
     /// Starts a file with the pre-roll in it; what comes next follows it.
     func beginRecording() throws {
+        // Deaf since its input went away unseen: a new engine before anything is kept.
+        if isRunning, isQuiet {
+            rebuild()
+            // No input to make one on: nothing to record from.
+            guard isRunning else { throw Failure.noInput }
+        }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("peel-dictation-\(UUID().uuidString).wav")
         let new = try WAVFileWriter(url: url)
@@ -90,25 +125,71 @@ final class DictationAudioCapture: @unchecked Sendable {
 
     // MARK: - Engine
 
+    /// A new engine on the current default input, its tap filling the pre-roll
+    /// or the recording under way.
     private func install() throws {
+        let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw Failure.noInput }
         guard let outputFormat, let converter = AVAudioConverter(from: format, to: outputFormat) else {
             throw Failure.formatUnavailable
         }
-        lock.withLock { self.converter = converter }
-        input.removeTap(onBus: 0)
+        lock.withLock {
+            self.converter = converter
+            // A new engine has a moment before its first buffer.
+            lastAudio = ProcessInfo.processInfo.systemUptime
+        }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             self?.process(buffer)
         }
         engine.prepare()
         try engine.start()
+        observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in self?.rebuildSoon() }
+        self.engine = engine
+        device = Self.currentInput()
     }
 
-    /// The device or its format changed (headphones, another input): the
-    /// engine has stopped. Build the tap again; a recording goes on.
-    private func configurationChanged() {
+    private func tearDown() {
+        pendingRebuild?.cancel()
+        pendingRebuild = nil
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        observer = nil
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+    }
+
+    private var isQuiet: Bool {
+        lock.withLock { ProcessInfo.processInfo.systemUptime - lastAudio } > Self.quietAfter
+    }
+
+    /// macOS's default input now.
+    private static func currentInput() -> AudioDeviceID? {
+        var address = defaultInput
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id)
+        return status == noErr && id != 0 ? id : nil
+    }
+
+    /// The input or its format changed: a new engine once the burst settles.
+    private func rebuildSoon() {
+        guard isRunning else { return }
+        pendingRebuild?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.rebuild() }
+        pendingRebuild = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.settle, execute: work)
+    }
+
+    /// The old engine out, a new one on today's input; a recording goes on.
+    private func rebuild() {
+        guard isRunning else { return }
+        // Still running on the same input (an output changed, or the notice
+        // named the device it already has): nothing to do.
+        if engine.isRunning, device == Self.currentInput(), !isQuiet { return }
+        tearDown()
         do {
             try install()
         } catch {
@@ -140,6 +221,7 @@ final class DictationAudioCapture: @unchecked Sendable {
         guard status != .error, error == nil, out.frameLength > 0, let channel = out.int16ChannelData else { return }
         let samples = Array(UnsafeBufferPointer(start: channel[0], count: Int(out.frameLength)))
         let recording = lock.withLock {
+            lastAudio = ProcessInfo.processInfo.systemUptime
             guard let writer else {
                 preRoll.append(samples)
                 return false

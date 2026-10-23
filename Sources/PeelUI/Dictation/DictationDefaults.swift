@@ -27,6 +27,9 @@ public enum DictationDefaults {
     public static let enabledKey = "dictation.enabled"
     public static let offerDismissedKey = "dictation.offerDismissed"
     public static let askedInputMonitoringKey = "dictation.askedInputMonitoring"
+    public static let historyKey = "dictation.history"
+    /// How long Dictation History keeps a dictation.
+    public static let historyKeep: TimeInterval = 30 * 24 * 60 * 60
 }
 
 /// What the user chose, kept in `UserDefaults`.
@@ -47,6 +50,12 @@ public struct DictationSettings {
     public var offerDismissed: Bool {
         get { defaults.bool(forKey: DictationDefaults.offerDismissedKey) }
         nonmutating set { defaults.set(newValue, forKey: DictationDefaults.offerDismissedKey) }
+    }
+
+    /// Dictation History keeps what is dictated; on until turned off.
+    public var historyOn: Bool {
+        get { defaults.object(forKey: DictationDefaults.historyKey) as? Bool ?? true }
+        nonmutating set { defaults.set(newValue, forKey: DictationDefaults.historyKey) }
     }
 
     /// On once chosen so; before that, on only when every permission it needs is granted.

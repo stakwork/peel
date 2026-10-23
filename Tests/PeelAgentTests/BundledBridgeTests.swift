@@ -79,6 +79,12 @@ struct BundledBridgeTests {
             "ROCKET_CONFIG": "/tmp/peel-bridge/Rocket.toml",
         ])
         #expect(!environment.values.contains(account.seed))
+        // Paired with Hive, runner names the owner to strut as their orgs know them; a caller's never counts.
+        let paired = BundledBridge.environment(["BRIDGE_ACTOR": "someone else"], account: account, strut: strut, port: 61008,
+                                               admin: "admin token", token: "bridge token", alias: "Peel", data: data, actor: "tom-cm1")
+        #expect(paired["BRIDGE_ACTOR"] == "tom-cm1")
+        #expect(BundledBridge.environment(["BRIDGE_ACTOR": "someone else"], account: account, strut: strut, port: 61008, admin: "a",
+                                          token: "t", alias: "Peel", data: data)["BRIDGE_ACTOR"] == nil)
     }
 
     @Test func itsServerNeverPrintsTheToken() throws {

@@ -345,6 +345,199 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
+        /// Connections (docs/connectors-and-authoring.md, P3): an MCP server
+        /// registered with Peel's strut, its key there by name, granted to the
+        /// assistant. From the DM, a read-only tool runs at once; a tool that
+        /// writes is a proposal, whose card the bridge brings to the Mac
+        /// (runner R1); allowed, strut calls the server once, with the key.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func aConnectedServersWriteWaitsForTheCardAndRunsOnce() async throws {
+            let (alice, other) = try await Journeys.Payments.pair()
+            let mcp = try await MCPStub()
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                func answered(_ asked: String) -> Bool {
+                    guard let at = body.range(of: asked, options: .backwards) else { return false }
+                    return body[at.upperBound...].contains(#""type":"tool_result""#)
+                }
+                if body.contains("File an issue: Try Connections") {
+                    guard answered("File an issue: Try Connections") else {
+                        return Self.toolUse("linear_create_issue", ["title": "Try Connections"])
+                    }
+                    return Self.toolUse("final_answer", ["text": "Asked you first.", "artifacts": []])
+                }
+                guard answered("What are my open issues?") else { return Self.toolUse("linear_list_issues", [:]) }
+                return Self.toolUse("final_answer", ["text": body.contains("PEEL-1") ? "One: PEEL-1." : "None.", "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-connections-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: root.appending(path: "bridge")))
+            defer {
+                bridge.stop(quietly: true)
+                strut.stop(quietly: true)
+                model.stop()
+                mcp.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            strut.allowsLocalMCP = true
+            try strut.keep(MCPGrants(assistant: ["linear"]))
+            let server = try await strut.start()
+            let client = AutomationsClient(server: server)
+            try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await client.installOrchestrator()
+            try await client.addMCPServer(name: "linear", url: mcp.url, key: "lin_api_secret")
+            let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
+            try await client.useBridge(try #require(bridge.server))
+            let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())
+            let rules = ApprovalRules(store: try SQLiteAgentStore(path: alice.profile.directory.appendingPathComponent("agent.sqlite").path, device: "mac"))
+            let actions = DeviceActions(engine: alice.engine, rules: rules, calendar: StandInCalendar()) { _, approval in
+                cards.withLock { $0.append(approval.intent) }
+                return .allowOnce
+            }
+            await alice.engine.answerDeviceRequests(with: actions.handler)
+            try await alice.engine.setDeviceAgent(agent)
+            func reply(_ text: String) async throws {
+                try await eventually(text, timeout: .seconds(60)) {
+                    try alice.messages(in: agent).contains { !$0.fromMe && $0.control == nil && $0.content == text }
+                }
+            }
+
+            try await alice.engine.sendText("What are my open issues?", to: agent)
+            try await reply("One: PEEL-1.")
+            #expect(mcp.calls.map(\.tool) == ["list_issues"] && cards.withLock { $0 }.isEmpty)
+
+            try await alice.engine.sendText("File an issue: Try Connections", to: agent)
+            try await reply("Asked you first.")
+            try await eventually("the card, then the call", timeout: .seconds(60)) { mcp.calls.count == 2 }
+            #expect(cards.withLock { $0 }.count == 1, "\(cards.withLock { $0 })")
+            let made = try #require(mcp.calls.last)
+            #expect(made.tool == "create_issue" && made.arguments.contains("Try Connections") && made.bearer == "lin_api_secret")
+            // Decided once: nothing more reaches the server.
+            try await Task.sleep(for: .seconds(5))
+            #expect(mcp.calls.count == 2)
+            for person in [alice, other] { await person.close() }
+        }
+
+        /// A Hive workspace as a peer (docs/connectors-and-authoring.md,
+        /// "Peers", P8), on two staged struts: Peel's, speaking for the person
+        /// (strut's own section, rendered by its Node), and one standing in
+        /// for the org's central strut, whose person token it mints. The
+        /// orchestrator's call to the org is a proposal; the Mac's card is worded
+        /// from strut's record ("Send this to Acme?", the message), and Always
+        /// keeps a rule for that org only; strut's `decide` (the bridge's, in
+        /// runner R1) then reaches the org's assistant as the person, on this
+        /// conversation's thread there (`<person>/<conversation id>`, strut#290),
+        /// and the next call to Acme needs no card. The builder launched with
+        /// `peer` gets no route around the card (strut#294).
+        @Test(.enabled(if: staged))
+        @MainActor
+        func aHiveWorkspaceIsAskedOnlyOnACard() async throws {
+            let person = "tom-cm1"
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                guard body.contains("Its peers are the person's ORGS") else {
+                    // Acme's own assistant, on its strut (which speaks for no person).
+                    return Self.toolUse("final_answer", ["text": "Acme ships v2 on Friday.", "artifacts": []])
+                }
+                guard body.contains(#""type":"tool_result""#) else {
+                    return Self.toolUse("strut_run_workflow", ["peer": "acme", "workflow": "orchestrator",
+                                                               "input": ["prompt": "What is Acme shipping?", "session": "\(person)/peel/agent-1/dm"]])
+                }
+                return Self.toolUse("final_answer", ["text": "Asked Acme; waiting for your yes.", "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-hive-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let mine = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "mine"),
+                                                 secretKey: FileItem(file: root.appending(path: "mine-key"))))
+            let acme = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "acme"),
+                                                 secretKey: FileItem(file: root.appending(path: "acme-key"))))
+            defer {
+                mine.stop(quietly: true)
+                acme.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            mine.person = person
+            let (local, central) = (try await mine.start(), try await acme.start())
+            let credential = AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in")
+            let client = AutomationsClient(server: local)
+            for server in [local, central] { try await AutomationsClient(server: server).setModel(credential) }
+            let token = try #require(try await Self.strutCall("POST", "peers/tokens", ["actor": .string(person)], on: central)["token"]?.string)
+            try await client.syncPeers([HivePeer(id: "acme", baseUrl: central.base.absoluteString, token: token, label: "Acme")])
+            #expect(try await Self.strutCall("GET", "peers", on: local)["peers"]?.array?.compactMap { $0["id"]?.string } == ["acme"])
+            // strut's section for a person's orgs, behind Peel's.
+            let system = try await Self.strutCall("GET", "workflows/orchestrator/flow", on: local)["params"]?["system"]?.string ?? ""
+            #expect(system.contains("You are Peel's agent") && system.contains("Its peers are the person's ORGS") && system.contains("\(person)/<conversation>"))
+
+            // No route around the card (strut#294): the builder launched with `peer`, as `job/start` and
+            // `meta/run-workflow` do, is refused on Peel's strut and nothing reaches Acme.
+            let build = try await Self.strutCall("POST", "workflows/builder/run", ["input": ["prompt": "Build hello on Acme", "peer": "acme"]], on: local)
+            let buildId = try #require(build["runId"]?.string)
+            let built = try await eventually("the builder's run to end", timeout: .seconds(60)) {
+                let record = try? await Self.strutCall("GET", "workflows/builder/runs/\(buildId)", on: local)
+                return ["success", "error"].contains(record?["status"]?.string ?? "") ? record : nil
+            }
+            #expect(built["status"] == "error" && built["error"]?["message"]?.string?.contains("needs the person's approval") == true, "\(built)")
+            for workflow in ["builder", "orchestrator"] {
+                #expect(try await Self.strutCall("GET", "workflows/\(workflow)/runs", on: central).array?.isEmpty == true)
+            }
+
+            func ask() async throws -> String {
+                let run = try await Self.strutCall("POST", "workflows/orchestrator/run", ["input": ["prompt": "@acme what are you shipping?"]], on: local)
+                let runId = try #require(run["runId"]?.string)
+                return try await eventually("the call to Acme to wait as a proposal", timeout: .seconds(60)) {
+                    let pending = try await Self.strutCall("GET", "proposals?status=pending&runId=\(runId)", on: local)["proposals"]?.array ?? []
+                    return pending.first?["id"]?.string
+                }
+            }
+            let first = try await ask()
+            #expect(try await client.peerRequest(proposal: first) == PeerRequest(peer: "acme", name: "Acme", workflow: "orchestrator",
+                                                                                  prompt: "What is Acme shipping?"))
+
+            let (alice, other) = try await Journeys.Payments.pair()
+            let rules = ApprovalRules(store: try SQLiteAgentStore.inMemory(device: "mac"))
+            let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())
+            do {
+                let actions = DeviceActions(engine: alice.engine, rules: rules, calendar: StandInCalendar(), peerRequest: { id in try? await client.peerRequest(proposal: id) }) { _, approval in
+                    cards.withLock { $0.append(approval.intent) }
+                    return .alwaysAllow
+                }
+                // As the bridge relays a proposal (runner R1): its own words, which the Mac does not use.
+                func card(_ proposal: String) async -> DeviceAnswer? {
+                    await actions.answer(DeviceRequest(agent: "02a", id: "proposal:\(proposal)", kind: "approve",
+                                                       args: .object(["intent": .object(["action": .string("Run strut/run-workflow")])]),
+                                                       deadline: Date().addingTimeInterval(3600)))
+                }
+                #expect(await card(first)?.status == .done)
+                let shown = try #require(cards.withLock { $0 }.first)
+                #expect(shown.action == "Send this to Acme?" && shown.content == "What is Acme shipping?")
+                #expect(shown.details == ["To Acme's assistant (@acme) in Stadeum, as you"] && shown.target?.id == "acme/orchestrator")
+                #expect(try rules.all().map { "\($0.tool) \($0.target?.id ?? "-")" } == ["strut/run-workflow acme/orchestrator"])
+
+                // Allowed: strut runs the call (as the bridge's decide will), and Acme's assistant answers as the person.
+                let decided = try await Self.strutCall("POST", "proposals/\(first)/decide", ["action": "accept"], on: local)
+                let applied = try await eventually("the call to reach Acme", timeout: .seconds(60)) {
+                    let record = try await Self.strutCall("GET", "proposals/\(first)", on: local)
+                    return ["applied", "failed"].contains(record["status"]?.string ?? "") ? record : nil
+                }
+                #expect(applied["status"] == "applied", "\(decided) \(applied)")
+                #expect(applied["result"]?["output"]?["output"]?["text"] == "Acme ships v2 on Friday.", "\(applied)")
+
+                // Always for Acme: the next call to it is allowed with no card.
+                let second = try await ask()
+                #expect(await card(second)?.status == .done && cards.withLock { $0 }.count == 1)
+            }
+            // Disconnected (or Acme left): its record is gone from strut.
+            try await client.syncPeers([])
+            #expect(try await Self.strutCall("GET", "peers", on: local)["peers"]?.array?.isEmpty == true)
+            for person in [alice, other] { await person.close() }
+        }
+
         /// Milestone 2, "it acts for you" (docs/agent-on-strut.md, PR 7). Alice
         /// asks her agent to post to her tribe in a couple of minutes: one card
         /// on her Mac, the automation and its grant. At that minute strut fires

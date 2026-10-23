@@ -24,6 +24,8 @@ public struct DeviceActions: Sendable {
     let calendar: DeviceCalendar
     let rules: ApprovalRules
     let grants: SendGrants
+    /// The org call a `proposal:` card is for, read from strut (`AutomationsClient.peerRequest`).
+    let peerRequest: (@Sendable (String) async throws -> PeerRequest?)?
     let ask: Ask
     /// A card remembered an "Always allow" or kept a send grant.
     let changed: @Sendable () -> Void
@@ -59,9 +61,11 @@ public struct DeviceActions: Sendable {
         }
     }
 
-    /// `calendar`: the person's Calendar and Reminders.
+    /// `calendar`: the person's Calendar and Reminders; `peerRequest`: what
+    /// a `proposal:` card's call to an org is, from strut.
     public init(
         engine: Engine, rules: ApprovalRules, calendar: any CalendarStore,
+        peerRequest: (@Sendable (String) async throws -> PeerRequest?)? = nil,
         ask: @escaping Ask, changed: @escaping @Sendable () -> Void = {}
     ) {
         self.engine = engine
@@ -70,6 +74,7 @@ public struct DeviceActions: Sendable {
         self.calendar = DeviceCalendar(store: calendar)
         self.rules = rules
         grants = SendGrants(beside: rules)
+        self.peerRequest = peerRequest
         self.ask = ask
         self.changed = changed
     }
@@ -183,15 +188,30 @@ public struct DeviceActions: Sendable {
     /// cap are worded here, from this Mac's chats. "Always allow" is never
     /// offered: the intent names no target.
     private func approve(_ request: DeviceRequest, _ args: AgentKit.JSONValue) async -> DeviceAnswer? {
+        // One of strut's proposals, relayed by the bridge as `proposal:<id>`:
+        // read from strut's own record. A call to an org's assistant is worded
+        // here; one that cannot be read is refused, never shown in the
+        // bridge's words; a proposal takes no send grant.
+        let proposal = request.id.hasPrefix(Self.proposalPrefix)
+        if proposal, let peerRequest {
+            do {
+                if let asked = try await peerRequest(String(request.id.dropFirst(Self.proposalPrefix.count))) {
+                    return await peerCall(request, asked)
+                }
+            } catch {
+                return .failed("Peel could not read this request from strut, so it was not shown: \(error.localizedDescription)")
+            }
+        }
         var intent: ToolIntent
         var grant: SendGrant?
         /// The grant on file for the automation a delete card is for: it goes once allowed.
         var dropped: SendGrant?
         do {
             intent = try Self.intent(args["intent"])
-            if let asked = args["grant"], asked["chats"] != nil {
+            // A proposal takes no send grant.
+            if !proposal, let asked = args["grant"], asked["chats"] != nil {
                 grant = try await self.grant(asked)
-            } else if let id = args["grant"].flatMap({ SphinxTools.optional("automation", in: $0) }),
+            } else if !proposal, let id = args["grant"].flatMap({ SphinxTools.optional("automation", in: $0) }),
                       let kept = try grants.grant(for: id) {
                 // The grant it has, named on the card: a changed prompt posts where the
                 // old one did. strut words a delete's card "Delete “name”".
@@ -239,6 +259,35 @@ public struct DeviceActions: Sendable {
         }
         changed()
         return .done("Allowed. The automation may post to \(grant.summary).")
+    }
+
+    /// The id the bridge gives a card for one of strut's proposals.
+    public static let proposalPrefix = "proposal:"
+    /// The tool an org's "Always allow" is kept under.
+    public static let peerTool = "strut/run-workflow"
+
+    /// What an org's "Always allow" names: that org's assistant, never another workflow there.
+    public static func peerRuleTarget(_ peer: String) -> String { "\(peer)/orchestrator" }
+
+    /// The org an "Always allow" under `peerTool` is for.
+    public static func peer(ofRule target: ToolIntent.Target) -> String? {
+        target.id.hasSuffix("/orchestrator") ? String(target.id.dropLast("/orchestrator".count)) : nil
+    }
+
+    /// A call to an org's assistant, on a card that shows all it sends:
+    /// refused if it holds more than the card can show. "Always allow" is
+    /// for that org's assistant only, never another workflow there.
+    private func peerCall(_ request: DeviceRequest, _ asked: PeerRequest) async -> DeviceAnswer? {
+        guard let prompt = asked.prompt, prompt.count <= SphinxTools.maxMessage, ToolIntent.isShowable(prompt), !asked.more else {
+            return .failed("This request to \(asked.name) holds more than its card can show, so it was not sent.")
+        }
+        var details = ["To \(asked.name)'s assistant (@\(asked.peer)) in Stadeum, as you"]
+        let assistant = asked.workflow == "orchestrator"
+        if !assistant { details.append("Runs its workflow \u{201C}\(ChatData.clean(asked.workflow, max: ChatData.maxName))\u{201D}") }
+        let card = ToolIntent(action: "Send this to \(asked.name)?", content: prompt, details: details,
+                              target: assistant ? ToolIntent.Target(id: Self.peerRuleTarget(asked.peer), name: asked.name) : nil)
+        if let refusal = await decide(request, tool: Self.peerTool, intent: card) { return refusal.answer }
+        return .done("Allowed.")
     }
 
     /// The card's words from the request, each one shown in full.

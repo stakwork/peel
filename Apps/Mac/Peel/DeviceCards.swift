@@ -28,6 +28,10 @@ final class DeviceCards {
         let actions = DeviceActions(
             engine: engine, rules: agent.rules,
             calendar: Offscreen.isOn ? OffscreenAgent.calendar() : EventKitCalendar(),
+            peerRequest: { [weak self] id in
+                guard let server = await self?.model?.memoryServer else { throw PeelError("Peel's strut is not running.") }
+                return try await AutomationsClient(server: server).peerRequest(proposal: id)
+            },
             ask: { [weak self] request, approval in await self?.ask(request, approval) },
             changed: { [weak self, weak agent] in
                 Task { @MainActor in

@@ -80,8 +80,8 @@ struct AgentSettingsSection: View {
                         .fixedSize()
                     }
                 }
-                // Each "Always allow" given on a card, until revoked.
-                ForEach(Array(agent.approvalRules.enumerated()), id: \.element.id) { index, rule in
+                // Each "Always allow" given on a card, until revoked; a workspace's is under Connections.
+                ForEach(Array(agent.approvalRules.filter { $0.tool != DeviceActions.peerTool }.enumerated()), id: \.element.id) { index, rule in
                     Fact(index == 0 ? "Always allowed" : "") {
                         Text(AgentToolTitle.of(rule.tool) + (rule.target.map { " to \($0.name)" } ?? ""))
                     } trailing: {
@@ -449,7 +449,7 @@ private struct BrainStatusText: View {
 }
 
 /// "Connected" with a green dot: a model, a home server.
-private struct ConnectedLabel: View {
+struct ConnectedLabel: View {
     var body: some View {
         Label("Connected", systemImage: "circle.fill")
             .labelStyle(.titleAndIcon)

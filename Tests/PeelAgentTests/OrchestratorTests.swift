@@ -24,8 +24,13 @@ struct OrchestratorTests {
         #expect(config["orchestrator"]?["model"] == .null, "the connected model runs it")
         #expect(config["orchestrator"]?["system"]?.string == Orchestrator.section)
         #expect(config["automation"] == ["workflow": "peel-automation-run", "approve": "sphinx/approve", "grants": true])
+        // A call to an org's assistant waits on a card; paired, strut's section for the person's orgs follows Peel's.
+        #expect(config["orchestrator"]?["approve"] == ["strut/run-workflow"] && config["job"]?["approve"] == ["strut/run-workflow"])
+        let paired = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(personal: "Its peers are orgs."), as: UTF8.self))
+        #expect(paired["orchestrator"]?["system"]?.string == Orchestrator.section + "\n\nIts peers are orgs.")
         // The builder only proposes what it writes, and no other strut may launch it.
-        #expect(config["builder"] == ["approve": ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"], "peer": false])
+        #expect(config["builder"] == ["approve": ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"], "peer": false,
+                                       "reach": ["tools": [], "builtins": ["web_search", "web_fetch"], "secrets": []]])
         // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
         #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
         #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))
@@ -99,6 +104,9 @@ struct OrchestratorTests {
         let builder = try await call("GET", "workflows/builder/flow", on: server)
         let gated = Set(builder["params"]?["approve"]?.array?.compactMap(\.string) ?? [])
         #expect(gated.isSuperset(of: Orchestrator.builderApprove) && builder["peer"] == nil, "\(builder)")
+        // A job reaches a peer only on a card, as the orchestrator does.
+        let job = try await call("GET", "workflows/job/flow", on: server)
+        #expect(job["params"]?["approve"]?.array?.contains("strut/run-workflow") == true, "\(job)")
 
         let answer = OSAllocatedUnfairLock(initialState: #"{"id":"x","status":"done","result":{"text":"3 unseen in Hive"}}"#)
         let bridge = try await HTTPStub { _ in answer.withLock { $0 } }

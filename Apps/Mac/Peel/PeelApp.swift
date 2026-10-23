@@ -91,6 +91,16 @@ struct PeelApp: App {
         #endif
 
         #if os(macOS)
+        // Dictation History: what was dictated, to copy again.
+        Window("Dictation History", id: DictationHistoryView.id) {
+            DictationHistoryView()
+                .environment(model)
+                .tint(Theme.accent)
+        }
+        .defaultSize(width: 560, height: 520)
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
+
         // The call you are on: 960 × 640 at first, then where you left it.
         Window("Call", id: CallWindow.id) {
             CallWindow()
@@ -168,7 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         OffscreenDriver.start { [weak self] in self?.model }
-        // System-wide dictation: starts its hotkey once its permissions are in.
+        // System-wide dictation: starts its hotkey once its permissions are in,
+        // and keeps each dictation in the open account's History.
+        DictationController.shared.history = { [weak self] in self?.model?.unlockedStorage }
         DictationController.shared.start()
         // A key press, click or scroll in Peel's windows is use, which puts
         // the PIN timeout off.

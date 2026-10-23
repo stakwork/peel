@@ -228,6 +228,8 @@ extension AppModel {
             throw PeelError("This build of Peel has no bridge (scripts/stage-bridge.sh).")
         }
         bridge.bridge = running
+        // Who the owner is on their orgs, for runner's calls to strut.
+        running.actor = hive.link?.actor
         running.onChange = { [weak bridge, weak running] in
             // Runner stopped by itself: tried again only when strut starts again or on the person's Try again.
             guard let bridge, let running, running.server == nil, bridge.bridge === running,
@@ -240,6 +242,8 @@ extension AppModel {
         // The steps the orchestrator's turns ask this Mac through, before the bridge runs a turn.
         let client = AutomationsClient(server: server)
         try await client.installOrchestrator()
+        // Its orgs, before a turn can name one.
+        await syncHive(on: server)
         let account = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? "Agent", pair: bridge.pairing)
         try Task.checkCancellation()
         // Only now does this Mac answer the agent's requests: its reads and cards.
@@ -250,6 +254,8 @@ extension AppModel {
         try await client.useBridge(reached)
         try Task.checkCancellation()
         bridge.status = .running
+        // The orgs' tokens, for runner's rooms on their struts.
+        await handHiveToBridge()
         // The person's automations run here now, their reports to the DM.
         await moveAutomations(on: server, to: Orchestrator.automationWorkflow, callback: reached.runEnds)
     }

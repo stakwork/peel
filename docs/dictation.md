@@ -1,12 +1,12 @@
 # System-wide dictation
 
-Last updated 2026-10-23. **Milestone 0 built (unverified on a Mac):** the
-global hotkey and the capture. A stub stands in for transcription.
+Last updated 2026-10-23. **Milestones 0 and 1 built:** the global hotkey,
+the capture, typing into the focused field, and speech-to-text on Peel's
+own strut.
 
-Hold a key anywhere on the Mac, speak, let go, and the text is typed where
-you were typing. Peel records on this Mac, nothing leaves it. Milestone 1
-(not built) sends the recording to a transcriber; until then the stub's
-words are typed.
+Hold a key anywhere on the Mac, speak, let go, and what you said is typed
+where you were typing. Peel records on this Mac and its own strut, running
+on this Mac, turns it into text: nothing leaves it.
 
 ## How it works
 
@@ -29,15 +29,58 @@ words are typed.
   dropped and the key goes on to the app.
 - **Capture** (`DictationAudioCapture`): AVAudioEngine's input, converted
   to 16 kHz mono PCM16 and written to a temp WAV (mode 0600); a 200 ms ring
-  is put in front of each recording. The file is deleted after the stub has
-  seen it, and on cancel.
+  is put in front of each recording. The file is deleted once transcribed,
+  and on cancel. An engine stays on the input it started with, so a new one
+  is made when the input changes (AirPods connecting while Peel is open, or
+  another mic chosen): on macOS's notice that the default input changed, on
+  the engine's that its configuration did (one new engine per burst, as a
+  Bluetooth headset switches profile when its mic opens), and when a
+  recording starts on an engine that has had no audio for a second. A
+  recording under way carries on into the new engine.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
   A small dark pill: 24 pt with a live waveform (the last eight levels) while
   the key is held, 28 pt with a grey X and a white tick either side when
   hands-free. Fades in over 150 ms, out over 110 ms.
 - **Hand-off:** `DictationSession { id, audioURL, duration, mode }` to a
-  `Transcriber`; `StubTranscriber` returns canned text.
+  `Transcriber`: `StrutTranscriber` (`DictationSpeech`, the app; the HTTP
+  calls are `StrutSpeech`, PeelAgent). `StubTranscriber` stays for tests.
+- **Speech-to-text** (strut's `plans/native-dictation-client.md` §3, §6).
+  Peel's bundled strut (the open account's, started with its agent; never
+  a home server's) is staged with its speech engine, sherpa-onnx, in
+  `native/` (`scripts/stage-strut.sh`, no longer `--no-stt`; +32 MB). The
+  recording's WAV goes to `POST /audio/transcribe?model=zipformer-en-kroko`
+  with the strut's key, and the text comes back cased and punctuated (about
+  1.3 s for a short sentence cold, tens of ms of decoding), on the slow
+  strut session (a download or a long recording outlasts a minute). The
+  model, 57 MB, is fetched once into the account's strut cache, as soon as
+  dictation is on and the strut is up: the app tells dictation whenever
+  its strut starts, stops or changes (`AppModel.strutChanged`), which
+  checks the model again for that strut. A recording that finds it still
+  downloading says so in the HUD, and one made while the strut is starting
+  waits up to 10 s for it. Account › Dictation › Speech shows the state,
+  with Try again after a failure. Strut's refusals come back as
+  `StrutSpeech.Failure`, in Peel's words for the HUD, never strut's own
+  (which can carry its paths). Nothing said is logged; what is kept is
+  History's, below. `embed-strut.sh`
+  refuses a stage without the speech engine.
+- **History** (`DictationRecord`, PeelCore's `dictation` table, v28; the
+  window `DictationHistoryView`). Each dictation is kept in the open
+  account's own database, on by default, for 30 days (dropped as each new
+  one is kept), and goes with the account: the text that was typed or
+  copied, when, how long, the app's id and name (never its window title)
+  and where the text went (typed; copied, and why; blocked: a password
+  field, no text; failed, and why). Never the recording, which is still
+  deleted once transcribed. Nothing is kept, and the window shows nothing,
+  while the account is locked (`AppModel.unlockedStorage` is nil: locking
+  leaves the engine open, so the engine alone is not the test) or with History off (Account › Dictation › History). The
+  window (app menu › Dictation History…, or Open in Settings) lists the
+  newest 500 by day with Copy and Clear History; opening it also drops what
+  is past 30 days. Clear overwrites the text in the file (`secure_delete`)
+  and folds in the log. A "Copied: press ⌘V" note adds "(also in History)"
+  only when it was kept. Time and account are taken when the key is let go.
+  Strut's sessions are not used: they keep the recogniser's raw text with
+  no app or outcome, and cannot be cleared.
 - **Typing it** (`DictationTextInserter`; the decision is
   `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
   are read when the key goes down (just the element and whether it is a
@@ -94,13 +137,21 @@ Keyboard › Press 🌐 key › Do Nothing.
 ## Open
 
 Start and stop sounds; muting system audio while recording; a login item
-(SMAppService); the real transcriber (milestone 1); terminals' bracketed
-paste, remote desktops and input methods for non-Latin scripts, untried; whether a warm mic is acceptable or should start at key-down
+(SMAppService); live text while speaking (strut's `/audio/stream`);
+retrying a recording whose transcription failed (it is deleted); dictation
+when the account's memory is on a home server (no bundled strut runs then);
+learning from corrections (milestone 2); terminals' bracketed paste, remote
+desktops and input methods for non-Latin scripts, untried; whether a warm
+mic is acceptable or should start at key-down
 (a warm Bluetooth headset mic holds AirPods in call quality);
 macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-23: History (step 0 of the dictation lingo design): on by default,
+  30 days, text only. Not built from that design yet: a choice of keep
+  time, deleting one entry, opening the window at an entry from the HUD,
+  and the one-time HUD note about History.
 - 2026-10-20: milestone 0 written without a Mac to run it. Unit tested:
   the state machine, hotkey encoding and flags, pre-roll ring, PCM and
   level maths, WAV writer. Not run: the real tap, capture, HUD focus,
@@ -120,3 +171,8 @@ macOS 13+ is already the minimum (the project targets 15.6).
   in the same app counts as moved focus, the Accessibility check is by
   length, the restore waits 750 ms and never puts a secret back, Peel's
   tap ignores the ⌘V. Not run by hand yet.
+- 2026-10-23: milestone 1, speech-to-text on Peel's own strut. Checked
+  against a real staged strut: the model downloaded in 4.4 s and a `say`
+  sentence came back word for word. Unit tested: `StrutSpeech` against a
+  stub strut (the WAV and key sent, refusals, the model list, the
+  download's events).

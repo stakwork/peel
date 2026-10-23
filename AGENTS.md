@@ -107,6 +107,10 @@ is a short plan. Update the status and the journal when you finish something.
     threads collapsed), `thread(_:in:)`, `threads()`, `threads(in:limit:)`
     (one chat's, whoever wrote), parents, boosts and
     thread summaries
+  - `Storage+Dictation.swift` — Dictation History on the Mac
+    (`DictationRecord`, `dictation`, v28): kept with a keep time that
+    drops older ones, watched newest first, cleared. Tested in
+    `DictationHistoryTests`
   - `Storage+DeviceRequests.swift` — the device requests' ledger
     (`deviceRequest`, a request's id within its agent): `admit` (the
     stored row wins; a message seen before is not a new copy), `claim` and
@@ -327,12 +331,21 @@ is a short plan. Update the status and the journal when you finish something.
   `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
   which `AppDelegate` hands it), that server's, Peel's own never started
   and no model key for it),
+  `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
+  Add MCP server, Test, Remove, the Assistant and Jobs switches, which
+  restart Peel's strut with the new grants; Gmail to come; below them
+  `StadeumSection`, the Stadeum workspaces paired as peers),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Peel agent show of its own account,
   and `setUpAgent`, the person's Set up or Try again, the only start that
   pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
-  `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`);
+  `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`),
+  `AppModel+Hive` (`HiveState`: Connect Stadeum's device flow against
+  Hive's API (the user-facing name is Stadeum), the credential in
+  `Profile.hive`, the orgs put on strut as peers when the bridge starts
+  and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
+  development profile's defaults for a test Hive);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -444,7 +457,10 @@ is a short plan. Update the status and the journal when you finish something.
   `DictationController` the glue, `DictationHotkeyTap` the CGEventTap on
   its own thread, `DictationAudioCapture`, `DictationHUD`,
   `DictationTextInserter` (the focused element, Accessibility or ⌘V with
-  the clipboard put back),
+  the clipboard put back), `DictationSpeech` (speech-to-text on the open
+  account's own strut, told of it by `AppModel.strutChanged`, and its
+  model; `StrutTranscriber`), `DictationHistoryView` (the History window:
+  each dictation by day, with Copy and Clear History),
   `DictationPermissions`, and the Account section, offer and menu item in
   `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
@@ -617,6 +633,17 @@ is a short plan. Update the status and the journal when you finish something.
     that price; its row's line ends with the sent message's ids
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
     the account's `agent.sqlite` as the app opens it
+  - `Connections.swift` — Account › Connections' MCP servers in strut's
+    registry (`/mcp-servers`): add (the key put in strut's secret store
+    first, the registration naming only the secret), test (strut's probe:
+    the tools and which ask first), remove (with its key); and `MCPGrants`,
+    which agents (the assistant, its jobs) reach each server, written into
+    the host delta as `mcp/<server>/*`
+  - `Hive.swift` — Hive's device flow for a strut desktop app
+    (`HiveClient`: start, poll, renew), what is kept of a pairing
+    (`HiveLink`, its peers and credential, never in a database), strut's
+    peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
+    for, read from strut's record (`peerRequest`)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
     for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):
@@ -671,6 +698,10 @@ is a short plan. Update the status and the journal when you finish something.
     `pointRunEnds` points their run ends at the running bridge.
     Tested in `OrchestratorTests` (a staged strut with the automation steps, when there is
     one) and the journey `Journeys/Orchestrator`
+  - `StrutSpeech.swift` — dictation's speech-to-text calls to a strut
+    (`/audio/models`, the model's download, `/audio/transcribe` with the
+    recording's WAV), on the slow strut session; its `Failure`s are the
+    HUD's words, never strut's own. Tested in `StrutSpeechTests`
   - `AutomationsClient.swift` — strut's automation endpoints, for the
     Automations view: it lists every workflow's automations (a system one,
     `category: system`, with its workflow's description; the person's on
@@ -759,7 +790,14 @@ is a short plan. Update the status and the journal when you finish something.
   model handed to strut), `BundledStrutTests` (with a staged strut, a real
   start and stop, and no secret kept on disk as it is), `OrchestratorTests`
   (the host delta and prompt section; with a staged strut, the device
-  steps and the move off `peel-automation`), `BundledBridgeTests`,
+  steps and the move off `peel-automation`), `ConnectionsTests` (an MCP
+  server added, tested, granted and removed on a staged strut against a
+  stand-in server, `MCPStub`, its key held by name only), `StrutSpeechTests` (dictation's
+  WAV and key sent, refusals, the model list and download), `HiveTests` (Hive's device
+  flow against a stand-in answering as stakwork/hive#5602 documents:
+  approve and collect once, deny, expiry, a page on another site or an
+  account Peel cannot name refused, renewal and revoke; the org call's
+  card worded from strut's record), `BundledBridgeTests`,
   `SphinxToolsTests` (name resolution, each tool on a seeded profile, caps, unseen grouping, message
   text that tries to end the data block, the device reads through the same tools), `SendToolTests` (the send
   tool over a real engine: the card's words, the price cap through the
@@ -825,7 +863,8 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/stage-strut.sh <strut checkout>` — stages the strut Peel ships
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
-  (`package-desktop.mjs --no-stt`, with Ladybug, its `vector` and `fts`
+  (`package-desktop.mjs`, with dictation's speech engine (sherpa) in
+  `native/`, Ladybug, its `vector` and `fts`
   extensions, the `memory/*` steps, and the `orchestrator` with the
   `automation/*` steps, which Peel's delta needs), built from the strut
   commit `Vendor/strut.lock` pins (git archive of that commit only, so the

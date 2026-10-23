@@ -68,6 +68,10 @@ final class MacAgent: AgentHost {
     var openedAutomation: String?
     /// The device requests' cards and the send grants.
     let deviceCards = DeviceCards()
+    /// Account › Connections (`AppModel+Connections`).
+    let connections = ConnectionsState()
+    /// The person's Hive workspaces, paired as peers (`AppModel+Hive`).
+    let hive = HiveState()
 
     func open(_ profile: Profile, engine: Engine, in model: AppModel) {
         model.openAgent(profile, engine: engine)
@@ -136,7 +140,15 @@ extension AppModel {
 
     var strut: BundledStrut? {
         get { macAgent.strut }
-        set { macAgent.strut = newValue }
+        set {
+            macAgent.strut = newValue
+            strutChanged()
+        }
+    }
+
+    /// Dictation turns speech into text on this strut, the open account's.
+    func strutChanged() {
+        DictationController.shared.strutChanged(strut?.server)
     }
 
     var brain: Brain? {
@@ -260,6 +272,7 @@ extension AppModel {
             self.agent = agent
             macAgent.hasOwnStrut = Self.strut(for: profile) != nil
             if brain == .thisMac { useOwnStrut(profile) }
+            openHive(profile)
             lookForMemory(reporting: true)
             lookForBridge()
             checkBrain()
@@ -486,9 +499,13 @@ extension AppModel {
     /// again from here, only by the person's Set up or Try again: no crash loop.
     func useOwnStrut(_ profile: Profile) {
         if strut == nil { strut = Self.strut(for: profile) }
+        // Whose orgs it speaks for, kept across a switch of brain.
+        strut?.person = hive.link?.actor
         strut?.onChange = { [weak self] in
             self?.lookForMemory(restarting: false)
             self?.lookForBridge()
+            self?.restartIfGrantsChanged()
+            self?.strutChanged()
         }
     }
 
@@ -514,8 +531,12 @@ extension AppModel {
         switch profile.kind {
         case .app: BundledStrut(secretKey: profile.strutKey)
         case .development:
-            UserDefaults.standard.bool(forKey: "strut")
-                ? BundledStrut(data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey) : nil
+            UserDefaults.standard.bool(forKey: "strut") ? {
+                let strut = BundledStrut(data: BundledStrut.dataFolder(for: profile), secretKey: profile.strutKey)
+                // A test MCP server on this Mac, for a development profile only.
+                strut?.allowsLocalMCP = true
+                return strut
+            }() : nil
         }
     }
 
@@ -532,6 +553,8 @@ extension AppModel {
         localHoldsMemory = nil
         automations = AutomationsState()
         agentBridge.stop()
+        connections.reset()
+        closeHive()
         agent = nil
         closeMemory()
         memoryServer = nil

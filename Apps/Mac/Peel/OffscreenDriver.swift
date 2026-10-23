@@ -66,6 +66,7 @@ final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
         var probe, thread, close, expect, signal, list, note, reveal, appearance, agent, unread: String?
+        var mcp, name, url, token: String?
         var mods: [String]?
         var wait, duration, scroll, overscroll, width, over, back, next, wheel: Double?
         var scrollTo, steps, hover, turns: Int?
@@ -74,7 +75,7 @@ final class OffscreenDriver {
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
-            case appearance, agent, wheel, turns, unread
+            case appearance, agent, wheel, turns, unread, mcp, name, url, token
             case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
@@ -230,6 +231,8 @@ final class OffscreenDriver {
             try hover(row: index, in: step.list ?? "chat")
         } else if let what = step.agent {
             try await agent(what, step)
+        } else if let what = step.mcp {
+            try await mcp(what, step)
         } else if let points = step.wheel {
             try wheel(by: points, in: step.list ?? "agent")
         } else if let row = step.scrollTo {
@@ -313,6 +316,32 @@ final class OffscreenDriver {
         Offscreen.log("drive: notification for \(chat.prefix(12)), message \(newest?.id.map(String.init) ?? "none")")
     }
 
+    /// Account › Connections (`ConnectionsSection`), as its controls do:
+    /// `{"mcp": "open"}` scrolls Account to it; `{"mcp": "add", "name": …,
+    /// "url": …, "token": …}` is Add MCP server's form submitted;
+    /// `test`, `remove` (confirmed) and `assistant-off` / `assistant-on`,
+    /// `jobs-off` / `jobs-on` act on the server `name`.
+    private func mcp(_ what: String, _ step: Step) async throws {
+        guard let model = model() else { throw Failure(description: "no account open") }
+        let name = step.name ?? ""
+        switch what {
+        case "open":
+            model.destination = .account
+            model.connections.opened += 1
+        case "add":
+            guard let url = step.url.flatMap(URL.init(string:)) else { throw Failure(description: "mcp add needs a url") }
+            if let problem = await model.addMCPServer(name: name, url: url, key: step.token ?? "") {
+                throw Failure(description: problem)
+            }
+        case "test": await model.testMCPServer(name)
+        case "remove": await model.removeMCPServer(name)
+        case "assistant-off", "assistant-on": model.setGrant(name, assistant: what.hasSuffix("on"))
+        case "jobs-off", "jobs-on": model.setGrant(name, jobs: what.hasSuffix("on"))
+        default: throw Failure(description: "no mcp step \(what)")
+        }
+        Offscreen.log("drive: mcp \(what) \(name)")
+    }
+
     /// What a click on a button with no shortcut opens: `send-sats`, the
     /// open chat's Send sats panel (its composer's bolt); `account`, the
     /// Account screen (the menu's Account…); `message-menu`, the ••• menu of
@@ -327,6 +356,8 @@ final class OffscreenDriver {
     /// the agent's DM; `request-rows`, every device request's row opened; `agent-revoke`, Account's first Revoke;
     /// `agent-remove-key`, Account's Remove key once confirmed;
     /// `agent-set-up`, the agent chat's Set up or Try again (its own account);
+    /// `hive-connect` and `hive-disconnect`, Account › Connections' Connect
+    /// Stadeum and its Unpair once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
     /// Resume on the sidebar's paused restore; `brain-form`, Account ›
@@ -422,6 +453,10 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "hive-connect":
+            model.connectHive()
+        case "hive-disconnect":
+            model.disconnectHive()
         case "agent-set-up":
             // The agent chat's Set up (or Try again): its own account.
             guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }

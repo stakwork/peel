@@ -101,6 +101,16 @@ struct PeelApp: App {
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
 
+        // Dictation's Vocabulary: the words it puts right, from the memory graph.
+        Window("Dictation Vocabulary", id: DictationVocabularyView.id) {
+            DictationVocabularyView()
+                .environment(model)
+                .tint(Theme.accent)
+        }
+        .defaultSize(width: 560, height: 560)
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
+
         // The call you are on: 960 × 640 at first, then where you left it.
         Window("Call", id: CallWindow.id) {
             CallWindow()
@@ -153,7 +163,10 @@ enum MainWindow {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel? {
-        didSet { openLinks() }
+        didSet {
+            model?.phaseChanged = { DictationController.shared.accountChanged(unlocked: $0 == .ready) }
+            openLinks()
+        }
     }
     private var quitting = false
     /// Links opened before the model was here (one that launched Peel).

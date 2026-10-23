@@ -466,10 +466,18 @@ is a short plan. Update the status and the journal when you finish something.
   `DictationTextInserter` (the focused element, Accessibility or ⌘V with
   the clipboard put back), `DictationSpeech` (speech-to-text on the open
   account's own strut, told of it by `AppModel.strutChanged`, and its
-  model; `StrutTranscriber`), `DictationHistoryView` (the History window:
+  model; `StrutTranscriber`), `DictationLingo` (a thin client of strut's
+  dictation vocabulary, stakwork/strut#301: the lexicon for the window,
+  `dictation/correction`, `add`, `remove`, `undo`; strut does the judging),
+  `DictationEditWatch` (rereads the field after typing for the user's
+  correction, sent once it settles: `DictationEdit`, PeelUI),
+  `DictationModels` (the speech model and fixer picked on strut,
+  `dictation/models`, `use`, `remove-model`, read every second while one
+  downloads), `DictationVocabularyView` (the Vocabulary window),
+  `DictationHistoryView` (the History window:
   each dictation by day, with Copy and Clear History),
-  `DictationPermissions`, and the Account section, offer and menu item in
-  `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
+  `DictationPermissions`, and the Account section (with the Speech model
+  and Fixer pickers), offer and menu item in `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
@@ -779,7 +787,9 @@ is a short plan. Update the status and the journal when you finish something.
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them) and `DictationTests` (the hotkey's
   state machine, the hotkey's encoding, the WAV writer,
-  where dictated text goes)
+  where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
+  correction learned and the dictation models; `DictationEditTests`, when
+  an edit to dictated text is done)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
@@ -862,7 +872,8 @@ is a short plan. Update the status and the journal when you finish something.
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
   (`package-desktop.mjs`, with dictation's speech engine (sherpa) in
-  `native/`, Ladybug, its `vector` and `fts`
+  `native/` and its fixer (node-llama-cpp with Metal) in
+  `native/llama/mac-arm64-metal`, Ladybug, its `vector` and `fts`
   extensions, the `memory/*` steps, and the `orchestrator` with the
   `automation/*` steps, which Peel's delta needs), built from the strut
   commit `Vendor/strut.lock` pins (git archive of that commit only, so the
@@ -886,8 +897,8 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
   embeds a provisioning profile and the stub's entitlements (Keychain,
   microphone, camera), frameworks and the strut's Node and native
-  libraries first (Node with `scripts/strut-node.entitlements`:
-  allow-jit only) (see Signing)
+  libraries (every Mach-O in `native/` and its folders) first (Node with
+  `scripts/strut-node.entitlements`: allow-jit only) (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/embed-strut.sh` — the Mac app's build phase that puts the staged

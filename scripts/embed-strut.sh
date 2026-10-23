@@ -61,11 +61,18 @@ echo "embed-strut: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'st
   echo "error: the staged strut has no speech engine; stage it again (scripts/stage-strut.sh <strut checkout>)"
   exit 1
 }
+# And its fixer, which cleans up dictation and learns from edits, as stage-strut.sh requires.
+[ "$(plutil -extract fixer raw -o - "$STRUT_STAGE/desktop.json" 2> /dev/null)" = true ] \
+  && [ -e "$STRUT_STAGE/native/llama/mac-arm64-metal/llama-addon.node" ] || {
+  echo "error: the staged strut has no dictation fixer; stage it again (scripts/stage-strut.sh <strut checkout>)"
+  exit 1
+}
 ditto "$STRUT_STAGE" "$DEST"
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ] && [ -d "$DEST/native" ]; then
-  for code in "$DEST"/native/*; do
-    case "$(basename "$code"):$(file -b "$code")" in
-      node:*) ;;
+  # native/ and its folders (the dictation fixer's in native/llama/<platform>).
+  find "$DEST/native" -type f | while IFS= read -r code; do
+    case "$code:$(file -b "$code")" in
+      "$DEST/native/node":*) ;;
       *:Mach-O*) sign "$code" ;;
     esac
   done

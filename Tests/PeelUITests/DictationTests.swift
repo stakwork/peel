@@ -207,6 +207,13 @@ struct HotkeyConfigTests {
         #expect(settings.storedEnabled == nil)
         settings.storedEnabled = false
         #expect(settings.storedEnabled == false)
+        // The hands-free tip shows until hands-free is used, five times at most.
+        #expect(settings.wantsHandsFreeTip)
+        settings.handsFreeTipsShown = DictationDefaults.handsFreeTipLimit
+        #expect(!settings.wantsHandsFreeTip)
+        settings.handsFreeTipsShown = 0
+        settings.usedHandsFree = true
+        #expect(!DictationSettings(defaults: defaults).wantsHandsFreeTip)
     }
 
     @Test func onByDefaultOnlyOnceGranted() {
@@ -253,7 +260,7 @@ struct DictationAudioTests {
 
     @Test func theStubAnswersWithCannedText() async throws {
         let text = try await StubTranscriber().transcribe(audioFileURL: URL(fileURLWithPath: "/dev/null"))
-        #expect(text == StubTranscriber.text)
+        #expect(text == DictationTranscript(text: StubTranscriber.text))
     }
 }
 

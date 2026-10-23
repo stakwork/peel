@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #308 (an app's page alone with ?app=…&solo=1), after #307 (a peer's apps through the read-through, step_run for a person token).
-3c1870db80672255ce5f4792512a6c5277becbe9
+# stakwork/strut main at the merge of #301 (dictation's vocabulary and a local fixer model the user picks: dictation/models, use, remove-model, enable; node-llama-cpp in the desktop package), after #306.
+2d119a3ca7795af6ad44c67851dec8e69ad3fa4e

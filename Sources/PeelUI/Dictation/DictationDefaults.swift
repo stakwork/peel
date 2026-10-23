@@ -11,10 +11,13 @@ public enum DictationDefaults {
     public static let maxRecording: TimeInterval = 5 * 60
     /// What a recording is stored as: 16 kHz mono PCM16.
     public static let sampleRate: Double = 16_000
-    /// How far the HUD sits above the bottom edge of the screen's visible area.
-    public static let hudBottomInset: CGFloat = 56
-    /// How long the stub's text shows in the HUD.
+    /// How far the HUD sits above the bottom edge of the screen's visible
+    /// area: just clear of the Dock, or of the screen's edge when it is hidden.
+    public static let hudBottomInset: CGFloat = 10
+    /// How long a message shows in the HUD.
     public static let resultDisplay: TimeInterval = 3
+    /// How long "Learned X" shows with its Undo.
+    public static let learnedDisplay: TimeInterval = 5
     /// How often the state machine is told the time while a key is held or a recording runs.
     public static let tickInterval: TimeInterval = 0.05
 
@@ -22,6 +25,13 @@ public enum DictationDefaults {
     public static let offerDismissedKey = "dictation.offerDismissed"
     public static let askedInputMonitoringKey = "dictation.askedInputMonitoring"
     public static let historyKey = "dictation.history"
+    /// Set once hands-free has been used: its tip is not shown again.
+    public static let usedHandsFreeKey = "dictation.usedHandsFree"
+    public static let handsFreeTipsShownKey = "dictation.handsFreeTipsShown"
+    /// How long the key is held before the HUD offers hands-free.
+    public static let handsFreeTipAfter: TimeInterval = 2
+    /// The tip shows this many times at most, for someone who never wants hands-free.
+    public static let handsFreeTipLimit = 5
     /// How long Dictation History keeps a dictation.
     public static let historyKeep: TimeInterval = 30 * 24 * 60 * 60
 }
@@ -44,6 +54,23 @@ public struct DictationSettings {
     public var offerDismissed: Bool {
         get { defaults.bool(forKey: DictationDefaults.offerDismissedKey) }
         nonmutating set { defaults.set(newValue, forKey: DictationDefaults.offerDismissedKey) }
+    }
+
+    /// Hands-free has been used, so its tip is done.
+    public var usedHandsFree: Bool {
+        get { defaults.bool(forKey: DictationDefaults.usedHandsFreeKey) }
+        nonmutating set { defaults.set(newValue, forKey: DictationDefaults.usedHandsFreeKey) }
+    }
+
+    /// How many times the hands-free tip has shown.
+    public var handsFreeTipsShown: Int {
+        get { defaults.integer(forKey: DictationDefaults.handsFreeTipsShownKey) }
+        nonmutating set { defaults.set(newValue, forKey: DictationDefaults.handsFreeTipsShownKey) }
+    }
+
+    /// The hands-free tip is still worth showing: hands-free unused, and not yet shown its fill.
+    public var wantsHandsFreeTip: Bool {
+        !usedHandsFree && handsFreeTipsShown < DictationDefaults.handsFreeTipLimit
     }
 
     /// Dictation History keeps what is dictated; on until turned off.

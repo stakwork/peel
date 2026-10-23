@@ -1547,11 +1547,11 @@ app lives on the workspace's strut (its grants, runs and data); Peel's
 own strut is the window onto it (strut's plans/apps.md §7.4, strut#307
 and #308).
 
-- **The pin.** `Vendor/strut.lock` moves to 3c1870d (strut#308, after
-  #307): the read-through serves a peer's apps and their files, relays
-  `POST /peers/<id>/mcp`, and a person token gets the app's `step_run`
-  alone on the org; `?app=@<id>/<name>&solo=1` shows the page and
-  nothing of strut's around it.
+- **The strut it needs.** strut#307 and #308, which the pin at #301's
+  merge (2d119a3) holds: the read-through serves a peer's apps and their
+  files, relays `POST /peers/<id>/mcp`, and a person token gets the app's
+  `step_run` alone on the org; `?app=@<id>/<name>&solo=1` shows the page
+  and nothing of strut's around it.
 - **The list.** `AutomationsClient.pinnedApps(of:)` reads `GET
   /peers/<id>/apps` on Peel's own strut for each live workspace and keeps
   those marked `pinned` (what strut says a host showing tabs takes), under
@@ -1582,9 +1582,10 @@ and #308).
   its calls go through strut's relay, but a workspace that served another
   document could fetch what any web page can (never strut's API, which
   wants the key the frame does not have).
-- **Strut's side, to fix there.** Shown alone, strut's UI still loads
-  every workflow, step type and peer's app list before drawing the page,
-  and polls the active runs every five seconds while it shows.
+- **Strut's side, fixed there.** Shown alone, strut's UI at this pin
+  still loads every workflow, step type and peer's app list before
+  drawing the page, and polls the active runs every five seconds while it
+  shows; strut#313 loads only the one listing, for the next pin.
 - **Not here.** The page's `ui/message` (a message about the app to the
   agent's DM) and in-place `ui/open-link`, which strut leaves unwired when
   the page shows alone; a workspace's apps that are not pinned; the

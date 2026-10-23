@@ -94,6 +94,7 @@ public final class AgentSession {
         public let provider: AgentProvider
         public let model: String
         public let keyHint: String
+        public let workspaceID: String?
     }
 
     /// The earlier conversation, oldest first.
@@ -178,8 +179,21 @@ public final class AgentSession {
 
     /// Changes the model the connected key uses.
     public func setModel(_ model: String) throws {
+        try change { $0.model = model }
+    }
+
+    /// Changes the model and the workspace the connected key uses, keeping
+    /// the key: Connect a model with its key left empty.
+    public func keepKey(model: String, workspaceID: String?) throws {
+        try change {
+            $0.model = model
+            $0.workspaceID = workspaceID
+        }
+    }
+
+    private func change(_ edit: (inout AgentCredential) -> Void) throws {
         guard var credential = try credentials.read() else { return }
-        credential.model = model
+        edit(&credential)
         try credentials.write(credential)
         connection = Connection(credential)
     }
@@ -272,7 +286,8 @@ public final class AgentSession {
 
 extension AgentSession.Connection {
     init(_ credential: AgentCredential) {
-        self.init(provider: credential.provider, model: credential.model, keyHint: credential.keyHint)
+        self.init(provider: credential.provider, model: credential.model, keyHint: credential.keyHint,
+                  workspaceID: credential.workspaceID)
     }
 }
 

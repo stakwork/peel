@@ -3,10 +3,12 @@ import SwiftUI
 import PeelCore
 import PeelUI
 
-/// Connect a model: the provider, its API key (pasted, or typed) and the
-/// model, kept in this Mac's Keychain and handed to strut, which the agent
-/// answers with (`AppModel.modelChanged`). A key that could not be kept
-/// says so under it. Opens beside the button that opened it.
+/// Connect a model: the provider, its API key (pasted, or typed), for an
+/// Anthropic key made for the whole organization the workspace it calls
+/// in, and the model, kept in this Mac's Keychain and handed to strut, which the agent
+/// answers with (`AppModel.modelChanged`). With the key left empty and the
+/// provider unchanged, the connected key is kept. A key that could not be
+/// kept says so under it. Opens beside the button that opened it.
 struct AgentConnectPanel: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
@@ -15,6 +17,7 @@ struct AgentConnectPanel: View {
     @State private var provider: AgentProvider
     @State private var modelID: String
     @State private var key = ""
+    @State private var workspace: String
     @State private var problem: String?
 
     init(agent: AgentSession, done: @escaping () -> Void) {
@@ -23,7 +26,24 @@ struct AgentConnectPanel: View {
         let provider = agent.connection?.provider ?? .anthropic
         _provider = State(initialValue: provider)
         _modelID = State(initialValue: agent.connection?.model ?? provider.recommendedModel)
+        _workspace = State(initialValue: agent.connection?.workspaceID ?? "")
     }
+
+    /// The workspace to keep: Anthropic's only, none for an empty field.
+    private var workspaceID: String? { provider == .anthropic ? workspace.trimmed.nilIfEmpty : nil }
+
+    private var workspaceIsValid: Bool { workspaceID.map { $0.wholeMatch(of: /wrkspc_[A-Za-z0-9]+/) != nil } ?? true }
+
+    /// Said under the field once what is typed can't become an ID, not while it still can.
+    private var workspaceProblem: String? {
+        guard let id = workspaceID, !workspaceIsValid, !"wrkspc_".hasPrefix(id) else { return nil }
+        return "A workspace ID is wrkspc_ and then letters and digits"
+    }
+
+    /// No key typed keeps the connected one, when it is this provider's.
+    private var keepsKey: Bool { key.trimmed.isEmpty && agent.connection?.provider == provider }
+
+    private var canConnect: Bool { (!key.trimmed.isEmpty || keepsKey) && workspaceIsValid }
 
     var body: some View {
         Panel("Connect a model", close: done) {
@@ -42,8 +62,9 @@ struct AgentConnectPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     FormItem(label: "\(provider.name) API key", problem: problem) {
                         HStack(spacing: 8) {
-                            FormTextField(label: "\(provider.name) API key", text: $key, problem: problem != nil,
-                                          focusOnAppear: true, secure: true)
+                            FormTextField(label: "\(provider.name) API key",
+                                          prompt: agent.connection?.provider == provider ? "Keep the current key" : nil,
+                                          text: $key, problem: problem != nil, focusOnAppear: true, secure: true)
                                 .onSubmit { connect() }
                             Button("Paste") {
                                 if let pasted = Clipboard.paste() { key = pasted.trimmed }
@@ -55,6 +76,21 @@ struct AgentConnectPanel: View {
                         model.web.open(provider.keyPage)
                     }
                     .buttonStyle(.peel(.link, size: .sm))
+                }
+                if provider == .anthropic {
+                    VStack(alignment: .leading, spacing: 4) {
+                        FormItem(label: "Workspace ID (optional)",
+                                 helper: "Only for a key made for the whole organization, not one workspace",
+                                 problem: workspaceProblem) {
+                            FormTextField(label: "Workspace ID", prompt: "wrkspc_…", text: $workspace,
+                                          problem: workspaceProblem != nil, monospaced: true)
+                                .onSubmit { connect() }
+                        }
+                        Button("Find it in the Claude Console") {
+                            model.web.open(AgentProvider.anthropicWorkspacesPage)
+                        }
+                        .buttonStyle(.peel(.link, size: .sm))
+                    }
                 }
                 FormItem(label: "Model") {
                     PeelDropdown(
@@ -73,16 +109,20 @@ struct AgentConnectPanel: View {
                 Button("Connect") { connect() }
                     .buttonStyle(.peel(.primary))
                     .keyboardShortcut(.defaultAction)
-                    .disabled(key.trimmed.isEmpty)
+                    .disabled(!canConnect)
             }
         }
     }
 
     private func connect() {
-        let key = key.trimmed
-        guard !key.isEmpty else { return }
+        guard canConnect else { return }
         do {
-            try agent.connect(AgentCredential(provider: provider, model: modelID, apiKey: key))
+            if keepsKey {
+                try agent.keepKey(model: modelID, workspaceID: workspaceID)
+            } else {
+                try agent.connect(AgentCredential(provider: provider, model: modelID, apiKey: key.trimmed,
+                                                  workspaceID: workspaceID))
+            }
             done()
         } catch {
             problem = PeelError.problem(error, couldNot: "keep the key")

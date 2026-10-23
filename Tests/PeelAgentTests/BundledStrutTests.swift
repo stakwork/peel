@@ -33,14 +33,14 @@ struct BundledStrutTests {
             ["PATH": "/usr/bin", "HOME": "/Users/x", "DYLD_INSERT_LIBRARIES": "/evil.dylib", "NODE_OPTIONS": "--inspect",
              "STRUT_CONNECTION_FILE": "/elsewhere", "STRUT_HOST": "0.0.0.0", "PEEL_AGENT_API_KEY": "model key",
              "STRUT_SECRET_KEY": "the caller's", "ANTHROPIC_API_KEY": "shell key", "OPENAI_API_KEY": "shell key",
-             "OPENROUTER_API_KEY": "shell key"],
+             "OPENROUTER_API_KEY": "shell key", "ANTHROPIC_WORKSPACE_ID": "wrkspc_shell"],
             key: key, secretKey: secretKey, data: data, hostConfig: data.appending(path: "host-config.json"))
         #expect(environment["PATH"] == "/usr/bin" && environment["HOME"] == "/Users/x")
         #expect(environment["DYLD_INSERT_LIBRARIES"] == nil && environment["NODE_OPTIONS"] == nil
                 && environment["STRUT_CONNECTION_FILE"] == nil && environment["PEEL_AGENT_API_KEY"] == nil)
         // A model key from the shell would outlive a disconnect: strut has only the store's.
         #expect(environment["ANTHROPIC_API_KEY"] == nil && environment["OPENAI_API_KEY"] == nil
-                && environment["OPENROUTER_API_KEY"] == nil)
+                && environment["OPENROUTER_API_KEY"] == nil && environment["ANTHROPIC_WORKSPACE_ID"] == nil)
         #expect(environment["STRUT_HOST"] == "127.0.0.1" && environment["STRUT_PORT"] == "0")
         #expect(environment["STRUT_API_KEY"] == key && environment["STRUT_READY_KEY"] == "1")
         #expect(environment["STRUT_SECRET_KEY"] == secretKey)

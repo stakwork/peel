@@ -83,14 +83,20 @@ struct AgentSessionTests {
 
         try agent.connect(testKey)
         #expect(try credentials.read() == testKey)
-        #expect(agent.connection == AgentSession.Connection(provider: .anthropic, model: "claude-sonnet-5-5", keyHint: "4f2a"))
+        #expect(agent.connection == AgentSession.Connection(provider: .anthropic, model: "claude-sonnet-5-5", keyHint: "4f2a",
+                                                                 workspaceID: nil))
         try agent.setModel("claude-opus-5-5")
         #expect(try credentials.read()?.model == "claude-opus-5-5")
         #expect(agent.connection?.model == "claude-opus-5-5")
+        // Connect with the key left empty: the model and workspace change, the key stays.
+        try agent.keepKey(model: "claude-haiku-5-5", workspaceID: "wrkspc_01abc")
+        #expect(try credentials.read() == AgentCredential(provider: .anthropic, model: "claude-haiku-5-5",
+                                                          apiKey: testKey.apiKey, workspaceID: "wrkspc_01abc"))
+        #expect(agent.connection?.workspaceID == "wrkspc_01abc")
         try agent.removeKey()
         #expect(try credentials.read() == nil)
         #expect(agent.connection == nil)
-        #expect(changes == 3)
+        #expect(changes == 4)
     }
 
     @Test func aKeyThatCannotBeReadIsSaid() throws {
@@ -112,6 +118,12 @@ struct AgentSessionTests {
         try agent.rename(" Pip ")
         try agent.rename("Pip")
         #expect(session(try SQLiteAgentStore(path: path, device: "mac")).name == "Pip")
+    }
+
+    /// One kept before workspaces were: it still reads, with none.
+    @Test func aCredentialKeptBeforeWorkspacesStillReads() throws {
+        let kept = Data(#"{"provider":"anthropic","model":"claude-sonnet-5-5","apiKey":"sk-ant-test-4f2a"}"#.utf8)
+        #expect(try JSONDecoder().decode(AgentCredential.self, from: kept) == testKey)
     }
 
     @Test func aCredentialNeverPrintsItsKey() {

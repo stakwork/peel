@@ -33,6 +33,10 @@ public enum AutomationFailure {
         "Didn't run: \(name(of: provider)) rejected the key. Replace it in Account."
     }
 
+    /// Anthropic refused an organization-wide key's workspace: none given,
+    /// or one the key can't use (`AgentCredential.workspaceID`).
+    public static let noWorkspace = "Didn't run: Anthropic needs a workspace ID this key can use. Check it in Account."
+
     private static func name(of provider: AgentProvider?) -> String { provider?.name ?? "the model's provider" }
 
     /// Already a sentence of its own, not a reason to put after "Didn't finish".

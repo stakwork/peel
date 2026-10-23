@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import PeelAgent
 import PeelUI
 
 /// Account › Dictation: on or off, the key (Right Option for now), and what macOS has been asked for.
@@ -24,9 +25,31 @@ struct DictationSettingsSection: View {
                     Text("Hold to dictate, let go to finish. Press Space while holding to keep going hands-free.").muted()
                 }
             }
+            Fact("Speech") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(speechText)
+                    Text("Recognised by Peel's own strut, on this Mac. Nothing you say leaves it.").muted()
+                }
+            } trailing: {
+                if case .failed = dictation.speech.model {
+                    Button("Try again") { Task { try? await dictation.speech.ensureModel() } }
+                        .buttonStyle(.peel(.outline))
+                }
+            }
             DictationPermissionRows(permissions: dictation.permissions)
         }
         .onAppear { dictation.refresh() }
+    }
+
+    private var speechText: String {
+        let size = StrutSpeech.modelSize
+        return switch dictation.speech.model {
+        case .waiting: "Waiting for Peel's strut to start"
+        case .checking: dictation.isEnabled ? "Getting the English model ready…" : "English model (\(size)) downloads when dictation is on"
+        case .downloading: "Downloading the English model (\(size))…"
+        case .installed: "Ready"
+        case .failed(let why): why
+        }
     }
 
     private var stateText: String {

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stages the strut Peel ships, for bundle-app.sh to copy into
 # Contents/Strut: strut's desktop package (scripts/package-desktop.mjs in a
-# strut checkout, without dictation, with Ladybug, its extensions, the
+# strut checkout, with dictation's speech engine, with Ladybug, its extensions, the
 # memory/* steps, and the orchestrator with its automation/* steps) and
 # the Node that runs it, a pinned release checked against its SHA-256 on every
 # run. Apple silicon only. Built from the strut commit Vendor/strut.lock names
@@ -56,13 +56,16 @@ NODE_DIR="$NODE_TMP/node-$NODE_VERSION-darwin-arm64"
   cd "$STRUT_SRC"
   export PATH="$NODE_DIR/bin:$PATH"
   yarn install --frozen-lockfile --silent
-  node scripts/package-desktop.mjs --no-stt --out "$WORK"
+  node scripts/package-desktop.mjs --out "$WORK"
 )
 STAGE="$WORK/strut"
 for needed in native/lbugjs.node build/steps/lib/memory/remember.js build/workflows/orchestrator.yaml \
     build/steps/lib/automation/create.js desktop.js desktop.json; do
   [ -e "$STAGE/$needed" ] || { echo "stage-strut: the package has no $needed; the strut commit in Vendor/strut.lock lacks the memory steps, the orchestrator and its automation steps, or the desktop Ladybug package" >&2; exit 1; }
 done
+# Dictation's speech engine (sherpa), which /audio/transcribe needs, in native/ to be signed.
+[ "$(plutil -extract stt raw -o - "$STAGE/desktop.json")" = true ] && [ -e "$STAGE/native/sherpa-onnx.node" ] \
+  || { echo "stage-strut: the package left the speech engine out (sherpa-onnx-node in the strut checkout's install?)" >&2; exit 1; }
 # The package's own word that it carries Ladybug and its extensions, which the workspace needs.
 [ "$(plutil -extract ladybug raw -o - "$STAGE/desktop.json")" = true ] || { echo "stage-strut: the package left Ladybug out (is openssl@3 installed? brew install openssl@3)" >&2; exit 1; }
 cp "$NODE_DIR/bin/node" "$STAGE/native/node"

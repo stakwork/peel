@@ -136,7 +136,15 @@ extension AppModel {
 
     var strut: BundledStrut? {
         get { macAgent.strut }
-        set { macAgent.strut = newValue }
+        set {
+            macAgent.strut = newValue
+            strutChanged()
+        }
+    }
+
+    /// Dictation turns speech into text on this strut, the open account's.
+    func strutChanged() {
+        DictationController.shared.strutChanged(strut?.server)
     }
 
     var brain: Brain? {
@@ -489,6 +497,7 @@ extension AppModel {
         strut?.onChange = { [weak self] in
             self?.lookForMemory(restarting: false)
             self?.lookForBridge()
+            self?.strutChanged()
         }
     }
 

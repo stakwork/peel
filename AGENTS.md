@@ -346,7 +346,12 @@ is a short plan. Update the status and the journal when you finish something.
   Hive's API (the user-facing name is Stadeum), the credential in
   `Profile.hive`, the orgs put on strut as peers when the bridge starts
   and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
-  development profile's defaults for a test Hive);
+  development profile's defaults for a test Hive; and `apps`, the apps the
+  workspaces pinned, `refreshWorkspaceApps`), `WorkspaceAppView` (one of
+  those apps alone in the detail column, the sidebar's Apps: Peel's own
+  strut's UI showing its page, in a `WKWebView` whose store keeps nothing
+  and which goes nowhere but that strut; `docs/agent-on-strut.md`, "Built:
+  a workspace's apps");
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -644,6 +649,11 @@ is a short plan. Update the status and the journal when you finish something.
     (`HiveLink`, its peers and credential, never in a database), strut's
     peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
     for, read from strut's record (`peerRequest`)
+  - `WorkspaceApps.swift` — the apps a workspace pinned as tabs, read
+    through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), and
+    the address of one shown alone (`MemoryServer.page(of:)`: strut's UI
+    with its key as `?key=`, `&app=@<id>/<name>&solo=1`; Peel's own strut
+    only)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
     for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):

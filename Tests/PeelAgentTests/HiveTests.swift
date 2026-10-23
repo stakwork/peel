@@ -202,6 +202,35 @@ struct HiveTests {
         #expect(asked.name == "Acme" && asked.prompt == "Hi" && asked.more == more)
     }
 
+    /// A workspace's apps come through Peel's own strut's read-through,
+    /// with its key: only those pinned as tabs, under names strut gives. One
+    /// opens as strut's UI showing that page alone, with the key, the app
+    /// and `solo` encoded so strut's UI reads them back exactly; a home
+    /// server opens none.
+    @Test func aWorkspacesPinnedAppsOpenAloneOnPeelsOwnStrut() async throws {
+        let strut = try await HTTPStub { _, request in
+            guard path(request) == "/peers/acme/apps", request.contains("Authorization: Bearer k+1") else { return (404, "{}") }
+            return (200, #"""
+                {"apps":[{"name":"hive/board","title":"Board\n","pinned":true,"description":"The team's board"},
+                         {"name":"scratch","title":"Scratch"},
+                         {"name":"x@v2","title":"Pinned to a version","pinned":true},
+                         {"name":"plain","title":"","pinned":true}]}
+                """#)
+        }
+        defer { strut.stop() }
+        let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k+1"))
+        let apps = try await AutomationsClient(server: server).pinnedApps(of: "acme")
+        #expect(apps == [WorkspaceApp(peer: "acme", name: "hive/board", title: "Board", about: "The team's board"),
+                         WorkspaceApp(peer: "acme", name: "plain", title: "plain", about: nil)])
+        let page = try #require(server.page(of: apps[0]))
+        #expect(page.path == "/" && server.serves(page))
+        // Encoded as strut's UI decodes it (`URLSearchParams`, where a bare `+` is a space).
+        #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+                == "key=k%2B1&app=%40acme%2Fhive%2Fboard&solo=1")
+        let home = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k", home: true))
+        #expect(home.page(of: apps[0]) == nil)
+    }
+
     static func link(hive: URL) throws -> HiveLink {
         let peers = try JSONDecoder().decode([HivePeer].self, from: Data("[\(peer("acme-hive", "Acme"))]".utf8))
         return HiveLink(hive: hive, credential: "hivedev_abc", deviceID: "dev-1", deviceName: "Mac", actor: "tom-cm1",

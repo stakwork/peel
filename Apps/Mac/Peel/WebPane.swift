@@ -74,7 +74,7 @@ final class WebPane: NSObject, Identifiable {
     /// Downloads in flight: where WebKit writes each, and the name the server gave.
     @ObservationIgnored private var downloads: [ObjectIdentifier: (file: URL, name: String)] = [:]
     /// When the page's web content process last ended under it.
-    @ObservationIgnored private var lastTermination: ContinuousClock.Instant?
+    @ObservationIgnored private var crashes = CrashReload()
     /// The HTML attachment on show (`openDocument`): Peel's copy, removed
     /// with the page, and the name the address field shows.
     @ObservationIgnored private var document: (file: URL, name: String)?
@@ -227,10 +227,7 @@ final class WebPane: NSObject, Identifiable {
             configuration.websiteDataStore = storeID(create: true).map(WKWebsiteDataStore.init) ?? .nonPersistent()
         }
         // No message handlers, no user scripts: the controller holds at most the rules.
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        // As in Safari: video plays, but nothing starts making sound until clicked.
-        configuration.mediaTypesRequiringUserActionForPlayback = .audio
-        disableWebRTC(configuration.preferences)
+        Self.limit(configuration)
         let view = PaneWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = self
         view.uiDelegate = self
@@ -249,6 +246,15 @@ final class WebPane: NSObject, Identifiable {
         return view
     }
 
+    /// What every web view of Peel's may do, the pane's and a workspace's
+    /// app's (`WorkspaceAppView`): no window without a click, no sound
+    /// until clicked (video plays, as in Safari), and no WebRTC.
+    static func limit(_ configuration: WKWebViewConfiguration) {
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.mediaTypesRequiringUserActionForPlayback = .audio
+        disableWebRTC(configuration.preferences)
+    }
+
     /// Off: a page's own WebRTC (an ICE-candidate-gathering script for
     /// something like a Spaces embed, or a local-IP-leak fingerprinting
     /// trick) is what prompts macOS for local network access here, on
@@ -262,7 +268,7 @@ final class WebPane: NSObject, Identifiable {
     /// WebPreferences' own, reached through WKPreferences' KVC bridge to
     /// it, guarded by `responds(to:)` so a future WebKit without it just
     /// leaves WebRTC on instead of crashing.
-    private func disableWebRTC(_ preferences: WKPreferences) {
+    private static func disableWebRTC(_ preferences: WKPreferences) {
         let setter = Selector(("setPeerConnectionEnabled:"))
         guard preferences.responds(to: setter) else { return }
         preferences.setValue(false, forKey: "peerConnectionEnabled")
@@ -358,8 +364,13 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
     /// A web link clicked in an HTML attachment, through the message links'
     /// router once WebKit has its answer, since the page it leaves is ended.
     private func follow(_ url: URL) {
+        Self.follow(url, with: linkAction)
+    }
+
+    /// A web address through `open` (a pane's `linkAction`) once WebKit has
+    /// its answer; anything `WebPage.address` refuses goes nowhere.
+    static func follow(_ url: URL, with open: OpenURLAction) {
         guard WebPage.address(url) != nil else { return }
-        let open = linkAction
         Task { @MainActor in open(url) }
     }
 
@@ -397,9 +408,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
     /// again within a minute is left on its problem rather than reloaded
     /// for as long as the pane is open.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        let now = ContinuousClock.now
-        defer { lastTermination = now }
-        if let last = lastTermination, now - last < .seconds(60) {
+        guard crashes.again() else {
             problem = Problem(url: document == nil ? webView.url ?? page.url : nil, message: "The page stopped working.")
             return
         }
@@ -489,6 +498,20 @@ extension WebPane: WKDownloadDelegate {
 
 /// The pane's web view: ⌘W closes the pane, not the window, while the page
 /// has the keyboard.
+/// A page whose web content process ended under it is loaded again, once:
+/// one that brings its process down again within a minute is not (the pane,
+/// a workspace's app).
+struct CrashReload {
+    private var last: ContinuousClock.Instant?
+
+    /// Whether to load the page again after this end.
+    mutating func again() -> Bool {
+        let now = ContinuousClock.now
+        defer { last = now }
+        return last.map { now - $0 >= .seconds(60) } ?? true
+    }
+}
+
 final class PaneWebView: WKWebView {
     var close: (() -> Void)?
 

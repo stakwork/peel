@@ -1539,6 +1539,43 @@ proposals), P3's Connections screen, and runner #389 (proposal cards) and
   hidden from the card, one bad id stopping the sync: all fixed). Not
   yet against Hive itself (it needs Tom's approval on hive.sphinx.chat).
 
+### Built: an automation can do anything you can (2026-10-23)
+
+From Tom's user model (`docs/connectors-and-authoring.md`, section 7):
+an automation is a prompt on a schedule, and a workflow is a tool.
+
+- **Runs start jobs.** `peel-automation-run`'s agent gets `job/start`
+  beside memory, the reads and `sphinx/post`. Work its tools cannot do
+  (the web, a page, a workflow by name) is a job's; the run then says
+  `NOTHING_TO_REPORT` and the job's result reaches the DM by itself: the
+  bridge sends the end of a job no DM started (`turns.rs`, `unasked`).
+  The run's prompt forbids a builder job. Only `job/start` is granted, not
+  the other `job/*`: a run is one shot.
+- **The orchestrator never declines a schedule for want of a tool.** Its
+  automations paragraph says a run can do what a turn can, a built
+  workflow is scheduled as an automation whose prompt runs it, and
+  building is never an automation's.
+- **The builder no longer schedules.** `meta/set-automation` leaves
+  `builder.approve`, so strut refuses it (it runs only as an accepted
+  proposal): every schedule is an automation, on one card and in one list.
+- **Next PR (security review):** a run reads other people's messages
+  and can now start a job with the web and a shell, so text injected in a
+  tribe could reach a job with nobody watching. The same path exists in
+  the person's own turns, so the fix sits between the agent and its jobs:
+  once a turn or run has read other people's messages, starting a job
+  needs the person's card (a Peel step in front of `job/start`, asking
+  the Mac, which knows which runs it answered reads for), and a run's
+  `job/start` is pinned to `workflow: job` in code, not only the prompt.
+- **Not changed:** automations still run on `peel-automation-run`, not on
+  strut's `orchestrator`. Firing the orchestrator directly would lose the
+  run's name, `since` and the post grant, and need strut and runner work;
+  the run already has the same model, memory and now jobs.
+- **Checked.** `Journeys.Orchestrator.anAutomationStartsAJobWhoseResultReachesTheDM`:
+  an automation's run starts a job, says nothing, and the job's result is
+  the agent's one message in the DM. `anAutomationPostsAtItsMinuteAndReportsToTheDM`
+  is flaky on main as well (2 of 4 runs there failed: once at Bob reading
+  the tribe post, which the Mac reported sent, once pairing contacts).
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

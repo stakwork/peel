@@ -22,6 +22,9 @@ struct OrchestratorTests {
         #expect(!tools.contains("sphinx/approve"))
         #expect(config["orchestrator"]?["model"] == .null, "the connected model runs it")
         #expect(config["orchestrator"]?["system"]?.string == Orchestrator.section)
+        // The job card rule: after a read of other people's words, a job start is a card.
+        #expect(config["orchestrator"]?["approveAfterUntrusted"] == ["job/start", "job/continue"])
+        #expect(Orchestrator.automationRunTools.contains(StartJobStep.type) && !Orchestrator.automationRunTools.contains("job/start"))
         #expect(config["automation"] == ["workflow": "peel-automation-run", "approve": "sphinx/approve", "grants": true])
         // A call to an org's assistant waits on a card; paired, strut's section for the person's orgs follows Peel's.
         #expect(config["orchestrator"]?["approve"] == ["strut/run-workflow"] && config["job"]?["approve"] == ["strut/run-workflow"])
@@ -112,7 +115,8 @@ struct OrchestratorTests {
         #expect(run["params"]?["tools"]?.array?.contains("sphinx/unseen") == true && run["steps"]?.array?.count == 3, "\(run)")
 
         let read = try await runStep("sphinx/unseen", [:], on: server)
-        #expect(read["status"] == "success" && read["output"] == "3 unseen in Hive", "\(read)")
+        // Other people's words, marked untrusted (the marker rides beside the object, unseen).
+        #expect(read["status"] == "success" && read["output"] == ["text": "3 unseen in Hive"], "\(read)")
         let asked = try #require(bridge.requests.last)
         #expect(asked.contains("authorization: Bearer bridge-token") || asked.contains("Authorization: Bearer bridge-token"))
         let body = try AgentKit.JSONValue(parsing: String(asked[asked.range(of: "\r\n\r\n")!.upperBound...]))

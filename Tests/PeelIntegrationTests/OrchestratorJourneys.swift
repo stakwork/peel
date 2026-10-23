@@ -469,19 +469,27 @@ extension Journeys {
         /// "automations wake the agent"): its run starts a job, which has the
         /// web, and says nothing itself; the job's result reaches Alice's DM
         /// on its own, as the bridge sends the end of a job no DM started.
-        @Test(.enabled(if: staged))
+        /// The job card rule (docs/local-coding-agents.md): a run that read
+        /// Alice's chats first (other people's words) only proposes the job,
+        /// which waits for her card and does not run.
+        @Test(.enabled(if: staged), arguments: [false, true])
         @MainActor
-        func anAutomationStartsAJobWhoseResultReachesTheDM() async throws {
+        func anAutomationStartsAJobWhoseResultReachesTheDM(readsFirst: Bool) async throws {
             let (alice, other) = try await Journeys.Payments.pair()
             let found = "Top 3 padel videos this week: \(UUID().uuidString.prefix(6))"
+            let jobs = OSAllocatedUnfairLock(initialState: 0)
             let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
                 let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
-                let answered = body.contains(#""type":"tool_result""#)
+                let results = body.components(separatedBy: #""type":"tool_result""#).count - 1
                 if body.contains("scheduled automation") {
-                    return answered ? Self.toolUse("final_answer", ["text": PeelAgent.Orchestrator.nothingToReport])
-                        : Self.toolUse("job_start", ["prompt": "Find the top 3 YouTube videos about padel", "title": "Padel videos"])
+                    switch results - (readsFirst ? 1 : 0) {
+                    case -1: return Self.toolUse("sphinx_unseen", [:])
+                    case 0: return Self.toolUse("peel_start_job", ["prompt": "Find the top 3 YouTube videos about padel", "title": "Padel videos"])
+                    default: return Self.toolUse("final_answer", ["text": PeelAgent.Orchestrator.nothingToReport])
+                    }
                 }
                 // The job.
+                jobs.withLock { $0 += 1 }
                 return Self.toolUse("final_answer", ["text": found, "artifacts": []])
             }
             let root = FileManager.default.temporaryDirectory.appending(path: "peel-automation-job-journey-\(UUID().uuidString)")
@@ -512,6 +520,19 @@ extension Journeys {
                 input: AutomationsClient.input(name: "Padel videos", prompt: "Send me the top 3 YouTube videos about padel"),
                 what: "the automation")["automation"] ?? .null))
             try await client.runNow(padel)
+            if readsFirst {
+                let pending = try await eventually("the job's proposal", timeout: .seconds(90)) {
+                    let listed = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
+                    return listed.isEmpty ? nil : listed
+                }
+                #expect(pending.count == 1 && pending.first?["step"] == .string(StartJobStep.type), "\(pending)")
+                #expect(pending.first?["input"]?["workflow"] == nil && pending.first?["input"]?["prompt"] != nil, "\(pending)")
+                try await eventually("the run to end", timeout: .seconds(60)) { try await client.runs(of: padel).first { $0.status != "running" } }
+                #expect(jobs.withLock { $0 } == 0, "no job ran")
+                #expect(try !alice.messages(in: agent).contains { $0.content == found })
+                for person in [alice, other] { await person.close() }
+                return
+            }
             try await eventually("the job's result in the DM", timeout: .seconds(90)) {
                 try alice.messages(in: agent).contains { !$0.fromMe && $0.content == found }
             }

@@ -1558,14 +1558,17 @@ an automation is a prompt on a schedule, and a workflow is a tool.
 - **The builder no longer schedules.** `meta/set-automation` leaves
   `builder.approve`, so strut refuses it (it runs only as an accepted
   proposal): every schedule is an automation, on one card and in one list.
-- **Next PR (security review):** a run reads other people's messages
-  and can now start a job with the web and a shell, so text injected in a
-  tribe could reach a job with nobody watching. The same path exists in
-  the person's own turns, so the fix sits between the agent and its jobs:
-  once a turn or run has read other people's messages, starting a job
-  needs the person's card (a Peel step in front of `job/start`, asking
-  the Mac, which knows which runs it answered reads for), and a run's
-  `job/start` is pinned to `workflow: job` in code, not only the prompt.
+- **Built (the job card rule, 2026-10-23):** the `sphinx/*` reads mark
+  their answers untrusted (strut#309's `withUntrusted`; the model now sees
+  `{ text }`). The orchestrator lists `job/start` and `job/continue` as
+  `approveAfterUntrusted`, sticky for the DM's session until `/new`; an
+  automation's run starts jobs through `peel/start-job` (strut's
+  `job/start` with `workflow: job` fixed, so never the builder), gated the
+  same way. A gated start is a proposal: a card on the Mac (runner R1).
+  Checked: `anAutomationStartsAJobWhoseResultReachesTheDM(readsFirst:)`,
+  where a run that read the chats first leaves one pending proposal and no
+  job. Not yet: a read answered late reaches the next turn as a message,
+  which the runner does not mark `context.untrusted`; a runner follow-up.
 - **Not changed:** automations still run on `peel-automation-run`, not on
   strut's `orchestrator`. Firing the orchestrator directly would lose the
   run's name, `since` and the post grant, and need strut and runner work;

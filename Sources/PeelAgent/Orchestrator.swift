@@ -30,9 +30,16 @@ public enum Orchestrator {
 
     /// What an automation's run is granted: memory, the reads, posting as
     /// the user (`DeviceStep.post`), which the Mac allows only to the chats
-    /// of the automation's send grant, and starting a job (strut's
-    /// `job/start`) for the web, files or a workflow; no schedules.
-    static let automationRunTools = memoryTools + DeviceStep.reads.map(\.type) + [DeviceStep.post.type, "job/start"]
+    /// of the automation's send grant, and starting a plain job
+    /// (`StartJobStep`, strut's `job/start` with `workflow: job` fixed) for
+    /// the web, files or a workflow; no schedules, never the builder.
+    static let automationRunTools = memoryTools + DeviceStep.reads.map(\.type) + [DeviceStep.post.type, StartJobStep.type]
+
+    /// The job card rule (docs/local-coding-agents.md): once a thread has
+    /// read other people's words (the `sphinx/*` reads mark their answers
+    /// untrusted), each of these is a proposal, a card on the Mac, before it
+    /// starts. Sticky for the DM's session until `/new`.
+    static let jobTools = ["job/start", "job/continue"]
 
     // MARK: The prompt
 
@@ -143,12 +150,13 @@ public enum Orchestrator {
     /// sends the end of a job no DM started), so the run then says nothing.
     static let jobsPrompt = """
         Anything to be found out or made that your other tools cannot do (searching the web, reading a page, \
-        running a workflow by name) is a job's: start one with job/start, with the whole task in its prompt \
+        running a workflow by name) is a job's: start one with \(StartJobStep.type), with the whole task in its prompt \
         (and the last run's time, written out, when the task says "since the last run"), the automation's \
         name as its title, and a line asking it to begin its answer with that name in bold. Then reply with \
-        only \(nothingToReport): the job's result reaches the person by itself when it ends. If job/start \
-        fails, reply with what you could not start and why instead. Never start a job with workflow builder: \
-        building or changing a workflow waits for the person.
+        only \(nothingToReport): the job's result reaches the person by itself when it ends; if the run has read \
+        their chats, the job first waits for them to allow it on their Mac, and the same holds. If \
+        \(StartJobStep.type) fails, reply with what you could not start and why instead. Building or changing a \
+        workflow is never a run's: it waits for the person.
         """
 
     // MARK: The host delta
@@ -192,7 +200,8 @@ public enum Orchestrator {
         let approve: AgentKit.JSONValue = [.string(DeviceActions.peerTool)]
         let config: AgentKit.JSONValue = [
             "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
-                             "system": .string(system), "model": .null, "approve": approve],
+                             "system": .string(system), "model": .null, "approve": approve,
+                             "approveAfterUntrusted": .array(jobTools.map(AgentKit.JSONValue.string))],
             "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
             "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false, "reach": builderReach],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
@@ -233,6 +242,7 @@ public enum Orchestrator {
               prompt: \(yamlString(runPrompt))
               toolFilter: [none]
               agentTools: "{{ params.tools }}"
+              approveAfterUntrusted: \(AgentKit.JSONValue.array([.string(StartJobStep.type)]).jsonString)
               maxSteps: 30
               schema:
                 type: object
@@ -436,13 +446,19 @@ struct DeviceStep: Sendable {
                 if (a.status === "done") return { approved: true };
                     return { approved: false, status: a.status, error: a.error ?? "The user did not allow it." };
                 """
+            : Self.reads.contains(where: { $0.type == type })
+            // Other people's words: the thread's job starts ask first from here on.
+            ? """
+                if (a.status === "done") return withUntrusted({ text: typeof a.result?.text === "string" ? a.result.text : JSON.stringify(a.result ?? null) });
+                    return { status: a.status, error: a.error ?? "Their Mac did not do it." };
+                """
             : """
                 if (a.status === "done") return typeof a.result?.text === "string" ? a.result.text : JSON.stringify(a.result ?? null);
                     return { status: a.status, error: a.error ?? "Their Mac did not do it." };
                 """
         return """
             import { createHash } from "node:crypto";
-            import { z, defineStep, withStop } from "strut";
+            import { z, defineStep, withStop, withUntrusted } from "strut";
 
             // Peel's device request \(kind) (docs/agent-on-strut.md, "Request types"), published by Peel.
             // Sealed: the meta surface (a job's meta/* tools) never runs it.
@@ -485,6 +501,40 @@ struct DeviceStep: Sendable {
     }
 }
 
+/// An automation run's way to start a job: strut's `job/start` with
+/// `workflow: job` fixed, so a run never starts the builder whatever its
+/// model is told. Gated like `job/start` once the run has read the person's
+/// chats (`Orchestrator.automationRunYAML`'s `approveAfterUntrusted`).
+enum StartJobStep {
+    static let type = "peel/start-job"
+    static let description = "Start a job for work your other tools cannot do (the web, a page, a workflow by name): { prompt, title }. It runs on its own; its result reaches the person when it ends."
+
+    static var source: String {
+        """
+        import { z, defineStep } from "strut";
+
+        // Peel's: strut's job/start for an automation's run, a plain job only. Published by Peel.
+        // Sealed: the meta surface (a job's meta/* tools) never runs it.
+        export default defineStep({
+          type: \(Orchestrator.yamlString(type)),
+          sealed: true,
+          description: \(Orchestrator.yamlString(description)),
+          input: z.object({
+            prompt: z.string().min(1).describe("The whole task: the job sees nothing else."),
+            title: z.string().min(1).max(120).describe("A short title: the automation's name."),
+          }),
+          output: z.any(),
+          async run(cfg, ctx) {
+            const start = ctx.registry?.["job/start"];
+            if (!start) throw new Error("\(type) needs strut's job/start");
+            return start.run(start.input.parse({ prompt: cfg.prompt, title: cfg.title, workflow: "job" }), ctx);
+          },
+        });
+
+        """
+    }
+}
+
 extension AutomationsClient {
     /// What the orchestrator's turns need from strut beyond its seed, before
     /// the bridge starts: the `sphinx/*` steps (one version per content, so
@@ -498,6 +548,9 @@ extension AutomationsClient {
                                                  "description": .string(step.description)],
                                what: "the \(step.type) step")
         }
+        _ = try await call("POST", "steps", ["name": .string(StartJobStep.type), "code": .string(StartJobStep.source),
+                                             "description": .string(StartJobStep.description)],
+                           what: "the \(StartJobStep.type) step")
         try await publish(Orchestrator.automationWorkflow, yaml: Orchestrator.automationRunYAML,
                           description: "One of Peel's automations, run in strut with nobody watching: memory and the reads on the Mac.")
     }

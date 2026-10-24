@@ -418,6 +418,8 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Your assistant reads your calendar when you ask it, and adds or changes events only after you allow each one.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Your assistant reads your reminders when you ask it, and adds or completes one only after you allow it.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -453,6 +455,8 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Your assistant reads your calendar when you ask it, and adds or changes events only after you allow each one.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Your assistant reads your reminders when you ask it, and adds or completes one only after you allow it.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

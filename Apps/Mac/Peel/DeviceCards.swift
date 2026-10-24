@@ -24,8 +24,10 @@ final class DeviceCards {
     func handler(for engine: Engine, agent: AgentSession) -> DeviceRequestHandler {
         store = SendGrants(beside: agent.rules)
         readGrants()
+        // Offscreen, a stand-in: a check never asks macOS or touches the person's Calendar.
         let actions = DeviceActions(
             engine: engine, rules: agent.rules,
+            calendar: Offscreen.isOn ? OffscreenAgent.calendar() : EventKitCalendar(),
             peerRequest: { [weak self] id in
                 guard let server = await self?.model?.memoryServer else { throw PeelError("Peel's strut is not running.") }
                 return try await AutomationsClient(server: server).peerRequest(proposal: id)

@@ -1,6 +1,7 @@
 #if os(macOS)
 import AgentKit
 import Foundation
+import PeelAgent
 import PeelUI
 import Synchronization
 
@@ -9,6 +10,14 @@ import Synchronization
 /// (never the profile's `agent.sqlite`), and its key is a placeholder no
 /// provider would take.
 @MainActor enum OffscreenAgent {
+    /// The calendar a check's device requests reach: in memory, holding one
+    /// event, "Dentist" next Thursday from 14:00 to 15:00.
+    static func calendar() -> StandInCalendar {
+        let thursday = Calendar.current.nextDate(after: .now, matching: DateComponents(hour: 14, weekday: 5), matchingPolicy: .nextTime) ?? .now
+        return StandInCalendar(events: [CalendarEvent(id: "event-dentist", title: "Dentist", start: thursday,
+                                                      end: thursday.addingTimeInterval(3600), calendar: "Calendar")])
+    }
+
     /// A new agent session in place of the account's, holding `turns`
     /// questions and their answers: each answer a different length, every
     /// fourth after a tool row.

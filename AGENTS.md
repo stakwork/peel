@@ -338,6 +338,8 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
   restart Peel's strut with the new grants; Gmail to come; below them
+  `CodingAgentsSection` with `AppModel+Coding`, the coding agents the
+  login shell finds and the folders they may work in, and
   `StadeumSection`, the Stadeum workspaces paired as peers),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
@@ -654,6 +656,12 @@ is a short plan. Update the status and the journal when you finish something.
     the tools and which ask first), remove (with its key); and `MCPGrants`,
     which agents (the assistant, its jobs) reach each server, written into
     the host delta as `mcp/<server>/*`
+  - `CodingAgents.swift` — local coding agents (docs/local-coding-agents.md):
+    `CodingSetup` (folders by name, the login shell's `PATH`, the agents
+    found), kept beside strut's data as `coding.json` and written into the
+    host delta as `job.folders` and `job.path` with Peel's section; and
+    `CodingAgents.find`, Claude Code, Codex and goose looked for through
+    the login shell
   - `Hive.swift` — Hive's device flow for a strut desktop app
     (`HiveClient`: start, poll, renew), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database), strut's

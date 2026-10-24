@@ -184,21 +184,50 @@ public enum Orchestrator {
     /// approval step.
     /// `grants`: the MCP servers each agent reaches (Connections), all of
     /// their tools; strut asks first for any not read-only.
-    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil) throws -> Data {
-        let system = [section, personal].compactMap { $0 }.joined(separator: "\n\n")
+    /// `coding`: the folders and coding agents (Coding agents): the job
+    /// launcher's `folders` and `path`, and a section saying what there is.
+    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil, coding: CodingSetup = CodingSetup()) throws -> Data {
+        let system = [section, personal, coding.usable ? codingPrompt(coding) : nil].compactMap { $0 }.joined(separator: "\n\n")
         // A call to an org's assistant (a Stadeum workspace paired as a peer) asks the person first, from
         // the orchestrator or a job it starts: a card on the Mac that names the org and shows the message
         // (`PeerRequest`). strut grants `strut/run-workflow` to both, and since strut#294 no other route reaches it.
         let approve: AgentKit.JSONValue = [.string(DeviceActions.peerTool)]
+        var job: [String: AgentKit.JSONValue] = [
+            "tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve,
+        ]
+        // The folders a local coding agent may work in, by name, and the login shell's PATH it runs with.
+        if coding.usable {
+            job["folders"] = .object(coding.folders.mapValues(AgentKit.JSONValue.string))
+            if let path = coding.path { job["path"] = .string(path) }
+        }
         let config: AgentKit.JSONValue = [
             "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
                              "system": .string(system), "model": .null, "approve": approve],
-            "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
+            "job": .object(job),
             "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false, "reach": builderReach],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]
         return Data(config.jsonString.utf8)
+    }
+
+    /// What the orchestrator is told about the coding agents on this Mac
+    /// and the folders they may work in (Coding agents): strut's
+    /// `job/start { agent, mode, folder }`.
+    static func codingPrompt(_ coding: CodingSetup) -> String {
+        let agents = coding.agents.map { "\(CodingAgents.title($0)) (\($0))" }.joined(separator: ", ")
+        let folders = coding.folders.keys.sorted().map { "\($0) (\(coding.folders[$0]!))" }.joined(separator: ", ")
+        let preferred = coding.agents.contains("claude") ? "claude" : coding.agents[0]
+        return """
+            Coding agents on their Mac: \(agents). Folders they may work in: \(folders). When the user asks for work \
+            on code in one of these folders (fix a bug, add or change something, look into how something works), \
+            start a job with job/start and agent (the one they name, else \(preferred)), folder (by its name), and \
+            mode: plan when they say look, explain or don't change anything; edit otherwise; auto only when they \
+            say it may run commands or tests. Put everything they said in the job's prompt, word for word where it \
+            matters (the bug, the steps, the file). The job works on a branch of its own, never on their open \
+            checkout; its reply and the files it changed reach them when it ends, and job/continue sends it their \
+            next message ("now add a test").
+            """
     }
 
     // MARK: peel-automation-run

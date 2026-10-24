@@ -70,6 +70,8 @@ final class MacAgent: AgentHost {
     let deviceCards = DeviceCards()
     /// Account › Connections (`AppModel+Connections`).
     let connections = ConnectionsState()
+    /// Its coding agents and their folders (`AppModel+Coding`).
+    let coding = CodingState()
     /// The person's Hive workspaces, paired as peers (`AppModel+Hive`).
     let hive = HiveState()
 

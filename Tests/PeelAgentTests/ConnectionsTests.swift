@@ -85,4 +85,47 @@ struct ConnectionsTests {
         try await client.addMCPServer(name: "gone", url: URL(string: "http://127.0.0.1:9/mcp")!, key: nil)
         #expect(try await client.testMCPServer("gone").error?.isEmpty == false)
     }
+
+    /// Coding agents (docs/local-coding-agents.md): folders and the login
+    /// shell's PATH reach the job launcher, and the assistant is told of
+    /// them, only once there is a folder and an agent to work in it.
+    @Test func codingAgentsReachTheJobAndTheAssistantOnlyWhenUsable() throws {
+        let setup = CodingSetup(folders: ["peel": "/Users/t/Documents/peel"], path: "/opt/homebrew/bin:/usr/bin", agents: ["goose", "claude"])
+        let config = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(coding: setup), as: UTF8.self))
+        #expect(config["job"]?["folders"] == ["peel": "/Users/t/Documents/peel"])
+        #expect(config["job"]?["path"] == "/opt/homebrew/bin:/usr/bin")
+        let system = config["orchestrator"]?["system"]?.string ?? ""
+        #expect(system.contains("goose (goose), Claude Code (claude)") && system.contains("peel (/Users/t/Documents/peel)"))
+        #expect(system.contains("else claude"), "Claude Code first when it is there")
+        for unusable in [CodingSetup(folders: ["peel": "/p"], path: "/usr/bin"), CodingSetup(path: "/usr/bin", agents: ["goose"])] {
+            let none = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(coding: unusable), as: UTF8.self))
+            #expect(none["job"]?["folders"] == nil && none["job"]?["path"] == nil)
+            #expect(none["orchestrator"]?["system"]?.string?.contains("Coding agents") == false)
+        }
+    }
+
+    /// A folder's name is one strut takes as an id (its host config refuses
+    /// any other, and would not start): lower case, no spaces, unique.
+    @Test func aFolderIsNamedAsStrutTakesNames() {
+        var setup = CodingSetup()
+        #expect(setup.name(for: URL(filePath: "/Users/t/Documents/My Peel App")) == "my-peel-app")
+        setup.folders["peel"] = "/Users/t/Documents/peel"
+        #expect(setup.name(for: URL(filePath: "/Users/t/Work/peel")) == "peel-2")
+        #expect(setup.name(for: URL(filePath: "/Users/t/Documents/peel")) == "peel", "the same folder keeps its name")
+        #expect(setup.name(for: URL(filePath: "/Users/t/…")) == "folder")
+        for name in ["my-peel-app", "peel-2", "folder"] {
+            #expect(name.range(of: #"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"#, options: .regularExpression) != nil, "\(name)")
+        }
+    }
+
+    /// The login shell's answer: its last PATH line (a profile may print
+    /// first), absolute folders only; an agent counts when all its commands are there.
+    @Test func theLoginShellsAnswerIsReadStrictly() {
+        let found = CodingAgents.parse("Welcome!\nPATH=/opt/homebrew/bin:/usr/bin\nHAS=npx\nHAS=claude\nHAS=goose\nHAS=codex-not\n")
+        #expect(found?.path == "/opt/homebrew/bin:/usr/bin")
+        #expect(found?.agents == ["claude", "goose"], "codex needs npx and codex")
+        #expect(CodingAgents.parse("PATH=bin:/usr/bin\n") == nil, "a relative folder")
+        #expect(CodingAgents.parse("HAS=goose\n") == nil)
+        #expect(CodingAgents.parse("PATH=/usr/bin\n")?.agents == [])
+    }
 }

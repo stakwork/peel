@@ -38,15 +38,33 @@ public struct DictationEdit: Sendable {
     public init?(value: String, typed: String, caret: Int) {
         let text = value as NSString
         let length = (typed as NSString).length
-        guard caret >= length, caret <= text.length,
-              text.substring(with: NSRange(location: caret - length, length: length)) == typed else { return nil }
-        prefix = text.substring(to: caret - length)
-        suffix = text.substring(from: caret)
-        prefixLength = caret - length
-        suffixLength = text.length - caret
+        guard let start = Self.start(of: typed, in: text, caret: caret) else { return nil }
+        prefix = text.substring(to: start)
+        suffix = text.substring(from: start + length)
+        prefixLength = start
+        suffixLength = text.length - start - length
         typedLength = length
         before = value
         latest = value
+    }
+
+    /// Where `typed` starts in the field: just before the caret, as Peel
+    /// left it; else the copy the caret is in (the user already clicked into
+    /// it to fix a word); else the last copy. Nil when it isn't there at all.
+    static func start(of typed: String, in text: NSString, caret: Int) -> Int? {
+        let length = (typed as NSString).length
+        guard length > 0, length <= text.length else { return nil }
+        if caret >= length, caret <= text.length,
+           text.substring(with: NSRange(location: caret - length, length: length)) == typed { return caret - length }
+        var found: [Int] = []
+        var from = 0
+        while from <= text.length - length {
+            let range = text.range(of: typed, range: NSRange(location: from, length: text.length - from))
+            guard range.location != NSNotFound else { break }
+            found.append(range.location)
+            from = range.location + 1
+        }
+        return found.first { $0 <= caret && caret <= $0 + length } ?? found.last
     }
 
     /// One reading of the field, `time` after the watch began.

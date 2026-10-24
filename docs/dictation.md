@@ -120,9 +120,12 @@ on this Mac, turns it into text: nothing leaves it.
     the ids to undo; the HUD says "Learned P8" with Undo for 5 s, and Undo
     is `dictation/undo`. "Learned" waits for a dictation under way and its
     insertion to finish. Only while Peel is unlocked (locking also drops
-    the vocabulary read for Settings and the window), never for Peel's own
-    fields, and only where Accessibility can read the field (not most
-    Electron apps; the rewrite still works there).
+    the vocabulary read for Settings and the window), in Peel's own fields
+    too (its text view read directly, not through Accessibility, which
+    would wait on Peel's own main thread), and elsewhere only where
+    Accessibility can read the field (not most Electron apps; the rewrite
+    still works there). Why a watch ended, or never started, is logged
+    (`log show --predicate 'subsystem == "dev.peel.mac"'`), never the text.
   - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
     word with how it is misheard (`memory/lexicon`), Remove
     (`dictation/remove`), a switch to leave it alone (`dictation/enable`),
@@ -217,6 +220,13 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-24: learning works in Peel's own fields: the watch reads Peel's
+  focused text view directly. Dictating into Peel never learned before,
+  since the watch skipped Peel to keep Accessibility off its own thread.
+  Each watch logs why it ended.
+  The dictated text is found in the field wherever the caret is (the user
+  may have clicked into it before the first reading), not only just
+  before it. Each learn logs what strut learned (counts, never words).
 - 2026-10-23: the HUD teaches hands-free: after 2 s of holding the key, a
   tip above the pill says "Press Space to keep going hands-free", until
   hands-free has been used once (`dictation.usedHandsFree`), and 5 times

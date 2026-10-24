@@ -296,7 +296,6 @@ public final class BundledStrut {
             "STRUT_CACHE_DIR": data.appending(path: "cache").path,
             "STRUT_HOST_CONFIG": hostConfig.path,
             "STRUT_EXIT_ON_STDIN_EOF": "1",
-            "STRUT_SEALED": Orchestrator.sealedSteps.joined(separator: ","),
             "STRUT_MCP_LOCAL": allowsLocalMCP ? "1" : "0",
             "OPENSSL_CONF": "/dev/null",
             "OPENSSL_MODULES": "/var/empty",

@@ -27,9 +27,8 @@ struct OrchestratorTests {
         #expect(config["orchestrator"]?["approve"] == ["strut/run-workflow"] && config["job"]?["approve"] == ["strut/run-workflow"])
         let paired = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(personal: "Its peers are orgs."), as: UTF8.self))
         #expect(paired["orchestrator"]?["system"]?.string == Orchestrator.section + "\n\nIts peers are orgs.")
-        // The builder only proposes what it writes or test-runs, no other strut may launch it, and what it publishes has no reach limit.
-        #expect(config["builder"] == ["approve": ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "meta/run-step", "app/publish"],
-                                       "peer": false])
+        // The builder works with no card and no reach limit; no other strut may launch it.
+        #expect(config["builder"] == ["peer": false])
         // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
         #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
         #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))
@@ -94,10 +93,9 @@ struct OrchestratorTests {
         #expect(Set(["job/start", "job/continue", "job/list", "job/get", "job/read"]).isSubset(of: tools), "\(tools)")
         #expect(orchestrator["params"]?["system"]?.string?.contains("You are Peel's agent") == true)
         #expect(orchestrator["params"]?["model"] == nil, "the connected model runs it")
-        // strut's builder, which the orchestrator starts with job/start: gated by Peel's list, closed to peers (strut drops `peer`).
+        // strut's builder, which the orchestrator starts with job/start: no card, closed to peers (strut drops `peer`).
         let builder = try await call("GET", "workflows/builder/flow", on: server)
-        let gated = Set(builder["params"]?["approve"]?.array?.compactMap(\.string) ?? [])
-        #expect(gated.isSuperset(of: Orchestrator.builderApprove) && builder["peer"] == nil, "\(builder)")
+        #expect(builder["params"]?["approve"]?.array?.isEmpty != false && builder["peer"] == nil, "\(builder)")
         // A job reaches a peer only on a card, as the orchestrator does.
         let job = try await call("GET", "workflows/job/flow", on: server)
         #expect(job["params"]?["approve"]?.array?.contains("strut/run-workflow") == true, "\(job)")

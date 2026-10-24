@@ -1381,7 +1381,8 @@ From the connectors and authoring design (stakwork/peel#342, `docs/connectors-an
 - **Still open (strut S1).** The builder's ungated tools still run code:
   `meta/run-step` runs any unsealed step (`exec` with `secretsEnv`), and
   `meta/run-workflow` the `job` workflow, as the orchestrator's own jobs
-  (bash) already could. Secret scoping (`builder.reach`) closes it.
+  (bash) already could. Secret scoping (`builder.reach`) would close it;
+  Peel sets none since 2026-10-24 (Connections, "What the AI publishes").
   `peer: false` only closes this builder to other struts; a build *on* a
   peer (`input.peer`) runs under that strut's approvals, so P8 keeps
   peers out of the builder's reach.
@@ -1429,11 +1430,21 @@ strut's MCP registry (strut#286). Built on P1 (the builder gated).
   (R1), and on Allow strut calls the server once, with the key. A server
   that marks a write read-only runs it unasked, by strut's design; the
   screen says the rule as it is.
-- **What the AI publishes.** `builder.reach` (strut#284) is set: a
-  workflow the builder writes may use the web tools and nothing else, no
-  step code, no process, no secret, so the keys in strut's store stay out
-  of what it publishes. A Workflows switch per connection widens it later.
-  The builder's own `meta/run-step` is outside reach (strut's S1 scope).
+- **What the AI publishes.** No `builder.reach` (strut#284), as on Hive's
+  strut (2026-10-24, Tom): once approved, a workflow the builder writes may
+  run any step, name any secret in strut's store (the model's, a
+  connection's, the bridge's) and call other struts, and the builder may
+  write step code. The approval cards (`builder.approve`) are the one gate,
+  and `meta/run-step` joins them: without a reach it is the one check on
+  the builder's test runs (strut `authoring.ts` `runStep`), so ungated it
+  would run `exec` with any secret, or an `agent` with its own grants, on
+  no card (security review, 2026-10-24).
+  `sphinx/*` stay sealed, and a workflow step calling `strut/run-workflow`
+  still waits on its card (strut's `peers.test.ts`). Known and accepted:
+  the card is still R1's wording and does not name the steps or secrets a
+  workflow uses (P2's card should); an AI workflow run in a job now keeps
+  that job's MCP servers (strut drops them only under a reach); no journey
+  yet publishes a workflow that uses a secret.
 - **This Mac only for tests.** A development profile's strut may register
   a server on this Mac (`STRUT_MCP_LOCAL=1`); the app account's may not.
 - **Checked.** `ConnectionsTests` on a staged strut against `MCPStub`

@@ -159,7 +159,7 @@ strut (section 5).
 |---|---|---|
 | The orchestrator (the DM) | `orchestrator.tools` in the host delta | "Assistant" |
 | Jobs (`job`) | `job.tools` in the host delta | "Jobs" |
-| Workflows the builder writes | The workflow's own `agentTools` and steps, checked at publish against `builder.reach` (new, section 7) | "Workflows" |
+| Workflows the builder writes | The workflow's own `agentTools` and steps, checked at publish against `builder.reach` (new, section 7; Peel sets none since 2026-10-24) | "Workflows" |
 | The builder itself | `builder.tools` (`meta/*`, `app/*` and graph and job reads); no connectors | None |
 
 A toggle rewrites `host-config.json`, which strut reads at boot, so a
@@ -508,7 +508,7 @@ words, with View YAML. P2 replaces R1's generic wording with that.
 | Results reach the DM | Nothing new: a workflow runs inside a job an automation's run starts, and the bridge sends that job's end to the DM (journey `anAutomationStartsAJobWhoseResultReachesTheDM`) |
 | Proposals as cards | The bridge relays `run.end.proposals` as `approve` requests and calls `decide` (runner, Evan's); Peel's card learns the proposal shape |
 | `sphinx/*` sealed | Already: Peel's device steps are `sealed: true` |
-| Secrets scoped | New in strut: `builder.reach { tools, builtins, secrets }` in the host delta. A publish whose closure names a step, built-in (`bash`, `exec`) or `secretsEnv` outside it is refused; at run time, steps published `ai` read only `reach.secrets`. Peel's default: connectors toggled for Workflows, `web_search`, `web_fetch`, no `bash`, no `exec`, and the secrets of those connectors. `PEEL_BRIDGE_*` and model keys are never in it |
+| Secrets scoped | New in strut: `builder.reach { tools, builtins, secrets }` in the host delta. A publish whose closure names a step, built-in (`bash`, `exec`) or `secretsEnv` outside it is refused; at run time, steps published `ai` read only `reach.secrets`. Peel's default: connectors toggled for Workflows, `web_search`, `web_fetch`, no `bash`, no `exec`, and the secrets of those connectors. `PEEL_BRIDGE_*` and model keys are never in it. Superseded 2026-10-24: Peel sets no reach, as on Hive; the publish card is the gate ([agent-on-strut.md](agent-on-strut.md), "What the AI publishes") |
 
 `reach` is the `secretsEnv` allowlist and the per-connector Workflows
 toggle in one list. The cheaper version is `STRUT_SEALED` globs (a deny

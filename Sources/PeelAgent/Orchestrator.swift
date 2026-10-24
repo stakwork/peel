@@ -160,14 +160,13 @@ public enum Orchestrator {
     /// `meta/set-automation` is left out, so strut refuses it: a workflow is
     /// scheduled by an automation whose prompt runs it, made by the
     /// orchestrator on one card, never by the builder.
-    static let builderApprove = ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish"]
-
-    /// What a workflow the builder writes may reach (strut #284): the web
-    /// tools and nothing else, no step code, no process, no secret, so the
-    /// keys in strut's store (a model's, a connected service's, the bridge's)
-    /// stay out of what the AI publishes. A Workflows switch per connection
-    /// widens it later (docs/connectors-and-authoring.md, section 6).
-    static let builderReach: AgentKit.JSONValue = ["tools": [], "builtins": ["web_search", "web_fetch"], "secrets": []]
+    /// No `builder.reach` (strut #284), as on Hive's strut: once approved, a
+    /// workflow the builder writes may run any step, name any secret in
+    /// strut's store and call other struts, and the builder may write step
+    /// code. These cards are the one gate on what it publishes. Without a
+    /// reach strut's `meta/run-step` runs any unsealed step (`exec` with any
+    /// secret), so a test run asks first too.
+    static let builderApprove = ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "meta/run-step", "app/publish"]
 
     /// Steps strut seals from its meta surface beside its own (`meta/*`,
     /// `STRUT_SEALED`), so `meta/run-step` never runs one of `builderApprove`
@@ -194,7 +193,7 @@ public enum Orchestrator {
             "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
                              "system": .string(system), "model": .null, "approve": approve],
             "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
-            "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false, "reach": builderReach],
+            "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]

@@ -203,7 +203,8 @@ extension Journeys {
         /// job, whose model writes it and calls `meta/publish-workflow`. Peel's
         /// delta has that step in the builder's `approve:`, so the call is a
         /// pending proposal and nothing is published until a person decides.
-        /// Running a gated step through `meta/run-step` instead is refused.
+        /// With no `builder.reach`, a test run through `meta/run-step` (here a
+        /// shell) is a proposal too: nothing runs until a person decides.
         @Test(.enabled(if: staged))
         @MainActor
         func aWorkflowTheAgentBuildsWaitsForApproval() async throws {
@@ -215,7 +216,7 @@ extension Journeys {
                 if body.contains("You are a workflow BUILDER") {
                     switch body.components(separatedBy: #""type":"tool_result""#).count - 1 {
                     case 0:
-                        return Self.toolUse("meta_run_step", ["type": "app/publish", "config": ["name": "hello-app", "path": "app"]])
+                        return Self.toolUse("meta_run_step", ["type": "exec", "config": ["command": "echo ran"]])
                     case 1:
                         return Self.toolUse("meta_publish_workflow", [
                             "name": workflow, "description": "Says hello",
@@ -255,16 +256,16 @@ extension Journeys {
             try await eventually("the agent's reply", timeout: .seconds(60)) {
                 try alice.messages(in: agent).contains { !$0.fromMe && $0.control == nil && $0.content == "Started building it." }
             }
-            let pending = try await eventually("the builder's proposal", timeout: .seconds(60)) {
+            let pending = try await eventually("the builder's proposals", timeout: .seconds(60)) {
                 let listed = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
-                return listed.isEmpty ? nil : listed
+                return listed.count < 2 ? nil : listed
             }
-            #expect(pending.count == 1 && pending.first?["step"] == "meta/publish-workflow", "\(pending)")
+            #expect(Set(pending.compactMap { $0["step"]?.string }) == ["meta/run-step", "meta/publish-workflow"] && pending.count == 2, "\(pending)")
             let ended = try await eventually("the builder's turn to end", timeout: .seconds(60)) {
                 model.requests.first { $0.contains("You are a workflow BUILDER") && $0.components(separatedBy: #""type":"tool_result""#).count == 3 }
             }
-            // The app's publish, run as a step around its proposal, was refused as sealed.
-            #expect(ended.contains(#"app/publish\\\" is sealed"#), "\(ended.suffix(2000))")
+            // The shell did not run: its test run waits on its card like the publish.
+            #expect(!ended.contains("ran\\n"), "\(ended.suffix(2000))")
             // Proposed, not published.
             let published = await #expect(throws: PeelError.self) { try await Self.strutCall("GET", "workflows/\(workflow)/flow", on: server) }
             #expect(published?.localizedDescription.contains(workflow) == true, "\(String(describing: published))")

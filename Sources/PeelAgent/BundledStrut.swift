@@ -28,11 +28,22 @@ public final class BundledStrut {
     /// since (kept while it was starting) needs one more start.
     public private(set) var launchedGrants: MCPGrants?
     private var launchedPerson: String?
-    /// Started with grants or a person that have changed since.
-    public var launchedStale: Bool { launchedGrants.map { $0 != grants || launchedPerson != person } ?? false }
+    private var launchedCoding: CodingSetup?
+    /// Started with grants, a person or coding agents that have changed since.
+    public var launchedStale: Bool {
+        launchedGrants.map { $0 != grants || launchedPerson != person || launchedCoding != coding } ?? false
+    }
 
     public func keep(_ grants: MCPGrants) throws {
         try grants.write(in: data)
+    }
+
+    /// The folders and coding agents (Coding agents), kept beside its data
+    /// and read into the host delta from its next start.
+    public var coding: CodingSetup { CodingSetup.read(in: data) }
+
+    public func keep(_ coding: CodingSetup) throws {
+        try coding.write(in: data)
     }
     /// Whether an MCP server on this Mac may be registered
     /// (`STRUT_MCP_LOCAL`): a development profile's test server only.
@@ -176,12 +187,13 @@ public final class BundledStrut {
         let secrets = try Self.secretKey(in: secretKey)
         // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
         let hostConfig = data.appending(path: "host-config.json")
-        let (grants, person) = (grants, person)
+        let (grants, person, coding) = (grants, person, coding)
         var personal: String?
         if let person { personal = await personalSection(for: person) }
-        try Orchestrator.hostConfig(grants: grants, personal: personal).write(to: hostConfig, options: .atomic)
+        try Orchestrator.hostConfig(grants: grants, personal: personal, coding: coding).write(to: hostConfig, options: .atomic)
         launchedGrants = grants
         launchedPerson = person
+        launchedCoding = coding
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)
         let process = Process()
         process.executableURL = folder.appending(path: "native/node")

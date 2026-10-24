@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #303 (strut/run-workflow and run/launch take input as a JSON object, JSON text parsed back), after #313, #314 (an org's file through the read-through, alone with ?artifact=…&solo=1) and #312.
-978a4e5efe765210e67b4d6eded5ba00d2582770
+# stakwork/strut main at the merge of #318 (dictation learns names that sound like real words, applied in context; each change judged alone in its sentence), after #316 (names respelled the user's way).
+8967a61c1af2e35de5a1c4db381b767bcb8cbff0

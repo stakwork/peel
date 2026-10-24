@@ -31,6 +31,9 @@ struct Sidebar: View {
                     VStack(alignment: .leading, spacing: Theme.Space.lg) {
                         VStack(spacing: 1) {
                             AutomationsLink()
+                            SidebarLink("Strut/Apps", to: .strutApps) {
+                                Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
+                            }
                             let unreadThreads = model.unreadThreads
                             SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
                                 Image(systemName: "bubble.left").font(.system(size: 13))
@@ -154,7 +157,7 @@ struct Sidebar: View {
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
         let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
-        return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
+        return [(.automations, "Automations"), (.strutApps, "Strut/Apps"), (.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
             + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
             + agent
             + sections.direct.map { (.chat($0.chat), $0.name) }

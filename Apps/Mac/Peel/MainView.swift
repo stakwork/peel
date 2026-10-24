@@ -194,6 +194,8 @@ struct Detail: View {
                 MentionsView()
             case .automations:
                 AutomationsView()
+            case .strutApps:
+                StrutAppsView()
             case .payments:
                 PaymentsView(model: model)
             case .account:

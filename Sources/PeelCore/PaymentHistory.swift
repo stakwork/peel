@@ -879,3 +879,15 @@ extension Storage {
         }
     }
 }
+
+/// Payments' history by calendar day, as the iPhone's list shows it: one
+/// section per day however the rows are ordered (a pending payment sorted
+/// apart from its day never makes a second section), newest day first,
+/// each day's rows in the order given.
+public enum PaymentDay {
+    public static func group(_ items: [PaymentItem], calendar: Calendar = .current) -> [(day: Date, items: [PaymentItem])] {
+        var byDay: [Date: [PaymentItem]] = [:]
+        for item in items { byDay[calendar.startOfDay(for: item.date), default: []].append(item) }
+        return byDay.keys.sorted(by: >).map { ($0, byDay[$0] ?? []) }
+    }
+}

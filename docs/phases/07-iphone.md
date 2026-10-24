@@ -529,6 +529,27 @@ Not applied, proposals for a later pass:
 - `scripts/build-ffi.sh` stages and rebuilds the xcframework on every run
   even when nothing changed: a stamp of its inputs would skip it.
 
+### F2c fixes (2026-10-14, `ios/fix-lock-payments`)
+
+From a review of #251 to #257:
+- **The PIN timeout** counts from the last touch, in front or away, as the
+  Mac's counts from the last key or click: `TouchWatch` notes each touch
+  in Peel's window and `lockWhenIdle` runs on the phone too. Peel in front
+  no longer counts as in use.
+- **The Payments tab's "+350"** shows what was received and not yet seen
+  until Payments is opened (it faded after a few seconds).
+- **Face ID's lockout** (too many failed tries) falls back to the PIN and
+  keeps Face ID on; only the system reporting other faces, or none, turns
+  it off (`BiometricEnrolment.outcome`, tested).
+- **Forget** tries every key, takes the words last and only once the keys
+  are gone, and is never stopped by Face ID's copy of the PIN: a Forget
+  that fails leaves an account that still opens and can be forgotten
+  again (tested).
+- **Send**: Cancel works while a check runs again (not once the payment is on its way); "You already
+  paid this invoice" links to that payment; the history's days are one
+  section each however the rows are ordered (`PaymentDay`, tested);
+  Payments' feed is made once, not on every render of the tab bar.
+
 ### G1: the bolt, contacts, invites and tribes (2026-10-14, `ios/g1-people`)
 
 **Built** (Tom's decisions, 2026-10-14; [../design/iphone.md](../design/iphone.md)

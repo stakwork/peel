@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #318 (dictation learns names that sound like real words, applied in context; each change judged alone in its sentence), after #316 (names respelled the user's way).
-8967a61c1af2e35de5a1c4db381b767bcb8cbff0
+# stakwork/strut main at the merge of #324, after #323 (Ladybug's vector + fts extensions pinned by sha256 and downloaded from strut's own release, so a package can no longer get ones its core cannot load — build 3's workspace that would not open), #315 (the package loads them into its addon before naming them) and #319 (dictation learns respelled and re-split names, and a name fixed twice).
+b0533d6698a3c06fe635022d718bca72b0c2712e

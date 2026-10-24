@@ -12,8 +12,8 @@ import PeelUI
 /// fails after `deadline` in all.
 ///
 /// The script is JSON lines, one step each (blank and `//` lines skipped):
-/// `{"select": "a chat's name"}` (or its chat id; sets the destination a click on its
-/// sidebar row sets), `{"open": "send-sats"}` (what a button with no
+/// `{"select": "a chat's name"}` (or its chat id, or a workspace's app as
+/// `@<workspace>/<name>`; sets the destination a click on its sidebar row sets), `{"open": "send-sats"}` (what a button with no
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
 /// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
 /// the notification for its newest message from someone else).
@@ -286,6 +286,12 @@ final class OffscreenDriver {
             Offscreen.log("drive: selected the agent chat")
             return
         }
+        if let model = model(), let app = model.hive.apps.first(where: { $0.id == name }) {
+            // A workspace's app in Apps, by `@<workspace>/<name>`.
+            model.destination = .app(peer: app.peer, name: app.name)
+            Offscreen.log("drive: selected the app \(app.id)")
+            return
+        }
         let (model, chat) = try chat(named: name)
         model.destination = .chat(chat)
         Offscreen.log("drive: selected \(chat.prefix(12))")
@@ -317,7 +323,7 @@ final class OffscreenDriver {
     }
 
     /// Account › Connections (`ConnectionsSection`), as its controls do:
-    /// `{"mcp": "open"}` scrolls Account to it; `{"mcp": "add", "name": …,
+    /// `{"mcp": "open"}` opens Account at it; `{"mcp": "add", "name": …,
     /// "url": …, "token": …}` is Add MCP server's form submitted;
     /// `test`, `remove` (confirmed) and `assistant-off` / `assistant-on`,
     /// `jobs-off` / `jobs-on` act on the server `name`.
@@ -326,8 +332,7 @@ final class OffscreenDriver {
         let name = step.name ?? ""
         switch what {
         case "open":
-            model.destination = .account
-            model.connections.opened += 1
+            model.openAccount(.connections)
         case "add":
             guard let url = step.url.flatMap(URL.init(string:)) else { throw Failure(description: "mcp add needs a url") }
             if let problem = await model.addMCPServer(name: name, url: url, key: step.token ?? "") {
@@ -364,7 +369,8 @@ final class OffscreenDriver {
     /// Brain's "Connect a home server…" (or Change); `brain-use`, Connect on
     /// a pairing link's callout there; `brain-leave`, its Use this Mac
     /// (asking first); `brain-this-mac`, Use this Mac once confirmed;
-    /// `brain-check`, Check; `connection`, the sidebar bolt’s status panel;
+    /// `brain-check`, Check; `account-<category>`, that row in Account's
+    /// categories (`account-dictation`); `connection`, the sidebar bolt’s status panel;
     /// `connection-check`, its check/reconnect action.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
@@ -379,6 +385,12 @@ final class OffscreenDriver {
         case "account":
             // What Account… (⌘,) sets; a menu's key equivalent does not reach an app never active.
             model.destination = .account
+        case let name where name.hasPrefix("account-"):
+            // A row in Account's categories: `account-dictation`.
+            guard let page = AccountPage.allCases.first(where: { "account-\($0)" == name }) else {
+                throw Failure(description: "no Account category \(name)")
+            }
+            model.openAccount(page)
         case "payments":
             // What the sidebar's Payments row sets.
             model.destination = .payments
@@ -413,7 +425,7 @@ final class OffscreenDriver {
             model.agentConnectFrom = model.agentChat == nil ? .chat : .dm
         case "agent-settings":
             // The agent chat header's gear.
-            model.openAgentSettings()
+            model.openAccount(.assistant)
         case "resume-history":
             // Resume on the sidebar's "Restore paused".
             Task { await model.resumeHistory() }
@@ -461,10 +473,9 @@ final class OffscreenDriver {
             // The agent chat's Set up (or Try again): its own account.
             guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }
             model.setUpAgent()
-        case "brain-form":
-            model.brainFormOpened += 1
-        case "brain-leave":
-            model.brainLeaveOpened += 1
+        case "brain-form", "brain-leave":
+            model.brainAsk = name == "brain-form" ? .form : .leave
+            model.openAccount(.brain)
         case "brain-use":
             guard let pairing = model.pairing else { throw Failure(description: "no pairing link waiting") }
             try model.setBrain(.homeServer(pairing))

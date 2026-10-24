@@ -97,8 +97,9 @@ is a short plan. Update the status and the journal when you finish something.
   - `ListBottom.swift` — a message list against its bottom, for its jump
     button's "N new messages": what counts as seen at the bottom and when
     the list leaves it, crossings judged against the last one taken (tested)
-  - `MentionQuery.swift` — the `@word` before a composer's cursor and who
-    it matches, for the Mac's composer and the iPhone's (tested)
+  - `MentionQuery.swift` — the `@word` before a composer's cursor (or a
+    `/` command opening the agent DM's message) and what it matches, by
+    any of an item's names, for the Mac's composer and the iPhone's (tested)
   - `Storage+Reads.swift` — reads and live queries: conversations, read
     states and the unread messages behind them, tribes and their senders,
     mentions, payments, the shared SQL
@@ -203,7 +204,10 @@ is a short plan. Update the status and the journal when you finish something.
     for `unsupported`, never a guess; `Message.agentTools` (a reply's tool
     rows, `metadata.peel.tools`, as `AgentToolLine`), `Message.agentJob`
     and `agentArtifacts` (a job's message: `metadata.peel.job`, `AgentJob`,
-    and what it points to, `AgentArtifact`, https links only) and `AgentDM` (your
+    and what it points to, `AgentArtifact`: an https link, or the handle
+    the bridge adds, `AgentArtifact.Handle`, a file strut serves or an app,
+    only in those shapes, with strut's peer id and app name rules that
+    `Hive` and `WorkspaceApp` use too) and `AgentDM` (your
     message the agent is still answering in its DM)
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device
@@ -337,7 +341,7 @@ is a short plan. Update the status and the journal when you finish something.
   `StadeumSection`, the Stadeum workspaces paired as peers),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
-  what the agent chat and Account › Peel agent show of its own account,
+  what the agent chat and Account › Assistant show of its own account,
   and `setUpAgent`, the person's Set up or Try again, the only start that
   pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
   `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`),
@@ -345,7 +349,16 @@ is a short plan. Update the status and the journal when you finish something.
   Hive's API (the user-facing name is Stadeum), the credential in
   `Profile.hive`, the orgs put on strut as peers when the bridge starts
   and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
-  development profile's defaults for a test Hive);
+  development profile's defaults for a test Hive; and `apps`, the apps the
+  workspaces pinned, `refreshWorkspaceApps`), `WorkspaceAppView` (one of
+  those apps alone in the detail column, the sidebar's Apps: Peel's own
+  strut's UI showing its page, in a `WKWebView` whose store keeps nothing
+  and which goes nowhere but that strut; `docs/agent-on-strut.md`, "Built:
+  a workspace's apps"), `StrutPage` (a page of Peel's own strut's UI shown
+  alone with strut's key in its address, and the rules the app view and the
+  web pane's deliverable both keep to: only that strut, its `srcdoc` and
+  blob frames, a link out only on the person's own click, which
+  `InputWebView` knows of; "Built: a deliverable opens beside the chat");
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -357,7 +370,7 @@ is a short plan. Update the status and the journal when you finish something.
   `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
-  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView`;
+  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories` stands in the chats' place, in `Sidebar`'s `SidebarColumn`, while it is open, under the sidebar's search, which then searches them);
   for the chat: `MessageViews` (`MessageList` with its pill and Page
   keys, `ListRowContent`, the rows), `MessageTable` (the Mac's list
   engine for the chat, a thread and the agent chat, over any `TableRow`: a non-flipped `NSTableView` of reused hosting
@@ -370,7 +383,8 @@ is a short plan. Update the status and the journal when you finish something.
   here), `LinkCards` (the tribe and contact link
   cards under a message, through the Join and Add forms), `ThreadViews`, `AttachmentViews`,
   `PaidAttachmentViews` (buying and pricing a paid attachment), `ComposerView`,
-  `ComposerField` (the message field: Return sends, `@` mentions),
+  `ComposerField` (the message field: Return sends, `@` mentions; in the
+  agent's DM `@` offers the Stadeum workspaces and `/` its commands),
   `ImageViewer` (images, and videos full size), `MediaViews` (the video
   tile, the audio card, `PlayerSurface` over AVKit's player view and
   `MediaPlayback`, the one player at a time), `PasteboardFiles` (drop and paste into the tray), `PaymentViews` (paying: `PayButton`, send sats with `TemplatePicker`, and `TemplateImage`, a payment template's picture; the Account's boost and confirmation rows, `presets`), `PaymentChatRows` (boosts, payment rows and requests in a chat), the Payments screen (`PaymentsView`, with `PaymentRows` for the list and a payment's detail, `ReceivePane`, `PayInvoicePane`, and the shared `PaymentPanes`), `QRCode` (the tile, the code, copying it as an image), and `PeelMenu`, the one menu used instead of native ones (entries, the
@@ -397,7 +411,7 @@ is a short plan. Update the status and the journal when you finish something.
   `AgentMemoryViews` (an earlier memory
   tool's opened row in sentences, and `MemoryPanelView`, one memory beside
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key
-  and model, kept and handed to strut) and `AgentSettings` (Account › Peel agent, with
+  and model, kept and handed to strut) and `AgentSettings` (Account › Assistant, with
   the "Always allowed" rules and Revoke, and the send grants ("May post
   as you") and Revoke; Account › Brain, `BrainSection`:
   This Mac or a home server's address and key, its status, and a pairing
@@ -451,7 +465,10 @@ is a short plan. Update the status and the journal when you finish something.
   `WebPane` (the web pane beside the chat: one `WKWebView` on the profile's
   own data store, its toolbar and address field, the routing of http and
   https links, Browser and a tribe's pages as More menu items, and
-  `WebPane.open(_ page:)`, the one way a tribe's page opens);
+  `WebPane.open(_ page:)`, the one way a tribe's page opens; and, besides a
+  page of the web and an HTML attachment, a deliverable from the agent's DM,
+  `open(_:)` with a `StrutPage`: a web view of its own whose store keeps
+  nothing, its name in the address field and never its address);
   `NotificationOffer` (the bar offering notifications);
   `Dictation/` (system-wide dictation, milestone 0, `docs/dictation.md`:
   `DictationController` the glue, `DictationHotkeyTap` the CGEventTap on
@@ -459,10 +476,18 @@ is a short plan. Update the status and the journal when you finish something.
   `DictationTextInserter` (the focused element, Accessibility or ⌘V with
   the clipboard put back), `DictationSpeech` (speech-to-text on the open
   account's own strut, told of it by `AppModel.strutChanged`, and its
-  model; `StrutTranscriber`), `DictationHistoryView` (the History window:
+  model; `StrutTranscriber`), `DictationLingo` (a thin client of strut's
+  dictation vocabulary, stakwork/strut#301: the lexicon for the window,
+  `dictation/correction`, `add`, `remove`, `undo`; strut does the judging),
+  `DictationEditWatch` (rereads the field after typing for the user's
+  correction, sent once it settles: `DictationEdit`, PeelUI),
+  `DictationModels` (the speech model and fixer picked on strut,
+  `dictation/models`, `use`, `remove-model`, read every second while one
+  downloads), `DictationVocabularyView` (the Vocabulary window),
+  `DictationHistoryView` (the History window:
   each dictation by day, with Copy and Clear History),
-  `DictationPermissions`, and the Account section, offer and menu item in
-  `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
+  `DictationPermissions`, and the Account section (with the Speech model
+  and Fixer pickers), offer and menu item in `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
@@ -644,6 +669,12 @@ is a short plan. Update the status and the journal when you finish something.
     (`HiveLink`, its peers and credential, never in a database), strut's
     peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
     for, read from strut's record (`peerRequest`)
+  - `WorkspaceApps.swift` — the apps a workspace pinned as tabs, read
+    through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), and
+    the address of one shown alone (`MemoryServer.page(of:)`: strut's UI
+    with its key as `?key=`, `&app=@<id>/<name>&solo=1`; Peel's own strut
+    only), and of a deliverable from the agent's DM the same way
+    (`page(showing:)`: `&artifact=<path>&solo=1` for a file, `&app=` for an app)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
     for the tests and journeys, the one staged for this Mac, `staged`, through
     `init(folder:data:)`):
@@ -776,8 +807,10 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store) and `ChatSearchTests` (Return before a search's
   matches waits for the first of them) and `DictationTests` (the hotkey's
-  state machine, the hotkey's encoding, the pre-roll ring, the WAV writer,
-  where dictated text goes)
+  state machine, the hotkey's encoding, the WAV writer,
+  where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
+  correction learned and the dictation models; `DictationEditTests`, when
+  an edit to dictated text is done)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
@@ -864,7 +897,9 @@ is a short plan. Update the status and the journal when you finish something.
   once per Mac, in `~/Library/Caches/dev.peel.build/strut` (or `$PEEL_STRUT_STAGE`),
   which every checkout's `bundle-app.sh` copies: strut's desktop package
   (`package-desktop.mjs`, with dictation's speech engine (sherpa) in
-  `native/`, Ladybug, its `vector` and `fts`
+  `native/` and its fixer (node-llama-cpp with Metal, from strut's own
+  `fixer/` install since strut#312) in
+  `native/llama/mac-arm64-metal`, Ladybug, its `vector` and `fts`
   extensions, the `memory/*` steps, and the `orchestrator` with the
   `automation/*` steps, which Peel's delta needs), built from the strut
   commit `Vendor/strut.lock` pins (git archive of that commit only, so the
@@ -888,8 +923,8 @@ is a short plan. Update the status and the journal when you finish something.
 - `scripts/sign-app.sh` — signs a bundle with the Apple Development identity,
   embeds a provisioning profile and the stub's entitlements (Keychain,
   microphone, camera), frameworks and the strut's Node and native
-  libraries first (Node with `scripts/strut-node.entitlements`:
-  allow-jit only) (see Signing)
+  libraries (every Mach-O in `native/` and its folders) first (Node with
+  `scripts/strut-node.entitlements`: allow-jit only) (see Signing)
 - `scripts/provision/` — an empty Xcode app whose only job is to make Xcode
   fetch a provisioning profile for Peel's bundle ID; `sign-app.sh` builds it
 - `scripts/embed-strut.sh` — the Mac app's build phase that puts the staged
@@ -982,6 +1017,7 @@ quitting before any window opens.
   {"open": "connection"}                  // the sidebar bolt’s status panel
   {"open": "connection-check"}            // its check/reconnect action
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
+  {"open": "account-dictation"}           // Account at one category, as its row opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
   {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu

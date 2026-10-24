@@ -549,8 +549,15 @@ so it needs the same chunking both ways (open question 4).
   capped at 2 KB, so the Mac draws today's
   quiet rows. Device requests show as their cards.
 - **Files and images.** A reply's or a job's `artifacts` come to the DM
-  as Sphinx attachments, uploaded by the bridge to the memes server as
-  Peel's own attachments are; a link artifact is a link in the text.
+  as words and a handle, never the file: where Peel's own strut shows it
+  (`path` for a file, `app` for an app, stakwork/sphinx#391), opened in
+  the web pane beside the chat ("Built: a deliverable opens beside the
+  chat", 2026-10-23); a link artifact is a link. Changed from the plan of
+  Sphinx attachments through the memes server, which the bridge never
+  built: the file stays on the strut that made it, an org's read through to it, a later turn's newer version is
+  what opens, and nothing but the handle crosses Sphinx. A device with no
+  strut of its own shows the words; fetching the file for it, on request,
+  through the memes server, is for later.
 - **A job's progress.** A job's result or question arrives as an agent
   message naming the job (`metadata.peel.job`). Your next message goes to
   the orchestrator, which continues the job when that is what you meant.
@@ -1604,6 +1611,207 @@ proposals), P3's Connections screen, and runner #389 (proposal cards) and
   orgs, a late poll undoing a newer pairing, top-level `params`/`version`/`job`
   hidden from the card, one bad id stopping the sync: all fixed). Not
   yet against Hive itself (it needs Tom's approval on hive.sphinx.chat).
+
+### Built: a workspace's apps (2026-10-23)
+
+An app a Stadeum workspace pinned as a tab opens in Peel, alone in the
+detail column, from a new Apps section at the foot of the sidebar. The
+app lives on the workspace's strut (its grants, runs and data); Peel's
+own strut is the window onto it (strut's plans/apps.md §7.4, strut#307
+and #308).
+
+- **The strut it needs.** strut#307 and #308, which the pin at #301's
+  merge (2d119a3) holds: the read-through serves a peer's apps and their
+  files, relays `POST /peers/<id>/mcp`, and a person token gets the app's
+  `step_run` alone on the org; `?app=@<id>/<name>&solo=1` shows the page
+  and nothing of strut's around it.
+- **The list.** `AutomationsClient.pinnedApps(of:)` reads `GET
+  /peers/<id>/apps` on Peel's own strut for each live workspace and keeps
+  those marked `pinned` (what strut says a host showing tabs takes), under
+  names strut gives. `refreshWorkspaceApps` runs after each `syncHive`
+  (the bridge starting, a pairing, a renewal or revoke; never waited for,
+  so a slow workspace cannot hold up the bridge) and every five minutes
+  while the sidebar shows, reading the workspaces at once, a newer read
+  replacing one under way. A workspace that cannot be read keeps what it
+  last listed, and the list stays while Peel's strut is away (starting
+  again, a memory move). Nothing on a home server, which holds none of
+  this Mac's workspaces. The workspace's `@id` shows beside each app only when
+  the apps come from several.
+- **The page.** `WorkspaceAppView`: the app's title and `@workspace`,
+  Reload, and a `WKWebView` on `MemoryServer.page(of:)`, strut's UI with
+  Peel's strut key as `?key=`, which strut's UI keeps for the tab and takes
+  out of the address. The web view's store keeps nothing
+  (`.nonPersistent()`), so the key goes with the view; it is limited as
+  the web pane is (`WebPane.limit`: no window without a click, no sound
+  until clicked, no WebRTC). It navigates only to Peel's own strut,
+  `about:` (the page's `srcdoc` frame) and data/blob frames; a link to
+  anywhere else, or a new window strut opens for one, opens in the web
+  pane beside the app (`WebPane.follow`), and only within a second of the
+  person's own click or key in the view (`AppWebView`): a script's
+  `click()` counts as a link activation too. No download, camera or
+  microphone. The person's token for the workspace never leaves strut's
+  peers file. The page itself is the workspace's, in a sandboxed frame
+  with an opaque origin: strut's build gives it `connect-src 'none'`, so
+  its calls go through strut's relay, but a workspace that served another
+  document could fetch what any web page can (never strut's API, which
+  wants the key the frame does not have).
+- **Strut's side, fixed there.** Shown alone, strut's UI at this pin
+  still loads every workflow, step type and peer's app list before
+  drawing the page, and polls the active runs every five seconds while it
+  shows; strut#313 loads only the one listing, for the next pin.
+- **Not here.** The page's `ui/message` (a message about the app to the
+  agent's DM) and in-place `ui/open-link`, which strut leaves unwired when
+  the page shows alone; a workspace's apps that are not pinned; the
+  iPhone (no strut of its own).
+- **Checked.** `HiveTests.aWorkspacesPinnedAppsOpenAloneOnPeelsOwnStrut`
+  (the read-through's path and key, pinned only, names strut gives, the
+  page's `key`, `app` and `solo` read back exactly, none on a home
+  server). By hand, two struts from the stage at the new pin, one standing
+  in for the org with its seeded `strut/views` pinned and a person token
+  it minted: Peel's strut listed it pinned through the read-through, and a
+  WebKit web view with this view's configuration and rules loaded
+  `page(of:)`: the gallery drew, the address lost the key, only strut's
+  page and the `srcdoc` frame were let through, and the page's MCP
+  `initialize` reached the org's `/mcp` through `/peers/acme/mcp`. Not yet
+  `check-app.sh` (signing), nor against a swarm (mcp pins #307's merge).
+  Reviews: an independent adversarial review (a script's `click()`
+  opening pages in the pane, the bridge start waiting on every
+  workspace's apps, a second copy of the pane's web view policy, a web
+  view rebuilt when a title changed, overlapping reads, the list cleared
+  while strut restarts, a test that could not see a `+` in the key: all
+  fixed; strut's solo loading, above, left for strut).
+
+### Built: an automation can do anything you can (2026-10-23)
+
+From Tom's user model (`docs/connectors-and-authoring.md`, section 7):
+an automation is a prompt on a schedule, and a workflow is a tool.
+
+- **Runs start jobs.** `peel-automation-run`'s agent gets `job/start`
+  beside memory, the reads and `sphinx/post`. Work its tools cannot do
+  (the web, a page, a workflow by name) is a job's; the run then says
+  `NOTHING_TO_REPORT` and the job's result reaches the DM by itself: the
+  bridge sends the end of a job no DM started (`turns.rs`, `unasked`).
+  The run's prompt forbids a builder job. Only `job/start` is granted, not
+  the other `job/*`: a run is one shot.
+- **The orchestrator never declines a schedule for want of a tool.** Its
+  automations paragraph says a run can do what a turn can, a built
+  workflow is scheduled as an automation whose prompt runs it, and
+  building is never an automation's.
+- **The builder no longer schedules.** `meta/set-automation` leaves
+  `builder.approve`, so strut refuses it (it runs only as an accepted
+  proposal): every schedule is an automation, on one card and in one list.
+- **Next PR (security review):** a run reads other people's messages
+  and can now start a job with the web and a shell, so text injected in a
+  tribe could reach a job with nobody watching. The same path exists in
+  the person's own turns, so the fix sits between the agent and its jobs:
+  once a turn or run has read other people's messages, starting a job
+  needs the person's card (a Peel step in front of `job/start`, asking
+  the Mac, which knows which runs it answered reads for), and a run's
+  `job/start` is pinned to `workflow: job` in code, not only the prompt.
+- **Not changed:** automations still run on `peel-automation-run`, not on
+  strut's `orchestrator`. Firing the orchestrator directly would lose the
+  run's name, `since` and the post grant, and need strut and runner work;
+  the run already has the same model, memory and now jobs.
+- **Checked.** `Journeys.Orchestrator.anAutomationStartsAJobWhoseResultReachesTheDM`:
+  an automation's run starts a job, says nothing, and the job's result is
+  the agent's one message in the DM. `anAutomationPostsAtItsMinuteAndReportsToTheDM`
+  is flaky on main as well (2 of 4 runs there failed: once at Bob reading
+  the tribe post, which the Mac reported sent, once pairing contacts).
+
+### Built: a deliverable opens beside the chat (2026-10-23)
+
+A file or an app an org's strut made for a job, listed under the job's
+message in the agent's DM, opens in the web pane beside the chat. The
+message carries only where it opens; Peel's own strut reads it from the
+org and draws it.
+
+- **What it needs.** strut#314 (the viewer reads an org's file through
+  `/peers/<id>/…` and `?artifact=<path>&solo=1` shows it alone) and
+  strut#313, at the new pin (`Vendor/strut.lock`, strut main at #303's
+  merge, after #313, #314 and #312; #303 makes `strut/run-workflow` take its
+  `input` as an object, so a model's JSON text no longer reaches an org, or
+  a proposal's card, as a string); sphinx#391 (the bridge adds the handle)
+  and #392 (a proposal card Peel answers as not shown is turned down on
+  strut with Peel's reason, once, and said in the DM, instead of left
+  pending; an approved hand-off to an org is told as that org's reply,
+  with its question and its deliverables' handles), at the new
+  `Vendor/runner.lock`, sphinx master at #392's merge (no dependency changed, so
+  `Vendor/runner.Cargo.lock` stays: `cargo metadata --locked` passes on
+  that commit with it). An org needs nothing new: its job files and apps
+  are read with the person's token as #368's apps are. strut#312 moved
+  dictation's fixer (node-llama-cpp) into a `fixer/` package of its own, so
+  `stage-strut.sh` installs it too; and `embed-strut.sh` now leaves out a
+  staged strut that is not the pin (a failed build under `run-app.sh` or in
+  Release), as it does the bridge: an older strut's UI would show the whole
+  of itself for a deliverable, the key in its tab.
+- **The handle.** `AgentArtifact.handle` (`ControlEnvelope.swift`):
+  `path` (`/jobs/<job>/files/…` or `/artifacts/<run>/…`, behind at most
+  two `/peers/<id>`, each segment percent-encoded) or `app` (`<name>` or
+  `@<id>/<name>`), kept only in exactly those shapes: no `.` or `..`
+  segment however written, no escaped `/` or `\` in a file's segments, a
+  path's characters only, at most 512 bytes. Its `peer`, the first hop, is
+  the `@<id>` the row shows. strut's peer id and app name rules moved there
+  (`Handle.isPeerID`, `isAppName`) and `Hive` and `WorkspaceApp` use them.
+  Only the agent's DM reads artifacts at all (`ChatRow`, `agentDM`).
+- **The row.** `AgentArtifactLine` shows Open for a handle as for an https
+  link, and `@<id>` where a link shows its host, while Peel's own strut
+  runs (a home server shows none of this Mac's orgs); the page's address is
+  made again on the click, since strut may have started again on another
+  port and key.
+- **The pane.** `WebPane.open(_:)` with a `StrutPage`, a third mode beside a
+  page of the web and an HTML attachment: `MemoryServer.page(showing:)`,
+  strut's UI with Peel's strut key as `?key=` and the handle as `artifact`
+  or `app`, in a web view of its own whose store keeps nothing. The address
+  field shows the deliverable's title and `@<id>`, never the address (no
+  Copy link, Open in default browser or Try again with it); a crash loads
+  the address with the key again, and Peel's strut starting again (another
+  port and key) or stopping ends it, said in its place
+  (`WebPane.strutChanged(to:)`, from `AppModel.memoryServer`). A download
+  comes only from strut's own page (the viewer's Download for an org's
+  file), never a frame in it, and goes to Downloads as the pane's do; a
+  file of Peel's own strut that the viewer cannot show (its "open in a new
+  tab" link) is saved there on the person's click. A link out opens in the
+  pane as a page of the web, ending the deliverable, and only on the
+  person's own click. The web view is let go of before the mode is, so
+  nothing it reports while it stops is read as the next page's address.
+- **One set of rules.** `StrutPage.policy` (actions and responses) and
+  `newWindow` are #368's app view rules, moved so the app view and the pane
+  both use them: Peel's own strut, `about:` and data or blob frames, a link
+  out only within a second of the person's own click or key
+  (`InputWebView`, which the pane's `PaneWebView` now is too), and
+  downloads only where the host keeps them (`downloads`: the pane; an app's
+  view keeps none, as before). `StrutPage` is never described with its
+  address. A handle wins over an https link on the same deliverable.
+- **Not here.** The iPhone and the official apps (no strut of their own:
+  the row stays words); a preview inside the row; a handle on the
+  orchestrator's own replies, which carry no artifacts yet (sphinx#391,
+  "Not in this PR").
+- **Checked.** `ControlEnvelopeTests` (a message's handles read beside its
+  words; the paths and apps kept, with their `@<id>`; every other shape
+  dropped), `HiveTests.aDeliverableOpensAloneOnPeelsOwnStrut` (`artifact`
+  and `app` read back exactly by strut's UI, an escape in the path kept an
+  escape; none on a home server). `swift test`: 1,052 pass. The Mac app
+  builds with Xcode. By hand, two struts from the new pin, one standing in
+  for the org with a job (`team/j-2`) holding `Lisbon plan.md`, a PNG, a PDF
+  and an HTML page with a script, and Peel's strut holding a peer record for
+  it: a WebKit view with the pane's configuration and `StrutPage`'s rules
+  loaded `page(showing:)` for each. The markdown drew with its image (from
+  a blob), its link opened the PDF in place and WebKit drew it (a blob
+  frame), the PNG and the folder showed, the HTML page drew with its
+  script not run (a `srcdoc` frame, `sandbox=""`), a path strut does not
+  serve said so, no `src` or `href` held the key and the address lost it;
+  with the pane's download rule, the viewer's Download saved the file under
+  its name. Not yet `check-app.sh` (it needs the agent's DM on the local
+  stack and a paired org), nor against a swarm. Reviews: an independent
+  adversarial review (the pin's strut failing to stage, so an older strut
+  was embedded without a word; a local file the viewer cannot show left
+  with a dead link; the download rule with two owners; a deliverable
+  outliving a strut restart; `endPage` reading a stopping view; a run id
+  with a `/`, a control character in a file name and version-like app
+  names accepted; `StrutPage` printing its address; an https link winning
+  over a handle: all fixed). Left: `Handle`'s cases can be made without
+  the checks (strut checks the path again, and the page encodes the whole
+  value); strut's own names rules sit on `Handle` though `Hive` uses them.
 
 ## 5. Automations, jobs and connectors
 

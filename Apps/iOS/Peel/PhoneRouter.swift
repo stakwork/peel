@@ -37,7 +37,7 @@ enum ChatsRoute: Hashable {
         case .threads: self = .threads
         case .mentions: self = .mentions
         case .chat(let chat): self = .chat(chat)
-        case .payments, .account, .agent: return nil
+        case .payments, .account, .agent, .app: return nil
         }
     }
 
@@ -229,9 +229,9 @@ final class PhoneRouter {
             tab = .payments
         case .account:
             tab = .you
-        case .agent:
-            // The Mac's own agent chat; on the phone the agent is a DM, so
-            // the model is put back on what Chats shows.
+        case .agent, .app:
+            // The Mac's own agent chat and its workspaces' apps; on the phone
+            // the agent is a DM, so the model is put back on what Chats shows.
             tab = .chats
         case nil:
             // What was open is gone (a chat removed): back to its list.

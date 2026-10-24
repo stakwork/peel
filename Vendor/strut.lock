@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #294 (a host-gated strut/run-workflow reaches a peer only as an approved proposal), after #298 and #297.
-4742720c912d0fc347eb4ae583df18326e3ea5af
+# stakwork/strut main at the merge of #303 (strut/run-workflow and run/launch take input as a JSON object, JSON text parsed back), after #313, #314 (an org's file through the read-through, alone with ?artifact=…&solo=1) and #312.
+978a4e5efe765210e67b4d6eded5ba00d2582770

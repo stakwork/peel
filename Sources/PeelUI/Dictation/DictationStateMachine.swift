@@ -43,7 +43,7 @@ public struct DictationStateMachine: Sendable {
     }
 
     public enum Effect: Equatable, Sendable {
-        /// Start keeping audio (with the pre-roll in front).
+        /// The key went down: the mic goes on and audio is kept.
         case beginCapture
         /// Held long enough: show the HUD.
         case showHUD

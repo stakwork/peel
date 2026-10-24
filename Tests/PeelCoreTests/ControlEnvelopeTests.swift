@@ -247,4 +247,61 @@ struct DeviceRequestRuleTests {
         // A control message's job is no job.
         #expect(received(body(metadata: #"{"peel":{"v":1,"op":"ack","re":"r","job":{"id":"j"}}}"#)).agentJob == nil)
     }
+
+    /// Where the bridge says a deliverable opens (stakwork/sphinx#391) is
+    /// read beside its words: a file's `path`, an app's `app`. One the bridge
+    /// would not have written is dropped, and the deliverable stays words.
+    @Test func readsWhereEachDeliverableOpens() {
+        let reply = received(body(metadata: #"""
+            {"peel":{"job":{"id":"j-7","state":"done"},"artifacts":[
+            {"id":"plan","kind":"markdown","title":"Plan","path":"/peers/stakwork/jobs/j-7/files/plan.md"},
+            {"id":"visits","kind":"app","title":"Visits","app":"@stakwork/visits"},
+            {"id":"out","title":"Escape","path":"/peers/stakwork/jobs/j-7/files/../../secrets.json"},
+            {"id":"odd","title":"Odd","path":5}]}}
+            """#, content: "Published visits."))
+        #expect(reply.agentArtifacts.map(\.title) == ["Plan", "Visits", "Escape", "Odd"])
+        #expect(reply.agentArtifacts.map(\.handle) == [.file("/peers/stakwork/jobs/j-7/files/plan.md"), .app("@stakwork/visits"), nil, nil])
+        #expect(reply.agentArtifacts.map { $0.handle?.peer } == ["stakwork", "stakwork", nil, nil])
+    }
+
+    /// A handle opens a page loaded with strut's key, so only what strut
+    /// serves is one: a job's file or a run's, behind at most two orgs, the
+    /// org read as the first; an app's name, behind `@<org>/` for an org's.
+    @Test(arguments: [
+        ("/jobs/j-1/files/plan.md", nil as String?),
+        ("/artifacts/1792155720000/shots/001.png", nil),
+        ("/peers/stakwork/jobs/peer%2Fj-1/files/docs/Lisbon%20plan.md", "stakwork"),
+        ("/peers/acme/peers/billing/artifacts/r7/100%25.md", "acme"),
+    ])
+    func keepsAFileStrutServes(path: String, peer: String?) {
+        let handle = AgentArtifact.Handle(path: path)
+        #expect(handle == .file(path) && handle?.peer == peer)
+    }
+
+    @Test(arguments: [
+        "/jobs/j/files/../secrets.json", "/jobs/j/files/./x", "/jobs/j/files/%2e%2E/x", "/jobs/../files/x",
+        "/jobs/j/files/a%2F..%2Fb", "/jobs/j/files/a%5Cb", "/jobs/j/files/a%zz", "/jobs/j/files/a b.md",
+        "/jobs/j/files/x.md?key=k", "/jobs/j/files/x.md#top", "/jobs/j/files/a\\b", "/jobs/j/files/a\nb",
+        "/jobs/j/files", "/jobs/j/files/", "/jobs/j/files//x", "/jobs/-j/files/x", "jobs/j/files/x",
+        "//evil.example/jobs/j/files/x", "https://example.com/jobs/j/files/x", "javascript:alert(1)",
+        "/apps/visits/v2/files/dist/index.html", "/workflows/job/runs/r1", "/peers/acme",
+        "/peers/a/peers/b/peers/c/jobs/j/files/x", "/peers/../jobs/j/files/x", "/peers/a%2Fb/jobs/j/files/x",
+        "/artifacts/r7", "/artifacts/a%2Fb/x", "/jobs/j/x/files/y", "/jobs/j/files/a%00b", "/jobs/j/files/a%0Ab",
+        "/jobs/j/files/" + String(repeating: "a", count: 500),
+    ])
+    func dropsAnyOtherPath(path: String) {
+        #expect(AgentArtifact.Handle(path: path) == nil)
+    }
+
+    @Test(arguments: [("visits", nil as String?), ("strut/views", nil), ("@stakwork/visits", "stakwork"), ("@acme/hive/board", "acme")])
+    func keepsAnAppStrutNames(app: String, peer: String?) {
+        let handle = AgentArtifact.Handle(app: app)
+        #expect(handle == .app(app) && handle?.peer == peer)
+    }
+
+    @Test(arguments: ["", "@acme", "@acme/", "@/visits", "@a b/visits", "@acme/@b/x", "../x", "visits@v2", "a//b", "/a", "a b",
+                      "v2", "x/v2", "@acme/x/v12", "data.db", "x/data.db"])
+    func dropsAnyOtherApp(app: String) {
+        #expect(AgentArtifact.Handle(app: app) == nil)
+    }
 }

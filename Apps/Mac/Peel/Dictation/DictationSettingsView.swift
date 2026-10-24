@@ -9,16 +9,23 @@ struct DictationSettingsSection: View {
     private var dictation: DictationController { .shared }
 
     var body: some View {
-        SettingsSection("Dictation") {
+        VStack(alignment: .leading, spacing: 0) {
+            section
+            DictationModelsSection(models: dictation.models)
+        }
+        .onAppear { dictation.refresh() }
+    }
+
+    private var section: some View {
+        SettingsSection {
             Fact("Dictation") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stateText)
                     if let note { Text(note).muted() }
                 }
             } trailing: {
-                Toggle("Dictation", isOn: Binding(get: { dictation.isEnabled }, set: { dictation.setEnabled($0) }))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
+                PeelSwitch(isOn: Binding(get: { dictation.isEnabled }, set: { dictation.setEnabled($0) }))
+                    .accessibilityLabel("Dictation")
             }
             Fact("Key") {
                 VStack(alignment: .leading, spacing: 2) {
@@ -26,16 +33,14 @@ struct DictationSettingsSection: View {
                     Text("Hold to dictate, let go to finish. Press Space while holding to keep going hands-free.").muted()
                 }
             }
-            Fact("Speech") {
+            Fact("Vocabulary") {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(speechText)
-                    Text("Recognised by Peel's own strut, on this Mac. Nothing you say leaves it.").muted()
+                    Text(vocabularyText)
+                    Text("Names and words dictation puts right, kept in your memory. Fix a word after dictating and it's learned.").muted()
                 }
             } trailing: {
-                if case .failed = dictation.speech.model {
-                    Button("Try again") { Task { try? await dictation.speech.ensureModel() } }
-                        .buttonStyle(.peel(.outline))
-                }
+                Button("Open") { openWindow(id: DictationVocabularyView.id) }
+                    .buttonStyle(.peel(.outline))
             }
             Fact("History") {
                 VStack(alignment: .leading, spacing: 2) {
@@ -46,25 +51,18 @@ struct DictationSettingsSection: View {
                 HStack(spacing: Theme.Space.sm) {
                     Button("Open") { openWindow(id: DictationHistoryView.id) }
                         .buttonStyle(.peel(.outline))
-                    Toggle("History", isOn: Binding(get: { dictation.historyOn }, set: { dictation.setHistoryOn($0) }))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
+                    PeelSwitch(isOn: Binding(get: { dictation.historyOn }, set: { dictation.setHistoryOn($0) }))
+                        .accessibilityLabel("History")
                 }
             }
             DictationPermissionRows(permissions: dictation.permissions)
         }
-        .onAppear { dictation.refresh() }
     }
 
-    private var speechText: String {
-        let size = StrutSpeech.modelSize
-        return switch dictation.speech.model {
-        case .waiting: "Waiting for Peel's strut to start"
-        case .checking: dictation.isEnabled ? "Getting the English model ready…" : "English model (\(size)) downloads when dictation is on"
-        case .downloading: "Downloading the English model (\(size))…"
-        case .installed: "Ready"
-        case .failed(let why): why
-        }
+    private var vocabularyText: String {
+        if dictation.lingo.problem != nil { return "Not available: Peel's strut can't read it" }
+        let count = dictation.lingo.lexicon.wordCount
+        return count == 0 ? "No words yet" : Formatting.count(count, "word")
     }
 
     private var stateText: String {
@@ -89,11 +87,11 @@ struct DictationOffer: View {
 
     var body: some View {
         OfferBar(
-            icon: "mic", text: "Dictate anywhere on your Mac by holding a key?", action: "Set up",
+            icon: "mic", text: "Dictation that works everywhere and stays local and private.", action: "Set up",
             dismiss: { DictationController.shared.dismissOffer() },
             accept: {
                 DictationController.shared.dismissOffer()
-                model.destination = .account
+                model.openAccount(.dictation)
             }
         )
     }
@@ -110,5 +108,227 @@ struct DictationMenuItem: View {
         }
         Button("Dictation History…") { openWindow(id: DictationHistoryView.id) }
         Text("Dictation: " + (dictation.isListening ? "On (\(dictation.hotkey.label))" : "Off"))
+    }
+}
+
+/// Account › Dictation's models, one row for each job: the model doing it
+/// and what it does for you, with Change to pick another. A pick that
+/// isn't on this Mac downloads first (its progress shown) and strut
+/// switches to it once it's there. Strut names and describes each model.
+private struct DictationModelsSection: View {
+    let models: DictationModels
+    private var dictation: DictationController { .shared }
+
+    var body: some View {
+        let speech = models.models.filter { $0.kind == .speech }
+        let fixers = models.models.filter { $0.kind == .fixer }
+        VStack(alignment: .leading, spacing: 6) {
+            SettingsSection("Speech to text") {
+                if speech.isEmpty {
+                    // Strut not up yet, or its list not read: what dictation's own model is doing.
+                    Fact("Speech") { Text(speechText) }
+                } else {
+                    DictationModelSummary(models: models, kind: .speech, choices: speech, learned: nil)
+                }
+            }
+            if !fixers.isEmpty {
+                SettingsSection("Clean-up and learning") {
+                    DictationModelSummary(models: models, kind: .fixer, choices: fixers, learned: dictation.lingo.lexicon.wordCount)
+                }
+            }
+            if !models.installed.isEmpty {
+                SettingsSection("On this Mac") { DictationModelStorage(models: models) }
+            }
+            Group {
+                if let problem = models.problem {
+                    ProblemText(problem)
+                } else {
+                    Text("Runs on this Mac. Nothing you say leaves it.").muted()
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        // Read on show, and every second while a model downloads; it stops when the section goes.
+        .task(id: models.downloading) { await models.follow() }
+    }
+
+    private var speechText: String {
+        switch dictation.speech.model {
+        case .waiting: "Waiting for Peel's strut to start"
+        case .checking: dictation.isEnabled ? "Getting the speech model ready…" : "The speech model (\(StrutSpeech.modelSize)) downloads when dictation is on"
+        case .downloading: "Downloading the speech model (\(StrutSpeech.modelSize))…"
+        case .installed: "Ready"
+        case .failed(let why): why
+        }
+    }
+}
+
+/// One job's row: an icon, the model in use, what it does, its size (and,
+/// for clean-up, how many words it has learned), a pick still downloading,
+/// and Change, which opens the choices beside it.
+private struct DictationModelSummary: View {
+    @Environment(\.menuPresenter) private var presenter
+    let models: DictationModels
+    let kind: DictationModel.Kind
+    let choices: [DictationModel]
+    /// Words learned, for clean-up.
+    let learned: Int?
+    @State private var anchor = MenuAnchor()
+
+    /// The one in use; nil for clean-up when it is off.
+    private var active: DictationModel? { choices.first(where: \.active) }
+    /// The user's pick; nil for clean-up when it is off.
+    private var picked: DictationModel? { choices.first(where: \.selected) }
+
+    var body: some View {
+        ListRow(size: .md, alignment: .firstTextBaseline) {
+            Image(systemName: kind == .speech ? "waveform" : "wand.and.stars")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 18)
+        } title: {
+            Text(active?.name ?? (kind == .fixer ? "Off" : "Default"))
+        } detail: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(summary).fixedSize(horizontal: false, vertical: true)
+                status
+                if let old = models.leftBehind(kind) { LeftBehind(models: models, model: old) }
+            }
+        } trailing: {
+            Button("Change") { presenter?.show(entries(), at: anchor, minWidth: 300, highlightChecked: true, edge: .trailing) }
+                .buttonStyle(.peel(.outline))
+                .menuAnchor(anchor)
+        }
+    }
+
+    private var summary: String {
+        guard let active else { return kind == .fixer ? Self.offText : "Strut's default speech model." }
+        var parts = [active.summary]
+        if let size = AttachmentFormat.size(active.bytes) { parts.append(size) }
+        if let learned { parts.append(Formatting.count(learned, "word") + " learned") }
+        return parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder private var status: some View {
+        if let picked, picked.state == .downloading {
+            VStack(alignment: .leading, spacing: 4) {
+                ProgressView(value: picked.progress ?? 0)
+                    .tint(Theme.accent)
+                    .frame(maxWidth: 240)
+                Text(Self.downloadText(picked)).monospacedDigit()
+            }
+            .padding(.top, 2)
+        } else if let failed = choices.first(where: { $0.error != nil }), let error = failed.error {
+            ProblemText("\(failed.name) didn't download: \(error)")
+                .help(error)
+        } else if kind == .speech, case .failed(let why) = DictationController.shared.speech.model {
+            // The default model dictation fetches itself, failed: say so here, with a retry.
+            HStack(spacing: Theme.Space.sm) {
+                ProblemText(why)
+                Button("Try again") { Task { try? await DictationController.shared.speech.ensureModel() } }
+                    .buttonStyle(.peel(.outline, size: .sm))
+            }
+        }
+    }
+
+    /// Each choice with what it means and its size; Off for clean-up.
+    private func entries() -> [MenuEntry] {
+        var picks: [MenuEntry] = []
+        if kind == .fixer {
+            picks.append(.button("Off", subtitle: Self.offText, checked: picked == nil) {
+                Task { await models.selectNoFixer() }
+            })
+        }
+        for model in choices {
+            let lead = model.recommended ? "Recommended. " : ""
+            let later = model.state == .installed ? "" : " Downloads first."
+            picks.append(.button(model.name, subtitle: lead + model.summary + later, detail: AttachmentFormat.size(model.bytes),
+                                 checked: model.selected) {
+                Task { await models.select(model) }
+            })
+        }
+        return picks
+    }
+
+    static let offText = "No clean-up, nothing learned."
+
+    /// "Downloading Parakeet: 202.6 of 482.5 MB…", from what strut says has come.
+    static func downloadText(_ model: DictationModel) -> String {
+        let done = (model.downloaded ?? model.progress.map { Int64(Double(model.bytes) * $0) })
+            .map { ": " + AttachmentFormat.progress($0, of: model.bytes) } ?? ""
+        return "Downloading \(model.name)\(done)… Switches over when it's done."
+    }
+}
+
+/// After a switch, once the new model is in use: the one it replaced, with
+/// the space removing it frees, to remove or keep.
+private struct LeftBehind: View {
+    let models: DictationModels
+    let model: DictationModel
+
+    var body: some View {
+        HStack(spacing: Theme.Space.sm) {
+            Text("\(model.name) isn't in use now. Remove it to free \(AttachmentFormat.size(model.bytes) ?? "space")?")
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button("Remove") { Task { await models.remove(model) } }
+                .buttonStyle(.peel(.link, size: .sm))
+            Button("Keep") { models.keep(model.kind) }
+                .buttonStyle(.peel(.link, size: .sm))
+        }
+        .padding(.horizontal, Theme.Space.sm)
+        .padding(.vertical, 6)
+        .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.Radius.control))
+        .padding(.top, 4)
+    }
+}
+
+/// Dictation's models on this Mac: how much space they take, and Manage,
+/// which lists each with its size, whether it is in use, and Remove where
+/// strut lets it go.
+private struct DictationModelStorage: View {
+    let models: DictationModels
+    @State private var managing = false
+
+    var body: some View {
+        let installed = models.installed
+        let total = installed.reduce(Int64(0)) { $0 + $1.bytes }
+        let inUse = installed.filter(\.active).count
+        ListRow(size: .md, alignment: .firstTextBaseline) {
+            Image(systemName: "internaldrive")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 18)
+        } title: {
+            Text(AttachmentFormat.size(total) ?? "")
+        } detail: {
+            Text("\(Formatting.count(installed.count, "model")), \(inUse) in use")
+        } trailing: {
+            Button(managing ? "Done" : "Manage") { managing.toggle() }
+                .buttonStyle(.peel(.outline))
+        }
+        if managing {
+            ForEach(installed) { model in
+                ListRow(size: .md, alignment: .firstTextBaseline) {
+                    Color.clear.frame(width: 18, height: 1)
+                } title: {
+                    Text(model.name)
+                } detail: {
+                    Text([AttachmentFormat.size(model.bytes), Self.role(model)].compactMap { $0 }.joined(separator: " · "))
+                } trailing: {
+                    if model.removable {
+                        InlineConfirm(trigger: "Remove", prompt: "Remove \(model.name)?", confirm: "Remove", alignment: .trailing) {
+                            await models.remove(model)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Why one can't go: in use, or the speech model dictation falls back on.
+    private static func role(_ model: DictationModel) -> String? {
+        if model.active { return "In use" }
+        return model.removable ? nil : "Dictation's fallback"
     }
 }

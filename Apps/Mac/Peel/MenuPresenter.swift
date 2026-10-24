@@ -90,11 +90,12 @@ final class MenuPresenter {
 
     /// Opens a menu below a button (`anchor`), moving with it while its
     /// list moves and closing once it is out of sight, unless it has
-    /// nothing in it.
+    /// nothing in it. `edge: .trailing` lines its right edge up with the
+    /// button's, for a button at the end of a row.
     func show(_ entries: [MenuEntry], at anchor: MenuAnchor, source: AnyHashable? = nil,
-              minWidth: CGFloat = 0, highlightChecked: Bool = false) {
+              minWidth: CGFloat = 0, highlightChecked: Bool = false, edge: PopoverEdge = .leading) {
         show(entries, at: anchor.screenRect, in: anchor.window, following: anchor, source: source, minWidth: minWidth,
-             highlightChecked: highlightChecked)
+             highlightChecked: highlightChecked, edge: edge)
     }
 
     /// Opens a menu at a point on the screen (a right-click) from `window`
@@ -104,7 +105,8 @@ final class MenuPresenter {
     }
 
     private func show(_ entries: [MenuEntry], at rect: CGRect, in window: NSWindowRef = nil, following: MenuAnchor? = nil,
-                      source: AnyHashable?, minWidth: CGFloat = 0, highlightChecked: Bool = false) {
+                      source: AnyHashable?, minWidth: CGFloat = 0, highlightChecked: Bool = false,
+                      edge: PopoverEdge = .leading) {
         guard entries.contains(where: { $0.item != nil }) else { return }
         let checked = highlightChecked ? entries.firstIndex { $0.item?.checked == true } : nil
         hideCard()
@@ -114,7 +116,7 @@ final class MenuPresenter {
         #if os(macOS)
         guard let host = window ?? hostWindow else { return dismiss() }
         menuWindow.present(environment(AnyView(MenuPanel(presenter: self))), anchor: rect, from: host,
-                           following: following) { [weak self] in self?.dismiss() }
+                           following: following, lost: { [weak self] in self?.dismiss() }, edge: edge)
         startMonitoring()
         #endif
     }
@@ -407,6 +409,8 @@ private struct MenuPanel: View {
 
     var body: some View {
         if let open = presenter.open {
+            // One column for checks and icons when any row has one, so every title lines up.
+            let leading = open.entries.contains { $0.item.map { $0.checked || $0.systemImage != nil } ?? false }
             VStack(alignment: .leading, spacing: 0) {
                 if let back = open.back {
                     MenuBackRow(title: back.title) { presenter.goBack() }
@@ -426,7 +430,8 @@ private struct MenuPanel: View {
                             .padding(.top, Theme.Space.xs)
                             .padding(.bottom, 2)
                     case .item(let item):
-                        MenuRow(item: item, highlighted: open.highlighted == index, confirming: open.confirming == index)
+                        MenuRow(item: item, highlighted: open.highlighted == index, confirming: open.confirming == index,
+                                leading: leading)
                             .onHover { if $0 { presenter.highlight(index) } }
                             .onTapGesture { presenter.choose(index) }
                     }
@@ -448,6 +453,8 @@ private struct MenuRow: View {
     let item: MenuItem
     let highlighted: Bool
     var confirming = false
+    /// The menu has a column for checks and icons: kept empty on a row without one.
+    var leading = false
 
     var body: some View {
         HStack(spacing: 9) {
@@ -456,13 +463,25 @@ private struct MenuRow: View {
                     Image(systemName: "checkmark")
                 } else if let systemImage = confirming ? "trash" : item.systemImage {
                     Image(systemName: systemImage)
+                } else if leading {
+                    Color.clear.frame(height: 1)
                 }
             }
             .font(.system(size: 12, weight: confirming ? .bold : .regular))
             .frame(width: 16)
-            Text(confirming ? item.confirm ?? item.title : item.title)
-                .font(Theme.font(13, confirming ? .bold : .regular))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(confirming ? item.confirm ?? item.title : item.title)
+                    .font(Theme.font(13, confirming ? .bold : .regular))
+                    .lineLimit(1)
+                if let subtitle = item.subtitle {
+                    // Kept, unseen, while confirming: the row keeps its height.
+                    Text(subtitle)
+                        .font(Theme.font(12))
+                        .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
+                        .lineLimit(1)
+                        .opacity(confirming ? 0 : 1)
+                }
+            }
             Spacer(minLength: 16)
             if confirming {
                 Text("Click again")
@@ -483,7 +502,9 @@ private struct MenuRow: View {
         }
         .foregroundStyle(item.destructive ? Theme.destructive : Theme.text)
         .padding(.horizontal, Theme.Space.sm)
-        .frame(height: 28)
+        // One line fits the 28 pt; a second takes the row past it, with room above and below.
+        .padding(.vertical, 4)
+        .frame(minHeight: 28)
         .background(highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

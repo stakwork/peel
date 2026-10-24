@@ -37,6 +37,14 @@ struct DictationHistoryTests {
         #expect(try await first(storage.dictations(limit: 10))?.map(\.text) == ["recent"])
     }
 
+    @Test func keepsWhatWasHeardWhenTheVocabularyRewroteIt() async throws {
+        let storage = try profile.storage()
+        var rewritten = record("ask the Stakwork team", at: Date())
+        rewritten.heard = "ask the stack work team"
+        try await storage.addDictation(rewritten, keep: 3600)
+        #expect(try await first(storage.dictations(limit: 10))?.first?.heard == "ask the stack work team")
+    }
+
     @Test func clearHistoryEmptiesIt() async throws {
         let storage = try profile.storage()
         let now = Date()

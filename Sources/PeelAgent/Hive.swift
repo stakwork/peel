@@ -318,7 +318,7 @@ extension AutomationsClient {
 
     /// A peer id as one path segment: strut's own form.
     static func peerID(_ id: String) throws -> String {
-        guard id.range(of: #"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"#, options: .regularExpression) != nil else {
+        guard AgentArtifact.Handle.isPeerID(id) else {
             throw PeelError("\u{201C}\(ChatData.clean(id, max: 40))\u{201D} is not a workspace id Peel can use.")
         }
         return id

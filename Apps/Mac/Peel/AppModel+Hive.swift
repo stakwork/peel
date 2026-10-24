@@ -31,6 +31,11 @@ final class HiveState {
     /// Hive answered 401: the orgs are taken off strut and runner (their
     /// tokens may still work for days) and stay listed until paired again.
     var revoked = false
+    /// The apps the workspaces pinned as tabs, in the workspaces' order
+    /// (`refreshWorkspaceApps`): the sidebar's Apps.
+    var apps: [WorkspaceApp] = []
+    /// The read of `apps` under way; a newer one replaces it.
+    @ObservationIgnored var appsReading: Task<Void, Never>?
 
     /// The orgs strut and runner may use: none once revoked.
     var live: [HivePeer] { revoked ? [] : link?.peers ?? [] }
@@ -54,6 +59,9 @@ final class HiveState {
         problem = nil
         unpaired = nil
         revoked = false
+        appsReading?.cancel()
+        appsReading = nil
+        apps = []
     }
 }
 
@@ -260,6 +268,42 @@ extension AppModel {
             try await AutomationsClient(server: server).syncPeers(hive.live)
         } catch {
             hive.problem = PeelError.problem(error, couldNot: "give the agent your Stadeum workspaces")
+        }
+        // Not waited for: a slow workspace never holds up the bridge.
+        refreshWorkspaceApps()
+    }
+
+    /// Reads the apps each workspace pinned as a tab through Peel's own
+    /// strut (`AutomationsClient.pinnedApps`), the workspaces at once; a
+    /// newer read replaces one under way. None without workspaces or with
+    /// the memory on a home server, which holds none of this Mac's. While
+    /// Peel's strut is away (starting again, a memory move) the list stays
+    /// as it was, and a workspace that cannot be read keeps what it last
+    /// listed.
+    func refreshWorkspaceApps() {
+        hive.appsReading?.cancel()
+        hive.appsReading = nil
+        let peers = hive.live.map(\.id)
+        let clear = { if !self.hive.apps.isEmpty { self.hive.apps = [] } }
+        guard !peers.isEmpty else { return clear() }
+        guard let server = memoryServer else { return }
+        guard !server.isHomeServer else { return clear() }
+        let client = AutomationsClient(server: server)
+        hive.appsReading = Task {
+            let read = await withTaskGroup(of: (String, [WorkspaceApp]?).self) { group in
+                for peer in peers {
+                    group.addTask { (peer, try? await client.pinnedApps(of: peer)) }
+                }
+                var read: [String: [WorkspaceApp]] = [:]
+                for await (peer, apps) in group {
+                    if let apps { read[peer] = apps }
+                }
+                return read
+            }
+            // A newer read, or strut or the workspaces changed meanwhile: theirs, not this.
+            guard !Task.isCancelled, memoryServer == server, hive.live.map(\.id) == peers else { return }
+            let listed = peers.flatMap { peer in read[peer] ?? hive.apps.filter { $0.peer == peer } }
+            if hive.apps != listed { hive.apps = listed }
         }
     }
 }

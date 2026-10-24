@@ -13,7 +13,7 @@ struct MainView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Sidebar()
+            SidebarColumn()
                 .frame(width: sidebarWidth)
             PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
             VStack(spacing: 0) {
@@ -203,6 +203,12 @@ struct Detail: View {
                     AgentChatView(agent: agent)
                 } else {
                     start("The agent chat could not be opened.")
+                }
+            case .app(let peer, let name):
+                if let app = model.hive.apps.first(where: { $0.peer == peer && $0.name == name }) {
+                    WorkspaceAppView(app: app)
+                } else {
+                    start("This app is no longer pinned in its workspace.")
                 }
             case nil:
                 start("Pick a conversation, or add a contact.")

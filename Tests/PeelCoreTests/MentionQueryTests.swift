@@ -49,4 +49,24 @@ struct MentionQueryTests {
         #expect(MentionQuery.suggestions(members, typed: "", limit: 2).count == 2)
         #expect(MentionQuery.suggestions(members, typed: "zed").isEmpty)
     }
+
+    /// In the agent's DM a `/` opening the message is a command; anywhere
+    /// else, or in other chats, it is text.
+    @Test func aSlashOpeningTheMessageIsACommand() {
+        let found = MentionQuery.word(in: "/ne", cursor: 3, commands: true)
+        #expect(found?.trigger == "/" && found?.query == "ne")
+        #expect(found?.range == NSRange(location: 0, length: 3))
+        #expect(MentionQuery.word(in: "/ne", cursor: 3) == nil)
+        #expect(MentionQuery.word(in: "a /ne", cursor: 5, commands: true) == nil)
+        #expect(MentionQuery.word(in: "hi @bo", cursor: 6, commands: true)?.trigger == "@")
+    }
+
+    /// A workspace matches by its id or its label.
+    @Test func matchesAnyOfAnItemsNames() {
+        let workspaces = [("hive", "Stakwork"), ("senza-backend", "Senza")]
+        let names: ((String, String)) -> [String] = { [$0.0, $0.1] }
+        #expect(MentionQuery.suggestions(workspaces, names: names, typed: "stak").map(\.0) == ["hive"])
+        #expect(MentionQuery.suggestions(workspaces, names: names, typed: "se").map(\.0) == ["senza-backend"])
+        #expect(MentionQuery.suggestions(workspaces, names: names, typed: "").count == 2)
+    }
 }

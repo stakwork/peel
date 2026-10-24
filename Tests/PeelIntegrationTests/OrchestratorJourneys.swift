@@ -538,6 +538,65 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
+        /// An automation whose task needs the web (connectors and authoring,
+        /// "automations wake the agent"): its run starts a job, which has the
+        /// web, and says nothing itself; the job's result reaches Alice's DM
+        /// on its own, as the bridge sends the end of a job no DM started.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func anAutomationStartsAJobWhoseResultReachesTheDM() async throws {
+            let (alice, other) = try await Journeys.Payments.pair()
+            let found = "Top 3 padel videos this week: \(UUID().uuidString.prefix(6))"
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                let answered = body.contains(#""type":"tool_result""#)
+                if body.contains("scheduled automation") {
+                    return answered ? Self.toolUse("final_answer", ["text": PeelAgent.Orchestrator.nothingToReport])
+                        : Self.toolUse("job_start", ["prompt": "Find the top 3 YouTube videos about padel", "title": "Padel videos"])
+                }
+                // The job.
+                return Self.toolUse("final_answer", ["text": found, "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-automation-job-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: root.appending(path: "bridge")))
+            defer {
+                bridge.stop(quietly: true)
+                strut.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            let server = try await strut.start()
+            let setup = AutomationsClient(server: server)
+            try await setup.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await setup.installOrchestrator()
+            let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
+            let running = try #require(bridge.server)
+            try await setup.useBridge(running)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            try await alice.engine.setDeviceAgent(agent)
+
+            let client = AutomationsClient(server: server, yours: PeelAgent.Orchestrator.automationWorkflow, callback: running.runEnds)
+            let padel = try #require(Automation(try await client.make(
+                name: "Padel videos", trigger: ["every": "week", "on": ["sun"], "at": ["09:00"], "tz": "UTC"], enabled: true,
+                input: AutomationsClient.input(name: "Padel videos", prompt: "Send me the top 3 YouTube videos about padel"),
+                what: "the automation")["automation"] ?? .null))
+            try await client.runNow(padel)
+            try await eventually("the job's result in the DM", timeout: .seconds(90)) {
+                try alice.messages(in: agent).contains { !$0.fromMe && $0.content == found }
+            }
+            let fire = try #require(try await client.runs(of: padel).first)
+            #expect(fire.status == "success" && fire.nothing, "\(fire)")
+            // The run itself said nothing: the job's result is the agent's one message.
+            let said = try alice.messages(in: agent).filter { !$0.fromMe && $0.control == nil }.compactMap(\.content)
+            #expect(said == [found], "\(said)")
+
+            for person in [alice, other] { await person.close() }
+        }
+
         /// Milestone 2, "it acts for you" (docs/agent-on-strut.md, PR 7). Alice
         /// asks her agent to post to her tribe in a couple of minutes: one card
         /// on her Mac, the automation and its grant. At that minute strut fires

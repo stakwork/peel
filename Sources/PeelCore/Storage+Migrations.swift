@@ -540,6 +540,11 @@ extension Storage {
                 CREATE INDEX dictation_startedAt ON dictation (startedAt);
                 """)
         }
+        migrator.registerMigration("v29") { db in
+            // What dictation heard, when the vocabulary rewrote it
+            // (`DictationRecord.heard`): History shows the rewrite.
+            try db.execute(sql: "ALTER TABLE dictation ADD COLUMN heard TEXT")
+        }
         return migrator
     }
 }

@@ -52,9 +52,8 @@ struct BundledStrutTests {
         #expect(environment["STRUT_MCP_LOCAL"] == "0")
         #expect(BundledStrut.environment([:], key: key, secretKey: secretKey, data: data, hostConfig: data.appending(path: "h"),
                                          allowsLocalMCP: true)["STRUT_MCP_LOCAL"] == "1")
-        // Every gated step the meta surface could run is sealed: strut seals meta/* itself.
-        let sealed = Set(environment["STRUT_SEALED"]?.split(separator: ",").map(String.init) ?? [])
-        #expect(Orchestrator.builderApprove.allSatisfy { $0.hasPrefix("meta/") || sealed.contains($0) }, "\(sealed)")
+        // Every gated step is one the meta surface cannot run around its card: strut seals meta/* itself.
+        #expect(environment["STRUT_SEALED"] == nil && Orchestrator.builderApprove.allSatisfy { $0.hasPrefix("meta/") })
         // strut clears its environment at boot: only a stand-in model on this Mac is kept through it.
         #expect(environment["STRUT_ENV_KEEP"] == nil)
         for (base, kept) in [("http://127.0.0.1:9", true), ("http://localhost:9", true), ("https://example.com", false)] {

@@ -27,9 +27,8 @@ struct OrchestratorTests {
         #expect(config["orchestrator"]?["approve"] == ["strut/run-workflow"] && config["job"]?["approve"] == ["strut/run-workflow"])
         let paired = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(personal: "Its peers are orgs."), as: UTF8.self))
         #expect(paired["orchestrator"]?["system"]?.string == Orchestrator.section + "\n\nIts peers are orgs.")
-        // The builder only proposes what it writes or test-runs, no other strut may launch it, and what it publishes has no reach limit.
-        #expect(config["builder"] == ["approve": ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "meta/run-step", "app/publish"],
-                                       "peer": false])
+        // The builder publishes freely and only proposes a test run of a step, no other strut may launch it, and what it publishes has no reach limit.
+        #expect(config["builder"] == ["approve": ["meta/run-step"], "peer": false])
         // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
         #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
         #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))

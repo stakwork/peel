@@ -198,16 +198,16 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
-        /// Authoring, gated (docs/connectors-and-authoring.md, P1). Alice asks
-        /// her agent for a workflow; the orchestrator starts strut's `builder`
-        /// job, whose model writes it and calls `meta/publish-workflow`. Peel's
-        /// delta has that step in the builder's `approve:`, so the call is a
-        /// pending proposal and nothing is published until a person decides.
-        /// With no `builder.reach`, a test run through `meta/run-step` (here a
-        /// shell) is a proposal too: nothing runs until a person decides.
+        /// Authoring (docs/connectors-and-authoring.md, P1). Alice asks her
+        /// agent for a workflow; the orchestrator starts strut's `builder` job,
+        /// whose model writes it and calls `meta/publish-workflow`, which
+        /// publishes at once: the builder is free to work. With no
+        /// `builder.reach`, a test run through `meta/run-step` (here a shell)
+        /// is the one call in Peel's `approve:`: a pending proposal, and
+        /// nothing runs until a person decides.
         @Test(.enabled(if: staged))
         @MainActor
-        func aWorkflowTheAgentBuildsWaitsForApproval() async throws {
+        func aWorkflowTheAgentBuildsIsPublishedAndOnlyItsTestRunWaits() async throws {
             let (alice, other) = try await Journeys.Payments.pair()
             let workflow = "daily-hello"
             let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
@@ -223,7 +223,7 @@ extension Journeys {
                             "yaml": "name: \(workflow)\nsteps:\n  - id: hi\n    type: pack\n    config: { text: hello }\n",
                         ])
                     default:
-                        return Self.toolUse("final_answer", ["text": "Proposed \(workflow) for you to approve.", "artifacts": []])
+                        return Self.toolUse("final_answer", ["text": "Published \(workflow).", "artifacts": []])
                     }
                 }
                 guard answered else {
@@ -256,19 +256,16 @@ extension Journeys {
             try await eventually("the agent's reply", timeout: .seconds(60)) {
                 try alice.messages(in: agent).contains { !$0.fromMe && $0.control == nil && $0.content == "Started building it." }
             }
-            let pending = try await eventually("the builder's proposals", timeout: .seconds(60)) {
-                let listed = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
-                return listed.count < 2 ? nil : listed
-            }
-            #expect(Set(pending.compactMap { $0["step"]?.string }) == ["meta/run-step", "meta/publish-workflow"] && pending.count == 2, "\(pending)")
             let ended = try await eventually("the builder's turn to end", timeout: .seconds(60)) {
                 model.requests.first { $0.contains("You are a workflow BUILDER") && $0.components(separatedBy: #""type":"tool_result""#).count == 3 }
             }
-            // The shell did not run: its test run waits on its card like the publish.
+            // The test run is the one proposal, and the shell did not run.
+            let pending = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
+            #expect(pending.compactMap { $0["step"]?.string } == ["meta/run-step"], "\(pending)")
             #expect(!ended.contains("ran\\n"), "\(ended.suffix(2000))")
-            // Proposed, not published.
-            let published = await #expect(throws: PeelError.self) { try await Self.strutCall("GET", "workflows/\(workflow)/flow", on: server) }
-            #expect(published?.localizedDescription.contains(workflow) == true, "\(String(describing: published))")
+            // Published with no card.
+            let flow = try await Self.strutCall("GET", "workflows/\(workflow)/flow", on: server)
+            #expect(flow["steps"]?.array?.first?["id"] == "hi", "\(flow)")
 
             for person in [alice, other] { await person.close() }
         }

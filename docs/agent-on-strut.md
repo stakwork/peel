@@ -1395,7 +1395,7 @@ From the connectors and authoring design (stakwork/peel#342, `docs/connectors-an
   Mac (`proposal:<id>`) and calls `decide` once with the answer alone. The
   card is R1's wording until P2 gives proposals their own.
 - **Checked.** `Journeys.Orchestrator.aWorkflowTheAgentBuildsWaitsForApproval` (since 2026-10-24
-  `aWorkflowTheAgentBuildsIsPublishedAndOnlyItsTestRunWaits`: the publish is ungated):
+  `aWorkflowTheAgentBuildsIsTestedAndPublishedWithNoCard`: the builder is ungated):
   a DM asks for a workflow, the orchestrator starts the builder, its
   publish is one pending proposal and the workflow does not exist.
 
@@ -1437,22 +1437,20 @@ strut's MCP registry (strut#286). Built on P1 (the builder gated).
   (`meta/publish-workflow`, `meta/create-step`, `meta/edit-step`,
   `app/publish`) with no card, and what it publishes may run any step,
   name any secret in strut's store (the model's, a connection's, the
-  bridge's) and call other struts. `app/publish` is no longer sealed
-  (`STRUT_SEALED` is unset): the seal only kept `meta/run-step` from
-  running it around its card. `builder.approve` is `meta/run-step` alone:
-  without a reach it runs any unsealed step (`exec` with any secret, an
-  `agent` with its own grants) in one call. A workflow the builder
-  publishes and then runs (`meta/run-workflow`) reaches the same with no
-  card, so that gate is a speed bump, not a boundary.
-  `sphinx/*` stay sealed, `meta/set-automation` stays out of
-  `builder.approve` (strut refuses it), and a workflow step calling
+  bridge's) and call other struts. Peel sets no `builder.approve`, so its
+  test runs (`meta/run-step`, `meta/run-workflow`) need no card either:
+  `meta/run-step` runs any unsealed step (`exec` with any secret, an
+  `agent` with its own grants), the same reach as a workflow it publishes
+  and runs. `app/publish` is no longer sealed (`STRUT_SEALED` is unset):
+  the seal only kept `meta/run-step` from running it around its card.
+  `sphinx/*` stay sealed, `meta/set-automation` is still refused (strut
+  runs it only as an accepted proposal), and a workflow step calling
   `strut/run-workflow` still waits on its card (strut's `peers.test.ts`).
   Known and accepted: an AI workflow run in a job keeps that job's MCP
   servers (strut drops them only under a reach); no journey yet
   publishes a workflow that uses a secret.
-  `Journeys.Orchestrator.aWorkflowTheAgentBuildsIsPublishedAndOnlyItsTestRunWaits`:
-  the publish goes through, the shell test run is the one pending
-  proposal and does not run.
+  `Journeys.Orchestrator.aWorkflowTheAgentBuildsIsTestedAndPublishedWithNoCard`:
+  the shell test run runs, the publish goes through, nothing is pending.
 - **This Mac only for tests.** A development profile's strut may register
   a server on this Mac (`STRUT_MCP_LOCAL=1`); the app account's may not.
 - **Checked.** `ConnectionsTests` on a staged strut against `MCPStub`

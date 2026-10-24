@@ -153,30 +153,21 @@ public enum Orchestrator {
 
     // MARK: The host delta
 
-    /// What strut's `builder` job (the orchestrator starts it with
-    /// `job/start`) may only propose: each call becomes a proposal the person
-    /// decides (docs/connectors-and-authoring.md, section 6).
-    /// The builder works freely otherwise, as on Hive's strut: it writes step
-    /// code, publishes workflows and apps (`meta/publish-workflow`,
-    /// `meta/create-step`, `meta/edit-step`, `app/publish`) with no card, and
-    /// with no `builder.reach` (strut #284) what it publishes may run any step,
-    /// name any secret in strut's store and call other struts.
-    /// `meta/set-automation` is left out, so strut refuses it: a workflow is
-    /// scheduled by an automation whose prompt runs it, made by the
-    /// orchestrator on one card, never by the builder.
-    /// `meta/run-step` still asks first: without a reach it runs any unsealed
-    /// step (`exec` with any secret) in one call. A workflow the builder
-    /// publishes and runs (`meta/run-workflow`) reaches the same, ungated.
-    static let builderApprove = ["meta/run-step"]
-
     /// The JSON strut's bundled server reads at boot (`STRUT_HOST_CONFIG`):
     /// Peel's tools and section on the orchestrator, which runs on the
     /// connected model (`model: null`, strut's `STRUT_DEFAULT_MODEL`), its
     /// calls to an org behind a card, and once a Stadeum workspace is paired,
     /// strut's own section for a person's orgs (`personal`, strut's
-    /// `personalOrchestratorSystem`); the builder's test runs on a card, the
-    /// builder closed to other struts (`peer: false`); and the automation
-    /// steps' workflow and approval step.
+    /// `personalOrchestratorSystem`); strut's `builder` job (the orchestrator
+    /// starts it with `job/start`) free to work, as on Hive's strut: no
+    /// `approve` and no `builder.reach` (strut #284), so it writes step code,
+    /// test-runs and publishes workflows and apps with no card, and what it
+    /// publishes may run any step, name any secret in strut's store and call
+    /// other struts; closed to other struts (`peer: false`); and the
+    /// automation steps' workflow and approval step. With no `approve`, strut
+    /// refuses the builder's `meta/set-automation` (it runs only as an
+    /// accepted proposal): a workflow is scheduled by an automation whose
+    /// prompt runs it, made by the orchestrator on one card.
     /// `grants`: the MCP servers each agent reaches (Connections), all of
     /// their tools; strut asks first for any not read-only.
     static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil) throws -> Data {
@@ -189,7 +180,7 @@ public enum Orchestrator {
             "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
                              "system": .string(system), "model": .null, "approve": approve],
             "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
-            "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false],
+            "builder": ["peer": false],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]

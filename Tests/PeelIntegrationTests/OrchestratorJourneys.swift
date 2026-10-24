@@ -200,14 +200,12 @@ extension Journeys {
 
         /// Authoring (docs/connectors-and-authoring.md, P1). Alice asks her
         /// agent for a workflow; the orchestrator starts strut's `builder` job,
-        /// whose model writes it and calls `meta/publish-workflow`, which
-        /// publishes at once: the builder is free to work. With no
-        /// `builder.reach`, a test run through `meta/run-step` (here a shell)
-        /// is the one call in Peel's `approve:`: a pending proposal, and
-        /// nothing runs until a person decides.
+        /// whose model test-runs a step through `meta/run-step` (here a shell)
+        /// and calls `meta/publish-workflow`. Peel gives the builder no
+        /// `approve:` and no `builder.reach`: both run at once, no card.
         @Test(.enabled(if: staged))
         @MainActor
-        func aWorkflowTheAgentBuildsIsPublishedAndOnlyItsTestRunWaits() async throws {
+        func aWorkflowTheAgentBuildsIsTestedAndPublishedWithNoCard() async throws {
             let (alice, other) = try await Journeys.Payments.pair()
             let workflow = "daily-hello"
             let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
@@ -216,7 +214,7 @@ extension Journeys {
                 if body.contains("You are a workflow BUILDER") {
                     switch body.components(separatedBy: #""type":"tool_result""#).count - 1 {
                     case 0:
-                        return Self.toolUse("meta_run_step", ["type": "exec", "config": ["command": "echo ran"]])
+                        return Self.toolUse("meta_run_step", ["type": "exec", "config": ["cmd": "printf", "args": ["%s-%s", "shell", "ran"]]])
                     case 1:
                         return Self.toolUse("meta_publish_workflow", [
                             "name": workflow, "description": "Says hello",
@@ -259,10 +257,10 @@ extension Journeys {
             let ended = try await eventually("the builder's turn to end", timeout: .seconds(60)) {
                 model.requests.first { $0.contains("You are a workflow BUILDER") && $0.components(separatedBy: #""type":"tool_result""#).count == 3 }
             }
-            // The test run is the one proposal, and the shell did not run.
+            // The shell ran, and nothing waits on a card.
+            #expect(ended.contains("shell-ran"), "\(ended.suffix(2000))")
             let pending = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
-            #expect(pending.compactMap { $0["step"]?.string } == ["meta/run-step"], "\(pending)")
-            #expect(!ended.contains("ran\\n"), "\(ended.suffix(2000))")
+            #expect(pending.isEmpty, "\(pending)")
             // Published with no card.
             let flow = try await Self.strutCall("GET", "workflows/\(workflow)/flow", on: server)
             #expect(flow["steps"]?.array?.first?["id"] == "hi", "\(flow)")

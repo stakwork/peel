@@ -454,7 +454,7 @@ for:
 | "Remember…", "what did I miss?", "reply to Kate…" | Now | The agent's own tools | A send card when it sends as you |
 | "Find me padel rackets under £200" | Now | A job (web, files) | None |
 | "Remind me at 8", "every Monday recap my tribes", "every Sunday send me the top 3 padel videos" | Schedule | An automation: its run has the agent's tools and starts a job for the web | One: the schedule |
-| "Make me a workflow: top 3 padel videos, their transcripts, the topics" | Now | The builder writes, test-runs and publishes it | None (a `meta/run-step` test run asks first) |
+| "Make me a workflow: top 3 padel videos, their transcripts, the topics" | Now | The builder writes, test-runs and publishes it | None |
 | "…and send it to me every Sunday night" | Schedule | An automation whose prompt says to run that workflow by name | One: the schedule |
 | "Every Monday post a recap to my tribe" | Schedule | An automation posting as you within its grant | One: the schedule and the grant |
 
@@ -471,12 +471,12 @@ run had only memory and your chats, and the agent declined web tasks.
 2. **The builder writes it.** In its own job: drafts the YAML, writes a
    step if needed (`meta/create-step`), test-runs it (`meta/run-step`,
    `meta/run-workflow`), checks claims.
-3. **It publishes.** Since 2026-10-24 `meta/publish-workflow` is not in
-   `builder.approve`: the builder publishes with no card. Before, the call
+3. **It publishes.** Since 2026-10-24 Peel sets no `builder.approve`:
+   the builder test-runs and publishes with no card. Before, the call
    became a proposal the bridge relayed as an `approve` card (runner R1).
 4. **The orchestrator schedules it.** An automation (`automation/create`,
    one card) whose prompt says "run padel-digest and tell me what it
-   found". Peel leaves `meta/set-automation` out of `builder.approve`, so
+   found". Peel leaves `meta/set-automation` out of `builder.approve` (it sets none), so
    strut refuses it: every schedule is an automation, listed and managed
    in one place.
 5. **It runs.** Each Sunday the automation's run starts a job that runs
@@ -501,7 +501,7 @@ Superseded 2026-10-24: the builder publishes with no card.
 
 | Need | Change |
 |---|---|
-| The builder seeded and gated | Move the strut pin past #239; Peel's delta sets `builder: { approve: [meta/publish-workflow, meta/create-step, meta/edit-step, app/publish], peer: false }` (`meta/set-automation` left out on 2026-10-23: schedules are automations). **This ships with the pin move,** since the pin otherwise gives the orchestrator an ungated builder. Since 2026-10-24 `approve` is `[meta/run-step]`: the builder publishes freely |
+| The builder seeded and gated | Move the strut pin past #239; Peel's delta sets `builder: { approve: [meta/publish-workflow, meta/create-step, meta/edit-step, app/publish], peer: false }` (`meta/set-automation` left out on 2026-10-23: schedules are automations). **This ships with the pin move,** since the pin otherwise gives the orchestrator an ungated builder. Since 2026-10-24 Peel sets no `approve`: the builder works with no card |
 | The orchestrator may start it | Nothing: `job/start` is already granted |
 | `meta/set-automation` | New strut step: create, update, pause or delete an automation on a workflow published `ai`; never on seeded or host workflows. Under `meta/*`, so sealed from the meta surface but granted to the builder |
 | Results reach the DM | Nothing new: a workflow runs inside a job an automation's run starts, and the bridge sends that job's end to the DM (journey `anAutomationStartsAJobWhoseResultReachesTheDM`) |

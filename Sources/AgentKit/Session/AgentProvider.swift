@@ -39,6 +39,10 @@ public enum AgentProvider: String, Codable, CaseIterable, Sendable, Hashable {
         }
     }
 
+    /// Where an Anthropic organization lists its workspaces and their IDs
+    /// (`AgentCredential.workspaceID`).
+    public static let anthropicWorkspacesPage = URL(string: "https://platform.claude.com/settings/workspaces")!
+
     /// The picker's models, the recommended one first.
     public var models: [Model] {
         switch self {
@@ -62,7 +66,9 @@ public enum AgentProvider: String, Codable, CaseIterable, Sendable, Hashable {
     }
 }
 
-/// A connected model: the provider, the model and the key. Kept whole in
+/// A connected model: the provider, the model, the key and, for an
+/// Anthropic key made for the whole organization, the workspace its calls
+/// run in (a `wrkspc_…` id; a workspace's own key needs none). Kept whole in
 /// the device's Keychain (`AgentCredentialStore`), never in the agent's
 /// store; it prints without the key.
 public struct AgentCredential: Codable, Sendable, Equatable, CustomStringConvertible, CustomDebugStringConvertible,
@@ -71,11 +77,13 @@ public struct AgentCredential: Codable, Sendable, Equatable, CustomStringConvert
     public var provider: AgentProvider
     public var model: String
     public var apiKey: String
+    public var workspaceID: String?
 
-    public init(provider: AgentProvider, model: String, apiKey: String) {
+    public init(provider: AgentProvider, model: String, apiKey: String, workspaceID: String? = nil) {
         self.provider = provider
         self.model = model
         self.apiKey = apiKey
+        self.workspaceID = workspaceID
     }
 
     /// The key's last four characters, all a screen shows of it.

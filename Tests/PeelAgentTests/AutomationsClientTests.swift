@@ -121,6 +121,8 @@ struct AutomationsClientTests {
         (#"agent failed after 0 step(s): User not found. (HTTP 401: {"error":{"code":401}})"#,
          "Didn't run: the model's provider rejected the key. Replace it in Account."),
         ("agent: no model connected (STRUT_DEFAULT_MODEL is not set)", AutomationFailure.noModel),
+        (#"agent failed after 0 step(s): this API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header (HTTP 400: {})"#,
+         AutomationFailure.noWorkspace),
         (#"agent failed after 2 step(s): Overloaded (HTTP 529: {"type":"error"})"#, "Didn't finish: Overloaded"),
         // A refusal that is not about the key keeps the provider's reason.
         (#"agent failed after 0 step(s): Your organization does not have access (HTTP 403: {})"#,
@@ -241,22 +243,27 @@ struct AutomationsClientTests {
         #expect(stub.requests.count == before + 1)
     }
 
-    /// The connected model and its key go to strut's secret store, the other
-    /// providers' keys come out; disconnected, the model and every key do.
-    /// Read as the store ends up, from one that held every key before.
+    /// The connected model and its key (and an Anthropic key's workspace) go
+    /// to strut's secret store, the other providers' keys and an old workspace
+    /// come out; disconnected, the model and every key do. Read as the store
+    /// ends up, from one that held every key before.
     @Test(arguments: [
-        (AgentProvider.anthropic, "claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", "ANTHROPIC_API_KEY"),
-        (.openAI, "gpt-5", "openai/gpt-5", "OPENAI_API_KEY"),
-        (.openRouter, "anthropic/claude-sonnet-5.5", "openrouter/anthropic/claude-sonnet-5.5", "OPENROUTER_API_KEY"),
-    ])
-    func theConnectedModelIsHandedToStrut(provider: AgentProvider, model: String, named: String, secret: String) async throws {
+        (AgentProvider.anthropic, "claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", "ANTHROPIC_API_KEY", nil),
+        (.anthropic, "claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", "ANTHROPIC_API_KEY", "wrkspc_01abc"),
+        (.openAI, "gpt-5", "openai/gpt-5", "OPENAI_API_KEY", nil),
+        (.openRouter, "anthropic/claude-sonnet-5.5", "openrouter/anthropic/claude-sonnet-5.5", "OPENROUTER_API_KEY", nil),
+    ] as [(AgentProvider, String, String, String, String?)])
+    func theConnectedModelIsHandedToStrut(provider: AgentProvider, model: String, named: String, secret: String,
+                                          workspace: String?) async throws {
         let (stub, client) = try await strut()
         defer { stub.stop() }
         let held = ["STRUT_DEFAULT_MODEL": "old/model", "ANTHROPIC_API_KEY": "old", "OPENAI_API_KEY": "old",
-                    "OPENROUTER_API_KEY": "old", "PEEL_AUTOMATION_TOKEN": "token"]
-        try await client.setModel(AgentCredential(provider: provider, model: model, apiKey: "sk-test-1234"))
+                    "OPENROUTER_API_KEY": "old", "ANTHROPIC_WORKSPACE_ID": "wrkspc_old", "PEEL_AUTOMATION_TOKEN": "token"]
+        try await client.setModel(AgentCredential(provider: provider, model: model, apiKey: "sk-test-1234", workspaceID: workspace))
         // `peel-automation`'s token and port go with any hand-over: nothing listens for them.
-        #expect(secrets(stub, from: held) == ["STRUT_DEFAULT_MODEL": named, secret: "sk-test-1234"])
+        var handed = ["STRUT_DEFAULT_MODEL": named, secret: "sk-test-1234"]
+        handed["ANTHROPIC_WORKSPACE_ID"] = workspace
+        #expect(secrets(stub, from: held) == handed)
         try await client.setModel(nil)
         #expect(secrets(stub, from: held).isEmpty)
     }

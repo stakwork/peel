@@ -149,7 +149,8 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
     /// listening, as Peel not reached; the agent step's provider refusing
     /// the key (HTTP 401) as that, never its raw reply (OpenAI's quotes part of the key);
     /// "agent: no model connected (STRUT_DEFAULT_MODEL is not set)" as no
-    /// model connected; and any other model call's failure, "agent failed
+    /// model connected; Anthropic's refusal of an organization-wide key's
+    /// workspace (or its lack) as that; and any other model call's failure, "agent failed
     /// after 0 step(s): overloaded (HTTP 529: {…})", as "overloaded".
     static func shortened(_ message: String, peels: Bool) -> String {
         if let peel = message.firstMatch(of: #/Peel answered \d{3}: /#) {
@@ -166,6 +167,7 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
             return AutomationFailure.keyRejected(by: provider(in: message))
         }
         if message.contains("(STRUT_DEFAULT_MODEL is not set)") { return AutomationFailure.noModel }
+        if message.contains("anthropic-workspace-id") { return AutomationFailure.noWorkspace }
         var text = message
         for tail in [" (HTTP ", " (STRUT_"] {
             if let cut = text.range(of: tail) { text = String(text[..<cut.lowerBound]) }
@@ -399,10 +401,14 @@ public struct AutomationsClient: Sendable {
         }
     }
 
-    /// Every provider's (`keySecret`).
-    static let keySecrets = AgentProvider.allCases.map(keySecret)
+    /// Where strut reads the workspace an organization-wide Anthropic key
+    /// calls in (`AgentCredential.workspaceID`).
+    static let workspaceSecret = "ANTHROPIC_WORKSPACE_ID"
 
-    /// Puts the connected model and its key in strut's secret store, for
+    /// Every provider's (`keySecret`), and the workspace.
+    static let keySecrets = AgentProvider.allCases.map(keySecret) + [workspaceSecret]
+
+    /// Puts the connected model, its key and any workspace in strut's secret store, for
     /// the agent and the system automations, and takes out any other provider's key;
     /// with no model connected, takes out the model and every key. Called
     /// whenever strut starts or the connected model changes
@@ -414,9 +420,14 @@ public struct AutomationsClient: Sendable {
             _ = try await call("PUT", "secrets/\(Self.keySecret(credential.provider))", ["value": .string(credential.apiKey)],
                                what: "the model's key")
         }
+        let workspace = credential?.provider == .anthropic ? credential?.workspaceID : nil
+        if let workspace {
+            _ = try await call("PUT", "secrets/\(Self.workspaceSecret)", ["value": .string(workspace)], what: "the workspace")
+        }
         // `peel-automation`'s token and port go too: nothing listens for them now.
         let gone = (credential == nil ? [Self.modelSecret] : [])
-            + AgentProvider.allCases.filter { $0 != credential?.provider }.map(Self.keySecret) + Self.oldSecrets
+            + AgentProvider.allCases.filter { $0 != credential?.provider }.map(Self.keySecret)
+            + (workspace == nil ? [Self.workspaceSecret] : []) + Self.oldSecrets
         try await deleteSecrets(gone, what: "the model's key")
     }
 

@@ -269,7 +269,7 @@ public final class BundledStrut {
     /// Peel's own environment without anything that would change how Node,
     /// strut or its OpenSSL runs (`DYLD_*`, `NODE_*`, `STRUT_*`, `OPENSSL_*`,
     /// `SSL_CERT_*`) or that is Peel's own (`PEEL_*`, the CLI's model key
-    /// among them), without a model provider's key (strut takes the connected
+    /// among them), without a model provider's key or workspace (strut takes the connected
     /// model's from its secret store, `AutomationsClient.setModel`, so one
     /// disconnected is gone), and then strut's: this Mac only, a port the OS picks,
     /// Peel's keys and folders, exit with Peel. Its OpenSSL (Ladybug's) reads no

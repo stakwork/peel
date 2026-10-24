@@ -354,7 +354,8 @@ final class OffscreenDriver {
     /// `automations`, the Automations page; `automations-setup`, its Set up
     /// (the Connect panel) while no model is connected; `automations-system`,
     /// its System tab; `system-open`, `system-switch` and `system-run-now`,
-    /// the first system automation's row, its switch and its Run now; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
+    /// the first system automation's row, its switch and its Run now; `agent-connect`, the agent chat's Connect panel; `agent-change`,
+    /// Account › Assistant's Change (with Account open there); `agent-settings`,
     /// its gear (Account at Peel agent); `agent-view`, the first View in its
     /// newest earlier reply; `agent-sent-view`, View on its newest send row;
     /// `device-allow`, Allow once on a card in
@@ -423,6 +424,9 @@ final class OffscreenDriver {
         case "agent-connect":
             // The agent chat's Connect: on its intro's card, or in its DM's composer place.
             model.agentConnectFrom = model.agentChat == nil ? .chat : .dm
+        case "agent-change":
+            // Account › Assistant's Change, with Account open there (`agent-settings`).
+            model.agentConnectFrom = .account
         case "agent-settings":
             // The agent chat header's gear.
             model.openAccount(.assistant)

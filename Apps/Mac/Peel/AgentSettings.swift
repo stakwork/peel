@@ -71,6 +71,11 @@ struct AgentSettingsSection: View {
                             }
                         }
                     }
+                    if let workspace = connection.workspaceID {
+                        Fact("Workspace") {
+                            Text(workspace).monospaced().textSelection(.enabled)
+                        }
+                    }
                     Fact("Model") {
                         PeelDropdown(
                             selection: connection.model,

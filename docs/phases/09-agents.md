@@ -1066,6 +1066,57 @@ flushes are 50 ms apart, as the session sends them), a click on a tool
 row's chevron and the approval card's keys (Return, Escape) inside the
 table's cells, hover and More on agent rows, text selection in a reply.
 
+### An Anthropic key made for the whole organization (branch `claude/api-key-scope-workspace-id-f3c812`, 2026-10-23)
+
+Tom: an Anthropic key whose scope is the organization, not one workspace,
+needs a workspace ID with it, and Peel had nowhere to put one. Anthropic
+answers 400 to such a key unless each request names the workspace
+(`anthropic-workspace-id`, a `wrkspc_…` id; the Default Workspace has one
+too). Done means: the ID can be given at Connect, reaches strut, and strut
+sends it.
+
+Built:
+
+- strut (stakwork/strut, `feat/anthropic-workspace-id`): `resolveModel`
+  reads `ANTHROPIC_WORKSPACE_ID` (secret store, then env) and sends it on
+  Anthropic calls made with the deployment's own key. It has to merge
+  before this does anything.
+- `AgentCredential.workspaceID`, optional, so a stored credential without
+  one still decodes. Connect a model shows "Workspace ID (optional)" for
+  Anthropic only, with a link to the Console's Workspaces page. An ID is
+  `wrkspc_` and letters and digits; one that can't become that is said
+  under the field, and Connect waits for a whole one. Change and Replace
+  fill in the one kept. With the key left empty ("Keep the current key")
+  and the provider unchanged, Connect keeps the key and changes only the
+  workspace and model (`AgentSession.keepKey`), so adding a workspace never
+  needs the key pasted again. Account › Assistant shows it.
+- `setModel` puts it in strut's store, or takes it out (none given,
+  another provider, disconnected). The bundled strut drops one inherited
+  from the shell, as it does the keys. A run Anthropic refused over the
+  workspace (none, or one the key can't use) reads "Anthropic needs a
+  workspace ID this key can use. Check it in Account."
+- `OffscreenDriver`'s `agent-change`: Account's Change, so a check can open
+  the panel while a model is connected.
+
+Checked: `AutomationsClientTests` (the workspace handed over and taken out;
+the refusal's words), `AgentSessionTests` (`keepKey`; a credential kept
+before workspaces still reads), `BundledStrutTests`, strut's `llm.test.ts`
+(the header on the wire from a stand-in server; none with no ID or a
+re-keying grant); in `scripts/check-app.sh` on a dev profile: `wrk` not
+flagged, `wrkabc` flagged, `wrkspc_01abc` with the key left empty kept the
+key and showed in Account, then cleared.
+
+Not applied from review: Replace keeps the old workspace filled in (it is
+on screen and clears with a key press); `keySecrets` keeps its name though
+it now holds the workspace too (one caller, its comment says so);
+`setModel` and the panel both keep a workspace to Anthropic (the store's
+write is the boundary, the panel's is what it shows). Next: the
+workspace belongs in aieo beside its key lookup (`API_KEY_ENV`), not in
+strut's `llm.ts`, which says provider knowledge lives in aieo.
+
+Needs Tom's hands: a real organization-wide key, with and without its
+workspace.
+
 ## Capabilities against agent SDKs
 
 Checked against the code on 2026-10-12, and compared with Vercel's AI SDK,

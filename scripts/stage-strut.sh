@@ -34,8 +34,8 @@ WORK=; NODE_TMP=; STRUT_SRC=
 trap 'rm -rf "$WORK" "$NODE_TMP" "$STRUT_SRC" "$OUT.lock"' EXIT
 trap 'exit 1' INT TERM HUP
 
-NODE_VERSION=v22.23.3
-NODE_SHA256=23b25245dcfb9af7262f8ff142e9e2e0af025368117329e7a7458a51e5922f53
+NODE_VERSION=v22.23.4
+NODE_SHA256=c9e1dbc748b33ed2d14f42445191ecaf14c56259c7a9a26d0042c49ec2b66428
 NODE_TAR="$OUT.node/node-$NODE_VERSION-darwin-arm64.tar.gz"
 mkdir -p "$(dirname "$NODE_TAR")"
 if ! echo "$NODE_SHA256  $NODE_TAR" | shasum -a 256 -c - > /dev/null 2>&1; then

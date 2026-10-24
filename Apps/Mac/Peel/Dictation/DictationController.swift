@@ -376,8 +376,7 @@ final class DictationController {
             switch outcome {
             case .inserted:
                 kept = await entry.keep(text, .typed, heard: rewritten)
-                // Not Peel's own fields: asking Accessibility would wait on this very thread.
-                if start.pid != getpid() { watchForCorrections(of: text) }
+                watchForCorrections(of: text)
             case .copied(let why):
                 copied = true
                 kept = await entry.keep(text, .copied, note: Self.historyNote(why), heard: rewritten)
@@ -408,7 +407,10 @@ extension DictationController {
         watch = nil
         // A pick that was downloading when last read may be in use by now: read again for next time.
         if models.downloading { Task { await models.load() } }
-        guard models.hasActiveFixer, let server = lingo.server, let storage = history() else { return }
+        guard models.hasActiveFixer, let server = lingo.server, let storage = history() else {
+            log.notice("edit watch not started: \(self.models.hasActiveFixer ? "Peel is locked or its strut is not running" : "no clean-up model in use", privacy: .public)")
+            return
+        }
         let account = ObjectIdentifier(storage)
         watch = DictationEditWatch.watch(typed: typed) { [weak self] edited in
             guard let self, let edited, edited != typed, isCurrent(server, account) else { return }
@@ -429,6 +431,8 @@ extension DictationController {
         }
         // Only what strut wrote now: a pair it already had needs no Undo.
         let new = learned.filter { !$0.undo.isEmpty }
+        // Counts and lengths only, never the words.
+        log.notice("edit sent to strut (typed \((typed as NSString).length, privacy: .public), edited \((edited as NSString).length, privacy: .public)): \(learned.count, privacy: .public) learned, \(new.count, privacy: .public) new")
         guard !new.isEmpty, isCurrent(server, account) else { return }
         self.learned = Learned(words: new.map(\.written), undo: new.flatMap(\.undo), server: server, account: account)
         showLearned()

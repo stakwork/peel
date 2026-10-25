@@ -573,7 +573,7 @@ is a short plan. Update the status and the journal when you finish something.
   the confirmation threshold, server; Forget).
   `Peel/Assets.xcassets` holds `Logo`, a link to
   `Apps/Assets/peel.svg`, for the phone's own use
-- `Sources/AgentKit/` — the agent's client side, GRDB only (no PeelCore,
+- `Sources/AgentKit/` — the agent's client side, GRDB and PeelDiagnostics only (no PeelCore,
   builds for macOS and iOS; `docs/agent-architecture.md`). The agent's loop
   is strut's (`docs/agent-on-strut.md`); Peel's own Swift loop, its model
   clients and its automation server were removed in Phase 1's PR 11
@@ -627,7 +627,8 @@ is a short plan. Update the status and the journal when you finish something.
   `markCleanExit`, `memoryWarning`, `previousRun`, `recentEvents`,
   `snapshot`, `latestRedactedReport`, `deleteRecords`, debug-only
   `forceTestCrash`; `PeelCore` adds `note(error:)` and `PeelError.noted`,
-  which every notice built from an error goes through), `DiagnosticEvent`
+  which every notice built from an error goes through, as do `AgentSession`'s,
+  the tribe forms' and the refused-file notices, by kind only), `DiagnosticEvent`
   (enums and numbers only: no String field), `DiagnosticsRing`
   (bounded JSON-lines file, coalescing, rotation), `RunMarker`
   (`PreviousRun`, classified at launch), `CrashRecord` and `RedactedRecord`

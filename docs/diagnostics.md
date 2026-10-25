@@ -112,8 +112,9 @@ Force Test Crash with no debugger, relaunch, read the record.
 
 ## Journal
 
-- 2026-10-25: first slice written. Unchecked on Apple platforms. Not
-  applied: `AgentSession.notice` (AgentKit has no PeelDiagnostics
-  dependency; its notices are about the key and rule stores), the forms'
-  own problem lines (`TribeForms`, the Account's panes), which are not
-  notices.
+- 2026-10-25: first slice written. Unchecked on Apple platforms.
+- 2026-10-25: the remaining notices wired, kind only: `AgentSession.notice`
+  (AgentKit now depends on PeelDiagnostics; key read `other`, rules and chat
+  reads `database`), the tribe forms' save problems (`saveProblem`, by the
+  error's kind) and the Mac's and iPhone's refused-file notices (`refused`,
+  since their words name files).

@@ -54,7 +54,7 @@ let package = Package(
         // gate and its rules, the connected model's key and the chat Peel's
         // own loop kept before strut was the agent (docs/agent-architecture.md);
         // GRDB only, so it builds for macOS and iOS without the core.
-        .target(name: "AgentKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift")]),
+        .target(name: "AgentKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift"), "PeelDiagnostics"]),
         // The device side of the agent in strut: the Sphinx tools over the
         // engine's storage, the device requests, strut and the bridge Peel
         // ships; no AppKit or UIKit.

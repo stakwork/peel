@@ -1122,7 +1122,7 @@ public final class AppModel {
     public func joinTribe(_ link: String, agreedJoinMsat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
         Diagnostics.setAction(.tribeJoin)
         defer { Diagnostics.setAction(.other) }
-        await pay("join tribe") {
+        return await pay("join tribe") {
             let tribe = try await $0.joinTribe(link: link, agreedJoinMsat: agreedJoinMsat, confirmedMsat: confirmedMsat)
             destination = .chat(tribe.pubkey)
         }

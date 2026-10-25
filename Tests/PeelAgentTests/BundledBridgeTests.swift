@@ -154,8 +154,9 @@ struct BundledBridgeTests {
         #expect(!FileManager.default.fileExists(atPath: data.path))
     }
 
-    /// Peel dies however it dies: its end of runner's stdin closes, and
-    /// runner, started with Peel's settings, exits by itself.
+    /// Peel dies however it dies: its ends of runner's stdin and stdout close
+    /// (stdout broken, so runner's last log line can't be written), and runner,
+    /// started with Peel's settings, exits by itself.
     @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: BundledBridge.staged.path)))
     func theStagedRunnerExitsWhenPeelsPipeCloses() async throws {
         let data = FileManager.default.temporaryDirectory.appending(path: "peel-bridge-\(UUID().uuidString)")
@@ -167,13 +168,14 @@ struct BundledBridgeTests {
             [:], account: account, strut: strut, port: try BundledBridge.freePort(), admin: "admin token",
             token: String(repeating: "t", count: 32), alias: "Agent", data: data
         )
-        let input = Pipe()
+        let input = Pipe(), output = Pipe()
         process.standardInput = input
-        process.standardOutput = FileHandle.nullDevice
+        process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
         try await Task.sleep(for: .milliseconds(500))
         #expect(process.isRunning)
+        try output.fileHandleForReading.close()
         try input.fileHandleForWriting.close()
         for _ in 0..<40 where process.isRunning { try await Task.sleep(for: .milliseconds(50)) }
         #expect(!process.isRunning)

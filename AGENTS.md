@@ -337,7 +337,7 @@ is a short plan. Update the status and the journal when you finish something.
   and no model key for it),
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
-  restart Peel's strut with the new grants; Gmail to come; below them
+  restart Peel's strut with the new grants; below them
   `StadeumSection`, the Stadeum workspaces paired as peers),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,

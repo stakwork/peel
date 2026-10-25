@@ -143,7 +143,7 @@ extension AccountPage {
         case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
                           "revoke", "old assistant chats"]
         case .brain: ["memory", "home server", "this Mac", "status"]
-        case .connections: ["services", "MCP server", "Gmail", "Stadeum", "workspaces", "pair"]
+        case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
         case .notifications: ["message text", "alerts"]
         case .security: ["PIN", "lock", "twelve words", "recovery", "website data", "forget account", "sign out"]

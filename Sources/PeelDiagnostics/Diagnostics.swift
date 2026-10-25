@@ -93,8 +93,9 @@ final class DiagnosticsRuntime: Sendable {
     }
 }
 
-/// On-device crash and memory diagnostics (docs/diagnostics.md). A record
-/// only: nothing leaves the device. Every function is safe to call before
+/// On-device crash and memory diagnostics (docs/diagnostics.md). Nothing is
+/// uploaded; the redacted record is read by the person, or by their agent
+/// when they ask it. Every function is safe to call before
 /// `CrashRecorder.install()` and does nothing then.
 public enum Diagnostics {
     private static let runtime = Locked<DiagnosticsRuntime?>(nil)

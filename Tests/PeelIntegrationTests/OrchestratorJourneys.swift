@@ -57,7 +57,7 @@ extension Journeys {
             try await client.installOrchestrator()
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true)
             try await client.useBridge(try #require(bridge.server))
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent.pubkey)
 
             let strutStart = ContinuousClock.now
@@ -140,7 +140,7 @@ extension Journeys {
             try await client.installOrchestrator()
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
             try await client.useBridge(try #require(bridge.server))
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent)
 
             /// Sends `text` to the agent; its stored message once the server has it.
@@ -247,7 +247,7 @@ extension Journeys {
             try await client.installOrchestrator()
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
             try await client.useBridge(try #require(bridge.server))
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent)
 
             try await alice.engine.sendText("Make me a workflow that says hello every morning", to: agent)
@@ -499,7 +499,7 @@ extension Journeys {
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
             let running = try #require(bridge.server)
             try await setup.useBridge(running)
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent)
 
             let client = AutomationsClient(server: server, yours: PeelAgent.Orchestrator.automationWorkflow, callback: running.runEnds)

@@ -198,4 +198,18 @@ struct AuditSecretsTests {
     private func permissions(_ url: URL) throws -> Int {
         try #require(FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int)
     }
+
+    // MARK: Diagnostics
+
+    /// A crash record keeps tribes' names and ids and loses every contact's
+    /// name and the user's own (`Redactor`'s allow and known names).
+    @Test func diagnosticsKeepTribesAndRemovePeople() {
+        let names = DiagnosticsNames(chats: [
+            Conversation(chat: "tribe-key", alias: "Bitcoin Devs", isTribe: true),
+            Conversation(chat: "kate-key", alias: "Kate", isTribe: false),
+            Conversation(chat: "anon-key", alias: nil, isTribe: false),
+        ], myAlias: "Tom")
+        #expect(names.allow == ["Bitcoin Devs", "tribe-key"])
+        #expect(names.knownNames == ["Kate", "Tom"])
+    }
 }

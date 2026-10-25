@@ -143,4 +143,25 @@ struct RedactorTests {
         record.osVersion = "26.0 for Alice Nakamoto at home"
         #expect(Redactor().redact(record).osVersion == "[removed]")
     }
+
+    /// A real crash log (every thread, hundreds of images) is far over a
+    /// device answer's 32 KB; what the agent reads keeps the crashed thread.
+    @Test func theCompactRecordFitsADeviceAnswer() {
+        var record = redactor.redact(Fixtures.record)
+        let crashed = record.threads[0]
+        let frame = crashed.frames[0]
+        record.threads = [.init(number: 0, crashed: false, frames: Array(repeating: frame, count: 200), registers: [])]
+            + [.init(number: 1, crashed: true, frames: Array(repeating: frame, count: 200), registers: crashed.registers)]
+            + (2..<60).map { .init(number: $0, crashed: false, frames: Array(repeating: frame, count: 200), registers: []) }
+        record.images += (0..<800).map { .init(name: "/usr/lib/lib\($0).dylib", uuid: Fixtures.uuid, base: 0, size: 1, arch: "arm64") }
+        record.events = Array(repeating: record.events[0], count: 2000)
+        record.exceptionReason = String(repeating: "x", count: 40_000)
+        #expect(record.rendered().utf8.count > 32 * 1024)
+
+        let text = record.compact().rendered()
+        #expect(text.utf8.count < 16 * 1024)
+        #expect(text.contains("Thread 1 Crashed:") && !text.contains("Thread 0:"))
+        #expect(text.contains("<\(Fixtures.uuid)>") == false, "only the images the frames are in")
+        #expect(text.contains("Exception Type: EXC_CRASH"))
+    }
 }

@@ -3,13 +3,13 @@ import PeelUI
 
 /// The notice under the detail column when the last run ended badly: Peel
 /// recorded it on this Mac, and the record can be read, copied or deleted.
-/// Nothing is sent anywhere (docs/diagnostics.md).
+/// The agent reads it only when asked (docs/diagnostics.md).
 struct DiagnosticsNotice: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Callout(
-            detail: "Peel recorded a problem from the last run. The record stays on this Mac.",
+            detail: "Peel had a problem in its last run.",
             icon: .problem, dismiss: { model.diagnosticsNotice = false }
         ) {
             Button("Show record") { Task { await model.showDiagnosticRecord() } }

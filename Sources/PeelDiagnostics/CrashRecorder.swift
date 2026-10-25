@@ -38,7 +38,7 @@ public enum CrashRecorder {
         let ring = DiagnosticsRing(file: store.ringFile)
         // With a debugger attached the reporter would swallow its signals, so it stays off:
         // run a crash test without one (docs/diagnostics.md).
-        let config = PLCrashReporterConfig(signalHandlerType: signalHandler, symbolicationStrategy: [])
+        let config = PLCrashReporterConfig(signalHandlerType: signalHandler, symbolicationStrategy: symbolication)
         if let candidate = PLCrashReporter(configuration: config) {
             crash = PendingReport.collect(from: candidate, into: store, events: ring.read())
             if !MemoryProbe.debuggerAttached() {
@@ -53,6 +53,17 @@ public enum CrashRecorder {
     }
 
     #if canImport(CrashReporter)
+    /// Frames named at crash time in debug builds, which keep their symbols;
+    /// none in release, whose binaries are stripped and whose crash handler
+    /// should do no more than it must.
+    private static var symbolication: PLCrashReporterSymbolicationStrategy {
+        #if DEBUG
+        return .all
+        #else
+        return []
+        #endif
+    }
+
     /// Mach for release (it sees what BSD signals miss); BSD in debug builds, where Xcode's own handlers are about.
     private static var signalHandler: PLCrashReporterSignalHandlerType {
         #if DEBUG

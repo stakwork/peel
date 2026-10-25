@@ -54,8 +54,8 @@ struct CrashRecord: Codable, Sendable, Equatable {
     var strutStderrTail: String?
 }
 
-/// A crash record after `Redactor`: what may be shown, copied and, later,
-/// handed to the assistant. Structure (stacks, image UUIDs, load addresses,
+/// A crash record after `Redactor`: what may be shown, copied and handed
+/// to the agent (`compact()`). Structure (stacks, image UUIDs, load addresses,
 /// registers) is as recorded; every free-text field is scrubbed.
 public struct RedactedRecord: Codable, Sendable, Equatable {
     public struct Frame: Codable, Sendable, Equatable {
@@ -104,6 +104,22 @@ public struct RedactedRecord: Codable, Sendable, Equatable {
     public var images: [Image]
     public var events: [DiagnosticEvent]
     public var strutStderrTail: String?
+
+    /// The record cut to what a device answer (32 KB) holds, for the agent:
+    /// the exception's words shortened, the crashed thread's top frames
+    /// without its registers, only the images those frames are in, and the
+    /// last events.
+    public func compact() -> RedactedRecord {
+        var copy = self
+        let crashed = threads.first(where: \.crashed) ?? threads.first
+        copy.threads = crashed.map { [Thread(number: $0.number, crashed: $0.crashed, frames: Array($0.frames.prefix(25)), registers: [])] } ?? []
+        let used = Set(copy.threads.flatMap(\.frames).compactMap(\.imageName))
+        copy.images = images.filter { used.contains($0.name) }
+        copy.events = Array(events.suffix(15))
+        copy.exceptionName = exceptionName.map { String($0.prefix(200)) }
+        copy.exceptionReason = exceptionReason.map { String($0.prefix(1_000)) }
+        return copy
+    }
 
     /// Apple's crash log, roughly: header, exception, threads with their
     /// frames, the crashed thread's registers, binary images, then the

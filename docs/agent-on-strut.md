@@ -407,6 +407,7 @@ apps already show the content.
 | `chats.threads` | `chat`, `limit?` | read | `read_threads` |
 | `chats.unseen` | `chat?` | read | `read_unseen_messages`. One request covers every chat, so "what did I miss" is one round trip |
 | `chats.search` | `q`, `chat?`, `limit?` | read | `search_messages` |
+| `diagnostics.latest` | — | read | Peel's newest crash record, redacted and trimmed (`DeviceReads`, docs/diagnostics.md); the chat's agent only, not an automation |
 | `send` | `chat`, `text`, `thread_uuid?`, `reply_to_uuid?`, `max_price_sats`, `automation?` | send | `SendTool`'s plan and `Engine.sendText`, behind the card or a grant (below) |
 | `calendar.events` | `from`, `to`, `calendars?` | read | EventKit; the first use asks for macOS Calendar access |
 | `calendar.create`, `calendar.update`, `calendar.delete` | the event, or its id | send | EventKit, behind the card |

@@ -6,7 +6,7 @@ import PeelUI
 
 /// Account › Connections: the services the agent uses with the person's
 /// own credentials, kept in their strut (docs/connectors-and-authoring.md,
-/// section 2). MCP servers first; Gmail and this Mac's own come later.
+/// section 2). MCP servers first; this Mac's own comes later.
 @MainActor @Observable
 final class ConnectionsState {
     var servers: [MCPServer] = []

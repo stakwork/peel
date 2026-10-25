@@ -1417,8 +1417,7 @@ strut's MCP registry (strut#286). Built on P1 (the builder gated).
   strut's encrypted store under `MCP_<the name in hex>_KEY`, a name no
   other server's can be (`linear`, `Linear`, `lin-ear` each their own).
   Peel keeps no copy. A name already connected is refused (Remove it
-  first), and an address strut refuses leaves nothing behind. Gmail is a
-  "coming soon" row.
+  first), and an address strut refuses leaves nothing behind.
 - **Grants.** Which agents reach a server is Peel's: `connections.json`
   beside strut's data, read into the host delta at each start
   (`orchestrator.tools` and `job.tools` gain `mcp/<server>/*`). A switch

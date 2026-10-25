@@ -76,6 +76,8 @@ public final class AppModel {
     /// What the sidebar has selected.
     public enum Destination: Hashable, Sendable {
         case threads, mentions, automations, payments, account
+        /// The apps available from Peel's own strut on this Mac (Strut/Apps).
+        case strutApps
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)

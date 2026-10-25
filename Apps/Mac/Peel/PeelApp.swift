@@ -5,12 +5,16 @@ import LiveKit
 
 @main
 struct PeelApp: App {
-    @State private var model = AppModel(platform: .mac())
+    @State private var model: AppModel
     #if os(macOS)
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     #endif
 
     init() {
+        // First: crash recording starts before anything that could crash, and
+        // before the model, which reads how the last run ended.
+        CrashRecorder.install()
+        _model = State(initialValue: AppModel(platform: .mac()))
         // Everything this process creates (database, journal) is private to the user.
         umask(0o077)
         // At info and below LiveKit logs the server it connects to.
@@ -44,6 +48,9 @@ struct PeelApp: App {
                 #if os(macOS)
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     model.becameActive()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                    model.leftForeground()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     model.willTerminate()
@@ -84,6 +91,13 @@ struct PeelApp: App {
                 Button("Previous Unread Chat") { model.openUnread(by: -1) }
                     .keyboardShortcut(.upArrow, modifiers: [.option, .shift])
             }
+            #if DEBUG
+            // Makes a crash record to look at. Run Peel without a debugger
+            // attached (not from Xcode's Run): the crash reporter is off under one.
+            CommandMenu("Debug") {
+                Button("Force Test Crash") { Diagnostics.forceTestCrash() }
+            }
+            #endif
             CommandGroup(after: .windowArrangement) {
                 if CallTest.config(for: model) != nil { CallTestMenuItem() }
             }

@@ -616,6 +616,27 @@ is a short plan. Update the status and the journal when you finish something.
     strut was the agent, read only: its `Conversation`, `Turn` and
     `ToolCall` records, and Clear (which forgets its `Summary` records
     too); `keep` writes turns in that shape for the offscreen driver
+- `Sources/PeelDiagnostics/` — on-device crash and memory diagnostics, the
+  record only: nothing leaves the device (`docs/diagnostics.md`, the
+  guarantee). No UI. `CrashRecorder.install()` (first thing in each app's
+  `init`: PLCrashReporter 1.12.2 inside `#if canImport(CrashReporter)`, in
+  `PendingReport.swift` and `CrashRecorder.swift` alone, off under a
+  debugger; its pending report moved into the private raw folder, the
+  marker, the ring, the Mac's memory-pressure source), `Diagnostics` (the
+  facade: `note(errorKind:)`, `setAction`, `setForeground`,
+  `markCleanExit`, `memoryWarning`, `previousRun`, `recentEvents`,
+  `snapshot`, `latestRedactedReport`, `deleteRecords`, debug-only
+  `forceTestCrash`; `PeelCore` adds `note(error:)` and `PeelError.noted`,
+  which every notice built from an error goes through), `DiagnosticEvent`
+  (enums and numbers only: no String field), `DiagnosticsRing`
+  (bounded JSON-lines file, coalescing, rotation), `RunMarker`
+  (`PreviousRun`, classified at launch), `CrashRecord` and `RedactedRecord`
+  (the raw record never leaves the module), `Redactor`, `DiagnosticsStore`
+  (`raw/`, `redacted/`, the strut's stderr tail; `StderrTail`),
+  `MemoryProbe`. PeelUI re-exports it and adds `AppModel+Diagnostics` (the
+  notice, `showDiagnosticRecord`, `deleteDiagnosticRecord`); the Mac's and
+  the phone's `DiagnosticsViews` draw the notice and the sheet. Tested on
+  Linux too: `swift test --filter PeelDiagnosticsTests`
 - `Sources/PeelAgent/` — the device side of the agent in strut: the Sphinx
   tools over PeelCore's storage, the device requests, and the strut and
   bridge Peel ships (AgentKit and PeelCore; no AppKit or UIKit)
@@ -840,6 +861,8 @@ is a short plan. Update the status and the journal when you finish something.
   server offline or refusing the key; the key never
   printed; strut's replies and refusals; the earlier chat's memory rows
   and the panel's nodes)
+- `Tests/PeelDiagnosticsTests/` — offline, pure logic, also on Linux: `RingTests`
+  (ring, run marker, small parts, the store) and `RedactorTests`
 - `Tests/AgentKitTests/` — offline: `AgentStoreTests` (the event format,
   the clock, apply order, idempotency, per-field last write wins, forget
   and unlink, rebuild, search, walk and ontology), `AgentSessionTests` (the

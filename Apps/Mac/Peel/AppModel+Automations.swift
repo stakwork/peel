@@ -106,8 +106,8 @@ extension AppModel {
             credential = try connectedCredential()
         } catch {
             // A Keychain that cannot be read is not a model removed: strut's store is left as it is.
-            automations.problem = PeelError.problem(error, couldNot: "read the connected model's key")
-            return handedOver(.failed("Not connected to your assistant: \(PeelError.problem(error))"))
+            automations.problem = PeelError.noted(error, couldNot: "read the connected model's key")
+            return handedOver(.failed("Not connected to your assistant: \(PeelError.noted(error))"))
         }
         // This strut has it already (`connection` set again to the same).
         if let handed = strutModel, handed.server == client.server, handed.credential == credential {
@@ -118,8 +118,8 @@ extension AppModel {
             try await client.setModel(credential)
         } catch {
             strutModel = nil
-            automations.problem = PeelError.problem(error, couldNot: "give strut the connected model")
-            let reason = PeelError.problem(error)
+            automations.problem = PeelError.noted(error, couldNot: "give strut the connected model")
+            let reason = PeelError.noted(error)
             return handedOver(.failed(credential == nil ? "Your assistant may still have the old key: \(reason)"
                                       : "Not connected to your assistant: \(reason)"))
         }
@@ -164,7 +164,7 @@ extension AppModel {
         } catch {
             // The view's read loop starting again (a run started or ended) is not strut gone.
             guard !Task.isCancelled else { return }
-            automations.problem = PeelError.problem(error, couldNot: "read the automations")
+            automations.problem = PeelError.noted(error, couldNot: "read the automations")
         }
         if !automations.loaded { automations.loaded = true }
     }
@@ -182,7 +182,7 @@ extension AppModel {
             try await markTurnedOn(now)
             return list
         } catch {
-            automations.problem = PeelError.problem(error, couldNot: "keep which system automations are turned on")
+            automations.problem = PeelError.noted(error, couldNot: "keep which system automations are turned on")
             return list
         }
     }
@@ -258,7 +258,7 @@ extension AppModel {
                 let names = ListFormatter.localizedString(byJoining: stuck.map { "\u{201C}\($0)\u{201D}" })
                 return "Couldn't move \(names) to \(workflow): it stays where it was until the next try."
             } catch {
-                return PeelError.problem(error, couldNot: "move the automations to \(workflow)")
+                return PeelError.noted(error, couldNot: "move the automations to \(workflow)")
             }
         }
         bridge.moving = move
@@ -274,7 +274,7 @@ extension AppModel {
         do {
             try await change(client)
         } catch {
-            automations.problem = PeelError.problem(error, couldNot: what)
+            automations.problem = PeelError.noted(error, couldNot: what)
         }
         await refreshAutomations()
     }

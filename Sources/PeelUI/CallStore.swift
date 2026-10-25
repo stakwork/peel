@@ -1,5 +1,6 @@
 import Foundation
 import PeelCore
+import PeelDiagnostics
 
 extension CallPresence {
     /// Someone is on it.
@@ -228,6 +229,7 @@ public final class CallStore {
     public func join(_ link: CallLink, in chat: String, camera: Bool = false, failureInChat: Bool = false) async -> Bool {
         if isOnCall(link.room) { return true }
         if let reason = provider.unavailable {
+            Diagnostics.note(errorKind: .call)
             if failureInChat { chatNotice(chat) { _ in reason } } else { failures[link.room] = reason }
             return false
         }
@@ -247,10 +249,10 @@ public final class CallStore {
             return true
         } catch {
             if failureInChat {
-                let notice = PeelError.problem(error, couldNot: "join the call")
+                let notice = PeelError.noted(error, couldNot: "join the call")
                 chatNotice(chat) { _ in notice }
             } else {
-                failures[link.room] = PeelError.problem(error)
+                failures[link.room] = PeelError.noted(error)
             }
             return false
         }
@@ -263,6 +265,7 @@ public final class CallStore {
         // Nothing posted (a call message costs 3 sats in a tribe) for a
         // call this device could not join.
         if let reason = provider.unavailable {
+            Diagnostics.note(errorKind: .call)
             chatNotice(chat) { _ in reason }
             return false
         }
@@ -273,7 +276,7 @@ public final class CallStore {
             let link = try await engine.startCall(in: chat, audioOnly: audioOnly).link
             return await join(link, in: chat, camera: !audioOnly, failureInChat: true)
         } catch {
-            let notice = PeelError.problem(error, couldNot: "start the call")
+            let notice = PeelError.noted(error, couldNot: "start the call")
             chatNotice(chat) { _ in notice }
             return false
         }

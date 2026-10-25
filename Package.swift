@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "AgentKit", targets: ["AgentKit"]),
         .library(name: "PeelUI", targets: ["PeelUI"]),
         .library(name: "PeelAgent", targets: ["PeelAgent"]),
+        .library(name: "PeelDiagnostics", targets: ["PeelDiagnostics"]),
         .executable(name: "peel", targets: ["peel"]),
     ],
     dependencies: [
@@ -16,8 +17,19 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.0.0"),
+        // On-device crash reports (PeelDiagnostics); no upload, see docs/diagnostics.md.
+        .package(url: "https://github.com/microsoft/plcrashreporter.git", exact: "1.12.2"),
     ],
     targets: [
+        // On-device crash and memory diagnostics: the crash reporter, the event
+        // ring, the redactor. No UI; the pure logic builds and tests anywhere,
+        // the crash reporter only for macOS and iOS (docs/diagnostics.md).
+        .target(
+            name: "PeelDiagnostics",
+            dependencies: [
+                .product(name: "CrashReporter", package: "plcrashreporter", condition: .when(platforms: [.macOS, .iOS])),
+            ]
+        ),
         // Rust core, built by scripts/build-ffi.sh.
         .binaryTarget(name: "sphinxrsFFI", path: "Vendor/sphinxrsFFI.xcframework"),
         // Generated bindings; not written for Swift 6 concurrency checking.
@@ -30,6 +42,7 @@ let package = Package(
             name: "PeelCore",
             dependencies: [
                 "Sphinxrs",
+                "PeelDiagnostics",
                 .product(name: "MQTTNIO", package: "mqtt-nio"),
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "NIOCore", package: "swift-nio"),
@@ -45,7 +58,7 @@ let package = Package(
         // The device side of the agent in strut: the Sphinx tools over the
         // engine's storage, the device requests, strut and the bridge Peel
         // ships; no AppKit or UIKit.
-        .target(name: "PeelAgent", dependencies: ["AgentKit", "PeelCore"]),
+        .target(name: "PeelAgent", dependencies: ["AgentKit", "PeelCore", "PeelDiagnostics"]),
         .executableTarget(name: "peel", dependencies: ["PeelCore", "PeelAgent"]),
         // The app's model, shared by the Mac and the iPhone: `AppModel` and
         // what it holds, with the platform's services behind protocols
@@ -53,7 +66,7 @@ let package = Package(
         // themselves are in Apps/, in Apps/Peel.xcodeproj; the Mac app is
         // the only one that links LiveKit and WebRTC (its package reference
         // is the project's, not this package's).
-        .target(name: "PeelUI", dependencies: ["PeelCore", "AgentKit"]),
+        .target(name: "PeelUI", dependencies: ["PeelCore", "AgentKit", "PeelDiagnostics"]),
         // The storage and engine fixtures the test targets below share; a
         // test target cannot depend on another, so they live in a library.
         .target(
@@ -68,6 +81,8 @@ let package = Package(
         ),
         // The app's model, on a real engine and profile; no window, no server.
         .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "AgentKit", "PeelTestSupport"]),
+        // Pure logic: runs on Linux too (`swift test --filter PeelDiagnosticsTests`).
+        .testTarget(name: "PeelDiagnosticsTests", dependencies: ["PeelDiagnostics"]),
         // PeelAgent is Mac-only, and so are its tests.
         .testTarget(
             name: "PeelAgentTests",

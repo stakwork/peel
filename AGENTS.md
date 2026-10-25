@@ -886,6 +886,13 @@ is a short plan. Update the status and the journal when you finish something.
   as you once and only when allowed, `expired`, `unknown` after a stop
   mid-send); `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
+- `home/` — Peel Home, the always-on box's Compose bundle (its README,
+  `docs/always-on.md`): `setup` runs strut's own `strut move serve` through
+  `setup.sh` (receive a move on an empty box, send it back on request);
+  `strut` and `bridge` run through `gate.sh`, which starts each only while
+  Peel Home is on the box, with its own allow-listed keys from
+  `data/env/<program>/` (read, never executed), and starts the bridge once
+  strut answers `/health`. Replaces `brain/` (A7)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
   wire tap down, up, or freezes it (a dead connection that looks open),

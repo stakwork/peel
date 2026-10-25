@@ -13,7 +13,7 @@ public enum CrashRecorder {
     private nonisolated(unsafe) static var reporter: PLCrashReporter?
     #endif
     #if os(macOS) && canImport(Dispatch)
-    private nonisolated(unsafe) static var pressure: DispatchSourceMemoryPressure?
+    private nonisolated(unsafe) static var pressure: [DispatchSourceMemoryPressure] = []
     #endif
 
     /// Where Diagnostics lives: Application Support, in Peel's folder on the
@@ -56,22 +56,23 @@ public enum CrashRecorder {
     /// Mach for release (it sees what BSD signals miss); BSD in debug builds, where Xcode's own handlers are about.
     private static var signalHandler: PLCrashReporterSignalHandlerType {
         #if DEBUG
-        .BSD
+        return .BSD
         #else
-        .mach
+        return .mach
         #endif
     }
     #endif
 
     private static func startPressureSource() {
         #if os(macOS)
-        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .global(qos: .utility))
-        source.setEventHandler { [source] in
-            let level: DiagnosticEvent.PressureLevel = source.data.contains(.critical) ? .critical : .warning
-            Diagnostics.current?.sample(pressure: level)
+        // One source per level, so the handlers capture nothing.
+        for (mask, level) in [(DispatchSource.MemoryPressureEvent.warning, DiagnosticEvent.PressureLevel.warning),
+                              (.critical, .critical)] {
+            let source = DispatchSource.makeMemoryPressureSource(eventMask: mask, queue: .global(qos: .utility))
+            source.setEventHandler { Diagnostics.current?.sample(pressure: level) }
+            source.resume()
+            pressure.append(source)
         }
-        source.resume()
-        pressure = source
         #endif
     }
 }

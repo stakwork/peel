@@ -39,7 +39,7 @@ extension CrashRecord {
             signalCode = signalInfo.code
             faultAddress = signalInfo.address
         }
-        if report.hasMachExceptionInfo, let mach = report.machExceptionInfo {
+        if let mach = report.machExceptionInfo {
             machException = Self.machName(mach.type)
         }
         if report.hasExceptionInfo, let exception = report.exceptionInfo {

@@ -33,7 +33,7 @@ extension Journeys {
             }
 
             let reads = Mutex(0)
-            let handler = DeviceReads(storage: alice.storage).handler
+            let handler = DeviceReads(storage: alice.storage, myAlias: { nil }).handler
             await alice.engine.answerDeviceRequests { request in
                 reads.withLock { $0 += 1 }
                 return await handler(request)
@@ -108,7 +108,7 @@ extension Journeys {
             try await eventually("the ack for cut-short") { try answers("cut-short", to: bob).contains { $0.op == .ack } }
             await alice.engine.close()
             let relaunched = try alice.relaunched()
-            await relaunched.engine.answerDeviceRequests(with: DeviceReads(storage: relaunched.storage).handler)
+            await relaunched.engine.answerDeviceRequests(with: DeviceReads(storage: relaunched.storage, myAlias: { nil }).handler)
             try await relaunched.engine.connect()
             let finished = try await result("cut-short")
             #expect(finished.status == .done && finished.result?.object?["text"]?.string?.contains("Contact 'bob'") == true)

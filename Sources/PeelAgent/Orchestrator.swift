@@ -23,7 +23,7 @@ public enum Orchestrator {
     /// What the orchestrator is granted beside strut's own: the reads, the
     /// send, the automations. Never `approve`, which only the automation
     /// steps call.
-    static let tools: [String] = DeviceStep.reads.map(\.type) + [DeviceStep.send.type] + automationTools
+    static let tools: [String] = DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + automationTools
 
     /// strut's own memory steps.
     static let memoryTools = ["remember", "recall", "get", "ontology", "forget", "merge"].map { "memory/" + $0 }
@@ -121,8 +121,28 @@ public enum Orchestrator {
                 each message starts with the time and their time zone.
                 """),
             AgentMessageLink.instruction, SphinxTools.systemPrompt, waiting,
-            SphinxTools.sendPrompt(tool: DeviceStep.send.type), memoryPrompt, automationsPrompt,
+            SphinxTools.sendPrompt(tool: DeviceStep.send.type), workspacesPrompt, memoryPrompt, automationsPrompt,
+            diagnosticsPrompt,
         ].joined(separator: " ")
+
+    /// A workspace's handle can be a chat's name too (`@hive` and a tribe
+    /// called hive): asking it is never a send.
+    static let workspacesPrompt = """
+        Ask one of the workspaces you can ask with strut/run-workflow and its peer id, never with \
+        \(DeviceStep.send.type): a workspace is not a chat, even when a chat has the same name; when the user's words \
+        could mean either, ask which.
+        """
+
+    /// How a Peel bug reaches a workspace: the redacted record, summed up,
+    /// on the card every call to a workspace shows (docs/diagnostics.md).
+    static let diagnosticsPrompt = """
+        When the user says Peel crashed or misbehaved on their Mac, read its record there with \(DeviceStep.diagnostics.type) (it \
+        holds the Mac's crashes, not the phone's). When they ask you to \
+        tell a workspace about it, ask that workspace and give it \
+        a short summary, never the whole record: Peel's version, how the last run ended, the exception or signal, the \
+        crashed thread's top frames, and the last few events, in under \(SphinxTools.maxMessage / 2) characters, plus \
+        what the user said happened. Send only what the user asked for.
+        """
 
     /// `peel-automation-run`'s prompt: the same, unattended, with nothing
     /// about scheduling, whose tools a run is not offered; a post only as
@@ -334,6 +354,16 @@ struct DeviceStep: Sendable {
                        """),
     ]
 
+    /// Peel's own last crash or run record, redacted: the chat's agent's
+    /// read only, not an automation's (`Orchestrator.diagnosticsPrompt`).
+    static let diagnostics = DeviceStep(
+        type: "sphinx/diagnostics", kind: "diagnostics.latest",
+        description: """
+            Read Peel's own record of its last crash, or how its last run ended and its recent events, from the \
+            user's Mac, already redacted: no messages, contacts' names, amounts or keys.
+            """,
+        input: "z.object({})")
+
     /// A send as the user: the Mac shows the exact text (and a tribe's
     /// price) on a card in the DM and sends only on Allow. The card is the
     /// decision, so the cap the Mac checks is its own most unless the
@@ -388,7 +418,7 @@ struct DeviceStep: Sendable {
             """,
         wait: 300, lifetime: 3600)
 
-    static let all = reads + [send, post, approve]
+    static let all = reads + [diagnostics, send, post, approve]
 
     /// The step, as strut loads a custom one: `defineStep` from strut, the
     /// bridge reached on 127.0.0.1 only, its port and token read from the

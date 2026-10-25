@@ -617,8 +617,8 @@ is a short plan. Update the status and the journal when you finish something.
     `ToolCall` records, and Clear (which forgets its `Summary` records
     too); `keep` writes turns in that shape for the offscreen driver
 - `Sources/PeelDiagnostics/` — on-device crash and memory diagnostics, the
-  record only: nothing leaves the device (`docs/diagnostics.md`, the
-  guarantee). No UI. `CrashRecorder.install()` (first thing in each app's
+  record, uploaded nowhere; the agent reads it redacted when asked
+  (`docs/diagnostics.md`, the guarantee). No UI. `CrashRecorder.install()` (first thing in each app's
   `init`: PLCrashReporter 1.12.2 inside `#if canImport(CrashReporter)`, in
   `PendingReport.swift` and `CrashRecorder.swift` alone, off under a
   debugger; its pending report moved into the private raw folder, the

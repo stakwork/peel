@@ -179,4 +179,45 @@ struct BundledBridgeTests {
         #expect(!process.isRunning)
         if process.isRunning { process.terminate() }
     }
+
+    /// A Peel that crashed left its runner on the store, an orphan of
+    /// launchd holding it open: the next start stops it and runs, where the
+    /// new runner otherwise exits as it starts (the store already open).
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: BundledBridge.staged.path)))
+    func aStartStopsTheRunnerACrashLeftOnItsStore() async throws {
+        let data = FileManager.default.temporaryDirectory.appending(path: "peel-bridge-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: data) }
+        try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+        // Started from a shell that exits at once, so launchd is its parent, as after Peel's crash.
+        var environment = BundledBridge.environment(
+            [:], account: account, strut: strut, port: try BundledBridge.freePort(), admin: "admin token",
+            token: String(repeating: "t", count: 32), alias: "Agent", data: data
+        )
+        environment["RUNNER_EXIT_ON_STDIN_EOF"] = nil
+        let shell = Process()
+        shell.executableURL = URL(filePath: "/bin/sh")
+        shell.arguments = ["-c", "\"$0\" < /dev/null > /dev/null 2>&1 & echo $!", BundledBridge.staged.path]
+        shell.environment = environment
+        let output = Pipe()
+        shell.standardOutput = output
+        try shell.run()
+        shell.waitUntilExit()
+        let leftover = try #require(pid_t(String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)))
+        for _ in 0..<40 where !FileManager.default.fileExists(atPath: data.appending(path: "db.redb").path) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(kill(leftover, 0) == 0)
+
+        let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: data))
+        var failure: (any Error)?
+        do { _ = try await bridge.start(account, strut: strut) } catch { failure = error }
+        // Killed here only if still there: once stopped, its pid may be another process's.
+        let survived = kill(leftover, 0) == 0
+        if survived { kill(leftover, SIGKILL) }
+        bridge.stop(quietly: true)
+        if let failure { throw failure }
+        #expect(!survived)
+    }
 }

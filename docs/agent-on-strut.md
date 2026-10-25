@@ -642,8 +642,17 @@ account is cheap to replace (open question 2).
   owner, then `GET /bridge/health` until the bridge answers. Its store is
   owner-only in Peel's folder (a development profile's in its own), erased
   with the account. Stopped with the account, with strut, and on quit,
-  and gone by itself if Peel dies: its stdin is a pipe only Peel holds
-  (`RUNNER_EXIT_ON_STDIN_EOF`, added in stakwork/sphinx#385).
+  and meant to go by itself if Peel dies: its stdin is a pipe only Peel
+  holds (`RUNNER_EXIT_ON_STDIN_EOF`, added in stakwork/sphinx#385). With
+  the runner pinned now it does not after a crash: its stdout, the pipe
+  Peel reads, dies with Peel too, and runner's "stdin closed" log line
+  panics on the broken pipe before it exits (a SIGTERM's shutdown log
+  the same), so it keeps the store open and the next runner exits as it
+  starts (`DatabaseAlreadyOpen`). Each start therefore first stops an
+  orphan runner (parent launchd) on the same store (`DB_PATH`,
+  `stopLeftovers`). Strut has no such hole: it logs with
+  `console.error`, which drops write errors, and exits after 1.5 s
+  whatever its close does.
 - **First run** (`BundledBridge.setUp`), only from the person's own
   switch (a start on its own never pays to pair): an invite from the
   account (10 sats, once the server holds it), one per bridge store with

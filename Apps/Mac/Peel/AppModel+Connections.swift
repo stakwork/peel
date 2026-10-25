@@ -58,7 +58,7 @@ extension AppModel {
             connections.loaded = true
             connections.problem = nil
         } catch {
-            connections.problem = PeelError.problem(error, couldNot: "read the connected services")
+            connections.problem = PeelError.noted(error, couldNot: "read the connected services")
         }
     }
 
@@ -72,7 +72,7 @@ extension AppModel {
         do {
             try await AutomationsClient(server: server).addMCPServer(name: name, url: url, key: key)
         } catch {
-            return PeelError.problem(error, couldNot: "add \(name)")
+            return PeelError.noted(error, couldNot: "add \(name)")
         }
         await loadConnections()
         await testMCPServer(name)
@@ -92,7 +92,7 @@ extension AppModel {
         do {
             connections.probes[name] = try await AutomationsClient(server: server).testMCPServer(name)
         } catch {
-            connections.probes[name] = MCPProbe(tools: [], error: PeelError.problem(error, couldNot: "reach \(name)"))
+            connections.probes[name] = MCPProbe(tools: [], error: PeelError.noted(error, couldNot: "reach \(name)"))
         }
     }
 
@@ -106,7 +106,7 @@ extension AppModel {
             }
             await loadConnections()
         } catch {
-            connections.problem = PeelError.problem(error, couldNot: "remove \(name)")
+            connections.problem = PeelError.noted(error, couldNot: "remove \(name)")
         }
     }
 
@@ -126,7 +126,7 @@ extension AppModel {
             connections.grants = grants
             restartOwnStrut()
         } catch {
-            connections.problem = PeelError.problem(error, couldNot: "change which agents use it")
+            connections.problem = PeelError.noted(error, couldNot: "change which agents use it")
         }
     }
 

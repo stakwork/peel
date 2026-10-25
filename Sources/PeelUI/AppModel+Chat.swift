@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import PeelCore
+import PeelDiagnostics
 
 /// A thread, by its chat and its original's uuid.
 public struct ThreadRef: Hashable, Sendable, Identifiable {
@@ -215,7 +216,7 @@ extension AppModel {
             try await engine.leaveTribe(pubkey)
             if selectedChat == pubkey { destination = nil }
         } catch {
-            conversationNotices[pubkey] = PeelError.problem(error, couldNot: (exit ?? .leave).failure)
+            conversationNotices[pubkey] = PeelError.noted(error, couldNot: (exit ?? .leave).failure)
         }
     }
 
@@ -267,6 +268,8 @@ extension AppModel {
     @discardableResult
     public func send(_ text: String, from composer: ComposerID) async -> Bool {
         guard let engine, let chat = composer.chat else { return false }
+        Diagnostics.setAction(.send)
+        defer { Diagnostics.setAction(.other) }
         let files = pendingFiles[composer] ?? []
         let priceText = attachmentPrices[composer]
         let priceSats = priceText.flatMap { UInt64($0) }
@@ -283,7 +286,7 @@ extension AppModel {
                 sent(in: chat)
                 return true
             } catch {
-                conversationNotices[chat] = PeelError.problem(error, couldNot: "send")
+                conversationNotices[chat] = PeelError.noted(error, couldNot: "send")
                 replyTargets[composer] = reply
                 return false
             }
@@ -307,7 +310,7 @@ extension AppModel {
                 }
                 sent(in: chat)
             case .failure(let error):
-                refused.append((file, PeelError.problem(error, couldNot: "send \(file.lastPathComponent)")))
+                refused.append((file, PeelError.noted(error, couldNot: "send \(file.lastPathComponent)")))
             }
         }
         if !refused.isEmpty {
@@ -395,7 +398,7 @@ extension AppModel {
             } catch Engine.Failure.largeAttachment(let size) {
                 handle.state = .held(size)
             } catch {
-                handle.state = .failed(PeelError.problem(error, couldNot: "download"))
+                handle.state = .failed(PeelError.noted(error, couldNot: "download"))
             }
             handle.progress = nil
             handle.download = nil
@@ -413,7 +416,7 @@ extension AppModel {
         do {
             try await Task.detached { try UserFiles.copy(file, to: target, replacing: true) }.value
         } catch {
-            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "save the file")
+            conversationNotices[message.chat] = PeelError.noted(error, couldNot: "save the file")
         }
     }
 
@@ -426,7 +429,7 @@ extension AppModel {
         do {
             attachment(id).savedTo = try await UserFiles.saveToDownloads(file, named: fileName(of: message) ?? file.lastPathComponent)
         } catch {
-            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "save to Downloads")
+            conversationNotices[message.chat] = PeelError.noted(error, couldNot: "save to Downloads")
         }
     }
 
@@ -453,7 +456,7 @@ extension AppModel {
         do {
             try await webPresenter.openDocument(file, named: fileName(of: message) ?? "Page")
         } catch {
-            conversationNotices[message.chat] = PeelError.problem(error, couldNot: "open the page")
+            conversationNotices[message.chat] = PeelError.noted(error, couldNot: "open the page")
         }
     }
 

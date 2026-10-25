@@ -85,7 +85,7 @@ extension AppModel {
         do {
             hive.link = try HiveLink.read(from: profile.hive)
         } catch {
-            hive.problem = PeelError.problem(error, couldNot: "read your Stadeum connection")
+            hive.problem = PeelError.noted(error, couldNot: "read your Stadeum connection")
         }
         guard let link = hive.link else { return }
         hive.status = .connected
@@ -133,7 +133,7 @@ extension AppModel {
                 }
             } catch is CancellationError {
             } catch {
-                settle(PeelError.problem(error, couldNot: "connect Stadeum"))
+                settle(PeelError.noted(error, couldNot: "connect Stadeum"))
             }
         }
         /// Ends this pairing with `problem`, unless it was cancelled: a newer one may be under way.
@@ -162,7 +162,7 @@ extension AppModel {
             // Its "Always allow" rules go too: a slug Hive gives later may be another org's.
             try revokeWorkspaceRules { _ in true }
         } catch {
-            hive.problem = PeelError.problem(error, couldNot: "forget the Stadeum connection")
+            hive.problem = PeelError.noted(error, couldNot: "forget the Stadeum connection")
         }
         Task {
             // Runner lets go of the orgs' rooms and tokens before strut (and it) start again,
@@ -204,7 +204,7 @@ extension AppModel {
         } catch is CancellationError {
         } catch {
             // Tried again within the hour; the tokens last a week.
-            hive.problem = PeelError.problem(error, couldNot: "renew your Stadeum workspaces")
+            hive.problem = PeelError.noted(error, couldNot: "renew your Stadeum workspaces")
         }
     }
 
@@ -256,7 +256,7 @@ extension AppModel {
         do {
             try await bridge.usePeers(actor: link.actor, tokens: Dictionary(hive.live.map { ($0.id, $0.token) }) { _, last in last })
         } catch {
-            hive.problem = PeelError.problem(error, couldNot: "give the agent's bridge your Stadeum workspaces")
+            hive.problem = PeelError.noted(error, couldNot: "give the agent's bridge your Stadeum workspaces")
         }
     }
 
@@ -267,7 +267,7 @@ extension AppModel {
         do {
             try await AutomationsClient(server: server).syncPeers(hive.live)
         } catch {
-            hive.problem = PeelError.problem(error, couldNot: "give the agent your Stadeum workspaces")
+            hive.problem = PeelError.noted(error, couldNot: "give the agent your Stadeum workspaces")
         }
         // Not waited for: a slow workspace never holds up the bridge.
         refreshWorkspaceApps()

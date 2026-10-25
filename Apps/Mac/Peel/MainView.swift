@@ -24,6 +24,12 @@ struct MainView: View {
                         .padding(.vertical, Theme.Space.sm)
                         .background(Theme.background)
                 }
+                if model.diagnosticsNotice {
+                    DiagnosticsNotice()
+                        .padding(.horizontal, Theme.Space.xl)
+                        .padding(.vertical, Theme.Space.sm)
+                        .background(Theme.background)
+                }
                 if model.usesFileSecrets {
                     FileSecretsBanner()
                 }
@@ -41,6 +47,10 @@ struct MainView: View {
         }
         .animation(.easeOut(duration: 0.15), value: model.viewer == nil)
         .peelMenuHost(main: true)
+        .sheet(item: Binding(get: { model.diagnosticsRecord }, set: { model.diagnosticsRecord = $0 })) {
+            DiagnosticRecordSheet(record: $0)
+                .environment(model)
+        }
     }
 }
 

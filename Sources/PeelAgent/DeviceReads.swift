@@ -6,6 +6,11 @@ import PeelCore
 /// chat reads (docs/agent-on-strut.md, "Request types"), each through a
 /// Sphinx read tool (`SphinxTools`), whose `ChatData` strut's model reads.
 /// Any other kind is refused, said plainly.
+///
+/// A future kind, `diagnostics.latest`, would answer with
+/// `Diagnostics.latestRedactedReport(allow:knownNames:)` (PeelDiagnostics:
+/// the newest crash record, redacted). It is not built and not in the
+/// switch below: this Mac sends no diagnostics to anyone.
 public struct DeviceReads: Sendable {
     let tools: SphinxTools
 

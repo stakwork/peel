@@ -317,19 +317,17 @@ extension AppModel {
         Set(hive.apps.map(\.peer)).sorted()
     }
 
-    /// Whether `app` is under the sidebar's Apps row: every app listed (each
-    /// one a workspace pinned) but those the person took off
-    /// (`ChatSections.Layout.unpinnedApps`), so a workspace's newly pinned
-    /// app, or one not read yet, shows when it is listed.
+    /// Whether the person pinned `app` under the sidebar's Apps row
+    /// (`ChatSections.Layout.pinnedApps`); none are until they do.
     func isPinned(_ app: WorkspaceApp) -> Bool {
-        !sidebarLayout.unpinnedApps.contains(app.id)
+        sidebarLayout.pinnedApps.contains(app.id)
     }
 
     /// Puts `app` under the sidebar's Apps row, or takes it off, kept with
     /// the account's sidebar layout.
     func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
-        var unpinned = sidebarLayout.unpinnedApps.filter { $0 != app.id }
-        if !pinned { unpinned.append(app.id) }
-        if unpinned != sidebarLayout.unpinnedApps { sidebarLayout.unpinnedApps = unpinned }
+        var pins = sidebarLayout.pinnedApps.filter { $0 != app.id }
+        if pinned { pins.append(app.id) }
+        if pins != sidebarLayout.pinnedApps { sidebarLayout.pinnedApps = pins }
     }
 }

@@ -30,10 +30,8 @@ Why it won't hold up:
   the same order ("Apps and Automations first, the rest A–Z" or "everything
   A–Z"), so there's nothing to choose between. The only real change is that
   Threads moves from second to last.
-- **Apps you pin sit indented under the Apps row**, A–Z. Pins are yours and
-  stay in Peel (beside `sidebarLayout`). The first time, they're filled from
-  the workspaces' own pins, so nothing disappears from anyone's sidebar
-  after the upgrade.
+- **Apps you pin sit under the Apps row**, A–Z. Pins are yours and stay
+  in Peel (in `sidebarLayout`). None are pinned until you pin one.
 - **The bottom Apps section goes away.**
 - The sidebar search keeps matching apps. While searching, matching apps
   show under the Apps row, so the arrow keys and Return still reach them.
@@ -109,13 +107,10 @@ own authoring UI. Your chat with Peel is the way in:
   Apps'. While the sidebar search has text, every app matching it shows
   there instead. The open app shows there too while it is open, pinned
   or not, as a closed section keeps the open chat.
-- The pins: what the person took off the row,
-  `ChatSections.Layout.unpinnedApps`, kept with the account like the rest
-  of the layout. Every other listed app (each one a workspace pinned)
-  shows, so nobody loses a row on upgrade, a workspace's newly pinned app
-  appears as it did, and a workspace that could not be read just then
-  loses nothing. PR 2, listing apps no workspace pinned, adds the
-  opposite set for those.
+- The pins: `ChatSections.Layout.pinnedApps`, kept with the account like
+  the rest of the layout. None until the person pins one (Tom, 2026-10-26,
+  after trying it with his workspaces' apps): the row starts empty and
+  Apps is where they are found.
 - `AppsView`: every listed app as a card, A–Z (icon, title, two lines of
   what it is for, `@workspace` when there are several), a pin in its
   corner; a search over the title, description and `@workspace`; a choice
@@ -125,9 +120,9 @@ own authoring UI. Your chat with Peel is the way in:
 - Not yet: Recent sort (needs an open history), the manifest's icon (a
   lucide name, not an SF Symbol), counts on the workspace choice, Yours
   and apps no workspace pinned (PR 2). Ids of apps no longer listed stay
-  in `unpinnedApps`, so one that comes back stays off.
-- Checked: `ChatSectionsTests` (an older layout has no pins yet; `[]` and
-  a list of pins are kept as chosen). Offscreen with `scripts/check-app.sh`
+  in `pinnedApps`, so one that comes back is still pinned.
+- Checked: `ChatSectionsTests` (an older layout has no pins; pins are
+  kept). Offscreen with `scripts/check-app.sh`
   on a development profile, the apps seeded in memory (`apps-seed`, through the listing's own parse): the
   grid, the workspace choice, pinning and unpinning from the header (kept
   across a restart), Apps selected on an unpinned app, the sidebar search
@@ -140,8 +135,7 @@ own authoring UI. Your chat with Peel is the way in:
    A–Z sort) over `hive.apps`. You can ship this on its own; it fixes the
    scrolling today.
 2. **Every app, yours too, and Recent.** List apps no workspace pinned
-   and your own strut's, pinned by hand (beside `unpinnedApps`), plus
-   Recent sort.
+   and your own strut's, plus Recent sort.
 3. **strut: `updatedAt` on `GET /apps`**, then Peel shows it on cards and
    in the app header.
 4. **New app and Change with Peel.** The popover → agent DM → builder, and

@@ -351,8 +351,8 @@ is a short plan. Update the status and the journal when you finish something.
   and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
   development profile's defaults for a test Hive; and `apps`, the apps the
   workspaces pinned, `refreshWorkspaceApps`; the person's pins under the
-  sidebar's Apps row, `isPinned`, `setPinned`: every listed app but
-  those taken off, `ChatSections.Layout.unpinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
+  sidebar's Apps row, `isPinned`, `setPinned`: none until the person
+  pins one, `ChatSections.Layout.pinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
   as a card, A–Z, with a search and the workspace to show;
   `docs/apps-browser.md`), `WorkspaceAppView` (one of
   those apps alone in the detail column, opened from Apps or its pinned

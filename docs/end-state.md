@@ -108,7 +108,7 @@ Each milestone is something you can do at the end of it.
 | 1 | 2. It acts for you, safely | Approve sends from a card; automations run in strut ("post to Hive at 13:03" with nobody at the Mac). Calendar (PR 8) is dropped from Phase 1 for now (Tom, 2026-10-18) | 3, 7 |
 | 1 | 3. One conversation everywhere | The same agent thread on Mac and iPhone, with jobs and their files in it | 6, 6b, 9 |
 | 1 | 4. On for real | A week on your real account, then the Swift agent removed | 10, 11 |
-| 2 | 5. Always on | Move the brain to a home server (Docker) and back; the agent answers with your laptop closed | [phase-2.md](phase-2.md) PRs H1–H4, R1, 1–3 |
+| 2 | 5. Always on | Move the brain to a home server (Docker) and back, by copying its folders; the agent answers with your laptop closed | [always-on.md](always-on.md) PRs A1–A7 |
 | 2 | 6. The phone helps too | Approve and act from the iPhone while the Mac sleeps | [phase-2.md](phase-2.md) PRs R2, 4–7 |
 | 2 | 7. Can't lose it | Memory, then the whole brain, backed up sealed; a fresh Mac gets it back from your words | [phase-2.md](phase-2.md) PRs B1, 8, 9 |
 | 2 | 8. Hardened | Model spending limits, real auth on strut, an optional Tailscale connection | [phase-2.md](phase-2.md) PRs 10–13 |

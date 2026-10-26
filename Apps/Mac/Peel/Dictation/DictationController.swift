@@ -319,13 +319,15 @@ final class DictationController {
     }
 
     private func submit(_ mode: DictationMode) {
-        hud.hide()
         // The mic is off once the key is up, whatever became of the recording.
         defer { capture.stop() }
         guard let start = target, !start.isSecure else {
+            hud.hide()
             capture.discardRecording()
             return
         }
+        // Transcribing: the pill stays, working, until the text is typed.
+        hud.show(.working)
         target = nil
         guard let recorded = capture.finishRecording() else {
             hud.show(.message("The recording could not be saved"))
@@ -348,6 +350,8 @@ final class DictationController {
             defer {
                 try? FileManager.default.removeItem(at: session.audioURL)
                 inserting -= 1
+                // Typed with nothing to say, and nothing else being transcribed: the working pill goes.
+                if inserting == 0, hud.model.mode == .working { hud.hide() }
                 showLearned()
             }
             let transcript: DictationTranscript

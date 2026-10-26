@@ -220,6 +220,9 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-26: after the key is let go, the pill stays with a spinner while
+  strut transcribes, until the text is typed or a message takes its place;
+  before, it disappeared and a long dictation looked lost.
 - 2026-10-24: learning works in Peel's own fields: the watch reads Peel's
   focused text view directly. Dictating into Peel never learned before,
   since the watch skipped Peel to keep Accessibility off its own thread.

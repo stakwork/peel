@@ -93,6 +93,8 @@ private struct AppCard: View {
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(2, reservesSpace: true)
+                // The workspace at the foot of every card, whatever is above it.
+                Spacer(minLength: 0)
                 if showsWorkspace {
                     Text("@\(app.peer)")
                         .font(Theme.font(12))

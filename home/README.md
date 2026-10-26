@@ -37,7 +37,7 @@ away once Peel moves to this one (A7).
 | Logs | `docker compose logs -f` |
 | Send Peel Home back to the Mac | `docker compose exec setup sh /setup.sh send-back <the box's address>[:<port>]` (or set `HOME_SETUP_HOST` and leave the address out). It prints the link; the QR code is in `docker compose logs setup` |
 | Keep it here after all | `docker compose exec setup sh /setup.sh cancel` (once the link is out, `cancel --force`: if the Mac already fetched Peel Home, it would then run in both places) |
-| Update | `docker compose pull && docker compose up -d --force-recreate`, when Peel says the box's images should move to its own (both ends of a move must run the same strut) |
+| Update | Copy the new release's folder over this one, then `docker compose pull && docker compose up -d --force-recreate`. Peel and the box must run the same strut ("Images") |
 | Stop | `docker compose down` |
 
 Settings go in `.env` beside this file:
@@ -206,7 +206,11 @@ download is useless, and the box refuses the "received" confirmation.
 
 ## Images
 
-The compose file uses `:latest` for strut and runner, with TODOs for the
-digests of the strut and runner commits a Peel release ships. Both ends of a
-move must run the same strut and Ladybug core (`strut move check`), so the
-box's strut pin follows Peel's.
+The compose file pins strut (by tag and digest) and the runner (by tag only,
+for now) to the commits Peel ships in `Vendor/strut.lock` and
+`Vendor/runner.lock`; they change together. Both ends of a move must run the same strut
+commit and Ladybug core (`strut move check`), so a Peel release that moves
+its strut pin moves these with it.
+
+`ghcr.io/stakwork/sphinx-runner` must be a public package for a box to pull
+it without logging in to ghcr; its digest goes in beside the tag once it is.

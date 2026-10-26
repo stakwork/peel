@@ -18,7 +18,7 @@ services:
   setup:
     # strut's image, running `strut move serve` (setup.sh): the move is
     # strut's own (its AGENTS.md, "Moving strut to another host").
-    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:latest}
+    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:9512381@sha256:a49a256c2a8f2faa437274d073baae51d88480f56f8130084e15c7563886bf90}
     restart: unless-stopped
     entrypoint: ["sh", "/setup.sh"]
     # The image's check is strut's /health, which setup doesn't serve.
@@ -44,11 +44,10 @@ services:
       - ./gate.sh:/gate.sh:ro
 
   strut:
-    # TODO: pin to the digest of the strut commit Peel's release ships
-    # (scripts/stage-strut.sh). strut fetches Ladybug's extensions into
-    # STRUT_MODEL_DIR unless the image carries them (strut's
-    # image-ladybug-extensions).
-    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:latest}
+    # Must be the strut commit Peel ships (Vendor/strut.lock): a move refuses
+    # two different struts (`strut move check`). The image carries Ladybug's
+    # extensions, so strut starts with no download.
+    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:9512381@sha256:a49a256c2a8f2faa437274d073baae51d88480f56f8130084e15c7563886bf90}
     restart: unless-stopped
     entrypoint: ["sh", "/gate.sh", "strut", "docker-entrypoint.sh"]
     command: ["node", "--import", "tsx", "build/server.js"]
@@ -75,8 +74,9 @@ services:
       - ./gate.sh:/gate.sh:ro
 
   bridge:
-    # TODO: pin to the digest of the runner commit Peel's release ships (Vendor/runner.lock).
-    image: ${BRIDGE_IMAGE:-ghcr.io/stakwork/sphinx-runner:latest}
+    # Should be the runner commit Peel ships (Vendor/runner.lock).
+    # TODO: add its @sha256 digest once the ghcr package is public (README.md, "Images").
+    image: ${BRIDGE_IMAGE:-ghcr.io/stakwork/sphinx-runner:9bf7079}
     restart: unless-stopped
     network_mode: service:strut
     entrypoint: ["sh", "/gate.sh", "bridge", "/usr/src/sphinx-runner"]

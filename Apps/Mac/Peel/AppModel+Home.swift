@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import Network
 import PeelAgent
 import PeelCore
 import PeelUI
@@ -96,9 +98,12 @@ extension AppModel {
     private func homeMove(for profile: Profile, account: AgentAccount?) throws -> PeelHomeMove {
         guard let mover = Self.strut(for: profile)?.mover else { throw PeelError("This copy of Peel has no Peel Home of its own to move.") }
         var parts = HomeParts(strut: BundledStrut.dataFolder(for: profile), bridge: BundledBridge.dataFolder(for: profile),
-                              secretKey: profile.strutKey)
+                              secretKey: profile.strutKey, homePeer: profile.homePeer)
         if let account {
             parts.identity = BundledBridge.identity(account: account, alias: agent?.name ?? "Agent", actor: stadeum.link?.actor)
+            // Who the person is to the box's strut: their Hive actor, as Peel's strut and bridge
+            // name them; without a pairing, this account's own key, the one sender the bridge answers.
+            parts.peerActor = stadeum.link?.actor ?? account.owner
         }
         return PeelHomeMove(mover: mover, local: HomeLocal(model: self, profile: profile), parts: parts)
     }
@@ -127,6 +132,48 @@ extension AppModel {
             homeMove = .ended(ended)
             macAgent.homeMoving = nil
         }
+    }
+
+    // MARK: The Mac's strut while Peel Home is on the box (docs/always-on.md)
+
+    /// Starts the Mac's own strut for dictation and the Vocabulary window
+    /// (`HomeClient`), unless it is running: on `Strut.client`, scheduler
+    /// off, no bridge, no agent (`memoryServer` stays nil). Synced with the
+    /// box at launch, on wake, on a network change, every 15 minutes and
+    /// after dictation learns or forgets. A failed start is quiet.
+    func useHomeClient(_ profile: Profile) {
+        guard brain?.moved != nil, hasOwnStrut else { return }
+        if macAgent.homeClient == nil {
+            let folder = HomeClient.folder(for: BundledStrut.dataFolder(for: profile))
+            guard let client = BundledStrut(data: folder, secretKey: profile.strutKey) else { return }
+            client.isHomeClient = true
+            client.onChange = { [weak self] in self?.homeClientChanged() }
+            let syncer = HomeSyncer(client: folder, peer: profile.homePeer)
+            // A pull may have brought the box's vocabulary.
+            syncer.onPull = { Task { await DictationController.shared.lingo.refresh() } }
+            macAgent.homeClient = client
+            macAgent.homeSyncer = syncer
+            macAgent.homeSyncTriggers = HomeSyncTriggers { [weak syncer] in syncer?.sync() }
+            DictationController.shared.lingo.changed = { [weak self] in self?.macAgent.homeSyncer?.sync() }
+        }
+        let client = macAgent.homeClient
+        Task { _ = try? await client?.start() }
+    }
+
+    /// Stops the Mac's strut for dictation; Peel Home's own takes its place.
+    func stopHomeClient() {
+        DictationController.shared.lingo.changed = nil
+        macAgent.homeSyncTriggers = nil
+        macAgent.homeSyncer?.use(nil)
+        macAgent.homeSyncer = nil
+        macAgent.homeClient?.stop(quietly: true)
+        macAgent.homeClient = nil
+        strutChanged()
+    }
+
+    private func homeClientChanged() {
+        strutChanged()
+        macAgent.homeSyncer?.use(macAgent.homeClient?.server)
     }
 
     /// Asks the agent in its DM to answer, and waits up to `timeout` for
@@ -206,11 +253,65 @@ private final class HomeLocal: PeelHomeLocal {
         return (try? await strut.start()) != nil
     }
 
+    func startClient() {
+        open?.useHomeClient(profile)
+    }
+
+    func syncClient() async {
+        await open?.macAgent.homeSyncer?.finish()
+    }
+
+    func stopClient() {
+        open?.stopHomeClient()
+    }
+
     func pingAgent() async -> Bool {
         guard let model = open else { return false }
         let here = model.brain == .thisMac
         return await model.pingAgent(here
             ? "Peel Home is back on this Mac. Reply so Peel knows you're here."
             : "Peel Home moved to your home server. Reply so Peel knows you're there.")
+    }
+}
+
+/// What starts a sync of the Mac's strut with the box, besides a launch
+/// and dictation's own changes: a timer, waking from sleep, and a change of
+/// network once it has settled. Gone with the client's strut.
+@MainActor
+final class HomeSyncTriggers {
+    private var watching: [Task<Void, Never>] = []
+    private var wake: (any NSObjectProtocol)?
+
+    private static let interval = Duration.seconds(15 * 60)
+
+    init(_ sync: @escaping @MainActor () -> Void) {
+        wake = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { _ in MainActor.assumeIsolated { sync() } }
+        watching = [
+            Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.interval)
+                    if !Task.isCancelled { sync() }
+                }
+            },
+            Task {
+                // As the engine watches it: the first path is the one in use, and a switch comes as a burst.
+                var last: (NWPath.Status, [String])?
+                for await path in NWPathMonitor() {
+                    let now = (path.status, path.availableInterfaces.map(\.name))
+                    let changed = last.map { $0 != now } ?? false
+                    last = now
+                    guard changed, path.status == .satisfied else { continue }
+                    try? await Task.sleep(for: .seconds(2))
+                    if !Task.isCancelled { sync() }
+                }
+            },
+        ]
+    }
+
+    isolated deinit {
+        watching.forEach { $0.cancel() }
+        if let wake { NSWorkspace.shared.notificationCenter.removeObserver(wake) }
     }
 }

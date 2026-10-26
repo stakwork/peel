@@ -25,6 +25,12 @@ final class MacAgent: AgentHost {
     /// profile (`strut(for:)`): started when its agent opens, stopped when
     /// Peel quits.
     @ObservationIgnored var strut: BundledStrut?
+    /// The Mac's strut while Peel Home is on the box (`HomeClient`), for
+    /// dictation only, and what keeps it in step with the box.
+    @ObservationIgnored var homeClient: BundledStrut?
+    /// Where its sync stands shows in Account › Brain.
+    var homeSyncer: HomeSyncer?
+    @ObservationIgnored var homeSyncTriggers: HomeSyncTriggers?
     /// The agent's bridge beside it (`AppModel+Bridge`).
     let agentBridge = AgentBridge()
     /// The one memory open beside the agent chat (`openMemory`), if any.
@@ -85,6 +91,8 @@ final class MacAgent: AgentHost {
         deviceCards.close()
         agentBridge.stop()
         strut?.stop(quietly: true)
+        homeSyncTriggers = nil
+        homeClient?.stop(quietly: true)
     }
 
     /// Cancels a Peel Home move under way; its mark stays, and the account
@@ -128,9 +136,10 @@ extension AppModel {
         }
     }
 
-    /// Dictation turns speech into text on this strut, the open account's.
+    /// Dictation turns speech into text on this strut, the open account's:
+    /// Peel Home's, or the Mac's own while Peel Home is on the box.
     func strutChanged() {
-        DictationController.shared.strutChanged(strut?.server)
+        DictationController.shared.strutChanged(strut?.server ?? macAgent.homeClient?.server)
     }
 
     var brain: Brain? {
@@ -240,6 +249,7 @@ extension AppModel {
             self.agent = agent
             macAgent.hasOwnStrut = Self.strut(for: profile) != nil
             if brain == .thisMac { useOwnStrut(profile) }
+            if brain?.moved != nil { useHomeClient(profile) }
             openHive(profile)
             lookForMemory(reporting: true)
             lookForBridge()

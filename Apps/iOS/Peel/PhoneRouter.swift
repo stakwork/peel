@@ -229,16 +229,17 @@ final class PhoneRouter {
         switch destination {
         case .chat(let chat):
             changeChatStack { $0 = $0.filter { !$0.isConversation } + [.chat(chat)] }
-        case .threads, .mentions, .automations:
+        case .threads, .mentions, .automations, .apps:
             tab = .chats
             chats = destination.flatMap(ChatsRoute.init).map { [$0] } ?? []
         case .payments:
             tab = .payments
         case .account:
             tab = .you
-        case .agent, .apps, .app:
-            // The Mac's own agent chat and its workspaces' apps; on the phone
-            // the agent is a DM, so the model is put back on what Chats shows.
+        case .agent, .app:
+            // The Mac's own agent chat and an app in its detail column; on the
+            // phone the agent is a DM and an app opens over everything
+            // (`orgPage`), so the model is put back on what Chats shows.
             tab = .chats
         case nil:
             // What was open is gone (a chat removed): back to its list.

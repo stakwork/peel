@@ -14,11 +14,15 @@ struct AppsScreen: View {
 
     var body: some View {
         let stadeum = model.stadeum
+        // Only workspaces still in use: none once Stadeum no longer knows this iPhone.
+        let live = Set(stadeum.live.map(\.id))
+        let apps = stadeum.apps.filter { $0.peer.map(live.contains) ?? false }
         // The workspace on each row only when there are several.
-        let several = Set(stadeum.apps.compactMap(\.peer)).count > 1
+        let several = Set(apps.compactMap(\.peer)).count > 1
+        let unread = stadeum.unreadApps.compactMap { id in stadeum.live.first { $0.id == id }?.name }
         List {
             Section {
-                ForEach(stadeum.apps) { app in
+                ForEach(apps) { app in
                     Button {
                         if case .page(let page) = stadeum.opening(app) { router.orgPage = page }
                     } label: {
@@ -26,13 +30,17 @@ struct AppsScreen: View {
                     }
                     .buttonStyle(.plain)
                 }
+            } footer: {
+                if !unread.isEmpty, !apps.isEmpty {
+                    UnreadNote(names: unread)
+                }
             }
             .phoneRows()
         }
         .phoneList()
         .scrollEdges()
         .overlay {
-            if stadeum.apps.isEmpty {
+            if apps.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
                         Label("No Stadeum here yet", systemImage: WorkspaceApp.symbol)
@@ -41,6 +49,12 @@ struct AppsScreen: View {
                     }
                 } else if stadeum.readingApps {
                     ProgressView()
+                } else if !unread.isEmpty {
+                    ContentUnavailableView {
+                        Label("Couldn't read the apps", systemImage: WorkspaceApp.symbol)
+                    } description: {
+                        Text("\(unread.joined(separator: ", ")) did not answer. Pull to try again.")
+                    }
                 } else {
                     ContentUnavailableView {
                         Label("No apps yet", systemImage: WorkspaceApp.symbol)
@@ -96,5 +110,17 @@ private struct AppRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens it")
+    }
+}
+
+/// Under the list: the workspaces whose apps the last read could not
+/// read, their earlier ones still shown.
+private struct UnreadNote: View {
+    let names: [String]
+
+    var body: some View {
+        Text("Couldn't read \(names.joined(separator: ", ")) just now. Pull to try again.")
+            .phoneFont(.secondary)
+            .foregroundStyle(Theme.tertiaryText)
     }
 }

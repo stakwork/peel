@@ -89,17 +89,6 @@ extension WorkspaceApp {
         return try listing(data, peer: peer.id)
     }
 
-    /// Where it comes from, as the person reads it: `@workspace`, or Yours.
-    public var source: String { peer.map { "@\($0)" } ?? Self.yours }
-    public static let yours = "Yours"
-
-    /// Under its title and at its card's foot: `@workspace · v14`, the
-    /// source when asked (several sources listed).
-    public func caption(showsSource: Bool) -> String? {
-        let parts = [showsSource ? source : nil, version].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
     /// `apps` A–Z by title, as they are listed.
     public static func byTitle(_ apps: [WorkspaceApp]) -> [WorkspaceApp] {
         apps.sorted {
@@ -110,11 +99,5 @@ extension WorkspaceApp {
             case .orderedSame: $0.id < $1.id
             }
         }
-    }
-
-    /// Whether a search for `query` finds it: in its title, what it is for,
-    /// or where it comes from (`@workspace`, Yours).
-    public func matches(_ query: String) -> Bool {
-        [title, about ?? "", source].contains { ChatSections.matches($0, query: query) }
     }
 }

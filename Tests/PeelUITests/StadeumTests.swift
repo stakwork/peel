@@ -73,7 +73,11 @@ struct StadeumTests {
     }
 
     @Test func aRevokedDeviceKeepsItsOrgsListedButUsesNone() async throws {
-        let hive = try await HTTPStub { _, _ in (401, #"{"error":"Unauthorized"}"#) }
+        let asked = Mutex(0)
+        let hive = try await HTTPStub { _, _ in
+            asked.withLock { $0 += 1 }
+            return (401, #"{"error":"Unauthorized"}"#)
+        }
         defer { hive.stop() }
         let profile = try profile()
         // Due: a day since it was last renewed.
@@ -88,7 +92,15 @@ struct StadeumTests {
         #expect(host.calls == ["revoked"])
         let file = try #require(AgentArtifact.Handle(path: "/peers/acme/jobs/j-1/files/plan.md"))
         #expect(stadeum.opening(file) == .connectFirst)
+        // Kept with the link: opened again (an unlock, a restart), still revoked, and Hive not asked again.
         stadeum.close()
+        let again = Stadeum()
+        again.open(profile)
+        #expect(again.revoked && again.status == .needsPairing && again.live.isEmpty)
+        again.renewIfDue()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(asked.withLock { $0 } == 1)
+        again.close()
     }
 
     @Test func closingTheAccountLetsGoOfEverythingButThePersonsOwnApps() async throws {
@@ -143,7 +155,8 @@ struct StadeumTests {
                     WorkspaceApp(peer: "acme", name: "alpha", title: "Alpha", about: nil)]
         })?.value
         #expect(stadeum.apps.map(\.id) == ["@acme/alpha", "@globex/old", "@acme/zeta"])
-        #expect(!stadeum.readingApps)
+        #expect(!stadeum.readingApps && stadeum.unreadApps == ["globex"])
+        #expect(stadeum.apps.first?.caption(showsSource: true) == "@acme" && stadeum.apps.first?.matches("acme") == true)
         stadeum.close()
     }
 

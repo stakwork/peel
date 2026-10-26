@@ -62,7 +62,8 @@ struct PeelPhoneApp: App {
                 // tokens and an open org page go, read again when it opens.
                 .onChange(of: model.phase) { _, phase in
                     if phase == .ready, let profile = model.profile {
-                        model.stadeum.open(profile)
+                        // Renewed when due, not at every unlock.
+                        model.stadeum.open(profile, renewNow: false)
                     } else {
                         model.stadeum.close()
                         router.orgPage = nil

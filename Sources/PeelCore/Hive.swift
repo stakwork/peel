@@ -53,6 +53,10 @@ public struct HiveLink: Codable, Sendable, Equatable {
     public var errors: [HiveOrgError]
     public var expiresAt: Date?
     public var renewedAt: Date
+    /// When Hive answered that it no longer knows the device (a 401 on
+    /// renewal): kept with the link, so its tokens stay unused across a
+    /// restart or an unlock until it is paired again.
+    public var revokedAt: Date?
 
     public static func read(from item: any SecretItem) throws -> HiveLink? {
         guard let data = try item.read() else { return nil }

@@ -726,10 +726,31 @@ phone.
   its workspace stops being live and when the account locks.
 
 **Checked.** `StadeumTests` (pairing against a stand-in Hive, the host
-told, kept with the account; a revoke keeping the orgs but using none;
-close; openings; the apps read; the page's folder and hand-over), with
-`HiveTests` and `OrgPageTests`; both apps build; see the PR for the
-rest.
+told, kept with the account; a revoke keeping the orgs but using none,
+still revoked when opened again, Hive not asked again; close; openings;
+the apps read and an unreadable workspace; the page's folder and
+hand-over), `WorkspaceAppTests` (a workspace's pinned apps read on its
+own strut with the bearer), with `HiveTests` and `OrgPageTests`; both
+apps build; a person token's `GET /apps` on a local strut gives the
+fields the reader takes. Not seen on screen: the Apps screen in the real
+app (no account on the simulator).
+
+**Review.** An independent review found the Mac step for step the same
+and no token leak. Applied from it: the revoke kept with the link
+(`HiveLink.revokedAt`): the iPhone opens Stadeum at every unlock, which
+had forgotten it and used the revoked tokens until the next renewal's
+401 (and for up to a week offline); no renewal is tried while revoked; a
+revoke found mid-pairing leaves the code on the screen (coming back from
+Safari had replaced it); `readingApps` observed (the screen showed "No
+apps yet" while reading, and could stay on the spinner); unreadable
+workspaces said (`unreadApps`) instead of "No apps yet"; only workspaces
+still live listed; the iPhone renews when due, not at every unlock; the
+Mac's Connect opens Stadeum itself when its agent did not open (it had
+done nothing); the router follows `.apps` to Chats' Apps; an app's words
+for the person moved from PeelCore to PeelUI. Two Mac differences kept,
+both harmless: on a revoke the strut and bridge sync runs in its own
+task, and Disconnect revokes the "Always allow" rules even when the
+Keychain delete fails.
 
 ### The project
 

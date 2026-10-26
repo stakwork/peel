@@ -85,8 +85,10 @@ extension AppModel {
         macAgent.stadeumHost.unpaired = nil
     }
 
-    /// Connect Stadeum: a code to approve there, naming this Mac.
+    /// Connect Stadeum: a code to approve there, naming this Mac. The
+    /// account's Stadeum is opened first if its agent did not open it.
     func connectHive() {
+        if !stadeum.isOpen, let profile { openHive(profile) }
         stadeum.connect(as: Host.current().localizedName ?? "Mac")
     }
 
@@ -97,6 +99,7 @@ extension AppModel {
     /// Disconnect: the orgs off strut, the credential gone
     /// (`MacStadeumHost.stadeumDisconnected`).
     func disconnectHive() {
+        if !stadeum.isOpen, let profile { openHive(profile) }
         stadeum.disconnect()
     }
 

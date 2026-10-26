@@ -239,9 +239,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `WorkspaceApps.swift` — `WorkspaceApp`, an app a Stadeum workspace
     pinned as a tab or one of the person's own: read from strut's `GET
     /apps` (`listing`, `init(peer:entry:)`), on a workspace's own strut
-    with the person's token for the iPhone (`pinned(on:)`), A–Z
-    (`byTitle`), found by a search (`matches`), and where it comes from
-    (`source`, `caption`)
+    with the person's token for the iPhone (`pinned(on:)`), and A–Z
+    (`byTitle`); its words for the person are PeelUI's
   - `OrgPage.swift` — a deliverable from the agent's DM on its org's own
     strut, as the iPhone opens it (`AgentArtifact.Handle.onOrg`: the brain's
     `/peers/<org>` hop taken off; none for the brain's own), and
@@ -307,10 +306,14 @@ is a short plan. Update the status and the journal when you finish something.
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
-  pairing: open with the account, Connect (Hive's device flow), renew
-  hourly and when due, the revoke rule (orgs kept, none `live`), close,
-  Disconnect; the apps listed, `readApps` (the Mac through its strut, the
-  iPhone on each org's own); `opening`, how a deliverable or a workspace's
+  pairing: open with the account (renewed at once on the Mac, when due on
+  the iPhone), Connect (Hive's device flow), renew hourly and when due,
+  the revoke rule (orgs kept and listed, none `live`, kept with the link
+  as `HiveLink.revokedAt` so an unlock or a restart does not use them
+  again, no renewal tried), close, Disconnect; the apps listed,
+  `readApps` (the Mac through its strut, the iPhone on each org's own;
+  `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
+  app's words for the person; `opening`, how a deliverable or a workspace's
   app opens on its org's own strut; `StadeumHost`, what a device does
   beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
   with its token: its origin and folder, the token's hand-over script and

@@ -48,9 +48,9 @@ public final class Stadeum {
     public private(set) var link: HiveLink?
     /// The last thing that went wrong, in words; nil once something works.
     public var problem: String?
-    /// Stadeum answered 401: the orgs stay listed until paired again, but
-    /// their tokens are no longer used (`live`).
-    public private(set) var revoked = false
+    /// Stadeum answered 401 (`HiveLink.revokedAt`, kept): the orgs stay
+    /// listed until paired again, but their tokens are no longer used (`live`).
+    public var revoked: Bool { link?.revokedAt != nil }
     /// The apps listed, A–Z (`readApps`).
     public var apps: [WorkspaceApp] = []
     /// What the device's host does beyond keeping the pairing; none on the iPhone.
@@ -59,7 +59,12 @@ public final class Stadeum {
     /// The orgs in use: none once revoked.
     public var live: [HivePeer] { revoked ? [] : link?.peers ?? [] }
     /// Whether a read of `apps` is under way.
-    public var readingApps: Bool { appsReading != nil }
+    public private(set) var readingApps = false
+    /// The workspaces whose apps the last read could not read, by peer id:
+    /// what they listed before is kept.
+    public private(set) var unreadApps: [String] = []
+    /// Whether an account is open (`open`): pairing needs one.
+    public var isOpen: Bool { profile != nil }
 
     @ObservationIgnored private var profile: Profile?
     @ObservationIgnored private var pairing: Task<Void, Never>?
@@ -75,9 +80,11 @@ public final class Stadeum {
 
     // MARK: - The pairing
 
-    /// The account opened: what it kept, renewed now (so a device revoked
-    /// in Stadeum says so) and whenever due while it stays open.
-    public func open(_ profile: Profile) {
+    /// The account opened: what it kept, renewed whenever due while it
+    /// stays open, and with `renewNow` at once too (the Mac, as its agent
+    /// opens, so a Mac revoked in Stadeum says so; the iPhone, which opens
+    /// it at every unlock, waits until it is due).
+    public func open(_ profile: Profile, renewNow: Bool = true) {
         close()
         self.profile = profile
         do {
@@ -86,8 +93,8 @@ public final class Stadeum {
             problem = PeelError.noted(error, couldNot: "read your Stadeum connection")
         }
         guard link != nil else { return }
-        status = .connected
-        keepRenewed(now: true)
+        status = revoked ? .needsPairing : .connected
+        keepRenewed(now: renewNow)
     }
 
     /// The account closed (on the iPhone, locked too): everything let go,
@@ -161,7 +168,7 @@ public final class Stadeum {
     /// Renews now if due: the iPhone back in front, where the hourly look
     /// may have slept through its turn.
     public func renewIfDue() {
-        guard let link, link.due() else { return }
+        guard let link, link.revokedAt == nil, link.due() else { return }
         keepRenewed(now: true)
     }
 
@@ -173,7 +180,8 @@ public final class Stadeum {
         renewing = Task {
             var first = now
             while !Task.isCancelled, generation == self.generation {
-                if let link, first || link.due() { await renew(link) }
+                // A revoked device's credential answers nothing but 401: it waits to be paired again.
+                if let link, link.revokedAt == nil, first || link.due() { await renew(link) }
                 first = false
                 try? await Task.sleep(for: .seconds(3600))
             }
@@ -187,9 +195,14 @@ public final class Stadeum {
             // Closed, disconnected or paired again meanwhile: nothing of it is kept or said.
             guard !Task.isCancelled, generation == self.generation, self.link?.credential == link.credential else { return }
             guard let renewed else {
-                // Revoked in Stadeum: its tokens may still work until they expire, so they stop being used now.
-                status = .needsPairing
-                revoked = true
+                // Revoked in Stadeum: its tokens may still work until they expire, so they stop
+                // being used now, and after a restart or an unlock too (kept with the link).
+                var revokedLink = link
+                revokedLink.revokedAt = Date()
+                if let profile { try? revokedLink.write(to: profile.hive) }
+                self.link = revokedLink
+                // A pairing under way (Connect again) keeps its code on the screen.
+                if case .pairing = status {} else { status = .needsPairing }
                 host?.stadeumRevoked()
                 return
             }
@@ -210,7 +223,6 @@ public final class Stadeum {
         try link.write(to: profile.hive)
         let changed = revoked || kept?.peers != link.peers
         self.link = link
-        revoked = false
         problem = nil
         host?.stadeum(kept: link, changed: changed)
     }
@@ -223,10 +235,11 @@ public final class Stadeum {
         pairing = nil
         renewing = nil
         appsReading = nil
+        readingApps = false
+        unreadApps = []
         status = .off
         link = nil
         problem = nil
-        revoked = false
         // The workspaces' go with them; the person's own are not Stadeum's.
         apps.removeAll { $0.peer != nil }
     }
@@ -286,9 +299,15 @@ public final class Stadeum {
         let peers = live
         appsReading?.cancel()
         let reading = workspaces ? peers : []
+        readingApps = true
         appsReading = Task {
             // Done, unless a newer read took its place.
-            defer { if !Task.isCancelled { appsReading = nil } }
+            defer {
+                if !Task.isCancelled {
+                    appsReading = nil
+                    readingApps = false
+                }
+            }
             // By peer, the person's own under nil.
             let read = await withTaskGroup(of: (String?, [WorkspaceApp]?).self) { group in
                 if let own { group.addTask { (nil, try? await own()) } }
@@ -303,6 +322,10 @@ public final class Stadeum {
             }
             // A newer read, or the source or the workspaces changed meanwhile: theirs, not this.
             guard !Task.isCancelled, still(), live.map(\.id) == peers.map(\.id) else { return }
+            if workspaces {
+                let unread = reading.map(\.id).filter { read[$0] == nil }
+                if unreadApps != unread { unreadApps = unread }
+            }
             let sources: [String?] = (own == nil ? [] : [nil]) + peers.map(\.id)
             let listed = WorkspaceApp.byTitle(sources.flatMap { peer in read[peer] ?? apps.filter { $0.peer == peer } })
             if apps != listed { apps = listed }
@@ -314,6 +337,7 @@ public final class Stadeum {
     public func stopReadingApps() {
         appsReading?.cancel()
         appsReading = nil
+        readingApps = false
     }
 }
 
@@ -383,5 +407,24 @@ public struct OrgPageRequest: Identifiable, Equatable, Sendable, CustomStringCon
           if (location.origin === origin && location.pathname.startsWith(folder)) {
             try { sessionStorage.setItem("strut/apiKey", key); } catch (e) {} } })();
         """
+    }
+}
+
+extension WorkspaceApp {
+    /// Where it comes from, as the person reads it: `@workspace`, or Yours.
+    public var source: String { peer.map { "@\($0)" } ?? Self.yours }
+    public static let yours = "Yours"
+
+    /// Under its title and at its card's foot: `@workspace · v14`, the
+    /// source when asked (several sources listed).
+    public func caption(showsSource: Bool) -> String? {
+        let parts = [showsSource ? source : nil, version].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Whether a search for `query` finds it: in its title, what it is for,
+    /// or where it comes from (`@workspace`, Yours).
+    public func matches(_ query: String) -> Bool {
+        [title, about ?? "", source].contains { ChatSections.matches($0, query: query) }
     }
 }

@@ -68,7 +68,7 @@ struct WorkspaceAppTests {
         let peer = HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)/lab", token: "jwt-acme", label: "Acme")
         let apps = try await WorkspaceApp.pinned(on: peer)
         #expect(apps == [WorkspaceApp(peer: "acme", name: "hive/board", title: "Board", about: nil, version: "v3")])
-        #expect(apps.first?.id == "@acme/hive/board" && apps.first?.caption(showsSource: true) == "@acme · v3")
+        #expect(apps.first?.id == "@acme/hive/board")
     }
 
     @Test func aWorkspaceThatRefusesSaysSo() async throws {

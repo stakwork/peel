@@ -1,5 +1,6 @@
 import AgentKit
 import Foundation
+import enum PeelCore.TextLine
 
 /// What a memory step returned, read for people: a memory tool's row when
 /// opened (`MemoryResult`) and the panel for one memory (`MemoryNode`).
@@ -118,9 +119,9 @@ public struct MemoryRef: Sendable, Equatable, Hashable {
         return items.filter { seen.insert($0[keyPath: key]).inserted }
     }
 
-    /// One line, at most 500 characters, nothing hidden (`ChatData.clean`).
+    /// One line, at most 500 characters, nothing hidden (`TextLine.clean`).
     static func clean(_ text: String) -> String {
-        ChatData.clean(text, max: 500)
+        TextLine.clean(text, max: 500)
     }
 }
 
@@ -224,7 +225,7 @@ public enum MemoryNode: Sendable, Equatable {
     /// Said words keep their paragraphs; only hidden characters go.
     static func words(_ text: String?) -> String {
         (text ?? "").replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines)
-            .map { ChatData.clean($0, max: ChatData.maxCharacters) }.joined(separator: "\n")
+            .map { TextLine.clean($0, max: ChatData.maxCharacters) }.joined(separator: "\n")
     }
 
     static func date(_ value: JSONValue?) -> Date? {

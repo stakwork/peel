@@ -296,7 +296,10 @@ private struct NameRow: View {
             }
         } else {
             Fact("Name") {
-                Text(model.myAlias ?? "")
+                // A restore settled before this Mac asked for a name can
+                // still leave it unset; the Composer disables Send for it.
+                Text(model.myAlias?.nilIfEmpty ?? "Not set")
+                    .foregroundStyle(model.myAlias?.nilIfEmpty == nil ? Theme.secondaryText : Theme.text)
             } trailing: {
                 Button("Edit") {
                     draft = model.myAlias ?? ""

@@ -214,11 +214,13 @@ struct Detail: View {
                 } else {
                     start("The agent chat could not be opened.")
                 }
+            case .apps:
+                AppsView()
             case .app(let peer, let name):
-                if let app = model.hive.apps.first(where: { $0.peer == peer && $0.name == name }) {
+                if let app = model.app(peer: peer, name: name) {
                     WorkspaceAppView(app: app)
                 } else {
-                    start("This app is no longer pinned in its workspace.")
+                    start("This app is no longer listed.")
                 }
             case nil:
                 start("Pick a conversation, or add a contact.")

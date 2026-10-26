@@ -110,7 +110,7 @@ public struct StrutSpeech: Sendable {
         case 200..<300: return
         case 401: throw Failure.keyRefused
         case 501: throw Failure.noEngine
-        default: throw Failure.refused(ChatData.clean(json(data)?["error"]?.string ?? "HTTP \(status)", max: 200))
+        default: throw Failure.refused(TextLine.clean(json(data)?["error"]?.string ?? "HTTP \(status)", max: 200))
         }
     }
 
@@ -126,7 +126,7 @@ public struct StrutSpeech: Sendable {
         var done = false
         for line in events.split(separator: "\n") where line.hasPrefix("data:") {
             guard let data = try? AgentKit.JSONValue(parsing: String(line.dropFirst(5))) else { continue }
-            if let error = data["error"]?.string { return .failed(ChatData.clean(error, max: 200)) }
+            if let error = data["error"]?.string { return .failed(TextLine.clean(error, max: 200)) }
             if data["phase"]?.string == "done" { done = true }
         }
         return done ? .done : nil

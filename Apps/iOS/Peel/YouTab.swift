@@ -3,7 +3,7 @@ import PeelUI
 import SwiftUI
 
 /// You (docs/design/iphone.md, screen 7): your photo, name and balance; the
-/// agent; the account's words, PIN, Face ID, boost amount and server; then
+/// agent; Stadeum (`StadeumSection`); the account's words, PIN, Face ID, boost amount and server; then
 /// Forget, the only red. Every change is an `AppModel` operation, as on the
 /// Mac's `AccountView`.
 struct YouTab: View {
@@ -26,6 +26,7 @@ struct YouTab: View {
                     PhoneSectionHeader("Agent")
                 }
                 .phoneRows(.grouped)
+                StadeumSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
                         LabeledContent("Twelve words", value: model.wordsConfirmed ? "" : "Not checked yet")

@@ -29,20 +29,28 @@ struct Sidebar: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                        // A–Z (Tom, 2026-10-26).
                         VStack(spacing: 1) {
-                            AutomationsLink()
-                            let unreadThreads = model.unreadThreads
-                            SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
-                                Image(systemName: "bubble.left").font(.system(size: 13))
-                            } accessory: {
-                                if unreadThreads > 0 { Badge(count: unreadThreads) }
+                            SidebarLink("Apps", to: .apps) {
+                                Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
                             }
+                            let several = model.showsAppSources
+                            ForEach(shownApps(searching: sections.searching)) {
+                                WorkspaceAppLink(app: $0, showsSource: several)
+                            }
+                            AutomationsLink()
                             SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
                                 Image(systemName: "at").font(.system(size: 13))
                             } accessory: {
                                 if unreadMentions > 0 { Badge(count: unreadMentions) }
                             }
                             PaymentsLink(money: model.money)
+                            let unreadThreads = model.unreadThreads
+                            SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
+                                Image(systemName: "bubble.left").font(.system(size: 13))
+                            } accessory: {
+                                if unreadThreads > 0 { Badge(count: unreadThreads) }
+                            }
                         }
                         if !sections.unread.isEmpty {
                             SidebarSection("Unread") {
@@ -79,14 +87,6 @@ struct Sidebar: View {
                                                    all: $model.sidebarLayout.allDirect)
                                 }
                                 ContactsSidebarRows()
-                            }
-                        }
-                        let apps = shownApps
-                        if !apps.isEmpty {
-                            // The workspace beside each only when there are several.
-                            let several = Set(apps.map(\.peer)).count > 1
-                            SidebarSection("Apps") {
-                                ForEach(apps) { WorkspaceAppLink(app: $0, showsWorkspace: several) }
                             }
                         }
                     }
@@ -131,11 +131,11 @@ struct Sidebar: View {
             }
             #endif
         }
-        // A workspace's newly pinned app shows within minutes; the workspaces
-        // changing, or strut starting (`syncHive`), reads them at once.
-        .task(id: model.hive.live.map(\.id)) {
+        // A newly published app shows within minutes (or as Apps opens); the
+        // workspaces or Peel's strut changing reads them at once.
+        .task(id: AppsSource(peers: model.hive.live.map(\.id), server: model.memoryServer)) {
             while !Task.isCancelled {
-                model.refreshWorkspaceApps()
+                model.refreshApps()
                 try? await Task.sleep(for: .seconds(300))
             }
         }
@@ -154,16 +154,21 @@ struct Sidebar: View {
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
         let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
-        return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
+        return [(.apps, "Apps")]
+            + shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
+            + [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads")]
             + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
             + agent
             + sections.direct.map { (.chat($0.chat), $0.name) }
-            + shownApps.map { (.app(peer: $0.peer, name: $0.name), $0.title) }
     }
 
-    /// The workspaces' pinned apps matching the search.
-    private var shownApps: [WorkspaceApp] {
-        model.hive.apps.filter { ChatSections.matches($0.title, query: model.searchQuery) }
+    /// The apps under the Apps row, A–Z: those in the sidebar and the one
+    /// open, as a closed section keeps the open chat; while searching, every
+    /// app that matches.
+    private func shownApps(searching: Bool) -> [WorkspaceApp] {
+        if searching { return model.hive.apps.filter { $0.matches(model.searchQuery) } }
+        let open = model.destination
+        return model.hive.apps.filter { model.isPinned($0) || open == .app(peer: $0.peer, name: $0.name) }
     }
 
     /// The agent's row, first in Direct messages: while the section is open
@@ -775,18 +780,25 @@ private struct AutomationsLink: View {
     }
 }
 
-/// An app a Stadeum workspace pinned (`WorkspaceAppView`), with its
-/// workspace beside it when the apps come from several.
+/// What the apps are read from: a change reads them again.
+private struct AppsSource: Hashable {
+    let peers: [String]
+    let server: MemoryServer?
+}
+
+/// An app under the Apps row (`WorkspaceAppView`): no icon, so its title
+/// sits under Apps', with where it comes from (`@workspace`, or Yours)
+/// beside it when the apps come from several.
 private struct WorkspaceAppLink: View {
     let app: WorkspaceApp
-    let showsWorkspace: Bool
+    let showsSource: Bool
 
     var body: some View {
         SidebarLink(app.title, to: .app(peer: app.peer, name: app.name)) {
-            Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
+            Color.clear
         } accessory: {
-            if showsWorkspace {
-                Text("@\(app.peer)")
+            if showsSource {
+                Text(app.source)
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)

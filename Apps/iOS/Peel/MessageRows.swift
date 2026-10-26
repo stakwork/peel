@@ -32,6 +32,7 @@ struct ConversationRow: View, Equatable {
             VStack(spacing: 0) {
                 if !row.agentTools.isEmpty { AgentToolLines(tools: row.agentTools) }
                 MessageRowView(row: row, composer: composer, flashed: flashed)
+                if !row.agentArtifacts.isEmpty { AgentArtifactLines(artifacts: row.agentArtifacts) }
             }
         case .payment:
             PaymentRowView(row: row, composer: composer, flashed: flashed)
@@ -479,6 +480,7 @@ struct ThreadSummaryButton: View {
         Button {
             model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
         } label: {
+            VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: Theme.Space.sm) {
                 HStack(spacing: -5) {
                     ForEach(Array(summary.participants.prefix(3).enumerated()), id: \.offset) { _, person in
@@ -503,6 +505,19 @@ struct ThreadSummaryButton: View {
                         .foregroundStyle(Theme.quietText(on: surface))
                         .lineLimit(1)
                 }
+            }
+            if let latest = summary.latest {
+                let sender = model.sender(of: latest)
+                HStack(alignment: .top, spacing: 6) {
+                    Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.xs, hue: sender.hue)
+                    (Text(sender.label + " ").fontWeight(.semibold).foregroundColor(sender.hue.name)
+                        + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
+                        .phoneFont(.time)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.leading, Theme.Space.lg)
+            }
             }
             .frame(minHeight: Theme.touchTarget)
             .contentShape(Rectangle())
@@ -646,6 +661,85 @@ struct AgentToolLines: View {
             }
         }
         .agentLine()
+    }
+}
+
+/// What an agent's reply points to, one quiet line each as on the Mac: its
+/// label and title, and where it opens. An org's file or app opens on that
+/// org's own strut in a sheet (`PhoneStadeum`, `OrgPageSheet`), else its
+/// https link in the system's browser; with neither, the line says why (one
+/// on the Mac's own strut, which only the Mac reaches).
+struct AgentArtifactLines: View {
+    let artifacts: [AgentArtifact]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // By position: a reply may name one thing twice.
+            ForEach(Array(artifacts.enumerated()), id: \.offset) { _, artifact in
+                AgentArtifactLine(artifact: artifact)
+            }
+        }
+        .agentLine()
+    }
+}
+
+private struct AgentArtifactLine: View {
+    @Environment(PhoneStadeum.self) private var stadeum
+    @Environment(\.openURL) private var openURL
+    let artifact: AgentArtifact
+
+    var body: some View {
+        if let open {
+            Button(action: open) { line(where: whereTo, opens: true) }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens it")
+        } else {
+            line(where: whereTo, opens: false)
+        }
+    }
+
+    private func line(where place: String?, opens: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 11))
+                .accessibilityHidden(true)
+            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+                .foregroundStyle(Theme.text)
+                .layoutPriority(1)
+            if let place {
+                Text("· " + place)
+                    .truncationMode(.tail)
+            }
+            if opens {
+                Text("Open")
+                    .foregroundStyle(Theme.link)
+                    .fixedSize()
+            }
+        }
+        .lineLimit(1)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    /// How it opens here, if it does: on its org's strut, else its link.
+    /// Made again on the tap: the tokens may have been renewed since.
+    private var open: (() -> Void)? {
+        if let handle = artifact.handle, case .page = stadeum.opening(handle) {
+            return { if case .page(let page) = stadeum.opening(handle) { stadeum.shown = page } }
+        }
+        return artifact.url.map { url in { openURL(url) } }
+    }
+
+    /// Where it is: the workspace, the link's host, or why it does not open here.
+    private var whereTo: String? {
+        guard let handle = artifact.handle else { return artifact.url?.host() }
+        switch stadeum.opening(handle) {
+        case .page(let page): return page.workspace
+        case _ where artifact.url != nil: return artifact.url?.host()
+        case .connectFirst: return "Connect Stadeum in You to open"
+        case .notPaired(let peer): return "@\(peer) isn't connected here"
+        case .onMac: return "On your Mac"
+        }
     }
 }
 

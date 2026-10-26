@@ -215,12 +215,12 @@ public struct SphinxTools: Sendable {
 
     /// One thread: its root and its newest messages, oldest first.
     private func thread(_ root: String, in tribe: Conversation) async throws -> String {
-        let shownRoot = ChatData.clean(root, max: ChatData.maxID)
+        let shownRoot = TextLine.clean(root, max: ChatData.maxID)
         guard let thread = try await first(storage.thread(root, in: tribe.chat)),
               thread.original != nil || !thread.messages.isEmpty
         else { return "No thread with root uuid \(shownRoot) in \(ChatData.quoted(tribe))." }
         if let parent = thread.original?.threadUUID, parent != root {
-            return "\(shownRoot) is a message in the thread \(ChatData.clean(parent, max: ChatData.maxID)), not a thread's root; read that thread."
+            return "\(shownRoot) is a message in the thread \(TextLine.clean(parent, max: ChatData.maxID)), not a thread's root; read that thread."
         }
         var data = ChatData("The thread \(shownRoot) in \(ChatData.describe(tribe)), oldest first:", cut: .start)
         data.pin(ChatData.heading(tribe))
@@ -271,7 +271,7 @@ public struct SphinxTools: Sendable {
                 let matches = try await storage.searchMessages(query, in: only?.chat, limit: limit)
                 let found = matches.filter { byID[$0.chat] != nil }
                 let more = matches.count == limit ? "[there may be more; narrow the search or raise the limit]" : nil
-                let quoted = ChatData.clean(text, max: 100)
+                let quoted = TextLine.clean(text, max: 100)
                 guard !found.isEmpty else { return "No messages match '\(quoted)'.\(more.map { " \($0)" } ?? "")" }
 
                 let groups = Dictionary(grouping: found, by: \.chat)
@@ -299,7 +299,7 @@ public struct SphinxTools: Sendable {
 
     /// A chat by name or id; throws what to tell the model instead.
     func resolve(_ query: String, among chats: [Conversation], tribesOnly: Bool = false) throws -> Conversation {
-        let quoted = ChatData.clean(query, max: ChatData.maxName)
+        let quoted = TextLine.clean(query, max: ChatData.maxName)
         switch ChatDirectory(chats: chats).resolve(query, tribesOnly: tribesOnly) {
         case .found(let chat):
             return chat

@@ -84,7 +84,11 @@ struct PhoneComposer: View {
                                  note: "Sending sats to \(paysTo) from here is coming. Send from the Mac for now.")
                 }
                 if canSend {
-                    SendButton { Task { await model.sendDraft(from: composer) } }
+                    // A restore that settled with no name to recover leaves
+                    // this empty until it is set (onboarding asks for one
+                    // then; this is the backstop).
+                    let hasName = model.myAlias?.nilIfEmpty != nil
+                    SendButton(enabled: hasName) { Task { await model.sendDraft(from: composer) } }
                 } else {
                     ComingButton(systemImage: "mic", label: "Record a voice message",
                                  note: "Voice messages are coming.")
@@ -95,8 +99,10 @@ struct PhoneComposer: View {
     }
 }
 
-/// Send: a 32 pt filled circle with an arrow, in a 44 pt target.
+/// Send: a 32 pt filled circle with an arrow, in a 44 pt target. Dimmed and
+/// inert without a name to send under (`enabled`).
 private struct SendButton: View {
+    var enabled = true
     let action: () -> Void
 
     var body: some View {
@@ -105,12 +111,14 @@ private struct SendButton: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Theme.buttonText)
                 .frame(width: 32, height: 32)
-                .background(Theme.button, in: Circle())
+                .background(Theme.button.opacity(enabled ? 1 : 0.4), in: Circle())
                 .frame(width: Theme.touchTarget, height: Theme.touchTarget)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .accessibilityLabel("Send")
+        .accessibilityHint(enabled ? "" : "Set your name first, in You")
     }
 }
 

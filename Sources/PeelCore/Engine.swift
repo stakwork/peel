@@ -121,8 +121,8 @@ public actor Engine {
     var readsAskedAt: ContinuousClock.Instant?
     /// A restore from the words is replaying history; see `Setting.needsRestore`.
     var restoring: Bool
-    /// Whether `recoverOwnPhoto` has run for this engine.
-    var photoRecoveryDone = false
+    /// Whether `recoverOwnProfile` has settled the name and photo for this engine.
+    var profileRecoveryDone = false
     /// The aliases each tribe echoed back on this account's own messages;
     /// with the account's own tribe alias, what a mention of it looks like there.
     private(set) var echoedAliases: [String: Set<String>]
@@ -256,10 +256,10 @@ public actor Engine {
     /// Connects and keeps reconnecting with backoff until `disconnect()`.
     /// Progress is reported through `.connection` events.
     public func start(allowUntrustedCertificate: Bool = false) {
-        // Accounts restored before the restore learned to recover the photo
-        // get it on their first start instead.
+        // Accounts restored before the restore learned to recover the name and
+        // photo get them on their first start instead.
         guard !closed else { return }
-        if !restoring { recoverOwnPhoto() }
+        if !restoring { recoverOwnProfile() }
         self.allowUntrustedCertificate = allowUntrustedCertificate
         keepConnected = true
         watchNetwork()

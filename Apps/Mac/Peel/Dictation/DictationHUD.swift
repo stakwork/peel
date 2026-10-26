@@ -12,6 +12,8 @@ final class DictationHUDModel {
         case recording
         /// Hands-free: the waveform between X and tick.
         case locked
+        /// Let go: transcribing, until the text is typed or a message takes its place.
+        case working
         /// A line of text for a moment (where the text went, a problem).
         case message(String)
         /// A word learned from the user's edit, with Undo, for a few seconds.
@@ -21,7 +23,7 @@ final class DictationHUDModel {
         var takesClicks: Bool {
             switch self {
             case .locked, .learned: true
-            case .hidden, .recording, .message: false
+            case .hidden, .recording, .working, .message: false
             }
         }
     }
@@ -96,6 +98,16 @@ struct DictationHUDView: View {
                 .padding(.horizontal, Theme.Space.md)
                 .frame(height: 24)
                 .hudCapsule()
+        case .working:
+            // The same size as the recording pill, so letting go doesn't jump.
+            ProgressView()
+                .controlSize(.small)
+                .colorScheme(.dark)
+                .padding(.horizontal, Theme.Space.md)
+                .frame(minWidth: 52)
+                .frame(height: 24)
+                .hudCapsule()
+                .accessibilityLabel("Transcribing")
         case .locked:
             HStack(spacing: Theme.Space.sm) {
                 HUDButton(.symbol("xmark"), label: "Cancel dictation", filled: false, action: model.cancel)

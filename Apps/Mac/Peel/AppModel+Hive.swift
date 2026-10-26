@@ -31,8 +31,8 @@ final class HiveState {
     /// Hive answered 401: the orgs are taken off strut and runner (their
     /// tokens may still work for days) and stay listed until paired again.
     var revoked = false
-    /// The apps the workspaces pinned as tabs, in the workspaces' order
-    /// (`refreshWorkspaceApps`): the sidebar's Apps.
+    /// The person's own apps and those the workspaces pinned as tabs, A–Z
+    /// (`refreshApps`): the sidebar's Apps.
     var apps: [WorkspaceApp] = []
     /// The read of `apps` under way; a newer one replaces it.
     @ObservationIgnored var appsReading: Task<Void, Never>?
@@ -61,21 +61,17 @@ final class HiveState {
         revoked = false
         appsReading?.cancel()
         appsReading = nil
-        apps = []
+        // The workspaces' go with them; the person's own are not Stadeum's.
+        apps.removeAll { $0.peer != nil }
     }
 }
 
 extension AppModel {
     var hive: HiveState { macAgent.hive }
 
-    /// The Hive a development profile pairs with: `-hiveURL` (a local or
-    /// staging Hive, or a test's stand-in); the app account's is Hive itself.
+    /// The Hive this account pairs with (`HiveClient(for:)`).
     var hiveClient: HiveClient {
-        if profile?.kind == .development, let given = UserDefaults.standard.string(forKey: "hiveURL"),
-           let url = URL(string: given), Web.isStrut(url) {
-            return HiveClient(hive: url)
-        }
-        return HiveClient()
+        profile.map(HiveClient.init(for:)) ?? HiveClient()
     }
 
     /// Reads what this account kept of Hive when its agent opens, tells
@@ -111,25 +107,19 @@ extension AppModel {
                 // Cancelled while Hive answered: its code is never shown.
                 try Task.checkCancellation()
                 hive.status = .pairing(pairing)
-                while !Task.isCancelled {
-                    try await Task.sleep(for: .seconds(pairing.interval))
-                    switch try await client.poll(pairing, name: name) {
-                    case .pending:
-                        continue
-                    case .denied:
-                        settle("It was turned down in Stadeum.")
-                        return
-                    case .expired:
-                        settle("The code ran out before it was approved. Try again.")
-                        return
-                    case .paired(let link):
-                        // Cancelled, or the account changed, while Hive answered: nothing kept.
-                        guard !Task.isCancelled, profile?.directory == account else { return }
-                        try keepHive(link)
-                        hive.status = .connected
-                        keepHiveRenewed(now: false)
-                        return
-                    }
+                switch try await client.answer(to: pairing, name: name) {
+                case .pending:
+                    return
+                case .denied:
+                    settle("It was turned down in Stadeum.")
+                case .expired:
+                    settle("The code ran out before it was approved. Try again.")
+                case .paired(let link):
+                    // Cancelled, or the account changed, while Hive answered: nothing kept.
+                    guard !Task.isCancelled, profile?.directory == account else { return }
+                    try keepHive(link)
+                    hive.status = .connected
+                    keepHiveRenewed(now: false)
                 }
             } catch is CancellationError {
             } catch {
@@ -270,31 +260,41 @@ extension AppModel {
             hive.problem = PeelError.noted(error, couldNot: "give the agent your Stadeum workspaces")
         }
         // Not waited for: a slow workspace never holds up the bridge.
-        refreshWorkspaceApps()
+        refreshApps()
     }
 
-    /// Reads the apps each workspace pinned as a tab through Peel's own
-    /// strut (`AutomationsClient.pinnedApps`), the workspaces at once; a
-    /// newer read replaces one under way. None without workspaces or with
-    /// the memory on a home server, which holds none of this Mac's. While
-    /// Peel's strut is away (starting again, a memory move) the list stays
-    /// as it was, and a workspace that cannot be read keeps what it last
-    /// listed.
-    func refreshWorkspaceApps() {
+    /// Reads the apps through Peel's own strut: the person's own on it
+    /// (`AutomationsClient.ownApps`) and those each workspace pinned as a
+    /// tab (`pinnedApps`), all at once; a newer read replaces one under
+    /// way. None with the memory on a home server, which holds none of this
+    /// Mac's. While Peel's strut is away (starting again, a memory move) the
+    /// list stays as it was, and a list that cannot be read keeps what it
+    /// last listed. Without `workspaces`, only the person's own are read
+    /// (Apps opening: one just built shows), the workspaces' kept as they are.
+    func refreshApps(workspaces: Bool = true) {
+        // A read under way reads the person's own too: not cut short for less.
+        guard workspaces || hive.appsReading == nil else { return }
+        let peers = hive.live.map(\.id)
+        // Strut away (starting again, a memory move): what is read stays as it is.
+        guard let server = memoryServer else { return }
         hive.appsReading?.cancel()
         hive.appsReading = nil
-        let peers = hive.live.map(\.id)
-        let clear = { if !self.hive.apps.isEmpty { self.hive.apps = [] } }
-        guard !peers.isEmpty else { return clear() }
-        guard let server = memoryServer else { return }
-        guard !server.isHomeServer else { return clear() }
+        guard !server.isHomeServer else {
+            if !hive.apps.isEmpty { hive.apps = [] }
+            return
+        }
         let client = AutomationsClient(server: server)
+        let reading = workspaces ? peers : []
         hive.appsReading = Task {
-            let read = await withTaskGroup(of: (String, [WorkspaceApp]?).self) { group in
-                for peer in peers {
+            // Done, unless a newer read took its place.
+            defer { if !Task.isCancelled { hive.appsReading = nil } }
+            // By peer, the person's own under nil.
+            let read = await withTaskGroup(of: (String?, [WorkspaceApp]?).self) { group in
+                group.addTask { (nil, try? await client.ownApps()) }
+                for peer in reading {
                     group.addTask { (peer, try? await client.pinnedApps(of: peer)) }
                 }
-                var read: [String: [WorkspaceApp]] = [:]
+                var read: [String?: [WorkspaceApp]] = [:]
                 for await (peer, apps) in group {
                     if let apps { read[peer] = apps }
                 }
@@ -302,8 +302,41 @@ extension AppModel {
             }
             // A newer read, or strut or the workspaces changed meanwhile: theirs, not this.
             guard !Task.isCancelled, memoryServer == server, hive.live.map(\.id) == peers else { return }
-            let listed = peers.flatMap { peer in read[peer] ?? hive.apps.filter { $0.peer == peer } }
+            let sources: [String?] = [nil] + peers
+            let listed = WorkspaceApp.byTitle(sources.flatMap { peer in read[peer] ?? hive.apps.filter { $0.peer == peer } })
             if hive.apps != listed { hive.apps = listed }
         }
+    }
+
+    /// The listed app a destination opens.
+    func app(peer: String?, name: String) -> WorkspaceApp? {
+        hive.apps.first { $0.peer == peer && $0.name == name }
+    }
+
+    /// Where the listed apps come from, as the person reads them: Yours
+    /// first, then the workspaces A–Z (`WorkspaceApp.source`).
+    var appSources: [String] {
+        let peers = Set(hive.apps.compactMap(\.peer)).sorted().map { "@\($0)" }
+        return (hive.apps.contains { $0.peer == nil } ? [WorkspaceApp.yours] : []) + peers
+    }
+
+    /// Whether an app's source shows (its sidebar row, card and header):
+    /// only when the apps come from several (Tom, 2026-10-26).
+    var showsAppSources: Bool {
+        Set(hive.apps.map(\.peer)).count > 1
+    }
+
+    /// Whether the person pinned `app` under the sidebar's Apps row
+    /// (`ChatSections.Layout.pinnedApps`); none are until they do.
+    func isPinned(_ app: WorkspaceApp) -> Bool {
+        sidebarLayout.pinnedApps.contains(app.id)
+    }
+
+    /// Puts `app` under the sidebar's Apps row, or takes it off, kept with
+    /// the account's sidebar layout.
+    func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
+        var pins = sidebarLayout.pinnedApps.filter { $0 != app.id }
+        if pinned { pins.append(app.id) }
+        if pins != sidebarLayout.pinnedApps { sidebarLayout.pinnedApps = pins }
     }
 }

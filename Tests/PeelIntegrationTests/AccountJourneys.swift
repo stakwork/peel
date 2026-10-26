@@ -29,7 +29,7 @@ extension Journeys {
             let profile = Profile(developmentAt: Person.directory("wrong-words"))
             await #expect(throws: (any Error).self) {
                 _ = try await Account.restore(
-                    profile, mnemonic: Array(repeating: "abandon", count: 12).joined(separator: " "), alias: "x",
+                    profile, mnemonic: Array(repeating: "abandon", count: 12).joined(separator: " "),
                     pin: "", server: try Person.address(stack.broker)
                 )
             }

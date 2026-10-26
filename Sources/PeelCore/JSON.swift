@@ -37,3 +37,13 @@ extension Data {
         self = bytes
     }
 }
+
+extension Date {
+    /// An ISO 8601 date as strut and Hive write one, with or without a
+    /// fraction of a second; nil for anything else.
+    public init?(iso8601 text: String) {
+        guard let date = (try? Date(text, strategy: .iso8601.year().month().day().time(includingFractionalSeconds: true)))
+            ?? (try? Date(text, strategy: .iso8601)) else { return nil }
+        self = date
+    }
+}

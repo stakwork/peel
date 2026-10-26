@@ -25,8 +25,8 @@ public struct Profile: Sendable {
     /// The account's home server, its address and `STRUT_API_KEY`
     /// (`Brain`, `docs/peel-brain.md`); none kept is Peel's own strut.
     public let brain: any SecretItem
-    /// The Hive device this Mac paired, its `hivedev_` credential and the
-    /// orgs' peer records (`HiveLink`, docs/connectors-and-authoring.md,
+    /// The Hive device this Mac or iPhone paired, its `hivedev_` credential
+    /// and the orgs' peer records (`HiveLink`, docs/connectors-and-authoring.md,
     /// "Peers"): in the Keychain for an app profile.
     public let hive: any SecretItem
     /// Face ID in place of the PIN, opt-in (`BiometricUnlock`); nil for a

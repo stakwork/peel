@@ -125,7 +125,7 @@ struct PeelCommand {
                               never the app's own profile)
           --server <host:port>  override the server (init, signup, restore; later runs reuse it)
           --network <bitcoin|regtest>   for init, signup and restore
-          --alias <name>      the name others see (default: the profile name)
+          --alias <name>      the name others see (init and signup; default: the profile name)
           --photo <https url> the photo others see beside this account's messages ("" for none)
           --wait <seconds>    how long to stay connected after a command (default: 5)
           --insecure          accept an untrusted TLS certificate

@@ -79,9 +79,12 @@ public final class AppModel {
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
+        /// Every app listed, the person's own and those the workspaces pinned (`AppsView`); the Mac's alone.
+        case apps
         /// An app a Stadeum workspace pinned, by the workspace's peer id and
-        /// the app's name there; the Mac's alone, shown by its own strut.
-        case app(peer: String, name: String)
+        /// the app's name there, or one of the person's own (no peer); the
+        /// Mac's alone, shown by its own strut.
+        case app(peer: String?, name: String)
     }
 
     /// Account's categories, listed where the sidebar was while it is open.
@@ -782,12 +785,12 @@ public final class AppModel {
 
     /// Brings an account back from its twelve words, then pulls contacts and
     /// history in the background; `restoreProgress` follows it.
-    public func restoreAccount(words: [String], name: String, pin: String) async throws {
+    public func restoreAccount(words: [String], pin: String) async throws {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
         let mnemonic = words.joined(separator: " ")
         try? profile.biometrics?.turnOff()
-        let engine = try await Account.restore(profile, mnemonic: mnemonic, alias: name, pin: pin)
+        let engine = try await Account.restore(profile, mnemonic: mnemonic, pin: pin)
         // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()
         await attach(engine)
@@ -1340,7 +1343,7 @@ public final class AppModel {
         self.engine = engine
         let storage = engine.storage
         let settings = await engine.settings()
-        myAlias = settings.alias
+        myAlias = settings.alias.nilIfEmpty
         myPhotoURL = settings.photoURL
         myContactInfo = settings.contactInfo
         echoedAliases = settings.echoedAliases
@@ -1424,8 +1427,13 @@ public final class AppModel {
                 restoreProgress.restoring = false
                 restoreProgress.outcome = .finished
                 notifier.historyEnded()
+                // A safety net: a missed `.profile` must not leave the header stale.
+                let settings = await engine.settings()
+                myAlias = settings.alias.nilIfEmpty
+                myPhotoURL = settings.photoURL
+                rebuildRows()
             case .profile(let alias, let photoURL):
-                myAlias = alias
+                myAlias = alias.nilIfEmpty
                 myPhotoURL = photoURL
                 refreshMentionAliases()
                 rebuildRows()

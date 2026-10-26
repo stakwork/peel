@@ -86,7 +86,7 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    banner when a development profile's words are in a file. The new-account
    path has not yet been exercised with a fresh invite in the app (signup is
    proven from the CLI); do that with the next invite.
-4. **Restore from twelve words.** Done. `Account.restore` marks the account
+4. **Restore from twelve words.** Done. `Account.restore(profile, mnemonic:, pin:, …)` takes no name (the name and photo come back from the history, `Engine.recoverOwnProfile`) and marks the account
    (`needsRestore`) and the engine runs the plan itself the moment it is
    online: `getMsgsCounts`, then one message per contact key
    (`fetchFirstMsgsPerKey` paging, from which the core recreates each

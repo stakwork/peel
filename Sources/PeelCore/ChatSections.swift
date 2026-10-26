@@ -14,6 +14,10 @@ public struct ChatSections: Equatable, Sendable {
         /// "Show all 14 tribes" was clicked.
         public var allTribes = false
         public var allDirect = false
+        /// The apps pinned under the sidebar's Apps row, by key (`@<workspace>/<name>`,
+        /// or the name alone for the person's own);
+        /// none until the person pins one (Tom, 2026-10-26).
+        public var pinnedApps: [String] = []
 
         public init() {}
 
@@ -25,6 +29,7 @@ public struct ChatSections: Equatable, Sendable {
             directOpen = try values.decodeIfPresent(Bool.self, forKey: .directOpen) ?? true
             allTribes = try values.decodeIfPresent(Bool.self, forKey: .allTribes) ?? false
             allDirect = try values.decodeIfPresent(Bool.self, forKey: .allDirect) ?? false
+            pinnedApps = try values.decodeIfPresent([String].self, forKey: .pinnedApps) ?? []
         }
     }
 

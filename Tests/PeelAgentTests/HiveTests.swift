@@ -203,24 +203,27 @@ struct HiveTests {
     }
 
     /// A workspace's apps come through Peel's own strut's read-through,
-    /// with its key: only those pinned as tabs, under names strut gives. One
-    /// opens as strut's UI showing that page alone, with the key, the app
-    /// and `solo` encoded so strut's UI reads them back exactly; a home
-    /// server opens none.
-    @Test func aWorkspacesPinnedAppsOpenAloneOnPeelsOwnStrut() async throws {
+    /// with its key: only those pinned as tabs, under names strut gives,
+    /// with their icon, version, held release and warnings when strut gives
+    /// them as text (and a count), none otherwise. One opens as strut's UI showing that page
+    /// alone, with the key, the app and `solo` encoded so strut's UI reads
+    /// them back exactly; a home server opens none.
+    @Test func aWorkspacesPinnedAppsAreListedAndOpenAloneOnPeelsOwnStrut() async throws {
         let strut = try await HTTPStub { _, request in
             guard path(request) == "/peers/acme/apps", request.contains("Authorization: Bearer k+1") else { return (404, "{}") }
             return (200, #"""
-                {"apps":[{"name":"hive/board","title":"Board\n","pinned":true,"description":"The team's board"},
+                {"apps":[{"name":"hive/board","title":"Board\n","pinned":true,"description":"The team's board",
+                          "icon":"flask-conical","activeVersion":"v14","live":"r3","warnings":2},
                          {"name":"scratch","title":"Scratch"},
                          {"name":"x@v2","title":"Pinned to a version","pinned":true},
-                         {"name":"plain","title":"","pinned":true}]}
+                         {"name":"plain","title":"","pinned":true,"icon":3,"activeVersion":" \n","live":null,"warnings":-1}]}
                 """#)
         }
         defer { strut.stop() }
         let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k+1"))
         let apps = try await AutomationsClient(server: server).pinnedApps(of: "acme")
-        #expect(apps == [WorkspaceApp(peer: "acme", name: "hive/board", title: "Board", about: "The team's board"),
+        #expect(apps == [WorkspaceApp(peer: "acme", name: "hive/board", title: "Board", about: "The team's board",
+                                      icon: "flask-conical", version: "v14", release: "r3", problems: 2),
                          WorkspaceApp(peer: "acme", name: "plain", title: "plain", about: nil)])
         let page = try #require(server.page(of: apps[0]))
         #expect(page.path == "/" && server.serves(page))
@@ -229,6 +232,27 @@ struct HiveTests {
                 == "key=k%2B1&app=%40acme%2Fhive%2Fboard&solo=1")
         let home = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k", home: true))
         #expect(home.page(of: apps[0]) == nil)
+    }
+
+    /// The person's own apps come from Peel's strut itself, every one of
+    /// them, pinned or not, but not the ones strut seeds for other apps to
+    /// import; one opens by its name alone, with no workspace.
+    @Test func yourOwnAppsAreAllListedAndOpenByName() async throws {
+        let strut = try await HTTPStub { _, request in
+            guard path(request) == "/apps", request.contains("Authorization: Bearer k") else { return (404, "{}") }
+            return (200, #"""
+                {"apps":[{"name":"meal-planner","title":"Meal planner","publisher":"ai"},{"name":"tools/board","title":"Board","pinned":true},
+                         {"name":"strut/views","title":"strut views","publisher":"strut","pinned":true}]}
+                """#)
+        }
+        defer { strut.stop() }
+        let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k"))
+        let apps = try await AutomationsClient(server: server).ownApps()
+        #expect(apps == [WorkspaceApp(peer: nil, name: "meal-planner", title: "Meal planner", about: nil),
+                         WorkspaceApp(peer: nil, name: "tools/board", title: "Board", about: nil)])
+        let page = try #require(server.page(of: apps[1]))
+        #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+                == "key=k&app=tools%2Fboard&solo=1")
     }
 
     /// A deliverable from the agent's DM opens as an app does, strut's UI

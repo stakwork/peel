@@ -458,6 +458,19 @@ Three things Tom saw on his own account, each checked before the fix:
   server answered without an image is not asked for again, a network
   failure is). The CLI gained `--photo <https url>` (`Engine.setPhotoURL`),
   so development accounts can send a photo; before, Peel always sent none.
+  A second cause was the URL's form. The official apps build the photo
+  link from the memes-server setting (Profile), which the user can edit,
+  so it may lack a scheme, be `http://`, or carry a doubled scheme, and
+  they render it through `removeDuplicatedProtocol().trim()`; Peel's strict
+  `httpsOnly` dropped all of those. `String.recoverablePhotoURL` now trims,
+  collapses repeated schemes, accepts `//host/p` and `host.tld/p`, upgrades
+  http to https and percent-encodes; `SenderInfo` applies it on decoding
+  (and reads `photo_url`, then `photoUrl`, `sender_pic`, `senderPic`;
+  an oddly typed optional field no longer discards the sender), so message
+  rows, thread participants, tribe members and the own-photo recovery all
+  get the normalised link. `httpsOnly` stays strict for tribe images and
+  settings. The exact payload from the user's official Mac app still has
+  to be confirmed on a Mac.
 - **A tribe opened a second time was blank until scrolled.** The message
   list is now a fresh view per chat (`.id`, from `fix/blank-conversation`)
   and is made again once the chat's messages have loaded, so
@@ -1302,9 +1315,11 @@ Engine and storage (PeelCore):
   0.5 (at most 1024 px) posted in the clear to the memes server's `/public`
   route; `https://<memes host>/public/<muid>` becomes the photo. The muid is
   checked (ASCII letters, digits, `-_=`) before it goes into a URL.
-- Own photo recovery also runs once on start, for accounts restored before
-  the restore learned it: only when no photo was ever set on this Mac, from
-  the newest own direct message (tribe copies skipped).
+- Own profile recovery (`recoverOwnProfile`) also runs on start, for accounts
+  restored before the restore learned it, and after every history sync until
+  settled: the name when none is stored, the photo when none was ever set on
+  this Mac (stored, even empty, wins), from the newest own messages to
+  contacts (tribe copies skipped).
 - `ImageDecoding.thumbnail`: one set of ImageIO options for attachments,
   avatars and the profile photo.
 - `PeelError.readable`: system network and file errors in a short sentence
@@ -3294,3 +3309,7 @@ Xcode's debug dylib, which the signing left unsigned. On a stack running
 for over an hour the tribes server refused the peer's posts ("Upstream
 node set CLTV to less than the CLTV set by the sender"); restarting its
 mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.
+
+## The last reply on a thread's row (2026-10-26)
+
+A collapsed thread's row (Mac `ThreadSummaryLine`, iPhone `ThreadSummaryButton`) now also shows the newest reply's words under its reply count and "replied …" label: smaller, indented, with its sender's photo and name, two lines at most. `ThreadSummary.latest` already carried the message from `threadsSQL`'s `latestID` (one query for all rows), so no storage change. `Message.threadReplyPreview` (PeelCore) is the one string: text cut at 120 characters, else "Photo", "Video", "Voice message", "File", "Payment", "Payment request", "Call". Tested in `MessageTests`; the Apple UI was not built on this Linux pod.

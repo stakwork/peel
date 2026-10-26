@@ -3,12 +3,14 @@ import PeelCore
 import PeelUI
 
 /// New account (invite → name → PIN → twelve words) or restore (twelve words →
-/// name → PIN → progress). See docs/design/README.md, "Profile and onboarding".
+/// PIN → progress; the name and photo come back from the account's own sent
+/// messages, or, when none comes back, a name step after the progress
+/// screen). See docs/design/README.md, "Profile and onboarding".
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
     private enum Path { case newAccount, restore }
-    private enum Step { case welcome, invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring }
+    private enum Step { case welcome, invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring, restoreName }
 
     @State private var path = Path.newAccount
     @State private var step = Step.welcome
@@ -35,7 +37,8 @@ struct OnboardingView: View {
             case .confirmPin: confirmPinStep
             case .showWords: showWordsStep
             case .checkWords: checkWordsStep
-            case .restoring: RestoreProgressView()
+            case .restoring: RestoreProgressView(onOpen: openAfterRestore)
+            case .restoreName: restoreNameStep
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -91,10 +94,10 @@ struct OnboardingView: View {
             WordEntryGrid(words: $words)
         } footer: {
             footer(next: "Continue", enabled: words.allSatisfy { !$0.isEmpty }) {
-                // Catch a mistyped word here, not after the name and PIN.
+                // Catch a mistyped word here, not after the PIN.
                 do {
                     _ = try Engine.validate(mnemonic: words.joined(separator: " "))
-                    go(.name)
+                    go(.pin)
                 } catch {
                     problem = "Those twelve words don't make a valid account. Check each one."
                 }
@@ -110,6 +113,27 @@ struct OnboardingView: View {
             }
         } footer: {
             footer(next: "Continue", enabled: !name.trimmed.isEmpty) { go(.pin) }
+        }
+    }
+
+    /// Asked only when the restore's own history carried no name: a restored
+    /// account with messages to recover it from never reaches this step.
+    private var restoreNameStep: some View {
+        StepBody(title: "What should people call you?",
+                 detail: "We couldn't find a name in your account's history.") {
+            FormItem(label: "Name") {
+                FormTextField(label: "Name", prompt: "Required", text: $name)
+                    .onSubmit { if !name.trimmed.isEmpty { Task { await finishRestore() } } }
+                    .disabled(working)
+            }
+        } footer: {
+            HStack {
+                Spacer()
+                Button(action: { Task { await finishRestore() } }) { Text("Continue").buttonProgress(working) }
+                    .buttonStyle(.peel(.primary, size: .lg))
+                    .disabled(name.trimmed.isEmpty || working)
+                    .keyboardShortcut(.defaultAction)
+            }
         }
     }
 
@@ -175,7 +199,7 @@ struct OnboardingView: View {
     /// The numbered steps of the current path; confirming the PIN counts as
     /// the PIN step, checking the words as the words step.
     private var steps: [Step] {
-        path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .name, .pin]
+        path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .pin]
     }
 
     private var position: Int? {
@@ -204,6 +228,7 @@ struct OnboardingView: View {
         } else {
             // Leaving the flow forgets what was typed; stepping back within it keeps it.
             invite = ""
+            name = ""
             words = Array(repeating: "", count: 12)
             go(.welcome)
         }
@@ -226,7 +251,7 @@ struct OnboardingView: View {
                 shownWords = try await model.createAccount(invite: invite, name: name.trimmed, pin: pin)
                 go(.showWords)
             case .restore:
-                try await model.restoreAccount(words: words, name: name.trimmed, pin: pin)
+                try await model.restoreAccount(words: words, pin: pin)
                 words = Array(repeating: "", count: 12)
                 go(.restoring)
             }
@@ -254,6 +279,28 @@ struct OnboardingView: View {
         }
     }
 
+    /// "Open Peel" on the progress screen: on, unless the restore settled
+    /// with no name to show for it, in which case one is asked for first.
+    private func openAfterRestore() {
+        if model.myAlias?.nilIfEmpty == nil {
+            go(.restoreName)
+        } else {
+            model.enterApp()
+        }
+    }
+
+    private func finishRestore() async {
+        guard !working, !name.trimmed.isEmpty else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.setName(name.trimmed)
+            model.enterApp()
+        } catch {
+            problem = PeelError.problem(error, couldNot: "save your name")
+        }
+    }
+
     private func footer(next: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         HStack {
             Button("Back", action: back)
@@ -270,6 +317,9 @@ struct OnboardingView: View {
 /// Contacts, then messages, as the server sends them back.
 struct RestoreProgressView: View {
     @Environment(AppModel.self) private var model
+    /// Enters the app, unless the restore settled with no name, which asks
+    /// for one first (`OnboardingView.openAfterRestore`).
+    let onOpen: () -> Void
 
     var body: some View {
         let progress = model.restoreProgress
@@ -289,7 +339,7 @@ struct RestoreProgressView: View {
         } footer: {
             HStack {
                 Spacer()
-                Button("Open Peel") { model.enterApp() }
+                Button("Open Peel", action: onOpen)
                     .buttonStyle(.peel(.primary, size: .lg))
                     .keyboardShortcut(.defaultAction)
             }

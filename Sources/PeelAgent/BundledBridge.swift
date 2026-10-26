@@ -278,7 +278,6 @@ public final class BundledBridge: CustomReflectable {
     }
 
     private func launch(_ account: AgentAccount, strut: MemoryServer, invite: String?, alias: String) async throws -> Server {
-        guard !strut.isHomeServer else { throw PeelError("Peel's bridge runs only beside Peel's own strut.") }
         try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: data.path)
@@ -406,7 +405,6 @@ public final class BundledBridge: CustomReflectable {
     ) -> [String: String] {
         var environment = inherited.filter { $0.key == "TMPDIR" }
         environment.merge([
-            "BROKER_URL": account.broker,
             "DB_PATH": data.appending(path: "db").path,
             "ROCKET_ADDRESS": "127.0.0.1",
             "ROCKET_PORT": "\(port)",
@@ -414,15 +412,27 @@ public final class BundledBridge: CustomReflectable {
             "BRIDGE_TOKEN": token,
             "BRIDGE_STRUT_URL": strut.base.absoluteString,
             "BRIDGE_STRUT_KEY": strut.key,
-            "BRIDGE_DEVICE": account.device,
-            "BRIDGE_WORKFLOW": workflow,
-            "RUNNER_ALIAS": alias,
             "RUNNER_EXIT_ON_STDIN_EOF": "1",
             // Rocket looks for Rocket.toml up from where it starts: none is read.
             "ROCKET_CONFIG": data.appending(path: "Rocket.toml").path,
         ]) { _, new in new }
-        if let actor { environment["BRIDGE_ACTOR"] = actor }
+        environment.merge(identity(account: account, alias: alias, actor: actor)) { _, new in new }
         return environment
+    }
+
+    /// The settings that make it this agent wherever it runs, which a move
+    /// of Peel Home carries (`PeelHomeMove`): its broker, the device its
+    /// requests name (this Mac's, still), its name, the workflow it runs,
+    /// and the owner's actor on their orgs. Never its seed: that is in its store.
+    public nonisolated static func identity(account: AgentAccount, alias: String, actor: String?) -> [String: String] {
+        var identity = [
+            "BROKER_URL": account.broker,
+            "BRIDGE_DEVICE": account.device,
+            "BRIDGE_WORKFLOW": workflow,
+            "RUNNER_ALIAS": alias,
+        ]
+        if let actor { identity["BRIDGE_ACTOR"] = actor }
+        return identity
     }
 
     /// The end of Rocket's launch line, which says runner holds `port` on this

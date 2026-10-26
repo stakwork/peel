@@ -206,11 +206,8 @@ download is useless, and the box refuses the "received" confirmation.
 
 ## Images
 
-The compose file pins strut (by tag and digest) and the runner (by tag only,
-for now) to the commits Peel ships in `Vendor/strut.lock` and
+The compose file pins strut and the runner, by tag and digest, to the
+commits Peel ships in `Vendor/strut.lock` and
 `Vendor/runner.lock`; they change together. Both ends of a move must run the same strut
 commit and Ladybug core (`strut move check`), so a Peel release that moves
 its strut pin moves these with it.
-
-`ghcr.io/stakwork/sphinx-runner` must be a public package for a box to pull
-it without logging in to ghcr; its digest goes in beside the tag once it is.

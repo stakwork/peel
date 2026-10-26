@@ -149,8 +149,8 @@ final class OffscreenDriver {
                 line += 1
                 let text = text.trimmingCharacters(in: .whitespaces)
                 guard !text.isEmpty, !text.hasPrefix("//") else { continue }
-                // A pairing link's key never reaches the log or a probe.
-                let redacted = text.replacing(/key=[^&"\s]*/, with: "key=[redacted]")
+                // A link's key or a Peel Home link's code never reaches the log or a probe.
+                let redacted = text.replacing(/(key|code)=[^&"\s]*/) { "\($0.output.1)=[redacted]" }
                 Offscreen.log("drive: \(line): " + redacted)
                 let step = try JSONDecoder().decode(Step.self, from: Data(text.utf8))
                 if let probe {
@@ -382,11 +382,9 @@ final class OffscreenDriver {
     /// Stadeum and its Unpair once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
-    /// Resume on the sidebar's paused restore; `brain-form`, Account ›
-    /// Brain's "Connect a home server…" (or Change); `brain-use`, Connect on
-    /// a pairing link's callout there; `brain-leave`, its Use this Mac
-    /// (asking first); `brain-this-mac`, Use this Mac once confirmed;
-    /// `brain-check`, Check; `account-<category>`, that row in Account's
+    /// Resume on the sidebar's paused restore; `brain-this-mac`, Account ›
+    /// Brain's Use this Mac when where Peel Home is could not be read;
+    /// `home-move`, `home-ping`, `home-copy`, its Peel Home moves; `account-<category>`, that row in Account's
     /// categories (`account-dictation`); `connection`, the sidebar bolt’s status panel;
     /// `connection-check`, its check/reconnect action; `apps`, the sidebar's
     /// Apps; `apps-seed`, sample workspace apps in memory; `app-pin`, the open
@@ -507,16 +505,18 @@ final class OffscreenDriver {
             // The agent chat's Set up (or Try again): its own account.
             guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }
             model.setUpAgent()
-        case "brain-form", "brain-leave":
-            model.brainAsk = name == "brain-form" ? .form : .leave
-            model.openAccount(.brain)
-        case "brain-use":
-            guard let pairing = model.pairing else { throw Failure(description: "no pairing link waiting") }
-            try model.setBrain(.homeServer(pairing))
         case "brain-this-mac":
-            try model.setBrain(.thisMac)
-        case "brain-check":
-            model.checkBrain()
+            // Account › Brain's Use this Mac, when where Peel Home is could not be read.
+            try model.useThisMac()
+        case "home-move":
+            // Account › Brain: Move (or Move back) on the Peel Home link waiting.
+            guard model.homeLink != nil else { throw Failure(description: "no Peel Home link waiting") }
+            model.moveHome()
+        case "home-ping":
+            model.pingHomeAgain()
+        case "home-copy":
+            // Account › Brain: Use this Mac's copy, then its confirm.
+            try model.useThisMacCopy()
         case "agent-rows":
             // A click on every tool row's chevron.
             if let agent = model.agent { model.agentOpenRows.openTools(of: agent) }

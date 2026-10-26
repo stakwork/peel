@@ -21,10 +21,7 @@ struct AppsView: View {
             DetailHeader(title: "Apps", subtitle: apps.isEmpty ? nil : Formatting.count(apps.count, "app")) {
                 WorkspaceApp.headerIcon(WorkspaceApp.symbol)
             }
-            if model.memoryServer?.isHomeServer == true {
-                EmptyState("Apps open on Peel's own strut, and the memory is on a home server.",
-                           title: "Not on a home server yet")
-            } else if !apps.isEmpty {
+            if !apps.isEmpty {
                 list(apps)
             } else {
                 // Building one is the way in; a workspace's come with Stadeum.

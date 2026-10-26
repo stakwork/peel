@@ -22,8 +22,8 @@ public struct Profile: Sendable {
     /// The key Peel's strut encrypts its secrets with (`STRUT_SECRET_KEY`),
     /// made when it first starts (`BundledStrut`).
     public let strutKey: any SecretItem
-    /// The account's home server, its address and `STRUT_API_KEY`
-    /// (`Brain`, `docs/peel-brain.md`); none kept is Peel's own strut.
+    /// Where Peel Home is (`Brain`): none kept is this Mac; the mark that it
+    /// moved to a home server (docs/always-on.md).
     public let brain: any SecretItem
     /// The Hive device this Mac or iPhone paired, its `hivedev_` credential
     /// and the orgs' peer records (`HiveLink`, docs/connectors-and-authoring.md,
@@ -84,8 +84,8 @@ public struct Profile: Sendable {
         self.biometrics = biometrics
     }
 
-    /// A development profile's words, agent key, strut's key, home server
-    /// and Hive device, in files beside its database.
+    /// A development profile's words, agent key, strut's key, where Peel Home
+    /// is and Hive device, in files beside its database.
     private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem, any SecretItem, any SecretItem) {
         (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
          FileItem(file: directory.appendingPathComponent("agent-credential")),

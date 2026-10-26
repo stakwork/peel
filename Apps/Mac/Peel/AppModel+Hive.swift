@@ -34,7 +34,7 @@ final class MacStadeumHost: StadeumHost {
         if model.strut?.person != link.actor {
             model.strut?.person = link.actor
             model.restartOwnStrut()
-        } else if changed, let server = model.memoryServer, model.brain == .thisMac {
+        } else if changed, let server = model.memoryServer {
             Task {
                 await model.syncHive(on: server)
                 await model.handHiveToBridge()
@@ -47,7 +47,7 @@ final class MacStadeumHost: StadeumHost {
     func stadeumRevoked() {
         guard let model else { return }
         Task {
-            if let server = model.memoryServer, model.brain == .thisMac { await model.syncHive(on: server) }
+            if let server = model.memoryServer { await model.syncHive(on: server) }
             await model.handHiveToBridge()
         }
     }
@@ -144,21 +144,21 @@ extension AppModel {
     /// Reads the apps through Peel's own strut: the person's own on it
     /// (`AutomationsClient.ownApps`) and those each workspace pinned as a
     /// tab (`pinnedApps`), all at once; a newer read replaces one under
-    /// way. None with the memory on a home server, which holds none of this
-    /// Mac's. While Peel's strut is away (starting again, a memory move) the
-    /// list stays as it was, and a list that cannot be read keeps what it
-    /// last listed. Without `workspaces`, only the person's own are read
+    /// way. None with Peel Home moved, whose strut this Mac doesn't reach.
+    /// While Peel's strut is away (starting again) the list stays as it was,
+    /// and a list that cannot be read keeps what it last listed. Without `workspaces`, only the person's own are read
     /// (Apps opening: one just built shows), the workspaces' kept as they are.
     func refreshApps(workspaces: Bool = true) {
         // A read under way reads the person's own too: not cut short for less.
         guard workspaces || !stadeum.readingApps else { return }
-        // Strut away (starting again, a memory move): what is read stays as it is.
-        guard let server = memoryServer else { return }
-        guard !server.isHomeServer else {
+        // Peel Home moved: its strut is not this Mac's to read.
+        guard brain?.moved == nil else {
             stadeum.stopReadingApps()
             if !stadeum.apps.isEmpty { stadeum.apps = [] }
             return
         }
+        // Strut away (starting again): what is read stays as it is.
+        guard let server = memoryServer else { return }
         let client = AutomationsClient(server: server)
         stadeum.readApps(own: { try await client.ownApps() }, workspaces: workspaces,
                          pinned: { try await client.pinnedApps(of: $0.id) },

@@ -75,8 +75,7 @@ services:
 
   bridge:
     # Should be the runner commit Peel ships (Vendor/runner.lock).
-    # TODO: add its @sha256 digest once the ghcr package is public (README.md, "Images").
-    image: ${BRIDGE_IMAGE:-ghcr.io/stakwork/sphinx-runner:9bf7079}
+    image: ${BRIDGE_IMAGE:-ghcr.io/stakwork/sphinx-runner:9bf7079@sha256:0da8270f1820e2d35d1c461a821930da870a3eac44cd084fe52eb49aa1fd0cfe}
     restart: unless-stopped
     network_mode: service:strut
     entrypoint: ["sh", "/gate.sh", "bridge", "/usr/src/sphinx-runner"]

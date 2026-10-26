@@ -342,6 +342,39 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 }
 
 extension Message {
+    /// How many characters of a reply a thread's row shows.
+    public static let threadPreviewLimit = 120
+
+    /// The newest reply as a thread's row shows it: its text cut at
+    /// `threadPreviewLimit` characters, or for a message with no words what
+    /// it is ("Photo", "Video", "Voice message", "File", "Payment"…).
+    public var threadReplyPreview: String {
+        if deleted { return "Message deleted" }
+        if giphy == nil, let text = content.map(MessageMarkup.plainText), !text.isEmpty {
+            return Self.cut(text)
+        }
+        switch type {
+        case MessageType.directPayment, MessageType.boost: return "Payment"
+        case MessageType.invoice: return "Payment request"
+        case MessageType.call: return "Call"
+        default: break
+        }
+        if giphy != nil { return Self.cut(preview) }
+        switch attachmentKind {
+        case .image: return "Photo"
+        case .video: return "Video"
+        case .audio: return "Voice message"
+        case .pdf, .text, .file: return "File"
+        case nil: return Self.cut(preview)
+        }
+    }
+
+    private static func cut(_ text: String) -> String {
+        text.count <= threadPreviewLimit ? text : String(text.prefix(threadPreviewLimit)) + "…"
+    }
+}
+
+extension Message {
     /// Read by hand: several times faster than `Decodable` on the reads every
     /// write re-runs. Must read every stored property.
     public init(row: Row) throws {

@@ -3294,3 +3294,7 @@ Xcode's debug dylib, which the signing left unsigned. On a stack running
 for over an hour the tribes server refused the peer's posts ("Upstream
 node set CLTV to less than the CLTV set by the sender"); restarting its
 mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.
+
+## The last reply on a thread's row (2026-10-26)
+
+A collapsed thread's row (Mac `ThreadSummaryLine`, iPhone `ThreadSummaryButton`) now also shows the newest reply's words under its reply count and "replied …" label: smaller, indented, with its sender's photo and name, two lines at most. `ThreadSummary.latest` already carried the message from `threadsSQL`'s `latestID` (one query for all rows), so no storage change. `Message.threadReplyPreview` (PeelCore) is the one string: text cut at 120 characters, else "Photo", "Video", "Voice message", "File", "Payment", "Payment request", "Call". Tested in `MessageTests`; the Apple UI was not built on this Linux pod.

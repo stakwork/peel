@@ -128,11 +128,6 @@ old one holds, then parks before its store is exported.
 
 ## Step 1: always on
 
-> **Replaced (2026-10-25)** by [always-on.md](always-on.md): a one-way move
-> that copies the stopped strut and bridge folders, and a bundle with no
-> Tailscale. The handover below (H1–H4, R1's export, hold, park and
-> activate) is not built for always-on.
-
 ### The bundle
 
 `brain/` today runs strut behind Tailscale (peel-brain.md, "Packaging").

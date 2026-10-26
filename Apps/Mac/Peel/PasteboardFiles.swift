@@ -159,6 +159,8 @@ extension AppModel {
             }
             addFiles(files, to: composer)
             if !refused.isEmpty, let chat = composer.chat {
+                // The kind only: the refusals name files.
+                Diagnostics.note(errorKind: .refused)
                 conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
             }
         }

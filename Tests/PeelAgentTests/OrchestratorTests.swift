@@ -15,8 +15,8 @@ struct OrchestratorTests {
     @Test func theDeltaGrantsTheReadsTheSendAndTheAutomationsButNeverApprove() throws {
         let config = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(), as: UTF8.self))
         let tools = config["orchestrator"]?["tools"]?.array?.compactMap(\.string) ?? []
-        #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/send",
-                          "calendar/events", "reminders/list", "calendar/create", "calendar/update", "calendar/delete",
+        #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/diagnostics",
+                          "sphinx/send", "calendar/events", "reminders/list", "calendar/create", "calendar/update", "calendar/delete",
                           "reminders/create", "reminders/complete", "automation/list", "automation/preview", "automation/create", "automation/update",
                           "automation/delete", "automation/run-now"])
         // Only the automation steps ask for a card: the model never words one itself.
@@ -28,9 +28,8 @@ struct OrchestratorTests {
         #expect(config["orchestrator"]?["approve"] == ["strut/run-workflow"] && config["job"]?["approve"] == ["strut/run-workflow"])
         let paired = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(personal: "Its peers are orgs."), as: UTF8.self))
         #expect(paired["orchestrator"]?["system"]?.string == Orchestrator.section + "\n\nIts peers are orgs.")
-        // The builder only proposes what it writes, and no other strut may launch it.
-        #expect(config["builder"] == ["approve": ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish"], "peer": false,
-                                       "reach": ["tools": [], "builtins": ["web_search", "web_fetch"], "secrets": []]])
+        // The builder works with no card and no reach limit; no other strut may launch it.
+        #expect(config["builder"] == ["peer": false])
         // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
         #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
         #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))
@@ -53,9 +52,10 @@ struct OrchestratorTests {
         let unattended = Orchestrator.unattended
         #expect(unattended.contains("sphinx/unseen") && unattended.contains("memory/remember"))
         #expect(!unattended.contains("sphinx/send") && !unattended.contains("automation/") && unattended.contains("sphinx/post"))
+        #expect(!Orchestrator.automationRunTools.contains(DeviceStep.diagnostics.type), "an automation never reads Peel's record")
         #expect(section.contains("give it a grant"))
         // The prompts name the steps by hand: each one granted is named.
-        for step in DeviceStep.reads.map(\.type) + [DeviceStep.send.type] + DeviceStep.calendar.map(\.type)
+        for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + DeviceStep.calendar.map(\.type)
             + Orchestrator.memoryTools + ["automation/list"] {
             #expect(section.contains(step), "\(step)")
         }
@@ -100,10 +100,9 @@ struct OrchestratorTests {
         #expect(Set(["job/start", "job/continue", "job/list", "job/get", "job/read"]).isSubset(of: tools), "\(tools)")
         #expect(orchestrator["params"]?["system"]?.string?.contains("You are Peel's agent") == true)
         #expect(orchestrator["params"]?["model"] == nil, "the connected model runs it")
-        // strut's builder, which the orchestrator starts with job/start: gated by Peel's list, closed to peers (strut drops `peer`).
+        // strut's builder, which the orchestrator starts with job/start: no card, closed to peers (strut drops `peer`).
         let builder = try await call("GET", "workflows/builder/flow", on: server)
-        let gated = Set(builder["params"]?["approve"]?.array?.compactMap(\.string) ?? [])
-        #expect(gated.isSuperset(of: Orchestrator.builderApprove) && builder["peer"] == nil, "\(builder)")
+        #expect(builder["params"]?["approve"]?.array?.isEmpty != false && builder["peer"] == nil, "\(builder)")
         // A job reaches a peer only on a card, as the orchestrator does.
         let job = try await call("GET", "workflows/job/flow", on: server)
         #expect(job["params"]?["approve"]?.array?.contains("strut/run-workflow") == true, "\(job)")

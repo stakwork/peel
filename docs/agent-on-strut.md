@@ -407,6 +407,7 @@ apps already show the content.
 | `chats.threads` | `chat`, `limit?` | read | `read_threads` |
 | `chats.unseen` | `chat?` | read | `read_unseen_messages`. One request covers every chat, so "what did I miss" is one round trip |
 | `chats.search` | `q`, `chat?`, `limit?` | read | `search_messages` |
+| `diagnostics.latest` | — | read | Peel's newest crash record, redacted and trimmed (`DeviceReads`, docs/diagnostics.md); the chat's agent only, not an automation |
 | `send` | `chat`, `text`, `thread_uuid?`, `reply_to_uuid?`, `max_price_sats`, `automation?` | send | `SendTool`'s plan and `Engine.sendText`, behind the card or a grant (below) |
 | `calendar.events` | `from`, `to`, `calendars?` | read | EventKit; the first use asks for macOS Calendar access |
 | `calendar.create`, `calendar.update`, `calendar.delete` | the event, or its id | send | EventKit, behind the card |
@@ -644,8 +645,17 @@ account is cheap to replace (open question 2).
   owner, then `GET /bridge/health` until the bridge answers. Its store is
   owner-only in Peel's folder (a development profile's in its own), erased
   with the account. Stopped with the account, with strut, and on quit,
-  and gone by itself if Peel dies: its stdin is a pipe only Peel holds
-  (`RUNNER_EXIT_ON_STDIN_EOF`, added in stakwork/sphinx#385).
+  and meant to go by itself if Peel dies: its stdin is a pipe only Peel
+  holds (`RUNNER_EXIT_ON_STDIN_EOF`, added in stakwork/sphinx#385). With
+  the runner pinned now it does not after a crash: its stdout, the pipe
+  Peel reads, dies with Peel too, and runner's "stdin closed" log line
+  panics on the broken pipe before it exits (a SIGTERM's shutdown log
+  the same), so it keeps the store open and the next runner exits as it
+  starts (`DatabaseAlreadyOpen`). Each start therefore first stops an
+  orphan runner (parent launchd) on the same store (`DB_PATH`,
+  `stopLeftovers`). Strut has no such hole: it logs with
+  `console.error`, which drops write errors, and exits after 1.5 s
+  whatever its close does.
 - **First run** (`BundledBridge.setUp`), only from the person's own
   switch (a start on its own never pays to pair): an invite from the
   account (10 sats, once the server holds it), one per bridge store with
@@ -1383,7 +1393,8 @@ From the connectors and authoring design (stakwork/peel#342, `docs/connectors-an
 - **Still open (strut S1).** The builder's ungated tools still run code:
   `meta/run-step` runs any unsealed step (`exec` with `secretsEnv`), and
   `meta/run-workflow` the `job` workflow, as the orchestrator's own jobs
-  (bash) already could. Secret scoping (`builder.reach`) closes it.
+  (bash) already could. Secret scoping (`builder.reach`) would close it;
+  Peel sets none since 2026-10-24 (Connections, "What the AI publishes").
   `peer: false` only closes this builder to other struts; a build *on* a
   peer (`input.peer`) runs under that strut's approvals, so P8 keeps
   peers out of the builder's reach.
@@ -1395,7 +1406,8 @@ From the connectors and authoring design (stakwork/peel#342, `docs/connectors-an
   R1): the bridge relays each pending proposal as an `approve` card on the
   Mac (`proposal:<id>`) and calls `decide` once with the answer alone. The
   card is R1's wording until P2 gives proposals their own.
-- **Checked.** `Journeys.Orchestrator.aWorkflowTheAgentBuildsWaitsForApproval`:
+- **Checked.** `Journeys.Orchestrator.aWorkflowTheAgentBuildsWaitsForApproval` (since 2026-10-24
+  `aWorkflowTheAgentBuildsIsTestedAndPublishedWithNoCard`: the builder is ungated):
   a DM asks for a workflow, the orchestrator starts the builder, its
   publish is one pending proposal and the workflow does not exist.
 ### Built: connectors P6, Calendar and Reminders (2026-10-22)
@@ -1481,8 +1493,7 @@ strut's MCP registry (strut#286). Built on P1 (the builder gated).
   strut's encrypted store under `MCP_<the name in hex>_KEY`, a name no
   other server's can be (`linear`, `Linear`, `lin-ear` each their own).
   Peel keeps no copy. A name already connected is refused (Remove it
-  first), and an address strut refuses leaves nothing behind. Gmail is a
-  "coming soon" row.
+  first), and an address strut refuses leaves nothing behind.
 - **Grants.** Which agents reach a server is Peel's: `connections.json`
   beside strut's data, read into the host delta at each start
   (`orchestrator.tools` and `job.tools` gain `mcp/<server>/*`). A switch
@@ -1495,11 +1506,26 @@ strut's MCP registry (strut#286). Built on P1 (the builder gated).
   (R1), and on Allow strut calls the server once, with the key. A server
   that marks a write read-only runs it unasked, by strut's design; the
   screen says the rule as it is.
-- **What the AI publishes.** `builder.reach` (strut#284) is set: a
-  workflow the builder writes may use the web tools and nothing else, no
-  step code, no process, no secret, so the keys in strut's store stay out
-  of what it publishes. A Workflows switch per connection widens it later.
-  The builder's own `meta/run-step` is outside reach (strut's S1 scope).
+- **What the AI publishes.** No `builder.reach` (strut#284) and no
+  publish cards, as on Hive's strut (2026-10-24): the builder is free to
+  work. It writes step code and publishes workflows and apps
+  (`meta/publish-workflow`, `meta/create-step`, `meta/edit-step`,
+  `app/publish`) with no card, and what it publishes may run any step,
+  name any secret in strut's store (the model's, a connection's, the
+  bridge's) and call other struts. Peel sets no `builder.approve`, so its
+  test runs (`meta/run-step`, `meta/run-workflow`) need no card either:
+  `meta/run-step` runs any unsealed step (`exec` with any secret, an
+  `agent` with its own grants), the same reach as a workflow it publishes
+  and runs. `app/publish` is no longer sealed (`STRUT_SEALED` is unset):
+  the seal only kept `meta/run-step` from running it around its card.
+  `sphinx/*` stay sealed, `meta/set-automation` is still refused (strut
+  runs it only as an accepted proposal), and a workflow step calling
+  `strut/run-workflow` still waits on its card (strut's `peers.test.ts`).
+  Known and accepted: an AI workflow run in a job keeps that job's MCP
+  servers (strut drops them only under a reach); no journey yet
+  publishes a workflow that uses a secret.
+  `Journeys.Orchestrator.aWorkflowTheAgentBuildsIsTestedAndPublishedWithNoCard`:
+  the shell test run runs, the publish goes through, nothing is pending.
 - **This Mac only for tests.** A development profile's strut may register
   a server on this Mac (`STRUT_MCP_LOCAL=1`); the app account's may not.
 - **Checked.** `ConnectionsTests` on a staged strut against `MCPStub`

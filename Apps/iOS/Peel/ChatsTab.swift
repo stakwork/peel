@@ -86,6 +86,10 @@ struct ChatList: View {
                 .listRowInsets(.vertical, 2)
                 .navigationLinkIndicatorVisibility(.hidden)
             }
+            if model.diagnosticsNotice, !sections.searching {
+                Section { DiagnosticsNotice() }
+                    .phoneRows()
+            }
             if model.conversations.isEmpty, !sections.searching {
                 Section { NoChats() }
                     .listRowSeparator(.hidden)

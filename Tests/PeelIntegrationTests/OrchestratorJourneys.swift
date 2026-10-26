@@ -57,7 +57,7 @@ extension Journeys {
             try await client.installOrchestrator()
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true)
             try await client.useBridge(try #require(bridge.server))
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent.pubkey)
 
             let strutStart = ContinuousClock.now
@@ -140,7 +140,7 @@ extension Journeys {
             try await client.installOrchestrator()
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
             try await client.useBridge(try #require(bridge.server))
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent)
 
             /// Sends `text` to the agent; its stored message once the server has it.
@@ -271,15 +271,14 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
-        /// Authoring, gated (docs/connectors-and-authoring.md, P1). Alice asks
-        /// her agent for a workflow; the orchestrator starts strut's `builder`
-        /// job, whose model writes it and calls `meta/publish-workflow`. Peel's
-        /// delta has that step in the builder's `approve:`, so the call is a
-        /// pending proposal and nothing is published until a person decides.
-        /// Running a gated step through `meta/run-step` instead is refused.
+        /// Authoring (docs/connectors-and-authoring.md, P1). Alice asks her
+        /// agent for a workflow; the orchestrator starts strut's `builder` job,
+        /// whose model test-runs a step through `meta/run-step` (here a shell)
+        /// and calls `meta/publish-workflow`. Peel gives the builder no
+        /// `approve:` and no `builder.reach`: both run at once, no card.
         @Test(.enabled(if: staged))
         @MainActor
-        func aWorkflowTheAgentBuildsWaitsForApproval() async throws {
+        func aWorkflowTheAgentBuildsIsTestedAndPublishedWithNoCard() async throws {
             let (alice, other) = try await Journeys.Payments.pair()
             let workflow = "daily-hello"
             let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
@@ -288,14 +287,14 @@ extension Journeys {
                 if body.contains("You are a workflow BUILDER") {
                     switch body.components(separatedBy: #""type":"tool_result""#).count - 1 {
                     case 0:
-                        return Self.toolUse("meta_run_step", ["type": "app/publish", "config": ["name": "hello-app", "path": "app"]])
+                        return Self.toolUse("meta_run_step", ["type": "exec", "config": ["cmd": "printf", "args": ["%s-%s", "shell", "ran"]]])
                     case 1:
                         return Self.toolUse("meta_publish_workflow", [
                             "name": workflow, "description": "Says hello",
                             "yaml": "name: \(workflow)\nsteps:\n  - id: hi\n    type: pack\n    config: { text: hello }\n",
                         ])
                     default:
-                        return Self.toolUse("final_answer", ["text": "Proposed \(workflow) for you to approve.", "artifacts": []])
+                        return Self.toolUse("final_answer", ["text": "Published \(workflow).", "artifacts": []])
                     }
                 }
                 guard answered else {
@@ -321,26 +320,23 @@ extension Journeys {
             try await client.installOrchestrator()
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
             try await client.useBridge(try #require(bridge.server))
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent)
 
             try await alice.engine.sendText("Make me a workflow that says hello every morning", to: agent)
             try await eventually("the agent's reply", timeout: .seconds(60)) {
                 try alice.messages(in: agent).contains { !$0.fromMe && $0.control == nil && $0.content == "Started building it." }
             }
-            let pending = try await eventually("the builder's proposal", timeout: .seconds(60)) {
-                let listed = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
-                return listed.isEmpty ? nil : listed
-            }
-            #expect(pending.count == 1 && pending.first?["step"] == "meta/publish-workflow", "\(pending)")
             let ended = try await eventually("the builder's turn to end", timeout: .seconds(60)) {
                 model.requests.first { $0.contains("You are a workflow BUILDER") && $0.components(separatedBy: #""type":"tool_result""#).count == 3 }
             }
-            // The app's publish, run as a step around its proposal, was refused as sealed.
-            #expect(ended.contains(#"app/publish\\\" is sealed"#), "\(ended.suffix(2000))")
-            // Proposed, not published.
-            let published = await #expect(throws: PeelError.self) { try await Self.strutCall("GET", "workflows/\(workflow)/flow", on: server) }
-            #expect(published?.localizedDescription.contains(workflow) == true, "\(String(describing: published))")
+            // The shell ran, and nothing waits on a card.
+            #expect(ended.contains("shell-ran"), "\(ended.suffix(2000))")
+            let pending = try await Self.strutCall("GET", "proposals?status=pending", on: server)["proposals"]?.array ?? []
+            #expect(pending.isEmpty, "\(pending)")
+            // Published with no card.
+            let flow = try await Self.strutCall("GET", "workflows/\(workflow)/flow", on: server)
+            #expect(flow["steps"]?.array?.first?["id"] == "hi", "\(flow)")
 
             for person in [alice, other] { await person.close() }
         }
@@ -576,7 +572,7 @@ extension Journeys {
             let agent = try await bridge.setUp(on: alice.engine, beside: server, alias: "Agent", pair: true).pubkey
             let running = try #require(bridge.server)
             try await setup.useBridge(running)
-            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage).handler)
+            await alice.engine.answerDeviceRequests(with: DeviceReads(storage: alice.storage, myAlias: { nil }).handler)
             try await alice.engine.setDeviceAgent(agent)
 
             let client = AutomationsClient(server: server, yours: PeelAgent.Orchestrator.automationWorkflow, callback: running.runEnds)

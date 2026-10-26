@@ -1,2 +1,2 @@
-# stakwork/sphinx master after #392 (a card Peel can't show is turned down with its reason; an approved hand-off reads as the org's reply), after #391 (each deliverable says where Peel opens it), #390 and #389.
-cc437fcf3a0e7edaa17e2ed5beb068c7eb997ce4
+# stakwork/sphinx master at the merge of #396 (runner exits when its stdout is a broken pipe), after #398.
+75898d01a57836c67508d03636f91cb756965a87

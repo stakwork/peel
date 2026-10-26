@@ -131,6 +131,16 @@ struct DictationEditTests {
         #expect(edit.edited == "Stakwork")
     }
 
+    @Test func foundWhereverTheCaretIs() throws {
+        // Already clicked into the word to fix it, before the first reading.
+        var edit = try #require(DictationEdit(value: "My wife is Katherine O'Brien.", typed: "My wife is Katherine O'Brien.", caret: 14))
+        #expect(edit.read("My wife is Kathryn O'Brien.", at: .seconds(1)) == .watch)
+        #expect(edit.read("My wife is Kathryn O'Brien.", at: .seconds(3)) == .done)
+        #expect(edit.edited == "My wife is Kathryn O'Brien.")
+        // Not there at all: nothing to watch.
+        #expect(DictationEdit(value: "Something else", typed: "My wife", caret: 3) == nil)
+    }
+
     @Test func aChangeAroundTheTextIsNotTheEdit() throws {
         var edit = try Self.edit()
         // "Hi. " changed too: wait for the field to read as Peel left it around the text.
@@ -139,8 +149,12 @@ struct DictationEditTests {
         #expect(edit.edited == nil)
     }
 
-    @Test func notWhereTheCaretSays() {
-        #expect(DictationEdit(value: "Hi. Ask the stack work team!", typed: "Ask the stack work team", caret: 10) == nil)
+    @Test func foundAroundTheCaretOrNotAtAll() throws {
+        // The caret inside the text: that copy, its surroundings kept.
+        var edit = try #require(DictationEdit(value: "Hi. Ask the stack work team!", typed: "Ask the stack work team", caret: 10))
+        #expect(edit.read("Hi. Ask the Stakwork team!", at: .seconds(1)) == .watch)
+        #expect(edit.read("Hi. Ask the Stakwork team!", at: .seconds(3)) == .done)
+        #expect(edit.edited == "Ask the Stakwork team")
         #expect(DictationEdit(value: "short", typed: "longer than the field", caret: 5) == nil)
     }
 }

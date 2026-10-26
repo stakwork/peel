@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #303 (strut/run-workflow and run/launch take input as a JSON object, JSON text parsed back), after #313, #314 (an org's file through the read-through, alone with ?artifact=…&solo=1) and #312.
-978a4e5efe765210e67b4d6eded5ba00d2582770
+# stakwork/strut main at the merge of #324, after #323 (Ladybug's vector + fts extensions pinned by sha256 and downloaded from strut's own release, so a package can no longer get ones its core cannot load — build 3's workspace that would not open), #315 (the package loads them into its addon before naming them) and #319 (dictation learns respelled and re-split names, and a name fixed twice).
+b0533d6698a3c06fe635022d718bca72b0c2712e

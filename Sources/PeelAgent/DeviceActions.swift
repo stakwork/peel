@@ -70,7 +70,7 @@ public struct DeviceActions: Sendable {
     ) {
         self.engine = engine
         tools = SphinxTools(storage: engine.storage)
-        reads = DeviceReads(storage: engine.storage)
+        reads = DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias })
         self.calendar = DeviceCalendar(store: calendar)
         self.rules = rules
         grants = SendGrants(beside: rules)

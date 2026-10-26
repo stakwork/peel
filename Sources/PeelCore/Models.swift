@@ -83,6 +83,20 @@ public struct Conversation: Codable, Sendable, Identifiable, Equatable, Fetchabl
     public var lastDate: Date? { lastTimestamp.map(Date.init(millisecondsSince1970:)) }
 }
 
+/// The names a diagnostics record is redacted with (PeelDiagnostics'
+/// `Redactor`), built from the chats when it is read and never kept: tribe
+/// names and ids may stay, contacts' names and the user's own are removed.
+public struct DiagnosticsNames: Sendable, Equatable {
+    public let allow: [String]
+    public let knownNames: [String]
+
+    public init(chats: [Conversation], myAlias: String?) {
+        let tribes = chats.filter(\.isTribe)
+        allow = tribes.compactMap(\.alias) + tribes.map(\.chat)
+        knownNames = chats.filter { !$0.isTribe }.compactMap(\.alias) + [myAlias].compactMap { $0 }
+    }
+}
+
 /// How loud a chat is allowed to be, as the server stores it.
 public enum MuteLevel: Int, Sendable {
     case all = 0

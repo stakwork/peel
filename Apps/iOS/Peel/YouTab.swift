@@ -53,6 +53,17 @@ struct YouTab: View {
                 }
                 .phoneRows(.grouped)
                 .environment(\.surface, .raised)
+                #if DEBUG
+                Section {
+                    // Makes a crash record to look at. Launch from the Home
+                    // Screen, not Xcode's Run: with a debugger attached the
+                    // crash reporter is off and the debugger takes the signal.
+                    Button("Force test crash") { Diagnostics.forceTestCrash() }
+                } header: {
+                    PhoneSectionHeader("Debug")
+                }
+                .phoneRows(.grouped)
+                #endif
                 Section {
                     ForgetAccount(
                         trigger: "Forget this account",

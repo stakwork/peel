@@ -350,16 +350,24 @@ struct SphinxToolsTests {
     ])
     func deviceRequestsReadThroughTheTools(_ read: DeviceRead) async throws {
         let storage = try storage()
-        let answer = await DeviceReads(storage: storage).answer(read.kind, read.args)
+        let answer = await DeviceReads(storage: storage, myAlias: { nil }).answer(read.kind, read.args)
         #expect(answer == .done(try await run(read.tool, read.input, on: storage)))
     }
 
     /// A kind the Mac does not know, or args that are no object, are
     /// refused plainly; a tool's own refusal is the request's error.
     @Test func deviceRequestsItCannotDoAreRefused() async throws {
-        let reads = DeviceReads(storage: try storage()).answer
+        let reads = DeviceReads(storage: try storage(), myAlias: { nil }).answer
         #expect(await reads("calendar.events", .object([:])) == .failed("unsupported: this Mac does not answer 'calendar.events' requests"))
         #expect(await reads("chats.list", .array([])) == .failed("args must be a JSON object"))
         #expect(await reads("chats.read", .object([:])) == .failed("chat is required: a non-empty string."))
+    }
+
+    /// Peel's own record is a read too; with no crash report it answers
+    /// how the last run ended and its events, framed as data, never a refusal.
+    @Test func diagnosticsAreRead() async throws {
+        let answer = await DeviceReads(storage: try storage(), myAlias: { nil }).answer("diagnostics.latest", .object([:]))
+        #expect(answer.status == .done)
+        #expect(answer.text?.hasPrefix("No crash report on this Mac.\n\(ChatData.begin)\nPrevious run: clean") == true)
     }
 }

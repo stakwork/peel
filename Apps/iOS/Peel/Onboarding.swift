@@ -4,14 +4,15 @@ import SwiftUI
 
 /// New account (invite, name, PIN, the twelve words) or restore (the words,
 /// PIN, progress; the name and photo come back from the account's own sent
-/// messages), as the Mac's `OnboardingView` asks them, each step
+/// messages, or, when none comes back, a name step after the progress
+/// screen), as the Mac's `OnboardingView` asks them, each step
 /// pushed so Back is the system's. See docs/design/README.md, "Profile and
 /// onboarding".
 struct Onboarding: View {
     @Environment(AppModel.self) private var model
 
     enum Path { case newAccount, restore }
-    enum Step: Hashable { case invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring }
+    enum Step: Hashable { case invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring, restoreName }
 
     @State private var path = Path.newAccount
     @State private var steps: [Step] = []
@@ -34,7 +35,7 @@ struct Onboarding: View {
                     page(step)
                         .navigationBarTitleDisplayMode(.inline)
                         // Once the account exists there is no way back before it.
-                        .navigationBarBackButtonHidden([.showWords, .restoring].contains(step))
+                        .navigationBarBackButtonHidden([.showWords, .restoring, .restoreName].contains(step))
                 }
         }
         .onChange(of: steps) { old, new in
@@ -182,7 +183,23 @@ struct Onboarding: View {
                     .disabled(!check.isFilled || working)
             }
         case .restoring:
-            RestoreProgress()
+            RestoreProgress(onOpen: openAfterRestore)
+        case .restoreName:
+            StepPage(title: "What should people call you?",
+                     detail: "We couldn't find a name in your account's history.", problem: problem) {
+                TextField("Name", text: $name)
+                    .font(Theme.font(17))
+                    .textContentType(.nickname)
+                    .submitLabel(.continue)
+                    .onSubmit { if !name.trimmed.isEmpty { Task { await finishRestore() } } }
+                    .padding(.horizontal, Theme.Space.md)
+                    .frame(height: 50)
+                    .fieldBox(focused: false)
+            } actions: {
+                Button { Task { await finishRestore() } } label: { ActionLabel("Continue", working: working) }
+                    .primaryAction()
+                    .disabled(name.trimmed.isEmpty || working)
+            }
         }
     }
 
@@ -244,6 +261,28 @@ struct Onboarding: View {
         }
     }
 
+    /// "Open Peel" on the progress screen: on, unless the restore settled
+    /// with no name to show for it, in which case one is asked for first.
+    private func openAfterRestore() {
+        if model.myAlias?.nilIfEmpty == nil {
+            go(.restoreName)
+        } else {
+            model.enterApp()
+        }
+    }
+
+    private func finishRestore() async {
+        guard !working, !name.trimmed.isEmpty else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.setName(name.trimmed)
+            model.enterApp()
+        } catch {
+            problem = PeelError.problem(error, couldNot: "save your name")
+        }
+    }
+
     /// Records the words as written down and opens Peel, or says which
     /// places differ.
     private func checkWords() async {
@@ -265,6 +304,9 @@ struct Onboarding: View {
 /// `RestoreProgressView`). Peel opens before history finishes.
 struct RestoreProgress: View {
     @Environment(AppModel.self) private var model
+    /// Enters the app, unless the restore settled with no name, which asks
+    /// for one first (`Onboarding.openAfterRestore`).
+    let onOpen: () -> Void
 
     var body: some View {
         let progress = model.restoreProgress
@@ -281,7 +323,7 @@ struct RestoreProgress: View {
                 ProblemText(failure)
             }
         } actions: {
-            Button { model.enterApp() } label: { ActionLabel("Open Peel") }
+            Button(action: onOpen) { ActionLabel("Open Peel") }
                 .primaryAction()
         }
     }

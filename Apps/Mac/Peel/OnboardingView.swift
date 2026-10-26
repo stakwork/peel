@@ -4,12 +4,13 @@ import PeelUI
 
 /// New account (invite → name → PIN → twelve words) or restore (twelve words →
 /// PIN → progress; the name and photo come back from the account's own sent
-/// messages). See docs/design/README.md, "Profile and onboarding".
+/// messages, or, when none comes back, a name step after the progress
+/// screen). See docs/design/README.md, "Profile and onboarding".
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
     private enum Path { case newAccount, restore }
-    private enum Step { case welcome, invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring }
+    private enum Step { case welcome, invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring, restoreName }
 
     @State private var path = Path.newAccount
     @State private var step = Step.welcome
@@ -36,7 +37,8 @@ struct OnboardingView: View {
             case .confirmPin: confirmPinStep
             case .showWords: showWordsStep
             case .checkWords: checkWordsStep
-            case .restoring: RestoreProgressView()
+            case .restoring: RestoreProgressView(onOpen: openAfterRestore)
+            case .restoreName: restoreNameStep
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -111,6 +113,27 @@ struct OnboardingView: View {
             }
         } footer: {
             footer(next: "Continue", enabled: !name.trimmed.isEmpty) { go(.pin) }
+        }
+    }
+
+    /// Asked only when the restore's own history carried no name: a restored
+    /// account with messages to recover it from never reaches this step.
+    private var restoreNameStep: some View {
+        StepBody(title: "What should people call you?",
+                 detail: "We couldn't find a name in your account's history.") {
+            FormItem(label: "Name") {
+                FormTextField(label: "Name", prompt: "Required", text: $name)
+                    .onSubmit { if !name.trimmed.isEmpty { Task { await finishRestore() } } }
+                    .disabled(working)
+            }
+        } footer: {
+            HStack {
+                Spacer()
+                Button(action: { Task { await finishRestore() } }) { Text("Continue").buttonProgress(working) }
+                    .buttonStyle(.peel(.primary, size: .lg))
+                    .disabled(name.trimmed.isEmpty || working)
+                    .keyboardShortcut(.defaultAction)
+            }
         }
     }
 
@@ -256,6 +279,28 @@ struct OnboardingView: View {
         }
     }
 
+    /// "Open Peel" on the progress screen: on, unless the restore settled
+    /// with no name to show for it, in which case one is asked for first.
+    private func openAfterRestore() {
+        if model.myAlias?.nilIfEmpty == nil {
+            go(.restoreName)
+        } else {
+            model.enterApp()
+        }
+    }
+
+    private func finishRestore() async {
+        guard !working, !name.trimmed.isEmpty else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.setName(name.trimmed)
+            model.enterApp()
+        } catch {
+            problem = PeelError.problem(error, couldNot: "save your name")
+        }
+    }
+
     private func footer(next: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         HStack {
             Button("Back", action: back)
@@ -272,6 +317,9 @@ struct OnboardingView: View {
 /// Contacts, then messages, as the server sends them back.
 struct RestoreProgressView: View {
     @Environment(AppModel.self) private var model
+    /// Enters the app, unless the restore settled with no name, which asks
+    /// for one first (`OnboardingView.openAfterRestore`).
+    let onOpen: () -> Void
 
     var body: some View {
         let progress = model.restoreProgress
@@ -291,7 +339,7 @@ struct RestoreProgressView: View {
         } footer: {
             HStack {
                 Spacer()
-                Button("Open Peel") { model.enterApp() }
+                Button("Open Peel", action: onOpen)
                     .buttonStyle(.peel(.primary, size: .lg))
                     .keyboardShortcut(.defaultAction)
             }

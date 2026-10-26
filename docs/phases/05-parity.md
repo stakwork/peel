@@ -430,8 +430,13 @@ canvas, adapted: no Touch ID, devices or invite rows yet. Notifications
   when no direct message carries a photo the newest own tribe messages are
   tried (tribes rewrite the alias but keep `photo_url`). On `.historyDone`
   the app re-reads the engine's settings so a missed `.profile` cannot leave
-  the header stale. With no sent message the name
-  and photo stay empty until set in Profile.
+  the header stale. With no sent message the photo stays empty until set in
+  Profile. Update: a name with no sent message to recover it from is no
+  longer left empty either — "Open Peel" on the progress screen asks for one
+  first, instead of opening straight into a blank name. And since a restore
+  can still reach the app this way (or an old one already does, from before
+  this), sending is off without a name set, at the composer and again in
+  `AppModel.send`, rather than let a message go out under none.
 - **Contact info** with Copy and a QR code (CoreImage `qrCodeGenerator`);
   the old contact-info popover on the sidebar footer is gone.
 - **Twelve words**: only after the PIN (`Profile.words(pin:)`, derived off

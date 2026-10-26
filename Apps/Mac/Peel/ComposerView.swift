@@ -36,8 +36,12 @@ struct Composer: View {
         Binding(get: { model.drafts[composer] ?? "" }, set: { model.drafts[composer] = $0 })
     }
 
+    /// A restore that settled with no name to recover leaves this empty
+    /// until it is set (onboarding asks for one then; this is the backstop).
+    private var hasName: Bool { model.myAlias?.nilIfEmpty != nil }
+
     private var canSend: Bool {
-        stop == nil && (!(model.drafts[composer] ?? "").trimmed.isEmpty || !files.isEmpty)
+        stop == nil && hasName && (!(model.drafts[composer] ?? "").trimmed.isEmpty || !files.isEmpty)
     }
 
     private func send() {
@@ -230,7 +234,7 @@ struct Composer: View {
         .disabled(!canSend)
         // No Cmd-Return here: with a thread open two composers share the
         // window, and Return in the field already sends from the right one.
-        .help("Send (Return). Shift-Return for a new line.")
+        .help(hasName ? "Send (Return). Shift-Return for a new line." : "Set your name in Profile first")
         .accessibilityLabel("Send")
     }
 }

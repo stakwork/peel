@@ -193,7 +193,7 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 
 | | |
 |---|---|
-| Key | Right Option (fixed for now) |
+| Key | Right Option, until another is chosen |
 | Hold threshold | 200 ms |
 | Longest recording | 5 min, then submitted |
 | Format | 16 kHz mono PCM16 WAV |
@@ -201,12 +201,44 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | Hands-free tip | after 2 s of holding, until hands-free is used once (5 times at most) |
 | Microphone | on from the key going down to the recording's end, off otherwise |
 
-The key is Right Option for now. Choosing another (R3) is open: the
-Settings recorder, an `NSEvent` local monitor, never received a key when
-tried on a Mac, so it was taken out. `HotkeyConfig` keeps the rule for
-when it comes back: a modifier on its own or a function key, since any
-other key would type itself in every app; Fn needs System Settings ›
-Keyboard › Press 🌐 key › Do Nothing.
+## The key
+
+Account › Dictation › Key, Change, then press the key: two clicks and a
+press. It is recorded by the hotkey tap itself (`DictationHotkeyTap.record`,
+decided by `HotkeyRecording`, PeelUI), which sees every key system-wide,
+a modifier on its own included, whichever window has the keyboard. A
+modifier counts when it is let go with nothing else pressed meanwhile, so
+Fn held for F5 (a Mac keyboard's F-keys) chooses F5, and Command-Tab
+chooses nothing. While it waits, each press and repeat is swallowed (an
+active tap only: without Accessibility the keys also reach the app, and
+Settings says so); releases go on, so no key is left stuck in another app.
+Escape, Cancel, leaving Settings, Peel going to the background or 15 s
+stops it; a dictation under way keeps its key until it ends, and Change is
+off while secure input hides the keys. Only a modifier on its own (Right
+Option, Right ⌘, Fn …) or a function key (F1–F20) can be the key
+(`HotkeyConfig.canBeHotkey`): any other key would type itself in every
+app, Caps Lock sends no release, and Space, Return and keypad Enter steer
+a recording. Another key is refused with its name and why, and the wait
+goes on. The choice takes effect at once (the tap's key is changed under
+its lock) and is kept in `UserDefaults` (`dictation.hotkey`), read back at
+launch; one kept that can no longer be the key falls back to Right Option.
+Change needs dictation on (the tap running).
+
+What else the key does, when known, is said under it
+(`HotkeyConfig.conflict`): Fn, unless System Settings › Keyboard › Press 🌐
+key is Do Nothing (read from `com.apple.HIToolbox AppleFnUsageType`); ⌘ and
+⌃, which stay shortcuts with another key, and may be macOS Dictation's
+own shortcut; Shift, held for capitals; F1–F12, media keys on a Mac
+keyboard unless Fn is held or they are set as standard function keys.
+macOS has no setting of its own for another app's push-to-talk key: System
+Settings › Keyboard › Dictation's shortcut is only for Apple's dictation.
+
+The first recorder (#344) was an `NSEvent` local monitor in the Settings
+view; tried on a Mac it never received a key, Right ⌘ or a letter. Reading
+the code found no certain cause: no other monitor of Peel's takes
+flags-changed, and its handler looked right. A local monitor sees only
+events AppKit delivers to Peel, and only while its view is alive; the tap
+depends on neither, and was already working on that Mac.
 
 ## Open
 
@@ -262,6 +294,13 @@ macOS 13+ is already the minimum (the project targets 15.6).
   something the user could mean) and Undo in the HUD; the Vocabulary
   window. Checked against a real staged strut: a learn, the read, Undo.
   Not yet: hotwords, the LLM clean-up, measuring corrections per 100 words.
+- 2026-10-26: choosing the key (R3) again, recorded through the hotkey tap
+  instead of a local monitor; kept across relaunch, effective at once,
+  known conflicts said. Tried on Tom's Mac: it works. Review fixes after
+  that: a modifier counts on its release when pressed alone (Fn+F5, ⌘-Tab),
+  repeats are swallowed, no choosing over a dictation under way, stopped
+  when Peel goes to the background. Unit tested: what each event means
+  while choosing, refusals, conflicts, persistence.
 - 2026-10-23: the mic goes on when the key goes down and off when the
   recording ends (or the press turns out to be a tap). It was kept warm with
   a 200 ms pre-roll, which left the mic indicator on and AirPods in call

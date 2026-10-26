@@ -3,7 +3,7 @@ import Foundation
 /// Every default of system-wide dictation in one place (docs/dictation.md).
 /// Change a value here, not where it is used.
 public enum DictationDefaults {
-    /// The key held to dictate: Right Option.
+    /// The key held to dictate until another is chosen: Right Option.
     public static let hotkey = HotkeyConfig.rightOption
     /// A press shorter than this is a tap, passed through untouched.
     public static let holdThreshold: TimeInterval = 0.2
@@ -20,7 +20,10 @@ public enum DictationDefaults {
     public static let learnedDisplay: TimeInterval = 5
     /// How often the state machine is told the time while a key is held or a recording runs.
     public static let tickInterval: TimeInterval = 0.05
+    /// Choosing a key in Settings stops after this, so keys are never swallowed for long.
+    public static let choosingKeyTimeout: TimeInterval = 15
 
+    public static let hotkeyKey = "dictation.hotkey"
     public static let enabledKey = "dictation.enabled"
     public static let offerDismissedKey = "dictation.offerDismissed"
     public static let askedInputMonitoringKey = "dictation.askedInputMonitoring"
@@ -41,6 +44,15 @@ public struct DictationSettings {
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    /// The chosen key; the default until one is chosen, or if what was kept can't be one.
+    public var hotkey: HotkeyConfig {
+        get {
+            defaults.data(forKey: DictationDefaults.hotkeyKey).flatMap(HotkeyConfig.decode)
+                .flatMap { $0.canBeHotkey ? $0 : nil } ?? DictationDefaults.hotkey
+        }
+        nonmutating set { defaults.set(newValue.encoded(), forKey: DictationDefaults.hotkeyKey) }
+    }
 
     /// Nil until the user chooses.
     public var storedEnabled: Bool? {

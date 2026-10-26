@@ -5,11 +5,11 @@ import PeelUI
 import SwiftUI
 import WebKit
 
-/// A Stadeum workspace's app in the detail column (strut's plans/apps.md
-/// §7.4): Peel's own strut's UI showing the app's page and nothing else
-/// (`MemoryServer.page(of:)`). strut frames the page in a sandboxed frame and
-/// relays its calls to the workspace with the person's token, which Peel
-/// never holds. strut's UI is the strut Peel ships; the page in its frame is
+/// An app in the detail column, a Stadeum workspace's or the person's own
+/// (strut's plans/apps.md §7.4): Peel's own strut's UI showing the app's
+/// page and nothing else (`MemoryServer.page(of:)`). strut frames the page in
+/// a sandboxed frame and, for a workspace's, relays its calls to the
+/// workspace with the person's token, which Peel never holds. strut's UI is the strut Peel ships; the page in its frame is
 /// the workspace's.
 struct WorkspaceAppView: View {
     @Environment(AppModel.self) private var model
@@ -19,7 +19,7 @@ struct WorkspaceAppView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: app.title, subtitle: app.caption(showsWorkspace: model.showsAppWorkspaces)) {
+            DetailHeader(title: app.title, subtitle: app.caption(showsSource: model.showsAppSources)) {
                 WorkspaceApp.headerIcon(app.iconSymbol)
             } trailing: {
                 AppStatus(app: app)
@@ -68,10 +68,14 @@ extension WorkspaceApp {
         NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil
     })
 
+    /// Where it comes from, as the person reads it: `@workspace`, or Yours.
+    var source: String { peer.map { "@\($0)" } ?? Self.yours }
+    static let yours = "Yours"
+
     /// Under its title and at its card's foot: `@workspace · v14`, the
-    /// workspace when asked (`AppModel.showsAppWorkspaces`).
-    func caption(showsWorkspace: Bool) -> String? {
-        let parts = [showsWorkspace ? "@\(peer)" : nil, version].compactMap { $0 }
+    /// source when asked (`AppModel.showsAppSources`).
+    func caption(showsSource: Bool) -> String? {
+        let parts = [showsSource ? source : nil, version].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -106,13 +110,20 @@ extension WorkspaceApp {
 
     /// `apps` A–Z by title, as the sidebar and Apps list them.
     static func byTitle(_ apps: [WorkspaceApp]) -> [WorkspaceApp] {
-        apps.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        apps.sorted {
+            switch $0.title.localizedStandardCompare($1.title) {
+            case .orderedAscending: true
+            case .orderedDescending: false
+            // One title in two places: always the same way round.
+            case .orderedSame: $0.id < $1.id
+            }
+        }
     }
 
     /// Whether a search for `query` finds it: in its title, what it is for,
-    /// or `@workspace`.
+    /// or where it comes from (`@workspace`, Yours).
     func matches(_ query: String) -> Bool {
-        [title, about ?? "", "@\(peer)"].contains { ChatSections.matches($0, query: query) }
+        [title, about ?? "", source].contains { ChatSections.matches($0, query: query) }
     }
 }
 

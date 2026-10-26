@@ -139,14 +139,35 @@ own authoring UI. Your chat with Peel is the way in:
   across a restart), Apps selected on an unpinned app, the sidebar search
   listing a matching app under Apps, dark and narrow.
 
+## Built: Yours (2026-10-26)
+
+- The person's own apps, on Peel's strut (the agent's builder publishes
+  them there), listed beside the workspaces': `AutomationsClient.ownApps`
+  reads `GET /apps` and keeps every one but those strut seeds
+  (`publisher: strut`, its `strut/views` component library; a deny-list:
+  a `source: seed` in strut's listing would be the firmer contract). Such an app
+  has no peer: its key is its name, so it opens as `?app=<name>&solo=1`,
+  which strut's single-app view already serves.
+- One read for both (`refreshApps`), with no workspaces too; opening Apps
+  reads again, so an app just built shows. A home server still lists
+  none.
+- "Yours" is a source like `@workspace`: in the choice (first), on a
+  card's foot, in the header and beside a pinned row, by the same rule
+  (only when the apps come from several). Pins, search, icon, version and
+  status as for any app.
+- Checked: `HiveTests.yourOwnAppsAreAllListedAndOpenByName`; offscreen,
+  a sample app of yours beside two workspaces' (choice, foot, header,
+  pinned row, its page asked of strut by name), and the development
+  profile's own strut listing nothing once its `strut/views` is left out.
+
 ## PRs, in order
 
 1. **Sidebar and browser (Peel only).** The nav row in A–Z order, the
    bottom section removed, and `AppsView` (grid, search, workspace filter,
    A–Z sort) over `hive.apps`. You can ship this on its own; it fixes the
    scrolling today.
-2. **Every app, yours too, and Recent.** List apps no workspace pinned
-   and your own strut's, plus Recent sort.
+2. **Yours (built), then Recent.** Your own strut's apps are listed
+   (above); still open: apps a workspace has not pinned, and Recent sort.
 3. **strut: `updatedAt` on `GET /apps`**, then Peel shows it on cards and
    in the app header.
 4. **New app and Change with Peel.** The popover → agent DM → builder, and

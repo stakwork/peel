@@ -34,9 +34,9 @@ struct Sidebar: View {
                             SidebarLink("Apps", to: .apps) {
                                 Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
                             }
-                            let several = model.showsAppWorkspaces
+                            let several = model.showsAppSources
                             ForEach(shownApps(searching: sections.searching)) {
-                                WorkspaceAppLink(app: $0, showsWorkspace: several)
+                                WorkspaceAppLink(app: $0, showsSource: several)
                             }
                             AutomationsLink()
                             SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
@@ -131,11 +131,11 @@ struct Sidebar: View {
             }
             #endif
         }
-        // A workspace's newly pinned app shows within minutes; the workspaces
-        // changing, or strut starting (`syncHive`), reads them at once.
-        .task(id: model.hive.live.map(\.id)) {
+        // A newly published app shows within minutes (or as Apps opens); the
+        // workspaces or Peel's strut changing reads them at once.
+        .task(id: AppsSource(peers: model.hive.live.map(\.id), server: model.memoryServer)) {
             while !Task.isCancelled {
-                model.refreshWorkspaceApps()
+                model.refreshApps()
                 try? await Task.sleep(for: .seconds(300))
             }
         }
@@ -780,19 +780,25 @@ private struct AutomationsLink: View {
     }
 }
 
+/// What the apps are read from: a change reads them again.
+private struct AppsSource: Hashable {
+    let peers: [String]
+    let server: MemoryServer?
+}
+
 /// An app under the Apps row (`WorkspaceAppView`): no icon, so its title
-/// sits under Apps', with its workspace beside it when the apps come from
-/// several.
+/// sits under Apps', with where it comes from (`@workspace`, or Yours)
+/// beside it when the apps come from several.
 private struct WorkspaceAppLink: View {
     let app: WorkspaceApp
-    let showsWorkspace: Bool
+    let showsSource: Bool
 
     var body: some View {
         SidebarLink(app.title, to: .app(peer: app.peer, name: app.name)) {
             Color.clear
         } accessory: {
-            if showsWorkspace {
-                Text("@\(app.peer)")
+            if showsSource {
+                Text(app.source)
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)

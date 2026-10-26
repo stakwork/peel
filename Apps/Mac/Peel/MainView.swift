@@ -220,7 +220,7 @@ struct Detail: View {
                 if let app = model.app(peer: peer, name: name) {
                     WorkspaceAppView(app: app)
                 } else {
-                    start("This app is not listed by its workspace now.")
+                    start("This app is no longer listed.")
                 }
             case nil:
                 start("Pick a conversation, or add a contact.")

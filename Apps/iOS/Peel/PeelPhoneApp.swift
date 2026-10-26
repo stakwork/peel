@@ -60,6 +60,11 @@ struct PeelPhoneApp: App {
                         model.noteActivity()
                     }
                 }
+                // Locked or forgotten: Stadeum's tokens and an open org page
+                // go with the account, and are read again when it opens.
+                .onChange(of: model.phase) { _, phase in
+                    if phase != .ready { stadeum.close() }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Diagnostics.memoryWarning()
                 }

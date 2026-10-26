@@ -85,6 +85,17 @@ public struct HiveClient: Sendable {
         self.hive = hive
     }
 
+    /// The Hive `profile` pairs with: Hive itself, or for a development
+    /// profile `-hiveURL` (a local or staging Hive, or a test's stand-in).
+    public init(for profile: Profile) {
+        if profile.kind == .development, let given = UserDefaults.standard.string(forKey: "hiveURL"),
+           let url = URL(string: given), Web.isStrut(url) {
+            self.init(hive: url)
+        } else {
+            self.init()
+        }
+    }
+
     /// A code for the person to approve in Hive, signed in there.
     public struct Pairing: Codable, Sendable, Equatable {
         public let deviceCode: String

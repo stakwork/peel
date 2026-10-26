@@ -69,14 +69,9 @@ final class HiveState {
 extension AppModel {
     var hive: HiveState { macAgent.hive }
 
-    /// The Hive a development profile pairs with: `-hiveURL` (a local or
-    /// staging Hive, or a test's stand-in); the app account's is Hive itself.
+    /// The Hive this account pairs with (`HiveClient(for:)`).
     var hiveClient: HiveClient {
-        if profile?.kind == .development, let given = UserDefaults.standard.string(forKey: "hiveURL"),
-           let url = URL(string: given), Web.isStrut(url) {
-            return HiveClient(hive: url)
-        }
-        return HiveClient()
+        profile.map(HiveClient.init(for:)) ?? HiveClient()
     }
 
     /// Reads what this account kept of Hive when its agent opens, tells

@@ -633,12 +633,16 @@ describes:
   Connect Stadeum, the code, Open Stadeum to approve it in Safari; the
   credential and each org's token in `Profile.hive`; renewed when Peel
   comes to the front and the link is due; a revoke clears it and says to
-  connect again; Disconnect.
+  connect again; Disconnect. Locking or forgetting the account lets all of
+  it go (`close`, on `phase` leaving `.ready`; the phone's profile is always
+  `default`, so a pairing or renewal from before is told apart by a
+  generation count and keeps nothing). A development profile pairs with
+  `-hiveURL`, as on the Mac (`HiveClient(for:)`).
 - **The cards.** An agent reply's `metadata.peel.artifacts` are lines under
   it (`AgentArtifactLines`), as on the Mac: label and title, then the
   workspace and Open; "On your Mac" for one on the brain's own strut;
-  "Connect Stadeum in You to open" before pairing; an https link opens in
-  Safari.
+  "Connect Stadeum in You to open" before pairing; else its https link, if
+  it has one, opens in Safari.
 - **The page.** `AgentArtifact.Handle.onOrg` takes the brain's
   `/peers/<org>` hop off (a second hop stays, for the org's own
   read-through) and `StrutUI.page` builds the org's UI address alone
@@ -647,9 +651,12 @@ describes:
   `WKWebView` whose store keeps nothing: the token as the first request's
   bearer (a swarm's gate wants a credential for the page itself) and set
   as `sessionStorage["strut/apiKey"]` by a script before the page's own,
-  on the org's origin only, never in an address. Navigation keeps to that
-  origin, its `srcdoc` and blob frames; a link elsewhere goes to Safari
-  only on the person's own tap (`TouchWebView`); nothing downloads.
+  in strut's UI's folder on the org's origin only (a swarm's `/lab/`
+  shares its host), never in an address. Navigation keeps to that folder,
+  its `srcdoc` and blob frames; strut's "open in a new tab" loads in place,
+  Back returning; a link elsewhere goes to Safari only from strut's own
+  page (never a frame, which holds the org's or an agent's content) and on
+  the person's own tap (`TouchWebView`); nothing downloads.
 
 **Checked.** `swift test`: all pass but `BundledBridgeTests.theStagedRunnerExitsWhenPeelsPipeCloses`,
 which needs a bridge staged after the runner pin moved to sphinx#396
@@ -659,9 +666,27 @@ simulator slice of the core built from v0.8.39 for it) and the Mac app
 builds. `OrgPageSheet` itself, compiled into a throwaway simulator app
 against a local strut with only a person token: an app's page rendered
 and its `step_run` call went through, a job's markdown file rendered with
-its image, and its "Open in new tab" stayed in the sheet. Not seen on
-screen: You › Stadeum and the cards in the real app (no account on the
-simulator), and a real Stadeum pairing.
+its image, and its "Open in new tab" loaded the file in place (WebKit shows no
+markdown page, so the viewer stays). Not seen on screen: You › Stadeum
+and the cards in the real app (no account on the simulator), and a real
+Stadeum pairing.
+
+**Review.** An independent review (an agent that did not write it) found
+no way for the token to reach an address, a log, another origin or
+Safari. Applied from it: Stadeum let go with the account (the sheet with
+the previous person's token could have come back after Forget, and a
+pairing in flight could have written the next account's item); links out
+only from strut's own page; "open in a new tab" loads in place; the https
+fallback; renewal races (a cancelled or superseded renewal keeps and says
+nothing); a failed Keychain read clears the link; the folder scoping; the
+revoke said once. Not applied: the iPhone's `PhoneStadeum` and the Mac's
+`HiveState` are two copies of one pairing machine (status, connect,
+cancel, renew, revoke), against "one owner". The Mac's is tied to its
+strut and runner (peers synced, rooms' tokens handed to the bridge, a
+revoked link kept to show), and folding them needs a Mac check run; it
+goes with the Apps list PR, which needs the shared state anyway. Shared
+now: the client and the poll loop (`answer(to:)`), and the choice of Hive
+(`HiveClient(for:)`).
 
 **Not done.** The Apps list (each workspace's pinned apps on the phone)
 is the next PR. A deliverable on the brain's own strut stays words on the

@@ -40,7 +40,7 @@ struct MainTabs: View {
         }
         // The account is open: what it kept of Stadeum, renewed when due.
         .task { stadeum.refresh(model.profile) }
-        // Here, so locking (which takes the tabs away) closes it.
+        // Closed by `PhoneStadeum.close` when the account locks or is forgotten.
         .sheet(item: $stadeum.shown) { page in
             OrgPageSheet(page: page)
         }

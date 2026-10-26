@@ -30,17 +30,21 @@ final class PhoneStadeum {
     var shown: OrgPageSheet.Page?
     @ObservationIgnored private var pairing: Task<Void, Never>?
     @ObservationIgnored private var renewing: Task<Void, Never>?
+    /// Counts `close`s: a pairing or a renewal begun before the last one
+    /// keeps nothing and says nothing (the account locked, or was forgotten).
+    @ObservationIgnored private var generation = 0
 
     /// Reads what `profile` kept (the account just opened, or Peel came back
     /// to the front) and renews it when due; nothing without an account.
     func refresh(_ profile: Profile?) {
         guard let profile else {
-            reset()
+            close()
             return
         }
         do {
             link = try HiveLink.read(from: profile.hive)
         } catch {
+            link = nil
             problem = PeelError.noted(error, couldNot: "read your Stadeum connection")
         }
         if case .pairing = status {} else if let link {
@@ -57,8 +61,9 @@ final class PhoneStadeum {
         guard let profile else { return }
         pairing?.cancel()
         problem = nil
-        let client = HiveClient()
+        let client = HiveClient(for: profile)
         let name = UIDevice.current.name
+        let generation = generation
         pairing = Task {
             do {
                 let pairing = try await client.start(name: name)
@@ -73,7 +78,8 @@ final class PhoneStadeum {
                 case .expired:
                     settle("The code ran out before it was approved. Try again.")
                 case .paired(let link):
-                    guard !Task.isCancelled else { return }
+                    // Cancelled, or the account closed, while Stadeum answered: nothing kept.
+                    guard !Task.isCancelled, generation == self.generation else { return }
                     try link.write(to: profile.hive)
                     self.link = link
                     status = .connected
@@ -85,7 +91,7 @@ final class PhoneStadeum {
         }
         /// Ends this pairing with `problem`, unless it was cancelled: a newer one may be under way.
         func settle(_ problem: String) {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, generation == self.generation else { return }
             status = link == nil ? .off : .needsPairing
             self.problem = problem
         }
@@ -101,7 +107,7 @@ final class PhoneStadeum {
     /// Stadeum keeps the device until it is revoked there, and its tokens
     /// age out in a week.
     func disconnect(_ profile: Profile?) {
-        reset()
+        close()
         do {
             try profile?.hive.delete()
         } catch {
@@ -131,19 +137,21 @@ final class PhoneStadeum {
 
     private func renew(_ link: HiveLink, in profile: Profile) {
         guard renewing == nil else { return }
+        let generation = generation
         renewing = Task {
-            defer { renewing = nil }
+            // Still this account's, and the link renewed is the one kept: else
+            // (closed, disconnected, paired again) nothing is kept or said.
+            @MainActor func current() -> Bool { generation == self.generation && self.link?.credential == link.credential }
+            defer { if generation == self.generation { renewing = nil } }
             do {
                 let renewed = try await HiveClient(hive: link.hive).renew(link)
-                // Disconnected meanwhile: nothing of it is kept.
-                guard self.link?.credential == link.credential else { return }
+                guard current() else { return }
                 guard let renewed else {
                     // Revoked in Stadeum: its tokens may still work until they expire, so they stop being used now.
                     try? profile.hive.delete()
                     self.link = nil
                     shown = nil
                     status = .needsPairing
-                    problem = "Stadeum no longer knows this iPhone. Connect it again to open your workspaces' work here."
                     return
                 }
                 try renewed.write(to: profile.hive)
@@ -152,12 +160,15 @@ final class PhoneStadeum {
             } catch is CancellationError {
             } catch {
                 // Tried again when Peel next comes to the front; the tokens last a week.
-                problem = PeelError.noted(error, couldNot: "renew your Stadeum workspaces")
+                if current() { problem = PeelError.noted(error, couldNot: "renew your Stadeum workspaces") }
             }
         }
     }
 
-    private func reset() {
+    /// Everything let go: the account locked or was forgotten (`phase` left
+    /// `.ready`), or Disconnect. Read again from the Keychain when it opens.
+    func close() {
+        generation += 1
         pairing?.cancel()
         renewing?.cancel()
         pairing = nil

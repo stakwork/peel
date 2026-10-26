@@ -11,7 +11,9 @@ import WebKit
 /// request's bearer, which a swarm's gate wants for the page itself, and in
 /// the page's own storage before its script runs, where strut's UI keeps the
 /// key it sends on every call. The web view keeps nothing and goes nowhere
-/// but that strut. The Mac's twin is `StrutPage`, on its own strut.
+/// but that strut's UI (its folder on the host: a swarm's `/lab/`, which
+/// shares its host with other services). The Mac's twin is `StrutPage`, on
+/// its own strut.
 struct OrgPageSheet: View {
     let page: Page
     @Environment(\.dismiss) private var dismiss
@@ -53,6 +55,15 @@ struct OrgPageSheet: View {
             return "\(scheme)://\(host)" + (port.map { ":\($0)" } ?? "")
         }
 
+        /// The folder strut's UI is served from (`/`, or a swarm's `/lab/`):
+        /// `url`'s path, which `StrutUI.page` ends with its `/`.
+        var folder: String { url.path(percentEncoded: true) }
+
+        /// Whether `other` is strut's: on `url`'s origin, in its UI's folder.
+        func serves(_ other: URL) -> Bool {
+            Self.origin(of: other) == origin && other.path(percentEncoded: true).hasPrefix(folder)
+        }
+
         /// The request that loads it: the token as its bearer.
         var request: URLRequest {
             var request = URLRequest(url: url)
@@ -61,13 +72,14 @@ struct OrgPageSheet: View {
         }
 
         /// The script that hands the token to strut's UI (its `strut/apiKey`
-        /// in `sessionStorage`), run before the page's own and only on the
-        /// org's origin. Both strings as JSON literals.
+        /// in `sessionStorage`), run before the page's own and only in its
+        /// folder on the org's origin. The strings as JSON literals.
         var handOver: String {
-            let literals = (try? JSONEncoder.literals.encode([origin, token])).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
+            let literals = (try? JSONEncoder.literals.encode([origin, folder, token])).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
             return """
-            (() => { const [origin, key] = \(literals);
-              if (location.origin === origin) { try { sessionStorage.setItem("strut/apiKey", key); } catch (e) {} } })();
+            (() => { const [origin, folder, key] = \(literals);
+              if (location.origin === origin && location.pathname.startsWith(folder)) {
+                try { sessionStorage.setItem("strut/apiKey", key); } catch (e) {} } })();
             """
         }
     }
@@ -99,6 +111,8 @@ private struct OrgWebView: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsLinkPreview = false
+        // Back from a file strut's viewer opened in place (`createWebViewWith`).
+        webView.allowsBackForwardNavigationGestures = true
         webView.load(page.request)
         return webView
     }
@@ -110,10 +124,11 @@ private struct OrgWebView: UIViewRepresentable {
         webView.configuration.userContentController.removeAllUserScripts()
     }
 
-    /// Where the page may go: anywhere on the org's strut; its own frames
-    /// (`srcdoc`, and a data or blob frame, never as the whole page); a link
-    /// elsewhere out to the system, only on the person's own tap; nothing
-    /// downloaded, and no other scheme.
+    /// Where the page may go: anywhere in the org's strut's UI; its own
+    /// frames (`srcdoc`, and a data or blob frame, never as the whole page);
+    /// a link elsewhere out to the system, only from strut's own page (never
+    /// from a frame in it, which is the org's or an agent's) and only on the
+    /// person's own tap; nothing downloaded, and no other scheme.
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let page: OrgPageSheet.Page
 
@@ -132,7 +147,7 @@ private struct OrgWebView: UIViewRepresentable {
                 return .cancel
             }
             let mainFrame = action.targetFrame?.isMainFrame ?? true
-            if OrgPageSheet.Page.origin(of: url) == page.origin { return .allow }
+            if page.serves(url) { return .allow }
             switch scheme {
             case "about":
                 // The page's own frame (`srcdoc`).
@@ -140,7 +155,7 @@ private struct OrgWebView: UIViewRepresentable {
             case "data", "blob":
                 return mainFrame ? .cancel : .allow
             case "http", "https":
-                if action.navigationType == .linkActivated { follow(url, from: webView) }
+                if action.navigationType == .linkActivated { follow(url, from: action, in: webView) }
                 return .cancel
             default:
                 return .cancel
@@ -151,14 +166,20 @@ private struct OrgWebView: UIViewRepresentable {
             response.canShowMIMEType ? .allow : .cancel
         }
 
-        /// `target=_blank` and `window.open`: never a window. A link off the
-        /// org's strut goes out on the person's own tap; one on it (strut's
-        /// "open in a new tab" for a file it has no view of) stays here.
+        /// `target=_blank` and `window.open`: never a window. One on the org's
+        /// strut (its viewer's "open in a new tab", for a file it has no view
+        /// of) opens here, Back returning; a link elsewhere goes out as a
+        /// link does.
         func webView(
             _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
             for action: WKNavigationAction, windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            if let url = action.request.url, OrgPageSheet.Page.origin(of: url) != page.origin { follow(url, from: webView) }
+            guard let url = action.request.url else { return nil }
+            if page.serves(url) {
+                if action.sourceFrame.isMainFrame { webView.load(URLRequest(url: url)) }
+            } else {
+                follow(url, from: action, in: webView)
+            }
             return nil
         }
 
@@ -167,10 +188,12 @@ private struct OrgWebView: UIViewRepresentable {
             webView.load(page.request)
         }
 
-        /// Only on the person's own tap: a script's `click()` is
-        /// `linkActivated` too, and could keep opening pages.
-        private func follow(_ url: URL, from webView: WKWebView) {
-            guard (webView as? TouchWebView)?.personActed == true, url.scheme == "https" || url.scheme == "http" else { return }
+        /// Only from strut's own page and on the person's own tap: a script's
+        /// `click()` is `linkActivated` too, and a frame holds what the org
+        /// or an agent wrote.
+        private func follow(_ url: URL, from action: WKNavigationAction, in webView: WKWebView) {
+            guard action.sourceFrame.isMainFrame, (webView as? TouchWebView)?.personActed == true,
+                  url.scheme == "https" || url.scheme == "http" else { return }
             UIApplication.shared.open(url)
         }
     }

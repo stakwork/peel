@@ -119,7 +119,7 @@ public struct MemoryRef: Sendable, Equatable, Hashable {
         return items.filter { seen.insert($0[keyPath: key]).inserted }
     }
 
-    /// One line, at most 500 characters, nothing hidden (`ChatData.clean`).
+    /// One line, at most 500 characters, nothing hidden (`TextLine.clean`).
     static func clean(_ text: String) -> String {
         TextLine.clean(text, max: 500)
     }

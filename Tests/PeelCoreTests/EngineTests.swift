@@ -195,6 +195,14 @@ struct WordsConfirmationTests {
         #expect(await profileEvents(engine).contains("Ann Me|https://img/me.png"))
     }
 
+    @Test func recoveryTakesASchemeLessPhotoLinkFromSentMessages() async throws {
+        let engine = try await Account.restore(
+            Profile(developmentAt: profile.url), mnemonic: abandon.joined(separator: " "), pin: "", server: server)
+        try await storeSent(engine, alias: "Ann Me", photo: "memes.sphinx.chat/public/me")
+        await engine.recoverOwnProfile()
+        #expect(await engine.myPhotoURL == "https://memes.sphinx.chat/public/me")
+    }
+
     @Test func recoverySkipsAnEmptyNewestPhotoAndEmitsTheFinalPairLast() async throws {
         let engine = try await Account.restore(
             Profile(developmentAt: profile.url), mnemonic: abandon.joined(separator: " "), pin: "", server: server)

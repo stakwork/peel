@@ -458,6 +458,19 @@ Three things Tom saw on his own account, each checked before the fix:
   server answered without an image is not asked for again, a network
   failure is). The CLI gained `--photo <https url>` (`Engine.setPhotoURL`),
   so development accounts can send a photo; before, Peel always sent none.
+  A second cause was the URL's form. The official apps build the photo
+  link from the memes-server setting (Profile), which the user can edit,
+  so it may lack a scheme, be `http://`, or carry a doubled scheme, and
+  they render it through `removeDuplicatedProtocol().trim()`; Peel's strict
+  `httpsOnly` dropped all of those. `String.recoverablePhotoURL` now trims,
+  collapses repeated schemes, accepts `//host/p` and `host.tld/p`, upgrades
+  http to https and percent-encodes; `SenderInfo` applies it on decoding
+  (and reads `photo_url`, then `photoUrl`, `sender_pic`, `senderPic`;
+  an oddly typed optional field no longer discards the sender), so message
+  rows, thread participants, tribe members and the own-photo recovery all
+  get the normalised link. `httpsOnly` stays strict for tribe images and
+  settings. The exact payload from the user's official Mac app still has
+  to be confirmed on a Mac.
 - **A tribe opened a second time was blank until scrolled.** The message
   list is now a fresh view per chat (`.id`, from `fix/blank-conversation`)
   and is made again once the chat's messages have loaded, so

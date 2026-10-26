@@ -27,6 +27,30 @@ struct MessageTests {
         #expect(info.photoURL == "https://x/p.png")
     }
 
+    @Test(arguments: ["photo_url", "photoUrl", "sender_pic", "senderPic"])
+    func senderInfoReadsThePhotoUnderItsAliases(key: String) throws {
+        let json = #"{"pubkey":"02ab","alias":"Ann","\#(key)":"memes.sphinx.chat/public/abc"}"#
+        let info = try #require(Message.fixture(sender: json).senderInfo)
+        #expect(info.photoURL == "https://memes.sphinx.chat/public/abc")
+    }
+
+    @Test func senderInfoSurvivesOddlyTypedFields() throws {
+        let json = #"{"pubkey":"02ab","alias":"Ann","role":"0","host":5,"photo_url":"http://x.io/p.png"}"#
+        let info = try #require(Message.fixture(sender: json).senderInfo)
+        #expect(info.alias == "Ann")
+        #expect(info.role == 0)
+        #expect(info.host == nil)
+        #expect(info.photoURL == "https://x.io/p.png")
+    }
+
+    @Test(arguments: ["memes.sphinx.chat/public/abc", "http://memes.sphinx.chat/public/abc"])
+    func tribeMessageSenderPhotoIsNormalised(photo: String) {
+        let message = Message.fixture(chat: "tribe", sender: sender("02ab", alias: "Ann", photo: photo))
+        #expect(message.senderPhotoURL == "https://memes.sphinx.chat/public/abc")
+        #expect(message.senderDetails.photoURL == "https://memes.sphinx.chat/public/abc")
+        #expect(message.senderDetails.alias == "Ann")
+    }
+
     @Test func senderInfoToleratesMissingOptionalFields() throws {
         let info = try #require(Message.fixture(sender: #"{"pubkey":"02ab"}"#).senderInfo)
         #expect(info.alias == nil)

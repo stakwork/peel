@@ -263,6 +263,57 @@ struct StorageTests {
         #expect("http://img/a.png".httpsOnly == nil)
     }
 
+    @Test(arguments: [
+        ("https://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("http://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("//memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("https://https://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("http://https://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("https://http://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("  \nmemes.sphinx.chat/public/a\t ", "https://memes.sphinx.chat/public/a"),
+        ("https://img.example/a%20b.png", "https://img.example/a%20b.png"),
+    ])
+    func photoLinkFormsAreNormalised(raw: String, expected: String) {
+        #expect(raw.recoverablePhotoURL == expected)
+    }
+
+    @Test func photoLinkWithSpacesAndNonASCIIIsEncoded() throws {
+        let spaced = try #require("memes.sphinx.chat/public/a b.png".recoverablePhotoURL)
+        #expect(spaced == "https://memes.sphinx.chat/public/a%20b.png")
+        let accented = try #require("https://img.example/é.png".recoverablePhotoURL)
+        #expect(accented.hasPrefix("https://img.example/%C3%A9"))
+    }
+
+    @Test(arguments: ["", "  ", "garbage", "not a url", "ftp://memes.sphinx.chat/a", "//", "/public/a", ".x/a"])
+    func photoLinkThatIsNotAURLIsNil(raw: String) {
+        #expect(raw.recoverablePhotoURL == nil)
+    }
+
+    /// A tribe member list and a thread's participants show the normalised photo.
+    @Test func memberPhotosAreNormalised() throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "tribe", fromMe: false,
+                      sender: sender("02aa", alias: "Ann", photo: "memes.sphinx.chat/public/abc")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: "tribe", fromMe: false,
+                      sender: sender("02bb", alias: "Bob", photo: "http://memes.sphinx.chat/public/def")), false, nil),
+        ]))
+        let members = try storage.tribeSenders("tribe")
+        #expect(members.first { $0.alias == "Ann" }?.photoURL == "https://memes.sphinx.chat/public/abc")
+        #expect(members.first { $0.alias == "Bob" }?.photoURL == "https://memes.sphinx.chat/public/def")
+    }
+
+    @Test func ourPhotoIsRecoveredFromASchemeLessLink() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: "memes.sphinx.chat/public/me")), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://memes.sphinx.chat/public/me")
+    }
+
     @Test func ourPhotoIsUpgradedFromHTTPAndTrimmed() throws {
         let storage = try profile.storage()
         try storage.upsertContact(pubkey: "02aa", alias: "Ann")

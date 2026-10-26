@@ -34,7 +34,7 @@ extension Storage {
     }
 
     private static func firstUsablePhoto(in senders: [String]) -> String? {
-        senders.lazy.compactMap { JSON.decode(SenderInfo.self, from: $0)?.photoURL?.recoverablePhotoURL }.first
+        senders.lazy.compactMap { JSON.decode(SenderInfo.self, from: $0)?.photoURL }.first
     }
 
     /// The alias on this account's newest message to a contact that names one:
@@ -575,7 +575,7 @@ extension Storage {
                 arguments: since > 0 ? [tribe, since] : [tribe]
             ).map { row in
                 let photo: String? = row["photo"]
-                return (TribeMember(alias: row["alias"], photoURL: photo?.httpsOnly, pubkey: nil, pending: false), row["type"])
+                return (TribeMember(alias: row["alias"], photoURL: photo?.recoverablePhotoURL, pubkey: nil, pending: false), row["type"])
             }
         }
     }

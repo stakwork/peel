@@ -304,6 +304,81 @@ Everything else is an improvement on the same pieces, after v1:
   - Tailscale for the graph view and live steps;
   - a remote signer, so the box holds no keys.
 
+## Dictation with Peel Home moved (proposed, for team discussion)
+
+**The gap in v1.** Dictation records on the Mac and sends the audio to
+Peel's own strut on the Mac (`POST audio/transcribe`). That strut runs the
+speech model and rewrites the text with your vocabulary. The vocabulary
+lives in the memory graph (`memory/lexicon`: people's names, how they are
+misheard, your terms), so when the agent learns a name, dictation spells
+it right.
+
+After a move, the Mac runs no strut at all, so dictation stops working.
+The vocabulary has moved to the box with the rest of memory. v1 doesn't
+handle this. It doesn't affect anyone who never moves, but Tom's real
+move waits for it.
+
+**Proposed: a dictation-only strut on the Mac, with the box's strut as its
+peer.**
+
+```
+ Mac                                           Home box
+ ┌────────────────────────────┐   peer call   ┌─────────────────────────────┐
+ │ Peel → dictation strut      │ ────────────► │ strut (Peel Home)           │
+ │  transcribes here, live,    │  pull vocab   │  memory graph: the one      │
+ │  offline                    │  push learned │  place vocabulary is written│
+ │  vocabulary cache + outbox  │ ◄──────────── │  dictation-lexicon (peer)   │
+ │  no agent, bridge, schedule │               │  dictation-learn   (peer)   │
+ └────────────────────────────┘               └─────────────────────────────┘
+```
+
+- **Transcription stays on the Mac:** real time, offline, on the Mac's
+  hardware. A Pi is slower than Apple silicon, and the box can't be reached
+  away from home, so streaming audio to it is not the default.
+- **After a move, the Mac starts a dictation-only strut:** no agent, no
+  bridge, no scheduler (`STRUT_SCHEDULER=0`), and its own small data folder.
+  It is not a second brain.
+- **The box's strut is that strut's peer.** This uses strut's existing peers
+  (`STRUT_PEERS`, `strut/run-workflow`, workflows marked `peer: true`;
+  strut `plans/federation.md`), the same mechanism as Hive and Stadeum.
+  Two peer workflows on the box:
+  - `dictation-lexicon` returns the vocabulary when it has changed;
+  - `dictation-learn` takes the mishearings dictation learned.
+- **One writer.** The box's memory graph is the only place the vocabulary is
+  written. The Mac holds a cache and an outbox of corrections, never a
+  second graph, so there is nothing to merge. Names the agent learns reach
+  dictation, and corrections reach the agent.
+- **It never waits on the network.** When the box can't be reached,
+  dictation uses the cache and queues corrections until it can.
+- **Reach:**
+  - At home: directly, over the home network.
+  - Away: the cached vocabulary, with corrections queued.
+  - With the optional Tailscale add-on: from anywhere.
+  - Later: peer calls over Sphinx, so no VPN at all.
+- **Security before opening a port:** today the box's strut listens on
+  127.0.0.1 only, and a peer key (`STRUT_PEER_KEY`) can read everything.
+  It needs a key scoped to the two dictation workflows, and TLS (or a
+  pinned certificate from the pairing link), before strut listens on the
+  home network.
+- **Client-agnostic:** strut to strut, so any client gets synced dictation,
+  iPhone dictation later included. A box with a GPU could also take audio
+  through the same peer link for a bigger model, at home, as an opt-in.
+
+**Rejected:**
+- Streaming audio to the box for every dictation: slower on a Pi, and dead
+  away from home.
+- Copying the vocabulary once at the move: the two drift apart.
+
+**Rough work:**
+- **strut:** the dictation-only mode, the cache and outbox, the two peer
+  workflows, a scoped peer key.
+- **Peel:** start the dictation strut after a move, and hand it the peer
+  details during the move.
+- **`home/`:** the peer port.
+
+**For the team:** whether this lands before or with the real move; the
+transport away from home (Tailscale or Sphinx); and the scoped key's shape.
+
 ## Later
 
 - **Changes after the move.** A new model key, new MCP grants, or a Peel

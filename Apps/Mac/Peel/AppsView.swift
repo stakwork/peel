@@ -27,10 +27,14 @@ struct AppsView: View {
             } else if !apps.isEmpty {
                 list(apps)
             } else {
-                EmptyState("Apps Peel builds for you, and those your Stadeum workspaces pin, show here.",
+                // Building one is the way in; a workspace's come with Stadeum.
+                EmptyState("Ask Peel to build you one. Apps your Stadeum workspaces pin show here too.",
                            title: "No apps yet") {
-                    if model.hive.live.isEmpty {
-                        Button("Connect Stadeum") { model.openAccount(.connections) }.buttonStyle(.peel(.outline))
+                    HStack(spacing: Theme.Space.sm) {
+                        Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.primary))
+                        if model.hive.live.isEmpty {
+                            Button("Connect Stadeum") { model.openAccount(.connections) }.buttonStyle(.peel(.outline))
+                        }
                     }
                 }
             }

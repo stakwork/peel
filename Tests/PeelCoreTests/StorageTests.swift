@@ -204,8 +204,10 @@ struct StorageTests {
         #expect(try contact("02aa") == nil)
     }
 
-    @Test(arguments: ["http://img/a.png", "javascript:alert(1)", "file:///etc/passwd", "not a url"])
-    func nonHTTPSPhotoIsDropped(photo: String) throws {
+    /// `http` is recovered (upgraded to `https`), not dropped; only a link
+    /// `recoverablePhotoURL` cannot make anything of.
+    @Test(arguments: ["javascript:alert(1)", "file:///etc/passwd", "not a url"])
+    func unrecoverablePhotoIsDropped(photo: String) throws {
         let storage = try profile.storage()
         let message = Message.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: photo))
         _ = try storage.apply(Storage.Commit(messages: [(message, true, nil)]))
@@ -220,7 +222,7 @@ struct StorageTests {
             (.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: "https://img/a.png")), true, nil),
         ]))
         _ = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: "u2", chat: "02aa", sender: sender("02aa", alias: "", photo: "http://img/b.png")), true, nil),
+            (.fixture(uuid: "u2", chat: "02aa", sender: sender("02aa", alias: "", photo: "")), true, nil),
         ]))
         try storage.upsertContact(pubkey: "02aa", alias: nil)
         let row = try #require(try contact("02aa"))

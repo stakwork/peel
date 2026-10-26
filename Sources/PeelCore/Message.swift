@@ -587,11 +587,13 @@ extension String {
         }
         while hasWebScheme(link), hasWebScheme(dropScheme(link)) { link = dropScheme(link) }
         if link.lowercased().hasPrefix("http://") { link = "https://" + link.dropFirst("http://".count) }
-        if URL(string: link) == nil {
-            let allowed = CharacterSet.urlQueryAllowed.union(CharacterSet(charactersIn: "%#"))
-            guard let encoded = link.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
-            link = encoded
-        }
+        // Always, not only when `URL(string:)` already refuses it: on Apple's
+        // platforms that initializer tolerates a raw space or accented
+        // character, so its nilness is no signal that one is missing.
+        // `%` is kept allowed, so an existing escape passes through as is.
+        let allowed = CharacterSet.urlQueryAllowed.union(CharacterSet(charactersIn: "%#"))
+        guard let encoded = link.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        link = encoded
         guard let url = URL(string: link), !(url.host ?? "").isEmpty else { return nil }
         return link.httpsOnly
     }

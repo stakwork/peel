@@ -31,11 +31,22 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
         63: ("Fn", 0x80_0000),
     ]
 
-    /// Names of the keys that have no character of their own.
+    static let escapeCode: UInt16 = 53
+    static let capsLockCode: UInt16 = 57
+    static let fnCode: UInt16 = 63
+    /// Return, Space and keypad Enter: they steer a recording.
+    static let steeringCodes: Set<UInt16> = [36, 49, 76]
+
+    /// The function keys, by number.
+    private static let functionKeys: [UInt16: Int] = [
+        122: 1, 120: 2, 99: 3, 118: 4, 96: 5, 97: 6, 98: 7, 100: 8, 101: 9, 109: 10,
+        103: 11, 111: 12, 105: 13, 107: 14, 113: 15, 106: 16, 64: 17, 79: 18, 80: 19, 90: 20,
+    ]
+
+    /// Names of the other keys that have no character of their own.
     private static let named: [UInt16: String] = [
         36: "Return", 48: "Tab", 49: "Space", 51: "Delete", 53: "Escape", 57: "Caps Lock",
-        96: "F5", 97: "F6", 98: "F7", 100: "F8", 101: "F9", 103: "F11", 109: "F10", 111: "F12",
-        118: "F4", 120: "F2", 122: "F1", 99: "F3", 105: "F13", 107: "F14", 113: "F15",
+        76: "Enter", 114: "Help", 115: "Home", 116: "Page Up", 117: "Forward Delete", 119: "End", 121: "Page Down",
         123: "←", 124: "→", 125: "↓", 126: "↑",
     ]
 
@@ -43,7 +54,7 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
     /// when it has no name of its own.
     public static func key(code: UInt16, character: String? = nil) -> HotkeyConfig {
         if let modifier = modifiers[code] { return HotkeyConfig(keyCode: code, label: modifier.name) }
-        let label = named[code] ?? character?.uppercased().nilIfEmpty ?? "Key \(code)"
+        let label = functionKeys[code].map { "F\($0)" } ?? named[code] ?? character?.uppercased().nilIfEmpty ?? "Key \(code)"
         return HotkeyConfig(keyCode: code, label: label)
     }
 
@@ -57,13 +68,42 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
         Self.modifiers[keyCode].map { flags & $0.mask != 0 }
     }
 
-    /// F1–F15: keys that type nothing, so holding one is free to mean dictation.
-    private static let functionKeys: Set<UInt16> = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113]
+    /// A modifier on its own or a function key, keys that type nothing, so holding
+    /// one is free to mean dictation. Any other key would type itself in
+    /// every app (its key-down is never swallowed), Caps Lock sends no
+    /// release, and Space, Return and Escape steer a recording.
+    public var canBeHotkey: Bool { isModifier || Self.functionKeys[keyCode] != nil }
 
-    /// A modifier on its own or a function key. Any other key would type
-    /// itself in every app (its key-down is never swallowed), Caps Lock
-    /// sends no release, and Space, Return and Escape steer a recording.
-    public var canBeHotkey: Bool { isModifier || Self.functionKeys.contains(keyCode) }
+    /// Why the key can't be the hotkey, in Settings' words; nil when it can.
+    public var refusal: String? {
+        if canBeHotkey { return nil }
+        let why = if keyCode == Self.capsLockCode { "it sends no release" }
+            else if Self.steeringCodes.contains(keyCode) || keyCode == Self.escapeCode { "it steers a recording" }
+            else { "it types in every app" }
+        return "\(label) can't be the key: \(why)."
+    }
+
+    /// What else on the Mac the key does, when that is known; nil when nothing.
+    /// `fnKeyUsage` is System Settings › Keyboard › Press 🌐 key
+    /// (`com.apple.HIToolbox AppleFnUsageType`; 0 is Do Nothing, nil unset).
+    public func conflict(fnKeyUsage: Int?) -> String? {
+        if keyCode == Self.fnCode {
+            return fnKeyUsage == 0 ? nil
+                : "Fn also does what System Settings › Keyboard › Press 🌐 key says: set it to Do Nothing."
+        }
+        if let number = Self.functionKeys[keyCode] {
+            return number > 12 ? nil
+                : "On a Mac keyboard F1–F12 are brightness, volume and so on unless Fn is held, "
+                + "or System Settings › Keyboard › Use F1, F2, etc. keys as standard function keys is on."
+        }
+        let name = Self.modifiers[keyCode]?.name ?? ""
+        if name.contains("Command") || name.contains("Control") {
+            return "Held alone it dictates; with another key it is still a shortcut. "
+                + "If macOS Dictation's shortcut uses it (System Settings › Keyboard › Dictation), choose another there."
+        }
+        if name.contains("Shift") { return "Shift is held for capitals: a slow Shift-letter may start dictating." }
+        return nil
+    }
 
     public func encoded() -> Data? { try? JSONEncoder().encode(self) }
 

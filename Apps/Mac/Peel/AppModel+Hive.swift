@@ -302,8 +302,38 @@ extension AppModel {
             }
             // A newer read, or strut or the workspaces changed meanwhile: theirs, not this.
             guard !Task.isCancelled, memoryServer == server, hive.live.map(\.id) == peers else { return }
-            let listed = peers.flatMap { peer in read[peer] ?? hive.apps.filter { $0.peer == peer } }
+            let listed = WorkspaceApp.byTitle(peers.flatMap { peer in read[peer] ?? hive.apps.filter { $0.peer == peer } })
             if hive.apps != listed { hive.apps = listed }
         }
+    }
+
+    /// The listed app a destination opens.
+    func app(peer: String, name: String) -> WorkspaceApp? {
+        hive.apps.first { $0.peer == peer && $0.name == name }
+    }
+
+    /// The workspaces the listed apps come from, A–Z.
+    var appWorkspaces: [String] {
+        Set(hive.apps.map(\.peer)).sorted()
+    }
+
+    /// Whether an app's `@workspace` shows (its sidebar row, card and
+    /// header): only when the apps come from several (Tom, 2026-10-26).
+    var showsAppWorkspaces: Bool {
+        Set(hive.apps.map(\.peer)).count > 1
+    }
+
+    /// Whether the person pinned `app` under the sidebar's Apps row
+    /// (`ChatSections.Layout.pinnedApps`); none are until they do.
+    func isPinned(_ app: WorkspaceApp) -> Bool {
+        sidebarLayout.pinnedApps.contains(app.id)
+    }
+
+    /// Puts `app` under the sidebar's Apps row, or takes it off, kept with
+    /// the account's sidebar layout.
+    func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
+        var pins = sidebarLayout.pinnedApps.filter { $0 != app.id }
+        if pinned { pins.append(app.id) }
+        if pins != sidebarLayout.pinnedApps { sidebarLayout.pinnedApps = pins }
     }
 }

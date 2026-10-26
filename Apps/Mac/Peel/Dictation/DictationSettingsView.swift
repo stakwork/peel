@@ -3,7 +3,7 @@ import SwiftUI
 import PeelAgent
 import PeelUI
 
-/// Account › Dictation: on or off, the key (Right Option for now), and what macOS has been asked for.
+/// Account › Dictation: on or off, the key, and what macOS has been asked for.
 struct DictationSettingsSection: View {
     @Environment(\.openWindow) private var openWindow
     private var dictation: DictationController { .shared }
@@ -14,6 +14,11 @@ struct DictationSettingsSection: View {
             DictationModelsSection(models: dictation.models)
         }
         .onAppear { dictation.refresh() }
+        .onDisappear { dictation.stopChoosingKey() }
+        // Gone to another app: a key pressed there is not a choice.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            dictation.stopChoosingKey()
+        }
     }
 
     private var section: some View {
@@ -29,9 +34,17 @@ struct DictationSettingsSection: View {
             }
             Fact("Key") {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(dictation.hotkey.label)
-                    Text("Hold to dictate, let go to finish. Press Space while holding to keep going hands-free.").muted()
+                    Text(dictation.choosingKey ? "Press the key you want, or Esc" : dictation.hotkey.label)
+                    ForEach(keyNotes, id: \.self) { Text($0).muted() }
                 }
+                .fixedSize(horizontal: false, vertical: true)
+            } trailing: {
+                Button(dictation.choosingKey ? "Cancel" : "Change") {
+                    dictation.choosingKey ? dictation.stopChoosingKey() : dictation.chooseKey()
+                }
+                .buttonStyle(.peel(.outline))
+                // Secure input hides every key from the tap.
+                .disabled(!dictation.isListening || dictation.secureInput)
             }
             Fact("Vocabulary") {
                 VStack(alignment: .leading, spacing: 2) {
@@ -57,6 +70,18 @@ struct DictationSettingsSection: View {
             }
             DictationPermissionRows(permissions: dictation.permissions)
         }
+    }
+
+    /// Under the key: while choosing, which keys can be it (and why the last
+    /// one pressed can't); else how to use it, what else it does on the Mac,
+    /// and why it can't be changed now.
+    private var keyNotes: [String] {
+        let notes: [String?] = dictation.choosingKey
+            ? [dictation.keyProblem, "A modifier on its own, such as Right Option, Right ⌘ or Fn, or a function key.",
+               dictation.canSwallow ? nil : "Without Accessibility, the keys you press also reach the app you're in."]
+            : ["Hold to dictate, let go to finish. Press Space while holding to keep going hands-free.",
+               dictation.keyConflict, dictation.isListening ? nil : "Turn Dictation on to change the key."]
+        return notes.compactMap { $0 }
     }
 
     private var vocabularyText: String {

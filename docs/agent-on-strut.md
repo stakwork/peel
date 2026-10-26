@@ -1575,7 +1575,8 @@ proposals), P3's Connections screen, and runner #389 (proposal cards) and
 ### Built: a workspace's apps (2026-10-23)
 
 An app a Stadeum workspace pinned as a tab opens in Peel, alone in the
-detail column, from a new Apps section at the foot of the sidebar. The
+detail column, from a new Apps section at the foot of the sidebar
+(since replaced by the Apps row and its browser, `docs/apps-browser.md`). The
 app lives on the workspace's strut (its grants, runs and data); Peel's
 own strut is the window onto it (strut's plans/apps.md §7.4, strut#307
 and #308).
@@ -1623,7 +1624,7 @@ and #308).
   agent's DM) and in-place `ui/open-link`, which strut leaves unwired when
   the page shows alone; a workspace's apps that are not pinned; the
   iPhone (no strut of its own).
-- **Checked.** `HiveTests.aWorkspacesPinnedAppsOpenAloneOnPeelsOwnStrut`
+- **Checked.** `HiveTests.aWorkspacesPinnedAppsAreListedAndOpenAloneOnPeelsOwnStrut`
   (the read-through's path and key, pinned only, names strut gives, the
   page's `key`, `app` and `solo` read back exactly, none on a home
   server). By hand, two struts from the stage at the new pin, one standing

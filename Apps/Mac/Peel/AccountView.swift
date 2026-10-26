@@ -145,7 +145,7 @@ extension AccountPage {
         case .payments: ["balance", "sats", "confirm payments", "boost amount"]
         case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
                           "revoke", "old assistant chats"]
-        case .brain: ["memory", "home server", "this Mac", "status"]
+        case .brain: ["Peel Home", "home server", "this Mac", "move"]
         case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
         case .notifications: ["message text", "alerts"]

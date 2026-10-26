@@ -21,11 +21,6 @@ public enum Web {
         }
     }
 
-    /// The HTTP status a server refused a request with, if that is why it failed.
-    public static func refusedStatus(of error: any Error) -> Int? {
-        if case Failure.refused(_, let status)? = error as? Failure { status } else { nil }
-    }
-
     /// Where a redirect may go: the request to follow, or nil to stop.
     typealias RedirectPolicy = @Sendable (_ request: URLRequest, _ original: URLRequest?) -> URLRequest?
 
@@ -63,20 +58,19 @@ public enum Web {
     }
 
     private static let session = session(requestTimeout: 30, resourceTimeout: 60, redirect: publicOnly)
-    /// For strut (`isStrut`): no redirect is followed, anywhere. A home
-    /// server over https goes through the system's proxy; plain http (this
-    /// Mac, a Tailscale address) never does, so its key is never handed to a
-    /// proxy in the clear.
+    /// For strut (`isStrut`): no redirect is followed, anywhere. A strut over
+    /// https (a Stadeum workspace's) goes through the system's proxy; plain
+    /// http to this Mac never does, so its key is never handed to a proxy in
+    /// the clear.
     private static let directSession = session(requestTimeout: 30, resourceTimeout: 60, direct: true) { _, _ in nil }
     private static let proxiedSession = session(requestTimeout: 30, resourceTimeout: 60) { _, _ in nil }
-    /// The same for a memory snapshot moved whole (`MemoryMove`): up to
-    /// 100 MB each way, and a strut that takes its time loading one.
+    /// The same for a call to Peel's own strut that takes its time
+    /// (dictation's model download and transcription, `StrutSpeech`).
     private static let slowDirectSession = session(requestTimeout: 300, resourceTimeout: 1800, direct: true) { _, _ in nil }
-    private static let slowProxiedSession = session(requestTimeout: 300, resourceTimeout: 1800) { _, _ in nil }
 
     private static func strutSession(for url: URL, slow: Bool = false) -> URLSession {
-        let https = url.scheme == "https"
-        return slow ? (https ? slowProxiedSession : slowDirectSession) : (https ? proxiedSession : directSession)
+        if url.scheme == "https" { return proxiedSession }
+        return slow ? slowDirectSession : directSession
     }
 
     /// Bytes moved so far and in all, reported at most every 5% or 250 ms
@@ -195,19 +189,18 @@ public enum Web {
         return try await Transfer(limit: limit, what: what, progress: nil).run(session.dataTask(with: url)).0
     }
 
-    /// `POST url` with a JSON body to strut (`isStrut`: Peel's own on this
-    /// Mac, or a home server): its reply if the answer is 200 and at most
-    /// `limit` bytes. Anywhere else is refused before anything is sent, and
-    /// a redirect is never followed (nor a proxy used for plain http).
+    /// `POST url` with a JSON body to strut (`isStrut`; its one caller is
+    /// Peel's own on this Mac, `MemoryServer`): its reply if the answer is
+    /// 200 and at most `limit` bytes. Anywhere else is refused before anything is sent,
+    /// and a redirect is never followed (nor a proxy used for plain http).
     /// `bearer` is the server's key: anything on this Mac can reach a
-    /// loopback port, so the key is what makes it Peel's. `slow`: a memory
-    /// snapshot, given minutes rather than seconds.
+    /// loopback port, so the key is what makes it Peel's.
     public static func postToStrut(
-        _ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String, slow: Bool = false
+        _ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String
     ) async throws -> Data {
         let request = try strutRequest("POST", url, json: body, bearer: bearer)
         return try await Transfer(limit: limit, what: what, progress: nil)
-            .run(strutSession(for: url, slow: slow).dataTask(with: request)).0
+            .run(strutSession(for: url).dataTask(with: request)).0
     }
 
     /// One request to strut, as `postToStrut` makes it, with its status: any
@@ -242,32 +235,15 @@ public enum Web {
         return request
     }
 
-    /// Where a strut may be (`docs/peel-brain.md`): plain http to this Mac
-    /// (Peel's own), https anywhere, or plain http to a Tailscale address
-    /// (`100.64.0.0/10` or a `*.ts.net` name), whose tunnel is already
-    /// encrypted. Never with a user or password in it.
+    /// Where a strut may be: plain http to this Mac (Peel's own), or https
+    /// anywhere (a Stadeum workspace's). Never with a user or password in it.
     public static func isStrut(_ url: URL?) -> Bool {
         guard let url, url.user == nil, url.password == nil, let host = url.host?.lowercased(), !host.isEmpty else { return false }
         switch url.scheme {
         case "https": return true
-        case "http": return isThisMac(url) || isTailscale(host)
+        case "http": return isThisMac(url)
         default: return false
         }
-    }
-
-    /// A Tailscale address: in its CGNAT range `100.64.0.0/10`, written as
-    /// four decimal parts (`inet_pton`, which takes no other form), or a
-    /// MagicDNS name under `ts.net`.
-    static func isTailscale(_ host: String) -> Bool {
-        var name = host
-        while name.hasSuffix(".") { name.removeLast() }
-        if name.hasSuffix(".ts.net"), name.count > ".ts.net".count {
-            return TribeLink.isPlainHost(name)
-        }
-        var address = in_addr()
-        guard inet_pton(AF_INET, name, &address) == 1 else { return false }
-        let bytes = withUnsafeBytes(of: address.s_addr) { Array($0) }
-        return bytes[0] == 100 && (64...127).contains(bytes[1])
     }
 
     /// A public https host, or this machine over http (the local test stack).

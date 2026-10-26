@@ -19,9 +19,9 @@ struct StadeumSection: View {
                 switch hive.status {
                 case .off:
                     Fact("Stadeum") {
-                        Text(model.brain == .thisMac
-                             ? "Let your assistant ask your team's workspaces and run their workflows."
-                             : "For the assistant on this Mac only: your home server's assistant is paired from there.")
+                        Text(model.brain?.moved != nil
+                             ? "Peel Home is on your home server. Move it back to this Mac to connect Stadeum."
+                             : "Let your assistant ask your team's workspaces and run their workflows.")
                             .muted()
                             .fixedSize(horizontal: false, vertical: true)
                     } trailing: {

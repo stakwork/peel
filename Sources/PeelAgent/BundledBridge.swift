@@ -278,7 +278,6 @@ public final class BundledBridge: CustomReflectable {
     }
 
     private func launch(_ account: AgentAccount, strut: MemoryServer, invite: String?, alias: String) async throws -> Server {
-        guard !strut.isHomeServer else { throw PeelError("Peel's bridge runs only beside Peel's own strut.") }
         try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: data.path)

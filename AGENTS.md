@@ -269,7 +269,7 @@ is a short plan. Update the status and the journal when you finish something.
     profile's `agentCredential` (the agent's provider, model and API key),
     `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
     or `strut-key` on a development profile; gone with the profile),
-    `brain` (the home server's address and key, `Brain`: Keychain
+    `brain` (where Peel Home is, `Brain`: Keychain
     `dev.peel.brain`, or `brain` on a development profile) and
     `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
@@ -279,10 +279,9 @@ is a short plan. Update the status and the journal when you finish something.
     neutral `Failure`, `get`, the public-https host check (`isPublic`) and
     "public https, or http to this machine" (`isAllowed`, `isThisMac`);
     `postToStrut` and `requestStrut`, a request with an optional bearer
-    key to a strut only (`isStrut`: http to this Mac or a Tailscale
-    address, https anywhere), following no redirect, through the system's
-    proxy only over https (the agent's memory, Peel's strut or a home
-    server)
+    key to a strut only (`isStrut`: http to this Mac, https anywhere),
+    following no redirect, through the system's proxy only over https
+    (Peel's own strut, or a Stadeum workspace's)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`), what an address typed into it opens
     (`WebPage.typed`: http or https, or a search), which attachments it
@@ -366,10 +365,9 @@ is a short plan. Update the status and the journal when you finish something.
   own (`BundledStrut`), started with the agent and started again by Set
   up or Try again if it stopped; a development profile's only with `-strut YES`,
   its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
-  experiment, `docs/agent-brain.md`; or, with a home server (`Brain`,
-  `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
-  which `AppDelegate` hands it), that server's, Peel's own never started
-  and no model key for it),
+  experiment, `docs/agent-brain.md`; none while Peel Home has moved to a
+  home server (`Brain.moved`, `AppModel+Home`), whose `peel://home-setup`
+  links `openPeelLink` takes from `AppDelegate`),
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
   restart Peel's strut with the new grants; below them
@@ -456,8 +454,7 @@ is a short plan. Update the status and the journal when you finish something.
   and model, kept and handed to strut) and `AgentSettings` (Account › Assistant, with
   the "Always allowed" rules and Revoke, and the send grants ("May post
   as you") and Revoke; Account › Brain, `BrainSection`:
-  This Mac or a home server's address and key, its status, and a pairing
-  link's server waiting for a yes);
+  where Peel Home is, its move out and back, and a link waiting for a yes);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
@@ -821,13 +818,13 @@ is a short plan. Update the status and the journal when you finish something.
     `peel-automation` step's token and port with any hand-over);
     `AppModel.modelChanged` calls it, one at a time, whenever strut starts
     or the model changes (a Keychain that cannot be read leaves the store alone)
-  - `Brain.swift` — where the agent's memory lives (`docs/peel-brain.md`):
-    this Mac or the account's home server, kept in `Profile.brain` (one
-    that cannot be read is never taken for this Mac), and the pairing link
-    `brain/setup.sh` prints (`peel://brain?url=…&key=…`)
+  - `Brain.swift` — where Peel Home is: this Mac, or moved to a home
+    server (`MovedHome`), kept in `Profile.brain` (one that cannot be read
+    is never taken for this Mac; a home server kept the old way, by address
+    and key, is read as this Mac and said once)
   - `PeelHome.swift` — Peel Home moving to a home server and back
     (`docs/always-on.md`, A4): `HomeLink` (`peel://home-setup?host=…&code=…`,
-    the code never printed), `HomeMover`, the one seam to strut's `move`
+    read through `peelLink`, the code never printed), `HomeMover`, the one seam to strut's `move`
     (`StrutMove`: `node desktop.js move check|send|fetch` on the bundled
     strut, its env values in a 0600 file deleted after, the bridge's token by
     env), and `PeelHomeMove`, the state machine: `Brain.moved` kept before
@@ -836,23 +833,9 @@ is a short plan. Update the status and the journal when you finish something.
     once the agent answers from the box, back by `fetch`, and "Use this
     Mac's copy". `AppModel+Home` is the app's side (`PeelHomeLocal`, the
     ping in the agent's DM); Account › Brain shows it. Tested in `PeelHomeTests`
-  - `MemoryBackup.swift` — this Mac's graph files renamed aside into
-    `memory/backups/graph-<time>.lbug…` before the home server's memory is
-    brought back in their place, put back on failure, the newest three kept
-  - `MemoryMove.swift` — moving the memory between Peel's own strut and a
-    home server ("Move, not sync"): `memory/export` on one (this Mac's by
-    a file in its own folder, read only from there and deleted after; a
-    home server's `inline`), `memory/import` as `data` on the other, which
-    takes only an empty graph (or, to a home server, `replace`s its graph,
-    which strut there backs up first: "Reconnecting" in
-    `docs/peel-brain.md`), the rows counted on both; strut's refusal codes
-    (`not_empty:`, `backup_failed:`, …) in plain words. `AppModel.setBrain` runs it with every switch, no
-    option, holding the memory from the agent until it ends
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
-    from a home server (`Brain`, `isHomeServer`; `health` reads its
-    `/health`: connected, offline, key not accepted) or from Peel's own
-    strut's ready line (`BundledStrut`;
+    from Peel's own strut's ready line, on this Mac only (`BundledStrut`;
     looked at again by `AppModel.lookForMemory` whenever strut starts or
     stops; the key never printed, dumped or reflected); one memory
     step run by
@@ -921,20 +904,15 @@ is a short plan. Update the status and the journal when you finish something.
   words), threads and replies, hidden characters), `DeviceActionsTests`
   (sends and approvals by device request: the card, once, deny, expiry,
   "Always allow", the price cap, send grants),
-  `BrainTests` (the pairing link, what is kept, `/health` read),
+  `BrainTests` (what is kept, an old home server read as this Mac),
   `PeelHomeTests` (every point a move out or back can fail leaves at most
   one bridge able to run, and this Mac's runs only when nothing reached the
   box; the link; `StrutMove` on a stand-in Node: arguments, the env file,
   refusals),
-  `MemoryMoveTests` (both moves against stub struts: what goes where,
-  refusals in words, counts that differ, a home server gone mid-way, the
-  export file deleted and never read outside strut's folder; bringing
-  memory back in place of this Mac's: the graph kept as a backup, put back
-  on any failure, a linked graph left alone, the newest three kept),
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end) and
-  `MemoryServerTests` (where a strut may be, the POST included; a home
-  server offline or refusing the key; the key never
+  `MemoryServerTests` (only Peel's own strut on this Mac, the POST
+  included; the key never
   printed; strut's replies and refusals; the earlier chat's memory rows
   and the panel's nodes)
 - `Tests/PeelDiagnosticsTests/` — offline, pure logic, also on Linux: `RingTests`
@@ -1114,7 +1092,7 @@ quitting before any window opens.
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
   {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
-  {"link": "peel://brain?url=…&key=…"}    // a link macOS hands Peel, through its app delegate
+  {"link": "peel://home-setup?host=…&code=…"}  // a link macOS hands Peel, through its app delegate
   {"type": "green"}
   {"wait": 0.5}
   {"snapshot": "search"}                  // search.png; open menus and panels as search-1.png, …

@@ -65,13 +65,6 @@ extension AppModel {
         memoryServer.map { AutomationsClient(server: $0) }
     }
 
-    /// The same, only for Peel's own strut: the one place a home server is
-    /// left out of what Peel hands strut (the connected model's key), which
-    /// it keeps its own of.
-    private var ownStrutClient: AutomationsClient? {
-        automationsClient.flatMap { $0.server.isHomeServer ? nil : $0 }
-    }
-
     /// The connected model, read from the Keychain; nil without one. Throws
     /// when it cannot be read or no account is open: not known to be gone.
     private func connectedCredential() throws -> AgentCredential? {
@@ -96,11 +89,8 @@ extension AppModel {
 
     /// Gives strut the connected model, or takes it out with none; then,
     /// with one, reads the list, which turns the system automations on.
-    /// Only Peel's own: a home server keeps its own model and key
-    /// (`docs/peel-brain.md`, "Keys live on the brain"), which a disconnect
-    /// here must not take out.
     private func handModelToStrut() async {
-        guard let client = ownStrutClient else { return handedOver(nil) }
+        guard let client = automationsClient else { return handedOver(nil) }
         let credential: AgentCredential?
         do {
             credential = try connectedCredential()
@@ -143,9 +133,8 @@ extension AppModel {
             automations = AutomationsState(loaded: true)
             return
         }
-        let own = ownStrutClient != nil
         // Not handed to this strut yet, or it failed: tried again.
-        if own, strutModel?.server != client.server { modelChanged() }
+        if strutModel?.server != client.server { modelChanged() }
         do {
             var descriptions = automations.descriptions
             var list = try await client.list(descriptions: &descriptions)
@@ -155,7 +144,7 @@ extension AppModel {
             if automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
             // Peel's own strut is where the Mac's send grants point: those of automations it no longer has go.
-            if own, let missed = try? macAgent.deviceCards.revokeGrants(
+            if let missed = try? macAgent.deviceCards.revokeGrants(
                 missingFrom: Set(list.filter(\.isYours).map(\.id)), missedBefore: automations.grantsMissed) {
                 if automations.grantsMissed != missed { automations.grantsMissed = missed }
             }

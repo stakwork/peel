@@ -1,5 +1,7 @@
 # Peel Brain: remote strut and the home server
 
+**Superseded by [always-on.md](always-on.md)** (Peel Home moves whole to a home server; the home server by address and key, and `brain/`, are gone). Kept as history.
+
 Last updated 2026-10-15 (the workspace on Ladybug). **A proposal for Tom's review; build order step 1
 is built.**
 It follows [agent-brain.md](agent-brain.md) (strut owns the graph; phase 6

@@ -35,7 +35,7 @@ extension AppModel {
     var connections: ConnectionsState { macAgent.connections }
 
     /// Whether the toggles apply: Peel's own strut, whose host delta Peel
-    /// writes. A home server's own settings decide for it.
+    /// writes. With Peel Home moved, the grants it took along decide there.
     var grantsConnections: Bool { brain == .thisMac && strut != nil }
 
     /// The servers strut has, read when the screen opens and after each change.

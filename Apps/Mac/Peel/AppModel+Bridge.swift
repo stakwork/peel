@@ -92,7 +92,7 @@ extension AppModel {
             return AgentSetUp(line: "Your assistant runs in Peel Home on your home server. Message it in Direct messages.")
         }
         guard brain == .thisMac else {
-            return AgentSetUp(line: "Your assistant runs with Peel's memory on this Mac. Choose This Mac under Brain to use it.")
+            return AgentSetUp(line: "Peel couldn't read where Peel Home is. Choose This Mac under Brain to use it.")
         }
         guard hasOwnStrut else {
             return AgentSetUp(line: profile?.kind == .development
@@ -197,7 +197,7 @@ extension AppModel {
         lookForAgentContact()
         let bridge = agentBridge
         guard bridgeRunsHere, let profile, let engine,
-              let server = strut?.server, !server.isHomeServer else {
+              let server = strut?.server else {
             // Peel's strut stopped under it: said, with Try again, since nothing else starts it again now.
             if bridgeRunsHere, bridge.status != .off {
                 bridge.fail("Peel's memory on this Mac stopped.")

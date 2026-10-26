@@ -1,84 +1,50 @@
 import Foundation
 import PeelCore
 
-/// Where the agent's memory and automations live (`docs/peel-brain.md`):
-/// Peel's own strut on this Mac, or the account's home server. An account
-/// has exactly one, and a home server is never stood in for by this Mac's.
-/// Peel Home moved to a home server (`PeelHomeMove`) is the third: this
-/// Mac's strut and bridge are never started while it is kept.
+/// Where the agent lives: Peel Home, its strut and bridge, on this Mac, or
+/// moved to a home server (`PeelHomeMove`), where this Mac's strut and
+/// bridge are never started while it is kept.
 public enum Brain: Sendable, Equatable {
     case thisMac
-    case homeServer(MemoryServer)
     case moved(MovedHome)
 
-    /// The home server's address and key, nil on this Mac.
-    public var homeServer: MemoryServer? {
-        if case .homeServer(let server) = self { server } else { nil }
-    }
-
-    /// Where Peel Home went, nil while it is on this Mac or with the old home server mode.
+    /// Where Peel Home went, nil while it is on this Mac.
     public var moved: MovedHome? {
         if case .moved(let home) = self { home } else { nil }
     }
 
     /// The account's choice, kept in `item` (`Profile.brain`): nothing kept
-    /// is this Mac. Throws when it cannot be read, so a Keychain that fails
-    /// is never taken for "this Mac".
-    public static func kept(in item: any SecretItem) throws -> Brain {
-        guard let data = try item.read() else { return .thisMac }
-        let kept = try? JSONDecoder().decode(Kept.self, from: data)
-        // Moved, and nothing else: a record mixing both is not one Peel wrote.
-        if let moved = kept?.moved, kept?.url == nil, kept?.key == nil { return .moved(moved) }
-        guard let kept, kept.moved == nil, let url = kept.url.flatMap(URL.init(string:)), let key = kept.key,
-              let server = MemoryServer(base: url, key: key, home: true) else {
-            throw PeelError("The home server Peel kept is not one it can use. Set it again in Account › Brain.")
+    /// is this Mac, and so is a home server kept the old way, by address and
+    /// key (before Peel Home moved whole), which Peel no longer uses:
+    /// `oldHomeServer` says so, for the app to clear and say once. Throws
+    /// when it cannot be read, so a Keychain that fails is never taken for "this Mac".
+    public static func read(_ item: any SecretItem) throws -> (brain: Brain, oldHomeServer: Bool) {
+        guard let data = try item.read() else { return (.thisMac, false) }
+        guard let kept = try? JSONDecoder().decode(Kept.self, from: data) else {
+            throw PeelError("Peel couldn't read where Peel Home is. Choose This Mac in Account › Brain.")
         }
-        return .homeServer(server)
+        // Moved, and nothing else: a record mixing both is not one Peel wrote.
+        switch (kept.moved, kept.url) {
+        case (let moved?, nil): return (.moved(moved), false)
+        case (nil, _?): return (.thisMac, true)
+        default: throw PeelError("Peel couldn't read where Peel Home is. Choose This Mac in Account › Brain.")
+        }
     }
 
-    /// Keeps it in `item`: a home server's address and key, where Peel Home
-    /// moved, or nothing for this Mac.
+    /// Keeps it in `item`: where Peel Home moved, or nothing for this Mac.
     public func keep(in item: any SecretItem) throws {
         switch self {
         case .thisMac: try item.delete()
-        case .homeServer(let server):
-            try item.write(JSONEncoder().encode(Kept(url: server.base.absoluteString, key: server.key)))
         case .moved(let home):
             try item.write(JSONEncoder().encode(Kept(moved: home)))
         }
     }
 
     private struct Kept: Codable {
+        /// The old home server's address (its key beside it is never read).
         var url: String?
-        var key: String?
         var moved: MovedHome?
     }
-
-    /// The home server a pairing link names, as `brain/setup.sh` prints it:
-    /// `peel://brain?url=<address, percent-encoded>&key=<STRUT_API_KEY>`.
-    /// Nil for any other link, a name given twice, anything else in it, or
-    /// an address or key `MemoryServer` refuses.
-    public static func pairing(_ link: URL) -> MemoryServer? {
-        guard let values = peelLink(link, host: "brain", names: ["url", "key"]),
-              let url = values["url"].flatMap(URL.init(string:)), let key = values["key"] else { return nil }
-        return MemoryServer(base: url, key: key, home: true)
-    }
-}
-
-/// The values of a `peel://<host>?…` link that names exactly `names`, each
-/// once, and nothing else: no path, user or fragment. Nil for any other
-/// link. Any page can open one, so each kind is read only through here.
-func peelLink(_ link: URL, host: String, names: Set<String>) -> [String: String]? {
-    guard link.scheme?.lowercased() == "peel", link.host?.lowercased() == host,
-          link.path.isEmpty || link.path == "/", link.user == nil, link.fragment == nil,
-          let items = URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems,
-          items.count == names.count, Set(items.map(\.name)) == names else { return nil }
-    var values: [String: String] = [:]
-    for item in items {
-        guard let value = item.value else { return nil }
-        values[item.name] = value
-    }
-    return values
 }
 
 /// Peel Home on a home server (`PeelHomeMove`): where it went and when,

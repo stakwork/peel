@@ -38,7 +38,6 @@ extension AppModel {
     var homeMoveBlocker: String? {
         if homeMove?.isRunning == true { return "Peel Home is moving." }
         if let link = homeLink, let home = brain?.moved, let refusal = PeelHomeMove.refusal(link, from: home) { return refusal }
-        if memoryMove?.isRunning == true { return "Wait for the memory move to finish." }
         switch brain {
         case .moved?: return nil
         case .thisMac?:
@@ -49,8 +48,8 @@ extension AppModel {
             }
             guard agentBridge.status == .running else { return "Set up your assistant first: Peel Home moves with it." }
             return nil
-        case .homeServer?, nil:
-            return "Peel Home moves from this Mac. Choose This Mac above first."
+        case nil:
+            return "Peel couldn't read where Peel Home is. Choose This Mac above first."
         }
     }
 

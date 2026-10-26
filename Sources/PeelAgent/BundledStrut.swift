@@ -87,13 +87,6 @@ public final class BundledStrut {
         }
     }
 
-    /// Where strut keeps the memory graph for `data`: `graph.lbug` in its
-    /// workspace's `memory` folder (`STRUT_WORKSPACE`, strut's data folder;
-    /// Peel never sets `STRUT_MEMORY_DB`).
-    public nonisolated static func memoryFolder(data: URL) -> URL {
-        data.appending(path: "workspace/memory")
-    }
-
     /// The strut `scripts/stage-strut.sh` staged once for this Mac, which
     /// every checkout's `bundle-app.sh` copies into `Contents/Strut`.
     public nonisolated static let staged = ProcessInfo.processInfo.environment["PEEL_STRUT_STAGE"].map { URL(filePath: $0) }
@@ -131,7 +124,7 @@ public final class BundledStrut {
         self.process = nil
         try? stdin?.fileHandleForWriting.close()
         stdin = nil
-        // Gone before it returns, so nothing writes its graph once its files are moved (`MemoryBackup`).
+        // Gone before it returns, so nothing writes its graph once its folder is moved (`PeelHomeMove`).
         endProcess(process.processIdentifier, isRunning: { process.isRunning })
         if server != nil {
             server = nil

@@ -234,6 +234,27 @@ struct HiveTests {
         #expect(home.page(of: apps[0]) == nil)
     }
 
+    /// The person's own apps come from Peel's strut itself, every one of
+    /// them, pinned or not, but not the ones strut seeds for other apps to
+    /// import; one opens by its name alone, with no workspace.
+    @Test func yourOwnAppsAreAllListedAndOpenByName() async throws {
+        let strut = try await HTTPStub { _, request in
+            guard path(request) == "/apps", request.contains("Authorization: Bearer k") else { return (404, "{}") }
+            return (200, #"""
+                {"apps":[{"name":"meal-planner","title":"Meal planner","publisher":"ai"},{"name":"tools/board","title":"Board","pinned":true},
+                         {"name":"strut/views","title":"strut views","publisher":"strut","pinned":true}]}
+                """#)
+        }
+        defer { strut.stop() }
+        let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k"))
+        let apps = try await AutomationsClient(server: server).ownApps()
+        #expect(apps == [WorkspaceApp(peer: nil, name: "meal-planner", title: "Meal planner", about: nil),
+                         WorkspaceApp(peer: nil, name: "tools/board", title: "Board", about: nil)])
+        let page = try #require(server.page(of: apps[1]))
+        #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+                == "key=k&app=tools%2Fboard&solo=1")
+    }
+
     /// A deliverable from the agent's DM opens as an app does, strut's UI
     /// showing it alone: a file's path as `artifact`, an escape in it kept
     /// an escape once strut's UI decodes it, an app's as `app`; a home

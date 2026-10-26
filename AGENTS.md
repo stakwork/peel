@@ -349,12 +349,13 @@ is a short plan. Update the status and the journal when you finish something.
   Hive's API (the user-facing name is Stadeum), the credential in
   `Profile.hive`, the orgs put on strut as peers when the bridge starts
   and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
-  development profile's defaults for a test Hive; and `apps`, the apps the
-  workspaces pinned, `refreshWorkspaceApps`; the person's pins under the
+  development profile's defaults for a test Hive; and `apps`, the
+  person's own apps on Peel's strut and those the workspaces pinned,
+  `refreshApps`, `appSources`; the person's pins under the
   sidebar's Apps row, `isPinned`, `setPinned`: none until the person
   pins one, `ChatSections.Layout.pinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
   as a card, A–Z, its icon, version and status (`AppStatus`), with a
-  search and the workspace to show;
+  search and the source to show, Yours or a workspace;
   `docs/apps-browser.md`), `WorkspaceAppView` (one of
   those apps alone in the detail column, opened from Apps or its pinned
   row: Peel's own strut's UI showing its page, in a `WKWebView` whose store
@@ -688,9 +689,11 @@ is a short plan. Update the status and the journal when you finish something.
     peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
     for, read from strut's record (`peerRequest`)
   - `WorkspaceApps.swift` — the apps a workspace pinned as tabs, read
-    through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), and
+    through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), the
+    person's own on it (`ownApps`, `GET /apps`, less what strut seeds), and
     the address of one shown alone (`MemoryServer.page(of:)`: strut's UI
-    with its key as `?key=`, `&app=@<id>/<name>&solo=1`; Peel's own strut
+    with its key as `?key=`, `&app=@<id>/<name>&solo=1`, or `&app=<name>` for
+    one of the person's own; Peel's own strut
     only), and of a deliverable from the agent's DM the same way
     (`page(showing:)`: `&artifact=<path>&solo=1` for a file, `&app=` for an app)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,

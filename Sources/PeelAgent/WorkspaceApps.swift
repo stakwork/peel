@@ -9,13 +9,16 @@ import PeelCore
 // app's page alone (`/?app=@<id>/<name>&solo=1`), framing the page and
 // relaying its calls to the workspace with the person's token. The token
 // never leaves strut's peers file, and the page never talks to the workspace
-// itself.
+// itself. Apps on Peel's own strut, the person's (the agent's builder
+// publishes them there), are listed and shown the same way, without a peer
+// (`GET /apps`, `?app=<name>`).
 
-/// An app a Stadeum workspace pinned as a tab.
+/// An app a Stadeum workspace pinned as a tab, or one on Peel's own strut.
 public struct WorkspaceApp: Sendable, Hashable, Identifiable {
-    /// The workspace: its peer id on Peel's strut, which the person reads as `@<peer>`.
-    public let peer: String
-    /// The app's name on the workspace's strut; a package prefix keeps its `/`.
+    /// The workspace: its peer id on Peel's strut, which the person reads as
+    /// `@<peer>`; nil for an app of the person's own, on Peel's strut.
+    public let peer: String?
+    /// The app's name on the strut it lives on; a package prefix keeps its `/`.
     public let name: String
     /// What the person reads: its title, or its name.
     public let title: String
@@ -23,7 +26,7 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     public let about: String?
     /// Its manifest's icon: a lucide name (`flask-conical`), or nil.
     public internal(set) var icon: String? = nil
-    /// The version the workspace serves (`v14`).
+    /// The version its strut serves (`v14`).
     public internal(set) var version: String? = nil
     /// The release held live (`r3`) while the workspace holds one rather
     /// than following its latest version.
@@ -33,15 +36,19 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     /// a strut that does not count them.
     public internal(set) var problems = 0
 
-    /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`.
-    public var id: String { "@\(peer)/\(name)" }
+    /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`, or
+    /// the name alone for one of the person's own.
+    public var id: String { peer.map { "@\($0)/\(name)" } ?? name }
 }
 
 extension WorkspaceApp {
-    /// One entry of strut's `GET /apps`; nil for one not pinned, or with a
-    /// name strut would not have given it.
-    public init?(peer: String, json: AgentKit.JSONValue) {
-        guard json["pinned"] == .bool(true), let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name) else { return nil }
+    /// One entry of strut's `GET /apps`; nil for a workspace's not pinned as
+    /// a tab, for one strut seeds on Peel's own (`publisher: strut`: its
+    /// `strut/views`, components other apps import, not the person's), or
+    /// with a name strut would not have given it.
+    public init?(peer: String?, json: AgentKit.JSONValue) {
+        let listed = peer == nil ? json["publisher"]?.string != "strut" : json["pinned"] == .bool(true)
+        guard listed, let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name) else { return nil }
         self.peer = peer
         self.name = name
         let title = ChatData.clean(json["title"]?.string ?? "", max: ChatData.maxName)
@@ -68,6 +75,13 @@ extension AutomationsClient {
         let id = try Self.peerID(peer)
         let apps = try await call("GET", "peers/\(id)/apps", what: "the workspace's apps")["apps"]?.array ?? []
         return apps.compactMap { WorkspaceApp(peer: id, json: $0) }
+    }
+
+    /// The person's own apps, every one on this strut, in the order it
+    /// lists them.
+    public func ownApps() async throws -> [WorkspaceApp] {
+        let apps = try await call("GET", "apps", what: "your apps")["apps"]?.array ?? []
+        return apps.compactMap { WorkspaceApp(peer: nil, json: $0) }
     }
 }
 

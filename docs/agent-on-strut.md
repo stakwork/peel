@@ -1589,7 +1589,8 @@ and #308).
 - **The list.** `AutomationsClient.pinnedApps(of:)` reads `GET
   /peers/<id>/apps` on Peel's own strut for each live workspace and keeps
   those marked `pinned` (what strut says a host showing tabs takes), under
-  names strut gives. `refreshWorkspaceApps` runs after each `syncHive`
+  names strut gives (and, since 2026-10-26, the person's own on Peel's
+  strut, `docs/apps-browser.md`). `refreshApps` runs after each `syncHive`
   (the bridge starting, a pairing, a renewal or revoke; never waited for,
   so a slow workspace cannot hold up the bridge) and every five minutes
   while the sidebar shows, reading the workspaces at once, a newer read

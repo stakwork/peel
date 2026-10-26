@@ -278,9 +278,11 @@ final class OffscreenDriver {
         }
     }
 
-    /// `apps-seed`'s apps, as strut's `GET /apps` lists them: two
-    /// workspaces, so Apps shows its workspace choice.
-    private static let sampleApps: [(peer: String, entry: [String: AgentKit.JSONValue])] = [
+    /// `apps-seed`'s apps, as strut's `GET /apps` lists them: one of the
+    /// person's own and two workspaces', so Apps shows its choice.
+    private static let sampleApps: [(peer: String?, entry: [String: AgentKit.JSONValue])] = [
+        (nil, ["name": "meal-planner", "title": "Meal planner", "icon": "utensils", "activeVersion": "v3",
+               "description": "This week's dinners and the shopping list they need."]),
         ("stakwork", ["name": "benchmarks", "title": "Benchmark board", "icon": "flask-conical", "activeVersion": "v14",
                       "live": "r3", "description": "Scores for every agent run against the eval suites, by attempt."]),
         ("stakwork", ["name": "openhealth", "title": "OpenHealth", "icon": "heart", "activeVersion": "v9",
@@ -302,7 +304,7 @@ final class OffscreenDriver {
             return
         }
         if let model = model(), let app = model.hive.apps.first(where: { $0.id == name }) {
-            // A workspace's app in Apps, by `@<workspace>/<name>`.
+            // An app in Apps: a workspace's by `@<workspace>/<name>`, one of yours by its name.
             model.destination = .app(peer: app.peer, name: app.name)
             Offscreen.log("drive: selected the app \(app.id)")
             return

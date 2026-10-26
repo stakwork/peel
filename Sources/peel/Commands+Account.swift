@@ -30,7 +30,7 @@ extension Invocation {
         case "restore":
             print("twelve words:")
             let engine = try await Account.restore(
-                profile, mnemonic: readLine() ?? "", alias: alias, pin: "", network: network, server: server,
+                profile, mnemonic: readLine() ?? "", pin: "", network: network, server: server,
                 tribeHost: tribeHost, memesHost: memesHost
             )
             let session = try await Session(withPhoto(engine)).connect(insecure: insecure)

@@ -206,12 +206,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     public var senderAlias: String? { senderInfo?.alias?.nilIfEmpty }
 
     /// The sender's photo, https only.
-    public var senderPhotoURL: String? { senderInfo?.photoURL?.httpsOnly }
+    public var senderPhotoURL: String? { senderInfo?.photoURL }
 
     /// Both, decoding the sender once, for code that needs the two together.
     public var senderDetails: (alias: String?, photoURL: String?) {
         let info = senderInfo
-        return (info?.alias?.nilIfEmpty, info?.photoURL?.httpsOnly)
+        return (info?.alias?.nilIfEmpty, info?.photoURL)
     }
 
     /// A text message every member holds under this uuid: anyone else's, or
@@ -497,6 +497,8 @@ public enum MessageType {
 struct SenderInfo: Decodable {
     let pubkey: String
     let alias: String?
+    /// The sender's photo as an https link, already normalised
+    /// (`String.recoverablePhotoURL`), or nil.
     let photoURL: String?
     /// Set by a tribes server on the joins it forwards.
     let host: String?
@@ -508,6 +510,32 @@ struct SenderInfo: Decodable {
     enum CodingKeys: String, CodingKey {
         case pubkey, alias, host, role, code
         case photoURL = "photo_url"
+        case photoUrl, senderPic = "sender_pic", senderPicCamel = "senderPic"
+    }
+
+    /// Only the pubkey is required: an oddly typed optional field never
+    /// costs the message its sender.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pubkey = try c.decode(String.self, forKey: .pubkey)
+        alias = try? c.decodeIfPresent(String.self, forKey: .alias)
+        host = try? c.decodeIfPresent(String.self, forKey: .host)
+        code = try? c.decodeIfPresent(String.self, forKey: .code)
+        if let number = try? c.decodeIfPresent(Int.self, forKey: .role) {
+            role = number
+        } else if let text = try? c.decodeIfPresent(String.self, forKey: .role) {
+            role = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        } else {
+            role = nil
+        }
+        var photo: String?
+        for key in [CodingKeys.photoURL, .photoUrl, .senderPic, .senderPicCamel] {
+            if let value = (try? c.decodeIfPresent(String.self, forKey: key)) ?? nil, let link = value.recoverablePhotoURL {
+                photo = link
+                break
+            }
+        }
+        photoURL = photo
     }
 }
 
@@ -564,6 +592,44 @@ extension String {
     /// This string if it is an https URL, else nil: photos are never fetched
     /// over anything else.
     public var httpsOnly: String? { URL(string: self)?.scheme?.lowercased() == "https" ? self : nil }
+
+    /// A photo link from a message, made usable for recovering the account's
+    /// own photo and shown on senders: trimmed, repeated schemes collapsed,
+    /// scheme-less and `//host` links given https, http upgraded to https (media hosts serve https),
+    /// and percent-encoded when it holds spaces or non-ASCII characters
+    /// (existing escapes are kept). Nil if empty or still not https. `httpsOnly` stays strict.
+    var recoverablePhotoURL: String? {
+        var link = trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !link.isEmpty else { return nil }
+        // Doubled schemes (`https://https://h/x`): the inner URL is the link.
+        func hasWebScheme(_ value: String) -> Bool {
+            let lower = value.lowercased()
+            return lower.hasPrefix("http://") || lower.hasPrefix("https://")
+        }
+        func dropScheme(_ value: String) -> String {
+            String(value.dropFirst(value.lowercased().hasPrefix("https://") ? "https://".count : "http://".count))
+        }
+        if link.hasPrefix("//") {
+            link = "https:" + link
+        } else if !link.contains("://") {
+            // Scheme-less `host.tld/path`: a host-like first part with a dot.
+            let host = link.prefix { $0 != "/" }
+            guard host.contains("."), !host.hasPrefix("."), !host.contains(where: { $0.isWhitespace || $0 == "?" || $0 == "#" })
+            else { return nil }
+            link = "https://" + link
+        }
+        while hasWebScheme(link), hasWebScheme(dropScheme(link)) { link = dropScheme(link) }
+        if link.lowercased().hasPrefix("http://") { link = "https://" + link.dropFirst("http://".count) }
+        // Always, not only when `URL(string:)` already refuses it: on Apple's
+        // platforms that initializer tolerates a raw space or accented
+        // character, so its nilness is no signal that one is missing.
+        // `%` is kept allowed, so an existing escape passes through as is.
+        let allowed = CharacterSet.urlQueryAllowed.union(CharacterSet(charactersIn: "%#"))
+        guard let encoded = link.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        link = encoded
+        guard let url = URL(string: link), !(url.host ?? "").isEmpty else { return nil }
+        return link.httpsOnly
+    }
 }
 
 extension Date {

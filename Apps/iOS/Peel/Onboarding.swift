@@ -3,14 +3,16 @@ import PeelUI
 import SwiftUI
 
 /// New account (invite, name, PIN, the twelve words) or restore (the words,
-/// name, PIN, progress), as the Mac's `OnboardingView` asks them, each step
+/// PIN, progress; the name and photo come back from the account's own sent
+/// messages, or, when none comes back, a name step after the progress
+/// screen), as the Mac's `OnboardingView` asks them, each step
 /// pushed so Back is the system's. See docs/design/README.md, "Profile and
 /// onboarding".
 struct Onboarding: View {
     @Environment(AppModel.self) private var model
 
     enum Path { case newAccount, restore }
-    enum Step: Hashable { case invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring }
+    enum Step: Hashable { case invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring, restoreName }
 
     @State private var path = Path.newAccount
     @State private var steps: [Step] = []
@@ -33,7 +35,7 @@ struct Onboarding: View {
                     page(step)
                         .navigationBarTitleDisplayMode(.inline)
                         // Once the account exists there is no way back before it.
-                        .navigationBarBackButtonHidden([.showWords, .restoring].contains(step))
+                        .navigationBarBackButtonHidden([.showWords, .restoring, .restoreName].contains(step))
                 }
         }
         .onChange(of: steps) { old, new in
@@ -42,6 +44,7 @@ struct Onboarding: View {
             // Leaving the flow forgets what was typed; stepping back within it keeps it.
             if new.isEmpty {
                 invite = ""
+                name = ""
                 words = Array(repeating: "", count: 12)
             }
             // Back from confirming the PIN sets it again.
@@ -112,10 +115,10 @@ struct Onboarding: View {
                 WordEntry(words: $words)
             } actions: {
                 continueButton(enabled: words.allSatisfy { !$0.isEmpty }) {
-                    // Catch a mistyped word here, not after the name and PIN.
+                    // Catch a mistyped word here, not after the PIN.
                     do {
                         _ = try Engine.validate(mnemonic: words.joined(separator: " "))
-                        go(.name)
+                        go(.pin)
                     } catch {
                         problem = "Those twelve words don't make a valid account. Check each one."
                     }
@@ -180,7 +183,23 @@ struct Onboarding: View {
                     .disabled(!check.isFilled || working)
             }
         case .restoring:
-            RestoreProgress()
+            RestoreProgress(onOpen: openAfterRestore)
+        case .restoreName:
+            StepPage(title: "What should people call you?",
+                     detail: "We couldn't find a name in your account's history.", problem: problem) {
+                TextField("Name", text: $name)
+                    .font(Theme.font(17))
+                    .textContentType(.nickname)
+                    .submitLabel(.continue)
+                    .onSubmit { if !name.trimmed.isEmpty { Task { await finishRestore() } } }
+                    .padding(.horizontal, Theme.Space.md)
+                    .frame(height: 50)
+                    .fieldBox(focused: false)
+            } actions: {
+                Button { Task { await finishRestore() } } label: { ActionLabel("Continue", working: working) }
+                    .primaryAction()
+                    .disabled(name.trimmed.isEmpty || working)
+            }
         }
     }
 
@@ -195,7 +214,7 @@ struct Onboarding: View {
     /// The numbered steps of the current path; confirming the PIN counts as
     /// the PIN step, checking the words as the words step.
     private var numbered: [Step] {
-        path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .name, .pin]
+        path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .pin]
     }
 
     private func progress(_ step: Step) -> (step: Int, of: Int)? {
@@ -230,7 +249,7 @@ struct Onboarding: View {
                 shownWords = try await model.createAccount(invite: invite, name: name.trimmed, pin: pin)
                 go(.showWords)
             case .restore:
-                try await model.restoreAccount(words: words, name: name.trimmed, pin: pin)
+                try await model.restoreAccount(words: words, pin: pin)
                 words = Array(repeating: "", count: 12)
                 go(.restoring)
             }
@@ -239,6 +258,28 @@ struct Onboarding: View {
         } catch {
             problem = PeelError.problem(error)
             confirmation = ""
+        }
+    }
+
+    /// "Open Peel" on the progress screen: on, unless the restore settled
+    /// with no name to show for it, in which case one is asked for first.
+    private func openAfterRestore() {
+        if model.myAlias?.nilIfEmpty == nil {
+            go(.restoreName)
+        } else {
+            model.enterApp()
+        }
+    }
+
+    private func finishRestore() async {
+        guard !working, !name.trimmed.isEmpty else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.setName(name.trimmed)
+            model.enterApp()
+        } catch {
+            problem = PeelError.problem(error, couldNot: "save your name")
         }
     }
 
@@ -263,6 +304,9 @@ struct Onboarding: View {
 /// `RestoreProgressView`). Peel opens before history finishes.
 struct RestoreProgress: View {
     @Environment(AppModel.self) private var model
+    /// Enters the app, unless the restore settled with no name, which asks
+    /// for one first (`Onboarding.openAfterRestore`).
+    let onOpen: () -> Void
 
     var body: some View {
         let progress = model.restoreProgress
@@ -279,7 +323,7 @@ struct RestoreProgress: View {
                 ProblemText(failure)
             }
         } actions: {
-            Button { model.enterApp() } label: { ActionLabel("Open Peel") }
+            Button(action: onOpen) { ActionLabel("Open Peel") }
                 .primaryAction()
         }
     }

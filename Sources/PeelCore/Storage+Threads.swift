@@ -349,7 +349,7 @@ extension Storage {
             let fromMe: Bool = row["fromMe"]
             let info = JSON.decode(SenderInfo.self, from: row["sender"] as String?)
             let participant = ThreadParticipant(
-                alias: fromMe ? nil : info?.alias?.nilIfEmpty, photoURL: fromMe ? nil : info?.photoURL?.httpsOnly,
+                alias: fromMe ? nil : info?.alias?.nilIfEmpty, photoURL: fromMe ? nil : info?.photoURL,
                 fromMe: fromMe
             )
             // The same person under a newer photo or name is one participant.

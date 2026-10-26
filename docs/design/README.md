@@ -276,8 +276,13 @@ Approved by Tom on 2026-10-07; mocks on the "Peel layout directions" canvas
   received", and never "no sats": the stored balance may be older than
   sats received since.
 - **Restore:** twelve word fields (paste fills all twelve, suggestions as you
-  type), then a progress page: account, contacts, messages with a count,
-  tribes. "Open Peel" works before history finishes.
+  type), a PIN, then a progress page: account, contacts, messages with a count,
+  tribes. "Open Peel" works before history finishes. There is no name step:
+  the name and photo come back from the account's own newest sent messages
+  (contact chats). When the name does not come back, "Open Peel" asks for one
+  before opening (a photo missing the same way just stays unset, set later in
+  Profile); sending is off until a name is set, rather than let a message go
+  out under none.
 - **The PIN is required, as in the official apps** (Tom, 2026-10-07). The
   restore flow gets a PIN step too. How the PIN protects the words is a
   phase 2 decision; see `docs/phases/02-messaging.md`.

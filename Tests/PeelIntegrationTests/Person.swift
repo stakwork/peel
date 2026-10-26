@@ -37,7 +37,7 @@ struct Person: Sendable {
         let stack = try await Stack.shared.current()
         let profile = Profile(developmentAt: directory("\(name)-restored"))
         let engine = try await Account.restore(
-            profile, mnemonic: mnemonic, alias: name, pin: "", server: try address(stack.broker),
+            profile, mnemonic: mnemonic, pin: "", server: try address(stack.broker),
             tribeHost: stack.tribes, memesHost: stack.memes
         )
         try await engine.connect()

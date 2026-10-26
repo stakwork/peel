@@ -149,7 +149,7 @@ private struct AgentChatColumn: View {
             PeelLogo(size: 28)
         } trailing: {
             if agent.connection != nil {
-                IconButton("gearshape", help: "Agent settings") { model.openAgentSettings() }
+                IconButton("gearshape", help: "Agent settings") { model.openAccount(.assistant) }
             }
         }
     }
@@ -264,8 +264,11 @@ private struct AgentJobLine: View {
 }
 
 /// Something an agent's message points to: its label and title, a line of
-/// what is in it, and Open for an https link (the web pane, as any link).
+/// what is in it, and Open: a deliverable Peel's own strut shows (its
+/// handle; an org's file or app, read through to it) in the web pane beside
+/// the chat, with the org it lives on, or else an https link as any link.
 private struct AgentArtifactLine: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     let artifact: AgentArtifact
 
@@ -283,7 +286,13 @@ private struct AgentArtifactLine: View {
                     .truncationMode(.tail)
                     .help(summary)
             }
-            if let url = artifact.url {
+            if let handle = artifact.handle, let name = strutPage(handle)?.name {
+                // Made again on the click: strut may have started again on another port and key.
+                Button("Open") { if let page = strutPage(handle) { model.web.open(page) } }
+                    .buttonStyle(.peel(.link))
+                    .help(name)
+                if let peer = handle.peer { Text("@\(peer)").fixedSize() }
+            } else if let url = artifact.url {
                 // Where it goes, beside the agent's words for it.
                 Button("Open") { openURL(url) }
                     .buttonStyle(.peel(.link))
@@ -293,6 +302,13 @@ private struct AgentArtifactLine: View {
         }
         .font(Theme.font(13))
         .foregroundStyle(Theme.secondaryText)
+    }
+
+    /// The deliverable on Peel's own strut; nil while it is not running, or
+    /// with a home server, which holds none of this Mac's orgs.
+    private func strutPage(_ handle: AgentArtifact.Handle) -> StrutPage? {
+        guard let server = model.memoryServer, let url = server.page(showing: handle) else { return nil }
+        return StrutPage(url: url, server: server, name: handle.peer.map { "\(artifact.title) · @\($0)" } ?? artifact.title)
     }
 }
 

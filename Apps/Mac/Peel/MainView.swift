@@ -13,13 +13,19 @@ struct MainView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Sidebar()
+            SidebarColumn()
                 .frame(width: sidebarWidth)
             PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
             VStack(spacing: 0) {
                 Detail()
                 if let notice = model.notice {
                     Callout(detail: notice, icon: .problem, dismiss: { model.notice = nil })
+                        .padding(.horizontal, Theme.Space.xl)
+                        .padding(.vertical, Theme.Space.sm)
+                        .background(Theme.background)
+                }
+                if model.diagnosticsNotice {
+                    DiagnosticsNotice()
                         .padding(.horizontal, Theme.Space.xl)
                         .padding(.vertical, Theme.Space.sm)
                         .background(Theme.background)
@@ -41,6 +47,10 @@ struct MainView: View {
         }
         .animation(.easeOut(duration: 0.15), value: model.viewer == nil)
         .peelMenuHost(main: true)
+        .sheet(item: Binding(get: { model.diagnosticsRecord }, set: { model.diagnosticsRecord = $0 })) {
+            DiagnosticRecordSheet(record: $0)
+                .environment(model)
+        }
     }
 }
 
@@ -203,6 +213,12 @@ struct Detail: View {
                     AgentChatView(agent: agent)
                 } else {
                     start("The agent chat could not be opened.")
+                }
+            case .app(let peer, let name):
+                if let app = model.hive.apps.first(where: { $0.peer == peer && $0.name == name }) {
+                    WorkspaceAppView(app: app)
+                } else {
+                    start("This app is no longer pinned in its workspace.")
                 }
             case nil:
                 start("Pick a conversation, or add a contact.")

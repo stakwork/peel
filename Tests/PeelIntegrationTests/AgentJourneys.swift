@@ -20,7 +20,7 @@ extension Journeys {
             let (alice, bob, bobKey, dms, club, clubName, root) =
                 (fixture.alice, fixture.bob, fixture.bobKey, fixture.dms, fixture.club, fixture.clubName, fixture.root)
             let (first, second, rootText, replyText) = (fixture.first, fixture.second, fixture.rootText, fixture.replyText)
-            let reads = DeviceReads(storage: alice.storage)
+            let reads = DeviceReads(storage: alice.storage, myAlias: { nil })
             func read(_ kind: String, _ args: PeelCore.JSONValue = .object([:])) async throws -> String {
                 let answer = await reads.answer(kind, args)
                 return try #require(answer.text, "\(kind): \(answer.error ?? "no answer")")

@@ -82,7 +82,7 @@ final class MacAgent: AgentHost {
     /// (reads only if the agent chat did not open); the engine answers only
     /// once its contact is set (`Setting.deviceAgent`).
     func deviceRequests(for engine: Engine) -> DeviceRequestHandler? {
-        guard let agent = deviceCards.model?.agent else { return DeviceReads(storage: engine.storage).handler }
+        guard let agent = deviceCards.model?.agent else { return DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias }).handler }
         return deviceCards.handler(for: engine, agent: agent)
     }
 
@@ -135,7 +135,11 @@ extension AppModel {
 
     var memoryServer: MemoryServer? {
         get { macAgent.memoryServer }
-        set { macAgent.memoryServer = newValue }
+        set {
+            macAgent.memoryServer = newValue
+            // A deliverable open in the web pane was the strut before's (its port and key).
+            web.strutChanged(to: newValue)
+        }
     }
 
     var strut: BundledStrut? {
@@ -265,7 +269,7 @@ extension AppModel {
             } catch {
                 // Not taken for "this Mac": no strut is started until it is set again.
                 brain = nil
-                notice = PeelError.problem(error, couldNot: "read the agent's brain")
+                notice = PeelError.noted(error, couldNot: "read the agent's brain")
             }
             let agent = AgentSession(store: store, credentials: KeptCredential(item: profile.agentCredential))
             agent.credentialChanged = { [weak self] in self?.modelChanged() }
@@ -277,9 +281,9 @@ extension AppModel {
             lookForBridge()
             checkBrain()
             // A pairing link that came while the account was locked.
-            if pairing != nil { openAgentSettings() }
+            if pairing != nil { openAccount(.brain) }
         } catch {
-            notice = PeelError.problem(error, couldNot: "open the agent chat")
+            notice = PeelError.noted(error, couldNot: "open the agent chat")
         }
     }
 
@@ -382,7 +386,7 @@ extension AppModel {
             return true
         }
         pairing = server
-        if phase == .ready { openAgentSettings() }
+        if phase == .ready { openAccount(.brain) }
         return true
     }
 
@@ -457,7 +461,7 @@ extension AppModel {
             } catch {
                 // Still on the home server, so this Mac keeps its own memory.
                 try? brought?.backup.restore()
-                throw PeelError(PeelError.problem(error) + " This Mac's memory is as it was.")
+                throw PeelError(PeelError.noted(error) + " This Mac's memory is as it was.")
             }
             guard let brought else { return nil }
             localHoldsMemory = brought.moved.holdsMemory
@@ -486,7 +490,7 @@ extension AppModel {
                 memoryMove = ended
             } catch {
                 guard !Task.isCancelled else { return }
-                memoryMove = .failed(PeelError.problem(error, couldNot: direction == .toHomeServer
+                memoryMove = .failed(PeelError.noted(error, couldNot: direction == .toHomeServer
                     ? "copy the memory to the home server" : "bring the memory back"))
             }
             macAgent.moving = nil
@@ -514,10 +518,10 @@ extension AppModel {
             do { _ = try await strut.start() } catch {
                 // Not said once the agent has closed (its account locked or
                 // forgotten), or a home server took its place while it started.
-                if reporting, agent != nil, self.strut === strut { notice = PeelError.problem(error, couldNot: "start the agent's memory") }
+                if reporting, agent != nil, self.strut === strut { notice = PeelError.noted(error, couldNot: "start the agent's memory") }
                 // The agent needs it: said in the agent chat, with Try again.
                 if agent != nil, self.strut === strut, strut.server == nil {
-                    agentBridge.fail(PeelError.problem(error, couldNot: "start Peel's memory"))
+                    agentBridge.fail(PeelError.noted(error, couldNot: "start Peel's memory"))
                 }
             }
         }
@@ -538,12 +542,6 @@ extension AppModel {
                 return strut
             }() : nil
         }
-    }
-
-    /// The agent chat's settings: Account, at its Peel agent section.
-    func openAgentSettings() {
-        showsAgentSettings = true
-        destination = .account
     }
 
     func closeAgent() {
@@ -652,7 +650,7 @@ final class MemoryPanel: Identifiable {
                 if let node { read[ref.id] = node } else { problem = "This is no longer in memory." }
             } catch {
                 guard !Task.isCancelled else { return }
-                problem = PeelError.problem(error, couldNot: "read this memory")
+                problem = PeelError.noted(error, couldNot: "read this memory")
             }
         }
     }

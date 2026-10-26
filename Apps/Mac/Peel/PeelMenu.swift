@@ -33,6 +33,8 @@ struct MenuShortcut: Equatable {
 
 struct MenuItem {
     var title: String
+    /// A muted line under the title: what choosing it means.
+    var subtitle: String?
     var systemImage: String?
     var shortcut: MenuShortcut?
     var checked = false
@@ -62,10 +64,11 @@ enum MenuEntry {
     case divider
 
     static func button(
-        _ title: String, systemImage: String? = nil, shortcut: MenuShortcut? = nil, checked: Bool = false,
-        action: @escaping @MainActor () -> Void
+        _ title: String, subtitle: String? = nil, systemImage: String? = nil, shortcut: MenuShortcut? = nil,
+        detail: String? = nil, checked: Bool = false, action: @escaping @MainActor () -> Void
     ) -> MenuEntry {
-        .item(MenuItem(title: title, systemImage: systemImage, shortcut: shortcut, checked: checked) {
+        .item(MenuItem(title: title, subtitle: subtitle, systemImage: systemImage, shortcut: shortcut, checked: checked,
+                       detail: detail) {
             action()
             return true
         })
@@ -74,9 +77,10 @@ enum MenuEntry {
     /// Red, and confirmed by a second click: the first turns the row into
     /// `confirm` without closing the menu.
     static func destructive(
-        _ title: String, systemImage: String? = nil, confirm: String, action: @escaping @MainActor () -> Void
+        _ title: String, subtitle: String? = nil, systemImage: String? = nil, confirm: String,
+        action: @escaping @MainActor () -> Void
     ) -> MenuEntry {
-        .item(MenuItem(title: title, systemImage: systemImage, destructive: true, confirm: confirm) {
+        .item(MenuItem(title: title, subtitle: subtitle, systemImage: systemImage, destructive: true, confirm: confirm) {
             action()
             return true
         })
@@ -84,9 +88,9 @@ enum MenuEntry {
 
     /// Opens `entries` in the menu's place; `detail` names the current choice.
     static func submenu(
-        _ title: String, systemImage: String? = nil, detail: String? = nil, _ entries: [MenuEntry]
+        _ title: String, subtitle: String? = nil, systemImage: String? = nil, detail: String? = nil, _ entries: [MenuEntry]
     ) -> MenuEntry {
-        .item(MenuItem(title: title, systemImage: systemImage, detail: detail, submenu: entries) { false })
+        .item(MenuItem(title: title, subtitle: subtitle, systemImage: systemImage, detail: detail, submenu: entries) { false })
     }
 
     /// A copy item: `copy` returns whether it copied, and "Copied" shows at

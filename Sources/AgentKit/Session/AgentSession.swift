@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PeelDiagnostics
 
 /// One message of the agent chat Peel ran on this Mac before strut was the
 /// agent ("Old assistant chats (this Mac only)"): the person's, or the agent's reply with
@@ -132,11 +133,14 @@ public final class AgentSession {
         do {
             connection = try credentials.read().map(Connection.init)
         } catch {
+            // The kind only: the words (and the error's own) stay out of the ring.
+            Diagnostics.note(errorKind: .other)
             notice = "Could not read the connected model's key: \(error.localizedDescription)"
         }
         do {
             approvalRules = try rules.all()
         } catch {
+            Diagnostics.note(errorKind: .database)
             notice = [notice, "Could not read what the agent is always allowed to do: \(error.localizedDescription)"]
                 .compactMap { $0 }.joined(separator: " ")
         }
@@ -151,6 +155,7 @@ public final class AgentSession {
                 return turn
             }
         } catch {
+            Diagnostics.note(errorKind: .database)
             notice = "Could not read the agent chat: \(error.localizedDescription)"
         }
     }

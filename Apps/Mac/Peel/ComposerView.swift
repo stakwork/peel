@@ -1,4 +1,5 @@
 import SwiftUI
+import PeelAgent
 import PeelCore
 import PeelUI
 
@@ -44,15 +45,21 @@ struct Composer: View {
         Task { await model.sendDraft(from: composer) }
     }
 
-    /// Aliases starting with what follows the `@` (`MentionQuery`): an
-    /// exact match first, so Return never swaps a finished `@ann` for `@anna`.
-    private var suggestions: [TribeMember] {
-        guard let mention, mention != dismissedMention else { return [] }
-        return MentionQuery.suggestions(mentionable, typed: mention)
+    /// What the word being typed can become (`MentionQuery`), an exact
+    /// match first, so Return never swaps a finished `@ann` for `@anna`: in
+    /// a tribe, its people; in the agent's DM, the Stadeum workspaces it can
+    /// ask (by id or label) and, for a `/` opening the message, its commands.
+    private var suggestions: [ComposerSuggestion] {
+        guard let mention, mention != dismissedMention, let trigger = mention.first else { return [] }
+        let typed = String(mention.dropFirst())
+        let agent = model.isAgentChat(composer)
+        if trigger == "/" { return agent ? MentionQuery.suggestions(ComposerSuggestion.commands, names: \.names, typed: typed) : [] }
+        if agent { return MentionQuery.suggestions(model.hive.live.map(ComposerSuggestion.init(workspace:)), names: \.names, typed: typed) }
+        return MentionQuery.suggestions(mentionable, typed: typed).map(ComposerSuggestion.init(member:))
     }
 
-    private func choose(_ member: TribeMember) {
-        insertion = MentionInsertion(id: (insertion?.id ?? 0) + 1, alias: member.alias)
+    private func choose(_ suggestion: ComposerSuggestion) {
+        insertion = MentionInsertion(id: (insertion?.id ?? 0) + 1, text: suggestion.insert)
     }
 
     /// Arrow keys move through the suggestions, Return or Tab takes one, Escape closes them.
@@ -62,7 +69,11 @@ struct Composer: View {
         switch key {
         case .up: highlighted = (highlighted + shown.count - 1) % shown.count
         case .down: highlighted = (highlighted + 1) % shown.count
-        case .accept: choose(shown[min(highlighted, shown.count - 1)])
+        case .accept:
+            let suggestion = shown[min(highlighted, shown.count - 1)]
+            // A command typed in full sends on Return, as it would with no menu.
+            if suggestion.kind == .command, suggestion.insert == mention { return false }
+            choose(suggestion)
         case .dismiss: dismissedMention = mention
         }
         return true
@@ -74,7 +85,7 @@ struct Composer: View {
             text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0,
             // A chat opened from the sidebar's keys leaves them there.
             focusesOnAppear: !(model.sidebarHasKeys && composer.thread == nil), submit: send,
-            mention: $mention, insertion: insertion, suggestionKey: handle,
+            mention: $mention, commands: model.isAgentChat(composer), insertion: insertion, suggestionKey: handle,
             escape: {
                 // The memory beside the agent chat first: the least to lose.
                 if model.isAgentChat(composer), model.memoryPanel != nil {
@@ -149,7 +160,7 @@ struct Composer: View {
                 // Its bottom on the composer's top, at its own fixed height:
                 // drawn above the composer and inside the window, never
                 // squeezed into the composer's height or below it.
-                MentionSuggestions(members: shown, highlighted: min(highlighted, shown.count - 1), choose: choose)
+                MentionSuggestions(suggestions: shown, highlighted: min(highlighted, shown.count - 1), choose: choose)
                     .padding(.leading, Self.inset)
                     .offset(y: -MentionSuggestions.height(for: shown.count))
             }
@@ -271,13 +282,47 @@ private struct ReplyBar: View {
     }
 }
 
-/// Who an `@` can mention, just above the composer, in the menu's style;
-/// scrolls past seven, keeping the highlighted one in view.
+/// One thing the word being typed can become: a tribe's member, a Stadeum
+/// workspace the agent can ask, or one of the agent DM's commands.
+struct ComposerSuggestion: Identifiable, Equatable {
+    enum Kind: Equatable { case member(TribeMember), workspace, command }
+    let id: String
+    /// What replaces the word, its trigger included.
+    let insert: String
+    let title: String
+    var detail: String?
+    /// What the typed word is matched against, without the trigger.
+    let names: [String]
+    let kind: Kind
+
+    init(member: TribeMember) {
+        self.init(id: member.id, insert: "@" + member.alias, title: member.alias, names: [member.alias], kind: .member(member))
+    }
+
+    /// By its label, with its `@id` beside it; matched by either.
+    init(workspace: HivePeer) {
+        self.init(id: "@" + workspace.id, insert: "@" + workspace.id, title: workspace.name, detail: "@" + workspace.id,
+                  names: [workspace.id] + (workspace.label.map { [$0] } ?? []), kind: .workspace)
+    }
+
+    private init(id: String, insert: String, title: String, detail: String? = nil, names: [String], kind: Kind) {
+        (self.id, self.insert, self.title, self.detail, self.names, self.kind) = (id, insert, title, detail, names, kind)
+    }
+
+    /// The commands the agent's bridge takes in its DM.
+    static let commands = [
+        ComposerSuggestion(id: "/new", insert: "/new", title: "/new", detail: "Start a fresh conversation", names: ["new"], kind: .command),
+    ]
+}
+
+/// What an `@` (or in the agent's DM a `/`) can become, just above the
+/// composer, in the menu's style; scrolls past seven, keeping the
+/// highlighted one in view.
 struct MentionSuggestions: View {
     @Environment(AppModel.self) private var model
-    let members: [TribeMember]
+    let suggestions: [ComposerSuggestion]
     let highlighted: Int
-    let choose: (TribeMember) -> Void
+    let choose: (ComposerSuggestion) -> Void
 
     private static let rowHeight: CGFloat = 28
     private static let visibleRows = 7
@@ -293,29 +338,43 @@ struct MentionSuggestions: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
+                    ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, suggestion in
                         HStack(spacing: Theme.Space.sm) {
-                            Avatar(name: member.alias, url: member.photoURL, size: Theme.AvatarSize.sm,
-                                   hue: model.hue(of: member))
-                            Text(member.alias)
+                            switch suggestion.kind {
+                            case .member(let member):
+                                Avatar(name: member.alias, url: member.photoURL, size: Theme.AvatarSize.sm,
+                                       hue: model.hue(of: member))
+                            case .workspace, .command:
+                                Image(systemName: suggestion.kind == .workspace ? "building.2" : "plus.bubble")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .frame(width: Theme.AvatarSize.sm, height: Theme.AvatarSize.sm)
+                            }
+                            Text(suggestion.title)
                                 .font(Theme.font(13))
                                 .foregroundStyle(Theme.text)
                                 .lineLimit(1)
+                            if let detail = suggestion.detail {
+                                Text(detail)
+                                    .font(Theme.font(12))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .lineLimit(1)
+                            }
                             Spacer(minLength: 0)
                         }
                         .padding(.horizontal, Theme.Space.sm)
                         .frame(height: Self.rowHeight)
                         .background(index == highlighted ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
                         .contentShape(Rectangle())
-                        .onTapGesture { choose(member) }
+                        .onTapGesture { choose(suggestion) }
                         .id(index)
                     }
                 }
             }
-            .scrollIndicators(members.count > Self.visibleRows ? .automatic : .never)
+            .scrollIndicators(suggestions.count > Self.visibleRows ? .automatic : .never)
             .onChange(of: highlighted) { _, index in proxy.scrollTo(index) }
         }
-        .frame(height: CGFloat(min(members.count, Self.visibleRows)) * Self.rowHeight)
+        .frame(height: CGFloat(min(suggestions.count, Self.visibleRows)) * Self.rowHeight)
         .padding(Self.padding)
         .frame(width: 240)
         .menuBoxed()

@@ -66,7 +66,7 @@ public struct DeviceActions: Sendable {
     ) {
         self.engine = engine
         tools = SphinxTools(storage: engine.storage)
-        reads = DeviceReads(storage: engine.storage)
+        reads = DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias })
         self.rules = rules
         grants = SendGrants(beside: rules)
         self.peerRequest = peerRequest

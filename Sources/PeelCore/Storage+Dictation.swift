@@ -34,10 +34,13 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable, Fetch
     public var outcome: Outcome
     /// Why, in Peel's words, when it was not typed ("No field had focus").
     public var note: String?
+    /// What dictation heard, when the vocabulary rewrote it into `text`
+    /// ("ask the stack work team"); nil when it was typed as heard (v29).
+    public var heard: String?
 
     public init(
         id: UUID, startedAt: Date, duration: TimeInterval, text: String?, appID: String?, appName: String?,
-        outcome: Outcome, note: String?
+        outcome: Outcome, note: String?, heard: String? = nil
     ) {
         self.id = id
         self.startedAt = Int64((startedAt.timeIntervalSince1970 * 1000).rounded())
@@ -47,6 +50,7 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable, Fetch
         self.appName = appName
         self.outcome = outcome
         self.note = note
+        self.heard = heard
     }
 
     public var date: Date { Date(timeIntervalSince1970: Double(startedAt) / 1000) }
@@ -69,7 +73,17 @@ extension Storage {
 
     private static func dropDictations(_ db: Database, olderThan keep: TimeInterval) throws {
         let cutoff = Int64(((Date().timeIntervalSince1970 - keep) * 1000).rounded())
-        try db.execute(sql: "DELETE FROM dictation WHERE startedAt < ?", arguments: [cutoff])
+        try overwritingDeletes(db) {
+            try db.execute(sql: "DELETE FROM dictation WHERE startedAt < ?", arguments: [cutoff])
+        }
+    }
+
+    /// Runs `body` with `secure_delete` on, so what it deletes is overwritten
+    /// in the file rather than left in freed pages.
+    private static func overwritingDeletes(_ db: Database, _ body: () throws -> Void) throws {
+        try db.execute(sql: "PRAGMA secure_delete = ON")
+        defer { try? db.execute(sql: "PRAGMA secure_delete = OFF") }
+        try body()
     }
 
     /// The newest `limit` dictations, newest first, again whenever they change.
@@ -86,11 +100,11 @@ extension Storage {
     /// file rather than left in freed pages, and the log folded in.
     public func clearDictations() async throws {
         try await pool.writeWithoutTransaction { db in
-            try db.execute(sql: "PRAGMA secure_delete = ON")
-            defer { try? db.execute(sql: "PRAGMA secure_delete = OFF") }
-            try db.inTransaction {
-                _ = try DictationRecord.deleteAll(db)
-                return .commit
+            try Self.overwritingDeletes(db) {
+                try db.inTransaction {
+                    _ = try DictationRecord.deleteAll(db)
+                    return .commit
+                }
             }
             try db.checkpoint(.truncate)
         }

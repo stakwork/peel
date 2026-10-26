@@ -10,6 +10,9 @@ struct PeelPhoneApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        // First: crash recording starts before anything that could crash, and
+        // before the model, which reads how the last run ended.
+        CrashRecorder.install()
         // Everything this process creates (database, journal) is private to the user.
         umask(0o077)
         let model = AppModel(platform: .phone())
@@ -39,6 +42,7 @@ struct PeelPhoneApp: App {
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { model.becameActive() }
+                    if phase == .background { model.leftForeground() }
                 }
                 // The PIN timeout, as on the Mac: from the last touch, in
                 // front or away. Each touch in Peel's window is use
@@ -47,6 +51,9 @@ struct PeelPhoneApp: App {
                 // first (`becameActive`).
                 .background(TouchWatch { model.noteActivity() })
                 .task { await model.lockWhenIdle() }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    Diagnostics.memoryWarning()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
                     model.willTerminate()
                 }
@@ -59,7 +66,12 @@ struct RootView: View {
     @Environment(PhoneRouter.self) private var router
 
     var body: some View {
+        @Bindable var model = model
         phase
+            .sheet(item: $model.diagnosticsRecord) { record in
+                DiagnosticRecordSheet(record: record)
+                    .environment(model)
+            }
             // Here, not in the tabs, so a chat opened while locked (a
             // notification) is the one shown after the PIN.
             .onChange(of: model.destination) { _, destination in

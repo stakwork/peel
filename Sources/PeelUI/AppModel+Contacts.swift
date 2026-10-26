@@ -63,7 +63,7 @@ extension AppModel {
         do {
             return (try ContactCode.read(text), nil)
         } catch {
-            return (nil, PeelError.problem(error))
+            return (nil, PeelError.noted(error))
         }
     }
 

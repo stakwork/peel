@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stages the strut Peel ships, for bundle-app.sh to copy into
 # Contents/Strut: strut's desktop package (scripts/package-desktop.mjs in a
-# strut checkout, with dictation's speech engine, with Ladybug, its extensions, the
+# strut checkout, with dictation's speech engine and fixer, with Ladybug, its extensions, the
 # memory/* steps, and the orchestrator with its automation/* steps) and
 # the Node that runs it, a pinned release checked against its SHA-256 on every
 # run. Apple silicon only. Built from the strut commit Vendor/strut.lock names
@@ -34,8 +34,8 @@ WORK=; NODE_TMP=; STRUT_SRC=
 trap 'rm -rf "$WORK" "$NODE_TMP" "$STRUT_SRC" "$OUT.lock"' EXIT
 trap 'exit 1' INT TERM HUP
 
-NODE_VERSION=v22.23.3
-NODE_SHA256=23b25245dcfb9af7262f8ff142e9e2e0af025368117329e7a7458a51e5922f53
+NODE_VERSION=v22.23.4
+NODE_SHA256=c9e1dbc748b33ed2d14f42445191ecaf14c56259c7a9a26d0042c49ec2b66428
 NODE_TAR="$OUT.node/node-$NODE_VERSION-darwin-arm64.tar.gz"
 mkdir -p "$(dirname "$NODE_TAR")"
 if ! echo "$NODE_SHA256  $NODE_TAR" | shasum -a 256 -c - > /dev/null 2>&1; then
@@ -51,11 +51,15 @@ git -C "$STRUT_CHECKOUT" archive "$COMMIT" | tar -x -C "$STRUT_SRC"
 tar -xzf "$NODE_TAR" -C "$NODE_TMP"
 NODE_DIR="$NODE_TMP/node-$NODE_VERSION-darwin-arm64"
 # Under that Node, which strut requires (22 or newer): the checkout's
-# dependencies from its lockfile, then the package (it builds strut).
+# dependencies from its lockfile, dictation's fixer from fixer/'s own
+# (node-llama-cpp, never one of strut's since strut#312; its install
+# scripts off, the prebuilt Metal binaries are packages of their own),
+# then the package (it builds strut).
 (
   cd "$STRUT_SRC"
   export PATH="$NODE_DIR/bin:$PATH"
   yarn install --frozen-lockfile --silent
+  yarn --cwd fixer install --frozen-lockfile --ignore-scripts --silent
   node scripts/package-desktop.mjs --out "$WORK"
 )
 STAGE="$WORK/strut"
@@ -66,6 +70,9 @@ done
 # Dictation's speech engine (sherpa), which /audio/transcribe needs, in native/ to be signed.
 [ "$(plutil -extract stt raw -o - "$STAGE/desktop.json")" = true ] && [ -e "$STAGE/native/sherpa-onnx.node" ] \
   || { echo "stage-strut: the package left the speech engine out (sherpa-onnx-node in the strut checkout's install?)" >&2; exit 1; }
+# Dictation's fixer (node-llama-cpp with Metal), its binaries in native/llama/mac-arm64-metal to be signed.
+[ "$(plutil -extract fixer raw -o - "$STAGE/desktop.json" 2> /dev/null)" = true ] && [ -e "$STAGE/native/llama/mac-arm64-metal/llama-addon.node" ] \
+  || { echo "stage-strut: the package left dictation's fixer out (node-llama-cpp and @node-llama-cpp/mac-arm64-metal in fixer/'s install?)" >&2; exit 1; }
 # The package's own word that it carries Ladybug and its extensions, which the workspace needs.
 [ "$(plutil -extract ladybug raw -o - "$STAGE/desktop.json")" = true ] || { echo "stage-strut: the package left Ladybug out (is openssl@3 installed? brew install openssl@3)" >&2; exit 1; }
 cp "$NODE_DIR/bin/node" "$STAGE/native/node"

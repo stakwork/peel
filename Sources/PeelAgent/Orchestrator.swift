@@ -23,15 +23,16 @@ public enum Orchestrator {
     /// What the orchestrator is granted beside strut's own: the reads, the
     /// send, the automations. Never `approve`, which only the automation
     /// steps call.
-    static let tools: [String] = DeviceStep.reads.map(\.type) + [DeviceStep.send.type] + automationTools
+    static let tools: [String] = DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + automationTools
 
     /// strut's own memory steps.
     static let memoryTools = ["remember", "recall", "get", "ontology", "forget", "merge"].map { "memory/" + $0 }
 
-    /// What an automation's run is granted: memory, the reads, and posting
-    /// as the user (`DeviceStep.post`), which the Mac allows only to the chats
-    /// of the automation's send grant; no schedules.
-    static let automationRunTools = memoryTools + DeviceStep.reads.map(\.type) + [DeviceStep.post.type]
+    /// What an automation's run is granted: memory, the reads, posting as
+    /// the user (`DeviceStep.post`), which the Mac allows only to the chats
+    /// of the automation's send grant, and starting a job (strut's
+    /// `job/start`) for the web, files or a workflow; no schedules.
+    static let automationRunTools = memoryTools + DeviceStep.reads.map(\.type) + [DeviceStep.post.type, "job/start"]
 
     // MARK: The prompt
 
@@ -93,10 +94,17 @@ public enum Orchestrator {
             itself, word for word. Their Mac starts each post with "[Agent] ": leave that out.
             """
         return """
-            You can set up automations: a task Peel carries out on its own, on a schedule or once, with its result \
+            You can set up automations: a prompt Peel runs on its own, on a schedule or once, with its result \
             delivered to this chat. A reminder ("remind me tomorrow at 8 to…", "text me the score on Saturday") is an \
-            automation that runs once. Write an automation's prompt as a standalone instruction for a future run that \
-            \(run) Each run is told when the last one \
+            automation that runs once. When it fires, its prompt is a turn of yours with no one watching: it has \
+            memory, the chat reads and job/start, so it can start a job for what has to be found out or made (the \
+            web included); it cannot send on a card, continue a job or build a workflow. So never decline a \
+            schedule for want of the web, and never build a workflow just to schedule something. A workflow the \
+            person had built runs on a schedule the same way: an automation whose prompt says to run that \
+            workflow, by name, and tell them what it found. When they want a workflow built and run on a \
+            schedule, leave the schedule out of the builder's brief; set up that automation once the builder \
+            reports what it built. Write an automation's prompt as a \
+            standalone instruction for a future run that \(run) Each run is told when the last one \
             finished, so write "since the last run"; never have a run save or recall its own progress, times or \
             cursors in memory. When a request names two times (read on Friday, tell me on Sunday), ask which one it \
             should run at. Find an automation with automation/list before changing it. Each change is shown to the \
@@ -113,8 +121,28 @@ public enum Orchestrator {
                 each message starts with the time and their time zone.
                 """),
             AgentMessageLink.instruction, SphinxTools.systemPrompt, waiting,
-            SphinxTools.sendPrompt(tool: DeviceStep.send.type), memoryPrompt, automationsPrompt,
+            SphinxTools.sendPrompt(tool: DeviceStep.send.type), workspacesPrompt, memoryPrompt, automationsPrompt,
+            diagnosticsPrompt,
         ].joined(separator: " ")
+
+    /// A workspace's handle can be a chat's name too (`@hive` and a tribe
+    /// called hive): asking it is never a send.
+    static let workspacesPrompt = """
+        Ask one of the workspaces you can ask with strut/run-workflow and its peer id, never with \
+        \(DeviceStep.send.type): a workspace is not a chat, even when a chat has the same name; when the user's words \
+        could mean either, ask which.
+        """
+
+    /// How a Peel bug reaches a workspace: the redacted record, summed up,
+    /// on the card every call to a workspace shows (docs/diagnostics.md).
+    static let diagnosticsPrompt = """
+        When the user says Peel crashed or misbehaved on their Mac, read its record there with \(DeviceStep.diagnostics.type) (it \
+        holds the Mac's crashes, not the phone's). When they ask you to \
+        tell a workspace about it, ask that workspace and give it \
+        a short summary, never the whole record: Peel's version, how the last run ended, the exception or signal, the \
+        crashed thread's top frames, and the last few events, in under \(SphinxTools.maxMessage / 2) characters, plus \
+        what the user said happened. Send only what the user asked for.
+        """
 
     /// `peel-automation-run`'s prompt: the same, unattended, with nothing
     /// about scheduling, whose tools a run is not offered; a post only as
@@ -122,7 +150,7 @@ public enum Orchestrator {
     static let unattended = [
             intro("Your result reaches the user in your direct message; the run's message says when it runs."),
             AgentMessageLink.instruction, SphinxTools.systemPrompt,
-            "If their Mac does not answer a tool, say what you could not read.", memoryPrompt,
+            "If their Mac does not answer a tool, say what you could not read.", memoryPrompt, jobsPrompt,
             """
             \(DeviceStep.post.type) posts a message as the user, but only for an automation they allowed to post when \
             they made it, and only to the chats they allowed then; their Mac refuses anything else, and adds "[Agent] " \
@@ -130,34 +158,36 @@ public enum Orchestrator {
             """,
         ].joined(separator: " ")
 
+    /// What an automation's run is told about jobs: the work its own tools
+    /// cannot do. The job's result reaches the DM by itself (the bridge
+    /// sends the end of a job no DM started), so the run then says nothing.
+    static let jobsPrompt = """
+        Anything to be found out or made that your other tools cannot do (searching the web, reading a page, \
+        running a workflow by name) is a job's: start one with job/start, with the whole task in its prompt \
+        (and the last run's time, written out, when the task says "since the last run"), the automation's \
+        name as its title, and a line asking it to begin its answer with that name in bold. Then reply with \
+        only \(nothingToReport): the job's result reaches the person by itself when it ends. If job/start \
+        fails, reply with what you could not start and why instead. Never start a job with workflow builder: \
+        building or changing a workflow is the person's to ask for.
+        """
+
     // MARK: The host delta
-
-    /// What strut's `builder` job (the orchestrator starts it with
-    /// `job/start`) may only propose: each call becomes a proposal the person
-    /// decides (docs/connectors-and-authoring.md, section 6), never a
-    /// publish on its own. `app/publish` publishes an app with its grants.
-    static let builderApprove = ["meta/publish-workflow", "meta/create-step", "meta/edit-step", "app/publish", "meta/set-automation"]
-
-    /// What a workflow the builder writes may reach (strut #284): the web
-    /// tools and nothing else, no step code, no process, no secret, so the
-    /// keys in strut's store (a model's, a connected service's, the bridge's)
-    /// stay out of what the AI publishes. A Workflows switch per connection
-    /// widens it later (docs/connectors-and-authoring.md, section 6).
-    static let builderReach: AgentKit.JSONValue = ["tools": [], "builtins": ["web_search", "web_fetch"], "secrets": []]
-
-    /// Steps strut seals from its meta surface beside its own (`meta/*`,
-    /// `STRUT_SEALED`), so `meta/run-step` never runs one of `builderApprove`
-    /// around its proposal; the builder still proposes it as a tool.
-    static let sealedSteps = ["app/publish"]
 
     /// The JSON strut's bundled server reads at boot (`STRUT_HOST_CONFIG`):
     /// Peel's tools and section on the orchestrator, which runs on the
     /// connected model (`model: null`, strut's `STRUT_DEFAULT_MODEL`), its
     /// calls to an org behind a card, and once a Stadeum workspace is paired,
     /// strut's own section for a person's orgs (`personal`, strut's
-    /// `personalOrchestratorSystem`); the builder gated and closed to other
-    /// struts (`peer: false`); and the automation steps' workflow and
-    /// approval step.
+    /// `personalOrchestratorSystem`); strut's `builder` job (the orchestrator
+    /// starts it with `job/start`) free to work, as on Hive's strut: no
+    /// `approve` and no `builder.reach` (strut #284), so it writes step code,
+    /// test-runs and publishes workflows and apps with no card, and what it
+    /// publishes may run any step, name any secret in strut's store and call
+    /// other struts; closed to other struts (`peer: false`); and the
+    /// automation steps' workflow and approval step. With no `approve`, strut
+    /// refuses the builder's `meta/set-automation` (it runs only as an
+    /// accepted proposal): a workflow is scheduled by an automation whose
+    /// prompt runs it, made by the orchestrator on one card.
     /// `grants`: the MCP servers each agent reaches (Connections), all of
     /// their tools; strut asks first for any not read-only.
     static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil) throws -> Data {
@@ -170,7 +200,7 @@ public enum Orchestrator {
             "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
                              "system": .string(system), "model": .null, "approve": approve],
             "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
-            "builder": ["approve": .array(builderApprove.map(AgentKit.JSONValue.string)), "peer": false, "reach": builderReach],
+            "builder": ["peer": false],
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]
@@ -324,6 +354,16 @@ struct DeviceStep: Sendable {
                        """),
     ]
 
+    /// Peel's own last crash or run record, redacted: the chat's agent's
+    /// read only, not an automation's (`Orchestrator.diagnosticsPrompt`).
+    static let diagnostics = DeviceStep(
+        type: "sphinx/diagnostics", kind: "diagnostics.latest",
+        description: """
+            Read Peel's own record of its last crash, or how its last run ended and its recent events, from the \
+            user's Mac, already redacted: no messages, contacts' names, amounts or keys.
+            """,
+        input: "z.object({})")
+
     /// A send as the user: the Mac shows the exact text (and a tribe's
     /// price) on a card in the DM and sends only on Allow. The card is the
     /// decision, so the cap the Mac checks is its own most unless the
@@ -378,7 +418,7 @@ struct DeviceStep: Sendable {
             """,
         wait: 300, lifetime: 3600)
 
-    static let all = reads + [send, post, approve]
+    static let all = reads + [diagnostics, send, post, approve]
 
     /// The step, as strut loads a custom one: `defineStep` from strut, the
     /// bridge reached on 127.0.0.1 only, its port and token read from the

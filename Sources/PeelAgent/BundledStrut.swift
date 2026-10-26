@@ -1,5 +1,6 @@
 import Foundation
 import PeelCore
+import PeelDiagnostics
 
 /// The strut Peel ships in `Contents/Strut` (scripts/stage-strut.sh): its
 /// desktop package and the Node that runs it, started once per launch and
@@ -49,6 +50,8 @@ public final class BundledStrut {
     private let secretKey: any SecretItem
     private var process: Process?
     private var stdin: Pipe?
+    /// The last of its stderr, kept for the diagnostics record when it exits on its own.
+    private var errorTail: StderrTail?
     private var starting: Task<MemoryServer, any Error>?
 
     /// How long strut may take to say it is ready.
@@ -189,11 +192,18 @@ public final class BundledStrut {
         process.currentDirectoryURL = folder
         process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data,
                                                hostConfig: hostConfig, allowsLocalMCP: allowsLocalMCP)
-        let input = Pipe(), output = Pipe()
+        let input = Pipe(), output = Pipe(), errors = Pipe()
         process.standardInput = input
         process.standardOutput = output
-        // Its log may hold what the agent was asked: read and dropped.
-        process.standardError = FileHandle.nullDevice
+        // Its log may hold what the agent was asked: only the last 2 KiB are
+        // kept, in memory, and written redacted (to the diagnostics folder)
+        // if it exits on its own. Always read, so it never blocks on a full pipe.
+        let tail = StderrTail()
+        process.standardError = errors
+        errors.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty { handle.readabilityHandler = nil } else { tail.append(chunk) }
+        }
 
         // Read to the end, so strut never stalls on a full pipe; the first ready line is the one.
         let (ready, announce) = AsyncStream<MemoryServer>.makeStream()
@@ -213,12 +223,14 @@ public final class BundledStrut {
         }
         try process.run()
         self.process = process
+        errorTail = tail
         stdin = input
 
         let server = try await first(of: ready, within: Self.readyTimeout)
         guard let server, self.process === process else {
             // Its output can end a moment before it is reaped.
             for _ in 0..<40 where process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
+            if !process.isRunning { Self.recordExit(process, tail: tail) }
             let why = process.isRunning ? "did not answer in \(Int(Self.readyTimeout.components.seconds)) seconds"
                 : "exited with status \(process.terminationStatus)"
             if self.process === process { stop(quietly: true) }
@@ -229,8 +241,18 @@ public final class BundledStrut {
         return server
     }
 
+    /// An exit strut was not asked to make: its reason and status, and its
+    /// last words redacted, in the diagnostics record (no argument or
+    /// environment). Nothing leaves this Mac.
+    private static func recordExit(_ process: Process, tail: StderrTail) {
+        Diagnostics.recordStrutExit(
+            reason: process.terminationReason == .exit ? .exit : .uncaughtSignal,
+            status: process.terminationStatus, stderrTail: tail.text)
+    }
+
     private func ended(_ ended: Process) {
         guard ended === process else { return }
+        if let errorTail { Self.recordExit(ended, tail: errorTail) }
         process = nil
         stdin = nil
         guard server != nil else { return }
@@ -296,7 +318,6 @@ public final class BundledStrut {
             "STRUT_CACHE_DIR": data.appending(path: "cache").path,
             "STRUT_HOST_CONFIG": hostConfig.path,
             "STRUT_EXIT_ON_STDIN_EOF": "1",
-            "STRUT_SEALED": Orchestrator.sealedSteps.joined(separator: ","),
             "STRUT_MCP_LOCAL": allowsLocalMCP ? "1" : "0",
             "OPENSSL_CONF": "/dev/null",
             "OPENSSL_MODULES": "/var/empty",

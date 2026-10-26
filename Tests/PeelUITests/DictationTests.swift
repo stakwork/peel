@@ -207,6 +207,13 @@ struct HotkeyConfigTests {
         #expect(settings.storedEnabled == nil)
         settings.storedEnabled = false
         #expect(settings.storedEnabled == false)
+        // The hands-free tip shows until hands-free is used, five times at most.
+        #expect(settings.wantsHandsFreeTip)
+        settings.handsFreeTipsShown = DictationDefaults.handsFreeTipLimit
+        #expect(!settings.wantsHandsFreeTip)
+        settings.handsFreeTipsShown = 0
+        settings.usedHandsFree = true
+        #expect(!DictationSettings(defaults: defaults).wantsHandsFreeTip)
     }
 
     @Test func onByDefaultOnlyOnceGranted() {
@@ -218,22 +225,6 @@ struct HotkeyConfigTests {
 }
 
 struct DictationAudioTests {
-    @Test func preRollKeepsTheLastSamplesOldestFirst() {
-        var buffer = PreRollBuffer(capacity: 4)
-        buffer.append([1, 2])
-        #expect(buffer.snapshot() == [1, 2])
-        buffer.append([3, 4, 5])
-        #expect(buffer.snapshot() == [2, 3, 4, 5])
-        buffer.append([6, 7, 8, 9, 10, 11])
-        #expect(buffer.snapshot() == [8, 9, 10, 11])
-        buffer.removeAll()
-        #expect(buffer.snapshot().isEmpty)
-    }
-
-    @Test func preRollSizeFollowsSeconds() {
-        #expect(PreRollBuffer(seconds: 0.2, sampleRate: 16_000).capacity == 3200)
-    }
-
     @Test func levelRisesWithLoudness() {
         #expect(PCM16.level(of: []) == 0)
         #expect(PCM16.level(of: [0, 0, 0]) == 0)
@@ -269,7 +260,7 @@ struct DictationAudioTests {
 
     @Test func theStubAnswersWithCannedText() async throws {
         let text = try await StubTranscriber().transcribe(audioFileURL: URL(fileURLWithPath: "/dev/null"))
-        #expect(text == StubTranscriber.text)
+        #expect(text == DictationTranscript(text: StubTranscriber.text))
     }
 }
 

@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import AgentKit
 import PeelCore
+import PeelDiagnostics
 
 /// Everything the windows show, kept current from the engine and storage.
 @MainActor @Observable
@@ -78,6 +79,14 @@ public final class AppModel {
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
+        /// An app a Stadeum workspace pinned, by the workspace's peer id and
+        /// the app's name there; the Mac's alone, shown by its own strut.
+        case app(peer: String, name: String)
+    }
+
+    /// Account's categories, listed where the sidebar was while it is open.
+    public enum AccountPage: Hashable, Sendable, CaseIterable {
+        case profile, payments, assistant, brain, connections, dictation, notifications, security
     }
 
     public var phase: Phase = .loading {
@@ -86,9 +95,12 @@ public final class AppModel {
             if phase != oldValue {
                 TimelineLog.log("app phase \(oldValue) -> \(phase)")
                 calls.watchesRecent = phase == .ready
+                phaseChanged(phase)
             }
         }
     }
+    /// The Mac's dictation drops what it holds of the account when it locks or closes.
+    @ObservationIgnored public var phaseChanged: @MainActor (Phase) -> Void = { _ in }
     public var connection: Engine.ConnectionState = .offline(retryIn: nil)
     public var conversations: [Conversation] = []
     /// The open chat's main conversation: in a tribe with threads collapsed,
@@ -100,6 +112,7 @@ public final class AppModel {
     public private(set) var loadedChat: String?
     public var destination: Destination? {
         didSet {
+            if destination == .account, oldValue != .account { accountReturn = oldValue }
             // The agent chat is its DM while it has one (`agentChat`).
             followAgentChat()
             if selectedChat != oldValue?.chat {
@@ -231,6 +244,11 @@ public final class AppModel {
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
     public var notice: String?
+    /// Peel recorded a problem from the last run (a crash, or ended while it
+    /// was in front): the notice offers the record (`AppModel+Diagnostics`).
+    public var diagnosticsNotice = Diagnostics.previousRun().isProblem
+    /// The record's text while its sheet is open.
+    public var diagnosticsRecord: DiagnosticRecord?
     /// The notice a failed background check with the server put up
     /// (`Engine.Event.serverCheckError`): dismissed by itself once connected.
     @ObservationIgnored private var serverCheckNotice: String?
@@ -356,20 +374,24 @@ public final class AppModel {
             if chat == nil { agentUnanswered = nil }
             // Not as the account closes, which takes the agent first.
             if let old, agent != nil, destination == .chat(old) { destination = .agent }
+            // The same for where Account's Chats goes back to (the brain moved from Account › Brain).
+            if let old, agent != nil, accountReturn == .chat(old) { accountReturn = .agent }
             if selectedChat == chat || selectedChat == old { rebuildChatRows() }
         }
         if destination == .agent, let agentChat { destination = .chat(agentChat) }
     }
-    /// Bumped to open Account › Brain's home server form, as its "Connect a
-    /// home server…" or "Change" would (the offscreen driver's `brain-form`).
-    public var brainFormOpened = 0
-    /// Bumped to ask "Switch back to this Mac?" in Account › Brain, as its
-    /// "Use this Mac" would (the offscreen driver's `brain-leave`).
-    public var brainLeaveOpened = 0
+    /// Asked of Account › Brain until it is shown, which takes it: its home
+    /// server form, as "Connect a home server…" or "Change" opens it, or
+    /// "Switch back to this Mac?", as "Use this Mac" asks (the offscreen
+    /// driver's `brain-form` and `brain-leave`).
+    public var brainAsk: BrainAsk?
+    public enum BrainAsk: Sendable { case form, leave }
     /// Where the Connect panel is open from, if it is.
     public var agentConnectFrom: AgentConnectSource?
-    /// Account opens at the Peel agent section (`openAgentSettings`).
-    public var showsAgentSettings = false
+    /// The Account category shown, kept while Account is closed (`openAccount`).
+    public var accountPage = AccountPage.profile
+    /// What Account's Chats goes back to: what was open before it (`closeAccount`).
+    private var accountReturn: Destination?
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
     private var pinTask: Task<Void, Never>?
@@ -398,7 +420,7 @@ public final class AppModel {
                 profile = try Profile(name: "default", kind: .app)
             }
         } catch {
-            notice = PeelError.problem(error)
+            notice = PeelError.noted(error)
         }
         notifier.model = self
         calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
@@ -442,6 +464,27 @@ public final class AppModel {
         destination = .chat(chat)
     }
 
+    /// Account, at one of its categories: the agent chat's gear, a pairing
+    /// link, the dictation offer.
+    public func openAccount(_ page: AccountPage) {
+        accountPage = page
+        destination = .account
+    }
+
+    /// Account's Chats: back to what was open before, unless it went
+    /// meanwhile (a chat left or deleted, the agent's chat or automations
+    /// with the agent gone).
+    public func closeAccount() {
+        switch accountReturn {
+        case .chat(let chat)? where !conversations.contains(where: { $0.chat == chat }):
+            destination = nil
+        case .agent? where agent == nil, .automations? where agent == nil:
+            destination = nil
+        default:
+            destination = accountReturn
+        }
+    }
+
     /// The open account's database while it is unlocked; nil when locked,
     /// though locking leaves the engine open, or when no account is open.
     /// What may be read or written for the person outside the main window
@@ -483,6 +526,8 @@ public final class AppModel {
 
     public func start() async {
         guard phase == .loading, let profile else { return }
+        Diagnostics.setAction(.launch)
+        defer { Diagnostics.setAction(.other) }
         guard profile.hasAccount else {
             phase = .onboarding
             return
@@ -497,7 +542,7 @@ public final class AppModel {
             try await open(profile, pin: "")
             enterApp()
         } catch {
-            notice = PeelError.problem(error, couldNot: "open the account")
+            notice = PeelError.noted(error, couldNot: "open the account")
             phase = .onboarding
         }
     }
@@ -533,7 +578,7 @@ public final class AppModel {
         } catch {
             phase = .loading
             await start()
-            notice = PeelError.problem(error, couldNot: "forget the account")
+            notice = PeelError.noted(error, couldNot: "forget the account")
             throw error
         }
     }
@@ -670,6 +715,7 @@ public final class AppModel {
     /// Peel came to the front: the lock if it is due, then what may have
     /// changed elsewhere meanwhile.
     public func becameActive() {
+        Diagnostics.setForeground(true)
         lockIfDue()
         // Asked first, so the open chat's `read` goes after the ask and its
         // answer is not applied over it.
@@ -713,6 +759,7 @@ public final class AppModel {
 
     /// Peel is quitting: what notifications said must not outlive a PIN.
     public func willTerminate() {
+        Diagnostics.markCleanExit()
         agentHost?.stop()
         platform.pasteboard.clearSecret()
         if profile?.requiresPIN == true { notifier.removeAllDelivered() }
@@ -933,7 +980,7 @@ public final class AppModel {
             try await action(engine)
             return true
         } catch {
-            conversationNotices[chat] = PeelError.problem(error, couldNot: what)
+            conversationNotices[chat] = PeelError.noted(error, couldNot: what)
             return false
         }
     }
@@ -967,6 +1014,8 @@ public final class AppModel {
     /// unless history is already being asked for (a restore or a
     /// catch-up running), which asking again would only repeat.
     public func refresh() async {
+        Diagnostics.setAction(.sync)
+        defer { Diagnostics.setAction(.other) }
         guard connection == .connected else {
             await reconnectNow()
             for _ in 0..<20 where connection != .connected && !Task.isCancelled {
@@ -991,7 +1040,7 @@ public final class AppModel {
             do {
                 try await engine.markRead(chat)
             } catch {
-                conversationNotices[chat] = PeelError.problem(error, couldNot: "mark as read")
+                conversationNotices[chat] = PeelError.noted(error, couldNot: "mark as read")
             }
         }
     }
@@ -1062,7 +1111,7 @@ public final class AppModel {
         } catch Engine.Failure.tribeDeleted {
             read = .deleted
         } catch {
-            read = .failed(PeelError.problem(error))
+            read = .failed(PeelError.noted(error))
         }
         // Not for an account switched to meanwhile.
         if self.engine === engine { linkedTribes[link] = read }
@@ -1071,7 +1120,9 @@ public final class AppModel {
     /// Joins a tribe from its link, paying only the price shown, through the
     /// engine's payment checks, and opens it.
     public func joinTribe(_ link: String, agreedJoinMsat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        await pay("join tribe") {
+        Diagnostics.setAction(.tribeJoin)
+        defer { Diagnostics.setAction(.other) }
+        return await pay("join tribe") {
             let tribe = try await $0.joinTribe(link: link, agreedJoinMsat: agreedJoinMsat, confirmedMsat: confirmedMsat)
             destination = .chat(tribe.pubkey)
         }
@@ -1234,6 +1285,8 @@ public final class AppModel {
         pendingInvites = []
         focus = nil
         destination = nil
+        accountPage = .profile
+        brainAsk = nil
         searchQuery = ""
         timeline = .empty
         openThread = nil
@@ -1341,8 +1394,10 @@ public final class AppModel {
                     reconnectAt = nil
                 }
             case .conversationError(let chat, let message):
+                Diagnostics.note(errorKind: .engine)
                 conversationNotices[chat] = PeelError.problem(message)
             case .connectionError(let message):
+                Diagnostics.note(errorKind: .connection)
                 connectionError = PeelError.problem(message)
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
@@ -1351,8 +1406,10 @@ public final class AppModel {
             case .balance(let msat):
                 balanceMsat = msat
             case .coreError(let message):
+                Diagnostics.note(errorKind: .core)
                 notice = PeelError.problem(message)
             case .serverCheckError(let message):
+                Diagnostics.note(errorKind: .server)
                 notice = PeelError.problem(message)
                 serverCheckNotice = notice
             case .history(let phase, let reached, let end):
@@ -1420,7 +1477,7 @@ public final class AppModel {
                 }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the chats") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load the chats") }
         }
     }
 
@@ -1433,7 +1490,7 @@ public final class AppModel {
                 markSelectedChatRead()
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load unread counts") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load unread counts") }
         }
     }
 
@@ -1448,7 +1505,7 @@ public final class AppModel {
                 if selectedChat.map(me(in:)) != before { rebuildRows() }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load tribes") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load tribes") }
         }
     }
 
@@ -1458,7 +1515,7 @@ public final class AppModel {
                 waitingMsat = msat
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load waiting payments") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load waiting payments") }
         }
     }
 
@@ -1469,7 +1526,7 @@ public final class AppModel {
                 pendingInvites = list.filter(\.isPending)
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load invites") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load invites") }
         }
     }
 
@@ -1504,7 +1561,7 @@ public final class AppModel {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                notice = PeelError.problem(error, couldNot: "load this chat's messages")
+                notice = PeelError.noted(error, couldNot: "load this chat's messages")
                 // Its list shows, empty, rather than nothing at all.
                 if loadedChat != chat { loadedChat = chat }
             }
@@ -1517,7 +1574,7 @@ public final class AppModel {
                     pinnedMessage = pinned
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the pinned message") }
+                if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load the pinned message") }
             }
         }
     }
@@ -1535,14 +1592,14 @@ public final class AppModel {
                     rebuildThreadRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load the thread") }
+                if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load the thread") }
             }
         }
     }
 
     private func observeRecentCalls(_ storage: Storage) async {
         do { try await calls.observeRecent(storage) } catch {
-            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load recent calls") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load recent calls") }
         }
     }
 
@@ -1552,7 +1609,7 @@ public final class AppModel {
                 threads = rows
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.problem(error, couldNot: "load threads") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load threads") }
         }
     }
 }

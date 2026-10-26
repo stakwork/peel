@@ -95,7 +95,7 @@ extension AppModel {
         } catch Engine.Failure.needsConfirmation(let msat) {
             return .needsConfirmation(msat: msat)
         } catch {
-            return .refused(PeelError.problem(error))
+            return .refused(PeelError.noted(error))
         }
     }
 
@@ -155,7 +155,7 @@ extension AppModel {
         } catch Engine.Failure.needsConfirmation(let msat) {
             return .needsConfirmation(msat: msat)
         } catch {
-            return .refused(PeelError.problem(error))
+            return .refused(PeelError.noted(error))
         }
     }
 

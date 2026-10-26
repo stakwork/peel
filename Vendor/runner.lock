@@ -1,2 +1,2 @@
-# stakwork/sphinx master after #390 (rooms on the person's org struts, a job's end wakes its DM session) and #389.
-6a3863d47260e84558a89171018b32fa0e05ebb7
+# stakwork/sphinx master at the merge of #396 (runner exits when its stdout is a broken pipe), after #398.
+75898d01a57836c67508d03636f91cb756965a87

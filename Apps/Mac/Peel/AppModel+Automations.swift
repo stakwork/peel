@@ -20,6 +20,9 @@ struct AutomationsState: Equatable {
     /// The system automations Peel has turned on once, by workflow, as
     /// last read or written (`Engine.systemAutomationsOn`).
     var turnedOn: Set<String>?
+    /// The automations (by id) whose Run now is being asked of strut: from
+    /// its answer on, strut lists the run as going.
+    var firing: Set<String> = []
 
     /// The person's own: one-offs still to come, then everything
     /// recurring, then one-offs done.
@@ -34,6 +37,11 @@ struct AutomationsState: Equatable {
 
     /// strut's clock is off when an enabled automation's time has passed unrun.
     func schedulerLooksOff(now: Date = .now) -> Bool { shown.contains { $0.isOverdue(now: now) } }
+
+    /// Going, as strut says it, or being asked for.
+    func isRunning(_ automation: Automation) -> Bool { automation.running || firing.contains(automation.id) }
+
+    var anyRunning: Bool { list.contains(where: isRunning) }
 
     /// Automations whose last run failed, the person's and the system's:
     /// the sidebar's badge.
@@ -98,8 +106,8 @@ extension AppModel {
             credential = try connectedCredential()
         } catch {
             // A Keychain that cannot be read is not a model removed: strut's store is left as it is.
-            automations.problem = PeelError.problem(error, couldNot: "read the connected model's key")
-            return handedOver(.failed("Not connected to your assistant: \(PeelError.problem(error))"))
+            automations.problem = PeelError.noted(error, couldNot: "read the connected model's key")
+            return handedOver(.failed("Not connected to your assistant: \(PeelError.noted(error))"))
         }
         // This strut has it already (`connection` set again to the same).
         if let handed = strutModel, handed.server == client.server, handed.credential == credential {
@@ -110,8 +118,8 @@ extension AppModel {
             try await client.setModel(credential)
         } catch {
             strutModel = nil
-            automations.problem = PeelError.problem(error, couldNot: "give strut the connected model")
-            let reason = PeelError.problem(error)
+            automations.problem = PeelError.noted(error, couldNot: "give strut the connected model")
+            let reason = PeelError.noted(error)
             return handedOver(.failed(credential == nil ? "Your assistant may still have the old key: \(reason)"
                                       : "Not connected to your assistant: \(reason)"))
         }
@@ -143,18 +151,20 @@ extension AppModel {
             var list = try await client.list(descriptions: &descriptions)
             // The strut changed while it was read.
             guard automationsClient?.server == client.server else { return }
-            automations.descriptions = descriptions
+            if automations.descriptions != descriptions { automations.descriptions = descriptions }
             if automations.problem != nil { automations.problem = nil }
             list = await turnOnSystemAutomations(in: list, with: client)
             // Peel's own strut is where the Mac's send grants point: those of automations it no longer has go.
             if own, let missed = try? macAgent.deviceCards.revokeGrants(
                 missingFrom: Set(list.filter(\.isYours).map(\.id)), missedBefore: automations.grantsMissed) {
-                automations.grantsMissed = missed
+                if automations.grantsMissed != missed { automations.grantsMissed = missed }
             }
             // Written only when changed: each write redraws what reads it.
             if automations.list != list { automations.list = list }
         } catch {
-            automations.problem = PeelError.problem(error, couldNot: "read the automations")
+            // The view's read loop starting again (a run started or ended) is not strut gone.
+            guard !Task.isCancelled else { return }
+            automations.problem = PeelError.noted(error, couldNot: "read the automations")
         }
         if !automations.loaded { automations.loaded = true }
     }
@@ -172,7 +182,7 @@ extension AppModel {
             try await markTurnedOn(now)
             return list
         } catch {
-            automations.problem = PeelError.problem(error, couldNot: "keep which system automations are turned on")
+            automations.problem = PeelError.noted(error, couldNot: "keep which system automations are turned on")
             return list
         }
     }
@@ -209,8 +219,14 @@ extension AppModel {
         }
     }
 
+    /// Shows it going from the tap: the read after strut's answer lists the run.
     func runAutomationNow(_ automation: Automation) async {
-        await changeAutomations("run \u{201C}\(automation.name)\u{201D}") { try await $0.runNow(automation) }
+        guard !automations.isRunning(automation) else { return }
+        await changeAutomations("run \u{201C}\(automation.name)\u{201D}") { client in
+            automations.firing.insert(automation.id)
+            defer { automations.firing.remove(automation.id) }
+            try await client.runNow(automation)
+        }
     }
 
     func deleteAutomation(_ automation: Automation) async {
@@ -242,7 +258,7 @@ extension AppModel {
                 let names = ListFormatter.localizedString(byJoining: stuck.map { "\u{201C}\($0)\u{201D}" })
                 return "Couldn't move \(names) to \(workflow): it stays where it was until the next try."
             } catch {
-                return PeelError.problem(error, couldNot: "move the automations to \(workflow)")
+                return PeelError.noted(error, couldNot: "move the automations to \(workflow)")
             }
         }
         bridge.moving = move
@@ -258,7 +274,7 @@ extension AppModel {
         do {
             try await change(client)
         } catch {
-            automations.problem = PeelError.problem(error, couldNot: what)
+            automations.problem = PeelError.noted(error, couldNot: what)
         }
         await refreshAutomations()
     }

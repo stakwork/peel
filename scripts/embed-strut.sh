@@ -1,8 +1,9 @@
 #!/bin/sh
 # Build phase of the Mac app (Apps/Peel.xcodeproj, "Peel macOS"): puts the
 # agent's strut, as scripts/stage-strut.sh left it (once per Mac, shared by
-# every checkout), into Contents/Strut. Not under Contents/Helpers, which
-# codesign keeps for signed nested bundles.
+# every checkout), into Contents/Strut, only if it was staged from the commit
+# Vendor/strut.lock names. Not under Contents/Helpers, which codesign keeps
+# for signed nested bundles.
 #
 # PEEL_REQUIRE_STRUT=1 (scripts/run-app.sh) fails without a staged strut and
 # bridge instead of warning; a Release build always fails without the bridge. When Xcode signs the build (an archive, a run from
@@ -50,6 +51,14 @@ if [ ! -d "$STRUT_STAGE" ]; then
   [ "${PEEL_REQUIRE_STRUT:-}" != 1 ] || exit 1
   exit 0
 fi
+# Another strut than the pin, as for the bridge: left out, or the build's end where it must ship one.
+# Its UI is what opens the agent's deliverables, so an older one would show the whole of itself instead.
+WANT_STRUT="$(awk '!/^#/ && NF { print $1; exit }' "$ROOT/Vendor/strut.lock")"
+if [ "$(sed -n 's/^strut //p' "$STRUT_STAGE/STAGED_FROM" 2> /dev/null)" != "$WANT_STRUT" ]; then
+  echo "warning: the staged strut is not strut $WANT_STRUT (Vendor/strut.lock); stage it again (scripts/stage-strut.sh <strut checkout>). Left out: this Peel's agent has no memory or automations"
+  [ "${PEEL_REQUIRE_STRUT:-}" != 1 ] && [ "${CONFIGURATION:-}" != Release ] || exit 1
+  exit 0
+fi
 echo "embed-strut: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'strut, unknown source')"
 # Its workspace is on Ladybug, whose extensions a signed app cannot download: a stage without them is refused.
 [ "$(plutil -extract ladybug raw -o - "$STRUT_STAGE/desktop.json" 2> /dev/null)" = true ] || {
@@ -61,13 +70,27 @@ echo "embed-strut: $(head -1 "$STRUT_STAGE/STAGED_FROM" 2> /dev/null || echo 'st
   echo "error: the staged strut has no speech engine; stage it again (scripts/stage-strut.sh <strut checkout>)"
   exit 1
 }
+# And its fixer, which cleans up dictation and learns from edits, as stage-strut.sh requires.
+[ "$(plutil -extract fixer raw -o - "$STRUT_STAGE/desktop.json" 2> /dev/null)" = true ] \
+  && [ -e "$STRUT_STAGE/native/llama/mac-arm64-metal/llama-addon.node" ] || {
+  echo "error: the staged strut has no dictation fixer; stage it again (scripts/stage-strut.sh <strut checkout>)"
+  exit 1
+}
 ditto "$STRUT_STAGE" "$DEST"
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = YES ] && [ -d "$DEST/native" ]; then
-  for code in "$DEST"/native/*; do
-    case "$(basename "$code"):$(file -b "$code")" in
-      node:*) ;;
+  # native/ and its folders (the dictation fixer's in native/llama/<platform>).
+  # node and esbuild are standalone executables; a sandboxed build's App
+  # Store validation requires com.apple.security.app-sandbox on each one
+  # directly, not just on the app that launches them. Everything else
+  # under native/ is a dylib/bundle the parent process loads in-process,
+  # which needs no entitlements of its own.
+  find "$DEST/native" -type f | while IFS= read -r code; do
+    case "$code:$(file -b "$code")" in
+      "$DEST/native/node":*|"$DEST/native/esbuild":*) ;;
       *:Mach-O*) sign "$code" ;;
     esac
   done
-  sign --entitlements "$ROOT/scripts/${PEEL_STRUT_ENTITLEMENTS:-strut-node.entitlements}" "$DEST/native/node"
+  for code in "$DEST/native/node" "$DEST/native/esbuild"; do
+    [ -e "$code" ] && sign --entitlements "$ROOT/scripts/${PEEL_STRUT_ENTITLEMENTS:-strut-node.entitlements}" "$code"
+  done
 fi

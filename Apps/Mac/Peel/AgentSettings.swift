@@ -8,7 +8,6 @@ import PeelUI
 /// by its last four (Replace, Remove confirmed in place), the model, its
 /// own account (Set up) and Clear for the earlier chat on this Mac. Each change is an `AgentSession` action.
 struct AgentSettingsSection: View {
-    static let id = "agent-settings"
     @Environment(AppModel.self) private var model
     let agent: AgentSession
 
@@ -17,7 +16,7 @@ struct AgentSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection("Peel agent") {
+            SettingsSection {
                 AgentNameRow(agent: agent)
                 Fact("Provider") {
                     VStack(alignment: .leading, spacing: 4) {
@@ -306,7 +305,7 @@ struct BrainSection: View {
                 }
                 .padding(.top, Theme.Space.md)
             }
-            SettingsSection("Brain") {
+            SettingsSection {
                 if editing {
                     HomeServerForm(current: model.brain?.homeServer) { editing = false }
                         .onAppear(perform: model.checkLocalMemory)
@@ -314,8 +313,8 @@ struct BrainSection: View {
                     rows
                 }
             }
-            .onChange(of: model.brainFormOpened) { editing = true }
-            .onChange(of: model.brainLeaveOpened) { leaving = true }
+            .onAppear(perform: takeAsk)
+            .onChange(of: model.brainAsk) { takeAsk() }
             if let problem {
                 Text(problem)
                     .font(Theme.font(12))
@@ -327,6 +326,15 @@ struct BrainSection: View {
     }
 
     private var moving: Bool { model.memoryMove?.isRunning == true }
+
+    private func takeAsk() {
+        switch model.brainAsk {
+        case .form?: editing = true
+        case .leave?: leaving = true
+        case nil: return
+        }
+        model.brainAsk = nil
+    }
 
     @ViewBuilder private var rows: some View {
         switch model.brain {

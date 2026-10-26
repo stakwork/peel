@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import PeelCore
+import PeelDiagnostics
 
 /// A tribe's settings as typed into Create a tribe or Edit tribe, on the
 /// Mac and the iPhone: prices in sats and the escrow time in hours, as
@@ -122,6 +123,8 @@ public struct TribeSettingsDraft: Equatable {
     /// else the form's.
     public static func saveProblem(_ error: any Error, creating: Bool) -> SaveProblem {
         let couldNot = creating ? "create the tribe" : "save the tribe"
+        // The kind only; a field's own problem is typed text's, never kept.
+        Diagnostics.note(error: error)
         if let problem = error as? FieldProblem { return .field(problem) }
         if let failure = error as? Engine.Failure {
             if let field = Field(failure) { return .field(FieldProblem(field: field, text: PeelError.problem(failure))) }

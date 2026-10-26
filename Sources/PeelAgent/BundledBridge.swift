@@ -6,8 +6,9 @@ import PeelCore
 /// sphinx/runner, which holds the agent's own Sphinx account and pipes its
 /// owner's DM to strut (docs/agent-on-strut.md, section 4). Started beside
 /// Peel's strut, which it reaches on loopback with strut's key, and stopped
-/// with it; gone by itself if Peel dies, since its stdin is a pipe only Peel
-/// holds (`RUNNER_EXIT_ON_STDIN_EOF`). Its admin token and the token strut
+/// with it; meant to go by itself if Peel dies, since its stdin is a pipe only
+/// Peel holds (`RUNNER_EXIT_ON_STDIN_EOF`), and stopped before the next start
+/// when it does not (`stopLeftovers`). Its admin token and the token strut
 /// uses with it are made here for each launch and kept only in memory. Its
 /// port is picked here, since runner names its own address to strut from
 /// it, and trusted only once runner says it has it (Rocket's launch line on
@@ -286,6 +287,8 @@ public final class BundledBridge: CustomReflectable {
         excluded.isExcludedFromBackup = true
         var folder = data
         try folder.setResourceValues(excluded)
+        // Off the main actor: a stuck runner takes the SIGTERM's two seconds and a SIGKILL.
+        await Task.detached { [executable, data] in Self.stopLeftovers(of: executable, data: data) }.value
         let port = try Self.freePort()
         let admin = try BundledStrut.newKey()
         let token = try BundledStrut.newKey()
@@ -442,6 +445,62 @@ public final class BundledBridge: CustomReflectable {
         guard parts.count == 3, parts[0] == agent, parts[1].count == 66, parts[1].allSatisfy(\.isHexDigit),
               !parts[2].isEmpty, parts[2].allSatisfy(\.isASCII), UInt64(parts[2]) != nil else { return nil }
         return info
+    }
+
+    /// Stops a runner a Peel that crashed left on `data`'s store, which it
+    /// holds open, so the next one exits as it starts. Its stdin's EOF does
+    /// not end it: the pinned runner logs "stdin closed" to its stdout, a pipe
+    /// that died with Peel too, and that thread panics on the broken pipe
+    /// before it exits (a SIGTERM ends the same way). Only an orphan (parent
+    /// launchd) with `executable`'s name and this store (`DB_PATH`): never
+    /// another live Peel's.
+    nonisolated static func stopLeftovers(of executable: URL, data: URL) {
+        let store = data.appending(path: "db").path
+        for pid in orphans(named: executable.lastPathComponent) where environment(of: pid)?["DB_PATH"] == store {
+            endProcess(pid, isRunning: { kill(pid, 0) == 0 })
+        }
+    }
+
+    /// This user's processes whose parent is launchd and whose executable is named `name`.
+    nonisolated private static func orphans(named name: String) -> [pid_t] {
+        var pids = [pid_t](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
+        let count = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
+        return pids.prefix(max(count, 0)).filter { pid in
+            var info = proc_bsdinfo()
+            let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+            guard pid > 0, proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size,
+                  info.pbi_ppid == 1, info.pbi_uid == getuid() else { return false }
+            var path = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+            guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { return false }
+            return URL(filePath: String(cString: path)).lastPathComponent == name
+        }
+    }
+
+    /// `pid`'s environment (`KERN_PROCARGS2`: argc, the executable's path,
+    /// argv, then the environment), if this user may read it.
+    nonisolated private static func environment(of pid: pid_t) -> [String: String]? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return nil }
+        let argc = buffer.withUnsafeBytes { Int($0.load(as: Int32.self)) }
+        // The path and its padding, then argc strings (any may be empty), then `NAME=value` strings to the first empty one.
+        let bytes = buffer[MemoryLayout<Int32>.size..<size]
+        guard let pathEnd = bytes.firstIndex(of: 0), var start = bytes[pathEnd...].firstIndex(where: { $0 != 0 }) else { return nil }
+        var strings: [String] = []
+        while start < bytes.endIndex {
+            let end = bytes[start...].firstIndex(of: 0) ?? bytes.endIndex
+            strings.append(String(decoding: bytes[start..<end], as: UTF8.self))
+            start = end + 1
+        }
+        guard strings.count >= argc else { return nil }
+        var environment: [String: String] = [:]
+        for entry in strings.dropFirst(argc) {
+            guard let equals = entry.firstIndex(of: "=") else { break }
+            environment[String(entry[..<equals])] = String(entry[entry.index(after: equals)...])
+        }
+        return environment
     }
 
     /// A port on 127.0.0.1 nothing holds now, for runner to take.

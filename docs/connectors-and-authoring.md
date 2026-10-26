@@ -159,7 +159,7 @@ strut (section 5).
 |---|---|---|
 | The orchestrator (the DM) | `orchestrator.tools` in the host delta | "Assistant" |
 | Jobs (`job`) | `job.tools` in the host delta | "Jobs" |
-| Workflows the builder writes | The workflow's own `agentTools` and steps, checked at publish against `builder.reach` (new, section 7) | "Workflows" |
+| Workflows the builder writes | The workflow's own `agentTools` and steps, checked at publish against `builder.reach` (new, section 7; Peel sets none since 2026-10-24) | "Workflows" |
 | The builder itself | `builder.tools` (`meta/*`, `app/*` and graph and job reads); no connectors | None |
 
 A toggle rewrites `host-config.json`, which strut reads at boot, so a
@@ -443,65 +443,71 @@ orchestrator (403) or join your room.
 
 ## 7. Peel's agent authoring workflows
 
+### The model (Tom, 2026-10-23)
+
+An automation is always a prompt on a schedule; a workflow is a tool.
+The builder makes workflows and never schedules them. What you can ask
+for:
+
+| You say | When | How | Cards |
+|---|---|---|---|
+| "Remember…", "what did I miss?", "reply to Kate…" | Now | The agent's own tools | A send card when it sends as you |
+| "Find me padel rackets under £200" | Now | A job (web, files) | None |
+| "Remind me at 8", "every Monday recap my tribes", "every Sunday send me the top 3 padel videos" | Schedule | An automation: its run has the agent's tools and starts a job for the web | One: the schedule |
+| "Make me a workflow: top 3 padel videos, their transcripts, the topics" | Now | The builder writes, test-runs and publishes it | None |
+| "…and send it to me every Sunday night" | Schedule | An automation whose prompt says to run that workflow by name | One: the schedule |
+| "Every Monday post a recap to my tribe" | Schedule | An automation posting as you within its grant | One: the schedule and the grant |
+
+So "every Sunday, find X on the web" is not a workflow: before this, the
+orchestrator's prompt sent every schedule to `peel-automation-run`, whose
+run had only memory and your chats, and the agent declined web tasks.
+
 ### The flow
 
-"Research YouTube every Monday and send me the top 5."
+"Make me a workflow for the top 3 padel videos, and send it every Sunday."
 
-1. **The orchestrator decides the shape.** A prompt on a schedule with
-   only memory and your chats is an automation on `peel-automation-run`
-   (built, PR 7). Anything that needs its own steps, connectors or a
-   fixed procedure is a workflow: it calls `job/start { workflow:
-   builder, title, prompt }` and tells you it has started.
+1. **The orchestrator starts the builder** (`job/start { workflow:
+   builder }`) and tells you it has started.
 2. **The builder writes it.** In its own job: drafts the YAML, writes a
    step if needed (`meta/create-step`), test-runs it (`meta/run-step`,
    `meta/run-workflow`), checks claims.
-3. **It proposes to publish.** `meta/publish-workflow` is in
-   `builder.approve`, so the call becomes a proposal with a rationale.
-   Today strut parses a proposal's input against the step's schema when
-   it is made, but the publish gate (sealed, and `builder.reach` once it
-   exists) runs only when it is applied. It should also run when the
-   proposal is made, so
-   a workflow you could never publish is refused before you see a card
-   (question for Evan 3).
-4. **It proposes the schedule.** The new `meta/set-automation` (gated)
-   records `{workflow, trigger, input}`, applied after the publish it
-   depends on.
-5. **The job ends.** `run.end { text, proposals }` goes to the bridge, the
-   job's callback.
-6. **You approve on a card.** The bridge sends each proposal to your Mac
-   as an `approve` device request; the Mac shows the card; your answer
-   goes back; the bridge calls `POST /proposals/:id/decide`. strut applies
-   it in code.
-7. **It runs.** Each Monday strut fires the workflow; its `run.end` goes
-   to the bridge (the automation's callback) and the result lands in the
-   DM, as automation results do today. "Send me" means the DM: an authored
-   workflow cannot reach `sphinx/*`, so it cannot post as you.
+3. **It publishes.** Since 2026-10-24 Peel sets no `builder.approve`:
+   the builder test-runs and publishes with no card. Before, the call
+   became a proposal the bridge relayed as an `approve` card (runner R1).
+4. **The orchestrator schedules it.** An automation (`automation/create`,
+   one card) whose prompt says "run padel-digest and tell me what it
+   found". Peel leaves `meta/set-automation` out of `builder.approve` (it sets none), so
+   strut refuses it: every schedule is an automation, listed and managed
+   in one place.
+5. **It runs.** Each Sunday the automation's run starts a job that runs
+   the workflow (`meta/run-workflow` is a job's), says nothing itself,
+   and the job's result reaches the DM: the bridge sends the end of a job
+   no DM started to the owner (`turns.rs`, `unasked`). An automation's
+   run never starts a builder job; building is yours to ask for.
+
+The run reads your chats and a job has the web, so an unattended run can
+hand chat content to a job. That path exists in your own turns too; the
+difference is nobody is watching. Next: once a turn or run has read
+other people's messages, starting a job needs your card
+(`agent-on-strut.md`, "an automation can do anything you can").
 
 ### The card
 
-```
-New workflow: youtube-weekly-top-5          from "Research YouTube…"
-  Searches YouTube (web_search), ranks by views, writes a summary
-  Uses: web search · YouTube Data API (YOUTUBE_API_KEY)
-  Runs: every Monday at 9:00 (next: Mon 26 Oct)
-  [View YAML]                     Publish and schedule · Publish only · Deny
-```
-
-What it uses comes from the workflow's closure, in plain words; secrets by
-name. Publish and schedule accepts both proposals in order. There is no
-Always allow for publishing.
+The publish card says what the workflow does and what it uses, in plain
+words, with View YAML. P2 replaces R1's generic wording with that.
+Superseded 2026-10-24: the builder publishes with no card.
 
 ### What Peel needs
 
 | Need | Change |
 |---|---|
-| The builder seeded and gated | Move the strut pin past #239; Peel's delta sets `builder: { approve: [meta/publish-workflow, meta/create-step, meta/edit-step, meta/set-automation], peer: false }`. **This ships with the pin move,** since the pin otherwise gives the orchestrator an ungated builder |
+| The builder seeded and gated | Move the strut pin past #239; Peel's delta sets `builder: { approve: [meta/publish-workflow, meta/create-step, meta/edit-step, app/publish], peer: false }` (`meta/set-automation` left out on 2026-10-23: schedules are automations). **This ships with the pin move,** since the pin otherwise gives the orchestrator an ungated builder. Since 2026-10-24 Peel sets no `approve`: the builder works with no card |
 | The orchestrator may start it | Nothing: `job/start` is already granted |
 | `meta/set-automation` | New strut step: create, update, pause or delete an automation on a workflow published `ai`; never on seeded or host workflows. Under `meta/*`, so sealed from the meta surface but granted to the builder |
-| Results reach the DM | Its automations get the bridge as callback: Peel's `pointRunEnds` (today: your automations on `peel-automation-run`, `Orchestrator.swift:510-515`) widens to every automation on an `ai` workflow |
+| Results reach the DM | Nothing new: a workflow runs inside a job an automation's run starts, and the bridge sends that job's end to the DM (journey `anAutomationStartsAJobWhoseResultReachesTheDM`) |
 | Proposals as cards | The bridge relays `run.end.proposals` as `approve` requests and calls `decide` (runner, Evan's); Peel's card learns the proposal shape |
 | `sphinx/*` sealed | Already: Peel's device steps are `sealed: true` |
-| Secrets scoped | New in strut: `builder.reach { tools, builtins, secrets }` in the host delta. A publish whose closure names a step, built-in (`bash`, `exec`) or `secretsEnv` outside it is refused; at run time, steps published `ai` read only `reach.secrets`. Peel's default: connectors toggled for Workflows, `web_search`, `web_fetch`, no `bash`, no `exec`, and the secrets of those connectors. `PEEL_BRIDGE_*` and model keys are never in it |
+| Secrets scoped | New in strut: `builder.reach { tools, builtins, secrets }` in the host delta. A publish whose closure names a step, built-in (`bash`, `exec`) or `secretsEnv` outside it is refused; at run time, steps published `ai` read only `reach.secrets`. Peel's default: connectors toggled for Workflows, `web_search`, `web_fetch`, no `bash`, no `exec`, and the secrets of those connectors. `PEEL_BRIDGE_*` and model keys are never in it. Superseded 2026-10-24: Peel sets no reach and no publish card, as on Hive ([agent-on-strut.md](agent-on-strut.md), "What the AI publishes") |
 
 `reach` is the `secretsEnv` allowlist and the per-connector Workflows
 toggle in one list. The cheaper version is `STRUT_SEALED` globs (a deny
@@ -518,7 +524,7 @@ assistant made**, below Yours and System:
   while a run is live and which removes its automations).
 - Detail: what it uses (as on the card), the YAML read only, runs, and
   "Change it…", which opens the DM with "Change youtube-weekly-top-5: …"
-  so the builder makes a new version behind a new card.
+  so the builder makes a new version.
 - In the DM: "what workflows do I have?" (`meta/list-workflows` is
   already the builder's; the orchestrator gets `automation/list` widened
   to read every automation, read only).
@@ -542,7 +548,7 @@ marks a PR that needs Evan's agreement first.
 | S5 E | strut | Google token helper (refresh token to access token, cached) and `gmail/*` steps; `gdrive/*` uses the helper | Tests against recorded Google replies; a live check on Tom's account | high (secrets, mail) | S4 |
 | R1 E | sphinx (runner) | The bridge relays `run.end.proposals` as `approve` device requests and calls `decide` with the answer, once | On the local stack: a builder job's publish proposal shows as a card; Allow publishes once; a repeat does nothing | high (untrusted input) | — |
 | P1 | peel | Move the strut pin to current main with the builder gated (`builder.approve`, `peer: false`) in the delta | The orchestrator starts a builder job; its publish stays a pending proposal; nothing publishes unapproved | medium | — |
-| P2 | peel | The card for proposals: the closure in plain words, schedule, Publish and schedule / Publish only / Deny; `pointRunEnds` covers `ai` workflows | Journey: "every Monday, top 5 YouTube videos" ends with one card; approve; Run now lands the result in the DM | high (approvals) | P1, R1, S1, S2 |
+| P2 | peel | The publish card: what the workflow does and uses in plain words, View YAML, Publish / Deny (dropped 2026-10-24: the builder publishes with no card) | Journey: "make me a workflow…" ends with one card; approve; an automation running it lands the result in the DM | high (approvals) | P1, R1, S1, S2 |
 | P3 | peel | Connections screen on the Mac: list, paste token, add MCP server, per-agent toggles writing the delta and restarting strut, status | Click check: add Linear with a key, see Connected, ask the DM for "my open Linear issues"; toggle Jobs off and a job no longer gets it | high (secrets) | S3, S4 |
 | P4 | peel | Google sign-in (PKCE) writing the refresh token to strut | Sign in on Tom's account; "anything from Evan today?" reads Gmail; a send shows a card | high (secrets) | P3, S5 |
 | P5 | peel | "Workflows the assistant made" in Automations: pause, run now, delete, detail | Click check on a workflow from P2 | medium | P2 |
@@ -583,9 +589,9 @@ Paste as they are:
 
 ## 9. Open questions
 
-1. **Two approvals or one card?** Publish and schedule are two proposals.
-   *Recommended:* one card that accepts both in order, with "Publish
-   only" beside it.
+1. **Two approvals or one card?** Settled 2026-10-23: two cards, since
+   they are two decisions. The publish is the builder's proposal; the
+   schedule is an automation, made by the orchestrator on its own card.
 2. **Builder on a peer.** strut's builder can build on another strut.
    *Recommended:* `peer: false` in Peel; revisit when Tom has a home
    server and a Hive swarm to build on.

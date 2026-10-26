@@ -28,15 +28,14 @@ on this Mac, turns it into text: nothing leaves it.
   of a shortcut (Option-Space, Option-arrow, Command-Tab): the recording is
   dropped and the key goes on to the app.
 - **Capture** (`DictationAudioCapture`): AVAudioEngine's input, converted
-  to 16 kHz mono PCM16 and written to a temp WAV (mode 0600); a 200 ms ring
-  is put in front of each recording. The file is deleted once transcribed,
+  to 16 kHz mono PCM16 and written to a temp WAV (mode 0600). The engine
+  runs only from key-down to the recording's end. The file is deleted once transcribed,
   and on cancel. An engine stays on the input it started with, so a new one
   is made when the input changes (AirPods connecting while Peel is open, or
   another mic chosen): on macOS's notice that the default input changed, on
   the engine's that its configuration did (one new engine per burst, as a
-  Bluetooth headset switches profile when its mic opens), and when a
-  recording starts on an engine that has had no audio for a second. A
-  recording under way carries on into the new engine.
+  Bluetooth headset switches profile when its mic opens). A recording under
+  way carries on into the new engine.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
   A small dark pill: 24 pt with a live waveform (the last eight levels) while
@@ -49,17 +48,20 @@ on this Mac, turns it into text: nothing leaves it.
   Peel's bundled strut (the open account's, started with its agent; never
   a home server's) is staged with its speech engine, sherpa-onnx, in
   `native/` (`scripts/stage-strut.sh`, no longer `--no-stt`; +32 MB). The
-  recording's WAV goes to `POST /audio/transcribe?model=zipformer-en-kroko`
+  recording's WAV goes to `POST /audio/transcribe`
   with the strut's key, and the text comes back cased and punctuated (about
   1.3 s for a short sentence cold, tens of ms of decoding), on the slow
   strut session (a download or a long recording outlasts a minute). The
-  model, 57 MB, is fetched once into the account's strut cache, as soon as
+  default model (the one Peel checks for and sends no `model` for, so the
+  user's pick in Models, below, wins once installed), 57 MB, is fetched
+  once into the account's strut cache, as soon as
   dictation is on and the strut is up: the app tells dictation whenever
   its strut starts, stops or changes (`AppModel.strutChanged`), which
   checks the model again for that strut. A recording that finds it still
   downloading says so in the HUD, and one made while the strut is starting
-  waits up to 10 s for it. Account › Dictation › Speech shows the state,
-  with Try again after a failure. Strut's refusals come back as
+  waits up to 10 s for it. Account › Dictation › Speech to text shows the
+  model in use, or, before strut has listed its models, the default
+  model's state; Try again after the default model failed. Strut's refusals come back as
   `StrutSpeech.Failure`, in Peel's words for the HUD, never strut's own
   (which can carry its paths). Nothing said is logged; what is kept is
   History's, below. `embed-strut.sh`
@@ -70,7 +72,9 @@ on this Mac, turns it into text: nothing leaves it.
   one is kept), and goes with the account: the text that was typed or
   copied, when, how long, the app's id and name (never its window title)
   and where the text went (typed; copied, and why; blocked: a password
-  field, no text; failed, and why). Never the recording, which is still
+  field, no text; failed, and why), and what dictation heard when the
+  vocabulary rewrote it (`heard`, v29: "heard “ask the stack work team”").
+  Never the recording, which is still
   deleted once transcribed. Nothing is kept, and the window shows nothing,
   while the account is locked (`AppModel.unlockedStorage` is nil: locking
   leaves the engine open, so the engine alone is not the test) or with History off (Account › Dictation › History). The
@@ -81,6 +85,76 @@ on this Mac, turns it into text: nothing leaves it.
   only when it was kept. Time and account are taken when the key is let go.
   Strut's sessions are not used: they keep the recogniser's raw text with
   no app or outcome, and cannot be cleared.
+- **Vocabulary** (`DictationLingo`, a thin client: strut is the brain).
+  The user's words live in the memory graph on Peel's own strut: a `Lingo`
+  entity type for jargon, acronyms and product words, and on any entity
+  `heard_as` facts, how dictation mishears it ("stack work" for Stakwork),
+  kept out of strut's alias matching (stakwork/strut#297). All the judging
+  is strut's too (stakwork/strut#301, its `plans/native-dictation-client.md`
+  §7a, the contract any client follows): `/audio/transcribe` returns the
+  text with the vocabulary applied (known mishearings, new spellings of a
+  taught word, casing; never one everyday word on its own) and `heard`,
+  what the recogniser wrote, when that changed it. Peel types `text` and
+  keeps `heard` in History. Peel has no rules of its own.
+  - **Learning.** After typing, `DictationEditWatch` rereads the field every
+    0.5 s while it keeps the focus, for up to 45 s, and takes the span
+    between the text that was around Peel's (`DictationEdit`, PeelUI). The
+    edit is sent **once**, when it has settled, because strut runs the
+    user's fixer model on it: 2 s after the last change, when the field is
+    emptied (Return in a chat sending it: the last reading before stands),
+    when words are written on after it, when the focus leaves the field, or
+    when the next dictation or insertion starts. Nothing is sent when the
+    text is unchanged. Words added after the dictation (by word: the same
+    words first, then more) are the user's own writing, never sent: the
+    edit is the reading before them, and a span 200 characters longer than
+    the dictation ends it whatever its words. No watch without a fixer in
+    use (`active` in `dictation/models`; with none strut learns nothing), in
+    a terminal (Terminal, iTerm2, Warp, kitty, Ghostty, Alacritty, WezTerm:
+    the field's value is the scrollback) or in a password field. The watch
+    takes the strut and the unlocked account as it starts and drops the
+    edit if either changed; it ends when the strut changes or the account
+    locks, and the learn and its Undo go to that strut. A field over 100,000
+    characters is not read (its length is asked first). It goes as `{typed, edited}`
+    to `dictation/correction`, which judges and writes each mishearing
+    (only the pair, never the sentence) and returns what it learned with
+    the ids to undo; the HUD says "Learned P8" with Undo for 5 s, and Undo
+    is `dictation/undo`. "Learned" waits for a dictation under way and its
+    insertion to finish. Only while Peel is unlocked (locking also drops
+    the vocabulary read for Settings and the window), in Peel's own fields
+    too (its text view read directly, not through Accessibility, which
+    would wait on Peel's own main thread), and elsewhere only where
+    Accessibility can read the field (not most Electron apps; the rewrite
+    still works there). Why a watch ended, or never started, is logged
+    (`log show --predicate 'subsystem == "dev.peel.mac"'`), never the text.
+  - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
+    word with how it is misheard (`memory/lexicon`), Remove
+    (`dictation/remove`), a switch to leave it alone (`dictation/enable`),
+    and Add (`dictation/add`). A view over the graph, not a second list.
+- **Models** (`DictationModels`; Account › Dictation › Speech to text and
+  Clean-up and learning). Strut runs dictation on a small local model for
+  each job, which the user picks: speech Kroko (`zipformer-en-kroko`, 57 MB,
+  the default) or Parakeet (`parakeet-tdt-en-0.6b-v2`, 482 MB); clean-up
+  Off, Qwen3 0.6B (`qwen3-0.6b-q4`, 397 MB) or Qwen3 1.7B (`qwen3-1.7b-q4`,
+  1.1 GB, recommended). Clean-up is what puts dictation right and learns
+  from the user's edits. Strut names and describes each model (`name`,
+  `summary`, `recommended`); Peel's only words are Off's. Each job is one
+  row: the model in use (`active`), what it does, its size, and for
+  clean-up how many words it has learned; Change opens Peel's menu beside
+  it with every choice, what it means (a second line, "Recommended." first
+  for strut's choice) and its size on the right. Once a switch's new model
+  is in use (or clean-up is turned off), the row offers to remove the one
+  it replaced, with the space that frees (Remove or Keep); not after a pick
+  that failed to download. On this Mac shows how much space dictation's
+  models take; Manage lists each with its size, In use or Dictation's
+  fallback, and Remove where strut lets it go (`removable`). Choosing calls `dictation/use` (`{speech}` or
+  `{fixer}`, `fixer: null` for Off), which downloads a model that is not
+  installed, and strut switches to it once it is there. While the pick
+  downloads its progress shows under the row (`downloaded`), from
+  `dictation/models` read every second, only then and only while the
+  section is on screen; a failed download shows strut's reason. Before
+  strut lists a speech model the row shows the default model's state.
+  Every step returns the whole list. `/audio/transcribe` goes without a
+  `model`, so the pick is used, and its reply names the `fixer` that ran.
 - **Typing it** (`DictationTextInserter`; the decision is
   `TextInsertionPlan`, PeelUI). The frontmost app and its focused element
   are read when the key goes down (just the element and whether it is a
@@ -122,10 +196,10 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | Key | Right Option (fixed for now) |
 | Hold threshold | 200 ms |
 | Longest recording | 5 min, then submitted |
-| Pre-roll | 200 ms |
 | Format | 16 kHz mono PCM16 WAV |
-| HUD | bottom centre, 56 pt above the visible area |
-| Mic kept warm | yes (the mic indicator stays on while dictation is on) |
+| HUD | bottom centre, 10 pt above the visible area (just above the Dock) |
+| Hands-free tip | after 2 s of holding, until hands-free is used once (5 times at most) |
+| Microphone | on from the key going down to the recording's end, off otherwise |
 
 The key is Right Option for now. Choosing another (R3) is open: the
 Settings recorder, an `NSEvent` local monitor, never received a key when
@@ -141,13 +215,55 @@ Start and stop sounds; muting system audio while recording; a login item
 retrying a recording whose transcription failed (it is deleted); dictation
 when the account's memory is on a home server (no bundled strut runs then);
 learning from corrections (milestone 2); terminals' bracketed paste, remote
-desktops and input methods for non-Latin scripts, untried; whether a warm
-mic is acceptable or should start at key-down
-(a warm Bluetooth headset mic holds AirPods in call quality);
+desktops and input methods for non-Latin scripts, untried;
 macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-24: learning works in Peel's own fields: the watch reads Peel's
+  focused text view directly. Dictating into Peel never learned before,
+  since the watch skipped Peel to keep Accessibility off its own thread.
+  Each watch logs why it ended.
+  The dictated text is found in the field wherever the caret is (the user
+  may have clicked into it before the first reading), not only just
+  before it. Each learn logs what strut learned (counts, never words).
+- 2026-10-23: the HUD teaches hands-free: after 2 s of holding the key, a
+  tip above the pill says "Press Space to keep going hands-free", until
+  hands-free has been used once (`dictation.usedHandsFree`), and 5 times
+  at most for someone who never uses it.
+- 2026-10-23: review fixes to learning: no watch without a fixer in use,
+  in a terminal, or across a strut or account switch (the learn and Undo
+  go to the strut the text was typed with); words written on after the
+  dictation are never sent; a cancelled watch never reads the next
+  insertion; the vocabulary is dropped on lock; the 30-day prune overwrites
+  (`secure_delete`); "Learned" waits for the dictation under way without a
+  poll. Strut owns the models' names, summaries, recommendation and what
+  can be removed; the Vocabulary's switch is `dictation/enable`. Unit
+  tested: appends, the size backstop, the new model fields. Not yet run
+  against a strut with these fields.
+
+- 2026-10-23: strut judges with a local model the user picks (speech and
+  fixer): the Speech to text and Clean-up and learning rows in Account › Dictation; the
+  edit watch sends each edit once, when it settles, as `dictation/correction`
+  now runs the fixer (no more `dry_run` polling); `dictation/add` no longer
+  says whether a word applies. Unit tested: reading the models reply, when
+  an edit is done. The pickers not yet seen against a strut with the
+  `dictation/models` steps.
+- 2026-10-23: the vocabulary's rewrite, classifier and common-word test
+  moved from Peel (Swift) to strut (stakwork/strut#301), so any client gets
+  them; Peel calls `/audio/transcribe`, `dictation/correction`, `add`,
+  `remove`, `undo`.
+- 2026-10-23: Vocabulary (steps 1–4 of the dictation lingo design): strut
+  pinned at #297; the rewrite, the edit watch, the classifier (spoken forms
+  for acronyms and numbers; nothing learned when dictation's text is
+  something the user could mean) and Undo in the HUD; the Vocabulary
+  window. Checked against a real staged strut: a learn, the read, Undo.
+  Not yet: hotwords, the LLM clean-up, measuring corrections per 100 words.
+- 2026-10-23: the mic goes on when the key goes down and off when the
+  recording ends (or the press turns out to be a tap). It was kept warm with
+  a 200 ms pre-roll, which left the mic indicator on and AirPods in call
+  quality the whole time dictation was on. The 200 ms hold threshold covers
+  the engine's start.
 - 2026-10-23: History (step 0 of the dictation lingo design): on by default,
   30 days, text only. Not built from that design yet: a choice of keep
   time, deleting one entry, opening the window at an entry from the HUD,

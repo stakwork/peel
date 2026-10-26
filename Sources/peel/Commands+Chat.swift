@@ -205,7 +205,7 @@ extension Invocation {
 
         case "listen":
             let session = try await Session(load())
-            await session.engine.answerDeviceRequests(with: DeviceReads(storage: session.engine.storage).handler)
+            await session.engine.answerDeviceRequests(with: DeviceReads(storage: session.engine.storage, myAlias: { await session.engine.myAlias }).handler)
             await session.engine.start(allowUntrustedCertificate: insecure)
             await session.printer.value
 

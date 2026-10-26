@@ -146,7 +146,7 @@ extension AppModel {
             do {
                 _ = try await engine.sendControl(ControlEnvelope(op: .cancel), text: "Stop", to: agentChat)
             } catch {
-                conversationNotices[agentChat] = PeelError.problem(error, couldNot: "stop the agent")
+                conversationNotices[agentChat] = PeelError.noted(error, couldNot: "stop the agent")
             }
         }
     }
@@ -217,7 +217,7 @@ extension AppModel {
             } catch {
                 guard !Task.isCancelled else { return }
                 bridge.bridge?.stop(quietly: true)
-                bridge.status = .failed(PeelError.problem(error, couldNot: "start the agent's bridge"))
+                bridge.status = .failed(PeelError.noted(error, couldNot: "start the agent's bridge"))
             }
         }
     }

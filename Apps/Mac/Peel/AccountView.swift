@@ -2,97 +2,204 @@ import SwiftUI
 import PeelCore
 import PeelUI
 
-/// The account screen: who others see, how to be added, the words and PIN
-/// that guard the account on this Mac, and leaving it. Opened from the foot
-/// of the sidebar or with ⌘,. Every change is an `AppModel` operation.
+/// The account screen: who others see, how to be added, money, the agent,
+/// dictation, notifications, the words and PIN that guard the account on
+/// this Mac, and leaving it. Opened from the top of the sidebar or with ⌘,;
+/// its categories (`AccountCategories`, in `SidebarColumn`) stand where the
+/// chats were, and the chosen one fills the detail. Every change is an `AppModel` operation.
 struct AccountView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        let page = AccountPage.shown(in: model)
         VStack(spacing: 0) {
-            DetailHeader(title: "Account")
-            ScrollViewReader { proxy in
+            DetailHeader(title: page.title)
             ScrollView {
                 // Settings, not a form: facts of what is set on cards
                 // (`SettingsSection`); a text field, when one opens, is a
                 // `FormItem`.
                 VStack(alignment: .leading, spacing: 18) {
-                    IdentitySection()
-                    ContactInfoSection()
-                    SettingsSection("Account") {
-                        NameRow()
-                        Fact("Balance") {
-                            Text(model.balanceText ?? "–")
-                                .monospacedDigit()
-                                .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
-                        }
-                        Fact("Confirm payments") {
-                            PaymentConfirmationRow()
-                        }
-                        Fact("Boost amount") {
-                            BoostAmountRow()
-                        }
-                        TimeZoneRow()
-                        Fact("Server") {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(model.myServer ?? "None")
-                                    .textSelection(.enabled)
-                                Text(model.connection.label)
-                                    .muted()
-                            }
-                        }
-                    }
-                    if let agent = model.agent {
-                        // One place to scroll to: the agent's settings, and a pairing link's home server.
-                        VStack(alignment: .leading, spacing: 18) {
-                            AgentSettingsSection(agent: agent)
-                            BrainSection()
-                        }
-                        .id(AgentSettingsSection.id)
-                        ConnectionsSection()
-                            .id(ConnectionsSection.id)
-                    }
-                    SettingsSection("Security") {
-                        if model.profile?.requiresPIN == true {
-                            ChangePINRow()
-                            PINTimeoutRow()
-                        }
-                        WordsRow()
-                        WebsiteDataRow()
-                    }
-                    DictationSettingsSection()
-                    SettingsSection("Notifications") {
-                        NotificationsRow()
-                        NotificationTextRow()
-                    }
-                    ForgetAccountControl(
-                        trigger: "Forget this account on this Mac…",
-                        explanation: "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
-                        section: true
-                    )
+                    content(page)
                 }
                 .frame(maxWidth: 640, alignment: .leading)
                 .padding(.horizontal, 24)
-                .padding(.top, 32)
+                .padding(.top, 16)
                 .padding(.bottom, 40)
                 .frame(maxWidth: .infinity)
                 // In the scroll view as well: a click there never reaches a gesture outside it.
                 .endsEditingOnClick()
             }
-            // Opened from the agent chat's settings: at its section.
-            .onAppear { showAgentSettings(proxy) }
-            .onChange(of: model.showsAgentSettings) { showAgentSettings(proxy) }
-            .onChange(of: model.connections.opened) { proxy.scrollTo(ConnectionsSection.id, anchor: .top) }
-            }
+            // Each category from its top.
+            .id(page)
         }
         .endsEditingOnClick()
         .font(Theme.font(13))
     }
 
-    private func showAgentSettings(_ proxy: ScrollViewProxy) {
-        guard model.showsAgentSettings else { return }
-        model.showsAgentSettings = false
-        proxy.scrollTo(AgentSettingsSection.id, anchor: .top)
+    @ViewBuilder private func content(_ page: AccountPage) -> some View {
+        switch page {
+        case .profile:
+            IdentitySection()
+            ContactInfoSection()
+            SettingsSection {
+                NameRow()
+                TimeZoneRow()
+                Fact("Server") {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.myServer ?? "None")
+                            .textSelection(.enabled)
+                        Text(model.connection.label)
+                            .muted()
+                    }
+                }
+            }
+        case .payments:
+            SettingsSection {
+                Fact("Balance") {
+                    Text(model.balanceText ?? "–")
+                        .monospacedDigit()
+                        .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
+                }
+                Fact("Confirm payments") {
+                    PaymentConfirmationRow()
+                }
+                Fact("Boost amount") {
+                    BoostAmountRow()
+                }
+            }
+        case .assistant:
+            if let agent = model.agent { AgentSettingsSection(agent: agent) }
+        case .brain:
+            BrainSection()
+        case .connections:
+            ConnectionsSection()
+        case .dictation:
+            DictationSettingsSection()
+        case .notifications:
+            SettingsSection {
+                NotificationsRow()
+                NotificationTextRow()
+            }
+        case .security:
+            SettingsSection {
+                if model.profile?.requiresPIN == true {
+                    ChangePINRow()
+                    PINTimeoutRow()
+                }
+                WordsRow()
+                WebsiteDataRow()
+            }
+            ForgetAccountControl(
+                trigger: "Forget this account on this Mac…",
+                explanation: "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
+                section: true
+            )
+        }
+    }
+}
+
+typealias AccountPage = AppModel.AccountPage
+
+extension AccountPage {
+    var title: String {
+        switch self {
+        case .profile: "Profile"
+        case .payments: "Payments"
+        case .assistant: "Assistant"
+        case .brain: "Brain"
+        case .connections: "Connections"
+        case .dictation: "Dictation"
+        case .notifications: "Notifications"
+        case .security: "Privacy and security"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .profile: "person.crop.circle"
+        case .payments: "bolt"
+        case .assistant: "sparkles"
+        case .brain: "brain"
+        case .connections: "powerplug"
+        case .dictation: "mic"
+        case .notifications: "bell"
+        case .security: "lock"
+        }
+    }
+
+    /// The agent's own: listed only while there is one.
+    private var needsAgent: Bool { [.assistant, .brain, .connections].contains(self) }
+
+    /// The categories this account has, in the order listed.
+    @MainActor static func listed(in model: AppModel) -> [AccountPage] {
+        allCases.filter { model.agent != nil || !$0.needsAgent }
+    }
+
+    /// What each category holds, for the search: the labels of its rows.
+    private var keywords: [String] {
+        switch self {
+        case .profile: ["name", "photo", "picture", "contact info", "QR code", "time zone", "server", "public key"]
+        case .payments: ["balance", "sats", "confirm payments", "boost amount"]
+        case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
+                          "revoke", "old assistant chats"]
+        case .brain: ["memory", "home server", "this Mac", "status"]
+        case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
+        case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
+        case .notifications: ["message text", "alerts"]
+        case .security: ["PIN", "lock", "twelve words", "recovery", "website data", "forget account", "sign out"]
+        }
+    }
+
+    /// Account's list under you: every category but Profile (your row), or
+    /// those whose title or rows hold `query`, Profile among them.
+    @MainActor static func matching(_ query: String, in model: AppModel) -> [AccountPage] {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return listed(in: model).filter { $0 != .profile } }
+        return listed(in: model).filter { page in
+            ([page.title] + page.keywords).contains { $0.localizedCaseInsensitiveContains(query) }
+        }
+    }
+
+    /// The chosen category, or Profile when this account no longer has it.
+    @MainActor static func shown(in model: AppModel) -> AccountPage {
+        listed(in: model).contains(model.accountPage) ? model.accountPage : .profile
+    }
+}
+
+/// Account's categories under you (Profile): a row for each of the others,
+/// or, while the search holds something, each it found.
+struct AccountCategories: View {
+    @Environment(AppModel.self) private var model
+    /// `AccountPage.matching`: every category but Profile, or what was found.
+    let pages: [AccountPage]
+    let searching: Bool
+
+    var body: some View {
+        let shown = AccountPage.shown(in: model)
+        ScrollView {
+            VStack(spacing: 1) {
+                if searching, pages.isEmpty {
+                    Text("No settings match.")
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.secondaryText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(pages, id: \.self) { page in
+                    Button { model.accountPage = page } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: page.icon)
+                                .font(.system(size: 13))
+                                .frame(width: Theme.AvatarSize.sm)
+                            Text(page.title).lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(SidebarRowStyle(selected: shown == page))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -742,23 +849,26 @@ private struct WebsiteDataRow: View {
 
 let settingsRowPadding: CGFloat = 12
 
-/// A titled group of Account rows: a `FactList` with the page's wider
-/// label column.
+/// A group of Account rows, titled when its page has more than one: a
+/// `FactList` with the page's wider label column.
 struct SettingsSection<Content: View>: View {
-    let title: String
+    let title: String?
     @ViewBuilder let content: Content
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            SectionHeader(title)
-                .padding(.horizontal, Theme.Space.xs)
+            if let title {
+                SectionHeader(title)
+                    .padding(.horizontal, Theme.Space.xs)
+            }
             FactList(labelWidth: 150) { content }
         }
         .padding(.top, Theme.Space.md)
     }
 }
+

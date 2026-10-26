@@ -7,27 +7,21 @@ import SwiftUI
 /// credentials, kept in your strut (`AppModel+Connections`). Each MCP
 /// server: where it is, whether it answered and with how many tools (and
 /// how many ask first), which agents use it, Test and Remove. Add MCP
-/// server registers one; Gmail is next. Below, the Stadeum workspaces
+/// server registers one. Below, the Stadeum workspaces
 /// paired as peers (`StadeumSection`).
 struct ConnectionsSection: View {
-    static let id = "connections"
     @Environment(AppModel.self) private var model
     @State private var adding = false
 
     var body: some View {
         let connections = model.connections
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection("Connections") {
+            SettingsSection("Services") {
                 if adding {
                     AddMCPServerForm { adding = false }
                 } else {
                     ForEach(connections.servers) { server in
                         MCPServerRow(server: server)
-                    }
-                    Fact("Gmail") {
-                        Text("Coming soon").muted()
-                    } trailing: {
-                        EmptyView()
                     }
                     Fact("Add a service") {
                         Text(model.grantsConnections

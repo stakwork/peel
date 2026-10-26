@@ -188,6 +188,8 @@ private struct AttachButton: View {
     private func add(_ picked: (files: [URL], refused: [String])) {
         model.addFiles(picked.files, to: composer)
         if !picked.refused.isEmpty, let chat = composer.chat {
+            // The kind only: the refusals name files.
+            Diagnostics.note(errorKind: .refused)
             model.conversationNotices[chat] = PeelError.problem(picked.refused.joined(separator: " "), couldNot: "attach")
         }
     }

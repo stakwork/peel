@@ -234,6 +234,7 @@ struct StorageTests {
     /// A payment or boost may go without the photo; a restore looks past it.
     @Test func ourPhotoIsNotTakenFromAPayment() throws {
         let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
         let me = sender("02bb", alias: "Me", photo: "https://img/me.png")
         let noPhoto = sender("02bb", alias: "Me", photo: "")
         _ = try storage.apply(Storage.Commit(messages: [
@@ -247,6 +248,19 @@ struct StorageTests {
             (.fixture(uuid: "u4", serverIndex: 4, chat: "02aa", fromMe: true, sender: noPhoto), false, nil),
         ]))
         #expect(try storage.newestOwnPhotoURL() == nil)
+    }
+
+    /// While a restore runs, a tribe's rewritten copy of our message sits in a chat that is no contact yet.
+    @Test func ourPhotoIgnoresChatsThatAreNotContacts() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        let me = sender("02bb", alias: "Me", photo: "https://img/me.png")
+        let noPhoto = sender("02bb", alias: "Me", photo: "")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: me), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 10, chat: "02cc", fromMe: true, sender: noPhoto), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
     }
 
     @Test func contactReadinessUpdatesWithoutTouchingAlias() throws {

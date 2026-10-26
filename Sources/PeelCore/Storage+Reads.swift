@@ -15,6 +15,7 @@ extension Storage {
                 WHERE fromMe = 1 AND sender IS NOT NULL AND serverIndex IS NOT NULL
                   AND type NOT IN (\(MessageType.directPayment), \(MessageType.boost))
                   AND chat NOT IN (\(Self.tribeChats))
+                  AND chat IN (SELECT pubkey FROM contact)
                 ORDER BY serverIndex DESC LIMIT 50
                 """)
         }

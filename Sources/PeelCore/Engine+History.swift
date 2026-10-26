@@ -127,7 +127,6 @@ extension Engine {
         if restoring {
             try storage.set("0", for: .needsRestore)
             restoring = false
-            recoverOwnPhoto()
             // The first ask came before the restore rebuilt the contacts, and
             // the core drops markers for contacts it does not know. Best
             // effort: the restore is done, and the next connection asks again.
@@ -144,6 +143,8 @@ extension Engine {
                 emit.yield(.coreError("checking restored payments: \(PeelError.readable(error))"))
             }
         }
+        // After a restore the photo is recovered from the messages it replayed.
+        recoverOwnPhoto()
         // What came while away, checked against the server's history.
         reconcileInBackground()
         checkMentionsIfNeeded()
@@ -153,13 +154,18 @@ extension Engine {
     /// The server keeps no profile; the account's own photo comes back only
     /// on the messages it sent (its own direct messages; tribes rewrite the
     /// sender). Fills a photo never set on this Mac from the newest of them;
-    /// one set or removed here (stored, even empty) wins. Best effort, once
-    /// per engine: a failure here must not stop a restore finishing.
+    /// one set or removed here (stored, even empty) wins. Best effort.
+    /// Retried until a photo is found or stored: a failure here must not
+    /// stop a restore finishing.
     func recoverOwnPhoto() {
         guard !photoRecoveryDone else { return }
-        photoRecoveryDone = true
-        if (try? storage.value(for: .photoURL)) ?? nil == nil, let photo = try? storage.newestOwnPhotoURL() {
+        // Nothing found is not final: a restore's tribes may still be looked up, and the next history sync or start asks again. Only a photo stored here (even an empty one) ends it.
+        if let stored = (try? storage.value(for: .photoURL)) ?? nil {
+            _ = stored
+            photoRecoveryDone = true
+        } else if let photo = try? storage.newestOwnPhotoURL() {
             try? setPhotoURL(photo)
+            photoRecoveryDone = true
         }
     }
 

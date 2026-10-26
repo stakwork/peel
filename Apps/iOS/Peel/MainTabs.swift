@@ -9,11 +9,9 @@ import UIKit
 struct MainTabs: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
-    @Environment(PhoneStadeum.self) private var stadeum
 
     var body: some View {
         @Bindable var router = router
-        @Bindable var stadeum = stadeum
         TabView(selection: $router.tab) {
             Tab("Chats", systemImage: "bubble.left.and.bubble.right", value: PhoneTab.chats) {
                 ChatsTab()
@@ -38,11 +36,13 @@ struct MainTabs: View {
                 SearchTab()
             }
         }
-        // The account is open: what it kept of Stadeum, renewed when due.
-        .task { stadeum.refresh(model.profile) }
-        // Closed by `PhoneStadeum.close` when the account locks or is forgotten.
-        .sheet(item: $stadeum.shown) { page in
+        .sheet(item: $router.orgPage) { page in
             OrgPageSheet(page: page)
+        }
+        // Its workspace no longer in use (revoked, disconnected, renewed
+        // without it): the page and its token go.
+        .onChange(of: model.stadeum.live) { _, live in
+            if let page = router.orgPage, !live.contains(where: { $0.id == page.peer }) { router.orgPage = nil }
         }
     }
 }

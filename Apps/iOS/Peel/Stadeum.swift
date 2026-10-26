@@ -3,202 +3,24 @@ import PeelUI
 import SwiftUI
 import UIKit
 
-/// The person's Stadeum workspaces on this iPhone (strut's specs/DESKTOP.md,
-/// "A device with no strut of its own"): paired by Hive's device flow as a
-/// device of its own, its credential and each org's token kept in the
-/// Keychain (`Profile.hive`) and renewed daily. With them a deliverable from
-/// the agent's DM opens on its org's own strut (`OrgPage`) in a sheet
-/// (`OrgPageSheet`). The Mac's twin is `HiveState`, which puts the orgs on
-/// its strut instead.
-@MainActor @Observable
-final class PhoneStadeum {
-    enum Status: Equatable {
-        case off
-        /// A code waiting for the person's yes in Stadeum.
-        case pairing(HiveClient.Pairing)
-        case connected
-        /// Stadeum no longer knows this iPhone (revoked there): connect again.
-        case needsPairing
-    }
-
-    private(set) var status = Status.off
-    /// The workspaces, and those Stadeum gave no record for.
-    private(set) var link: HiveLink?
-    /// The last thing that went wrong, in words; nil once something works.
-    private(set) var problem: String?
-    /// The page the sheet shows.
-    var shown: OrgPageSheet.Page?
-    @ObservationIgnored private var pairing: Task<Void, Never>?
-    @ObservationIgnored private var renewing: Task<Void, Never>?
-    /// Counts `close`s: a pairing or a renewal begun before the last one
-    /// keeps nothing and says nothing (the account locked, or was forgotten).
-    @ObservationIgnored private var generation = 0
-
-    /// Reads what `profile` kept (the account just opened, or Peel came back
-    /// to the front) and renews it when due; nothing without an account.
-    func refresh(_ profile: Profile?) {
-        guard let profile else {
-            close()
-            return
-        }
-        do {
-            link = try HiveLink.read(from: profile.hive)
-        } catch {
-            link = nil
-            problem = PeelError.noted(error, couldNot: "read your Stadeum connection")
-        }
-        if case .pairing = status {} else if let link {
-            status = .connected
-            if link.due() { renew(link, in: profile) }
-        } else if status == .connected {
-            status = .off
-        }
-    }
-
-    /// Connect Stadeum: a code to approve in Stadeum, polled until the person
-    /// answers there or it runs out.
-    func connect(_ profile: Profile?) {
-        guard let profile else { return }
-        pairing?.cancel()
-        problem = nil
-        let client = HiveClient(for: profile)
-        let name = UIDevice.current.name
-        let generation = generation
-        pairing = Task {
-            do {
-                let pairing = try await client.start(name: name)
-                // Cancelled while Stadeum answered: its code is never shown.
-                try Task.checkCancellation()
-                status = .pairing(pairing)
-                switch try await client.answer(to: pairing, name: name) {
-                case .pending:
-                    return
-                case .denied:
-                    settle("It was turned down in Stadeum.")
-                case .expired:
-                    settle("The code ran out before it was approved. Try again.")
-                case .paired(let link):
-                    // Cancelled, or the account closed, while Stadeum answered: nothing kept.
-                    guard !Task.isCancelled, generation == self.generation else { return }
-                    try link.write(to: profile.hive)
-                    self.link = link
-                    status = .connected
-                }
-            } catch is CancellationError {
-            } catch {
-                settle(PeelError.noted(error, couldNot: "connect Stadeum"))
-            }
-        }
-        /// Ends this pairing with `problem`, unless it was cancelled: a newer one may be under way.
-        func settle(_ problem: String) {
-            guard !Task.isCancelled, generation == self.generation else { return }
-            status = link == nil ? .off : .needsPairing
-            self.problem = problem
-        }
-    }
-
-    func cancelPairing() {
-        pairing?.cancel()
-        pairing = nil
-        status = link == nil ? .off : .needsPairing
-    }
-
-    /// Disconnect: the credential and the tokens gone from this iPhone.
-    /// Stadeum keeps the device until it is revoked there, and its tokens
-    /// age out in a week.
-    func disconnect(_ profile: Profile?) {
-        close()
-        do {
-            try profile?.hive.delete()
-        } catch {
-            problem = PeelError.noted(error, couldNot: "forget the Stadeum connection")
-        }
-    }
-
-    /// How a deliverable opens here: on its org's own strut, or why not.
-    func opening(_ handle: AgentArtifact.Handle) -> Opening {
-        guard let org = handle.onOrg else { return .onMac }
-        guard let peer = link?.peers.first(where: { $0.id == org.peer }) else {
-            return link == nil ? .connectFirst : .notPaired(org.peer)
-        }
-        guard let base = URL(string: peer.baseUrl), let url = org.url(on: base) else { return .notPaired(org.peer) }
-        return .page(OrgPageSheet.Page(url: url, token: peer.token, workspace: peer.name))
-    }
-
-    enum Opening {
-        case page(OrgPageSheet.Page)
-        /// No Stadeum on this iPhone yet.
-        case connectFirst
-        /// An org this iPhone holds no token for.
-        case notPaired(String)
-        /// On the brain's own strut, which only the Mac reaches.
-        case onMac
-    }
-
-    private func renew(_ link: HiveLink, in profile: Profile) {
-        guard renewing == nil else { return }
-        let generation = generation
-        renewing = Task {
-            // Still this account's, and the link renewed is the one kept: else
-            // (closed, disconnected, paired again) nothing is kept or said.
-            @MainActor func current() -> Bool { generation == self.generation && self.link?.credential == link.credential }
-            defer { if generation == self.generation { renewing = nil } }
-            do {
-                let renewed = try await HiveClient(hive: link.hive).renew(link)
-                guard current() else { return }
-                guard let renewed else {
-                    // Revoked in Stadeum: its tokens may still work until they expire, so they stop being used now.
-                    try? profile.hive.delete()
-                    self.link = nil
-                    shown = nil
-                    status = .needsPairing
-                    return
-                }
-                try renewed.write(to: profile.hive)
-                self.link = renewed
-                problem = nil
-            } catch is CancellationError {
-            } catch {
-                // Tried again when Peel next comes to the front; the tokens last a week.
-                if current() { problem = PeelError.noted(error, couldNot: "renew your Stadeum workspaces") }
-            }
-        }
-    }
-
-    /// Everything let go: the account locked or was forgotten (`phase` left
-    /// `.ready`), or Disconnect. Read again from the Keychain when it opens.
-    func close() {
-        generation += 1
-        pairing?.cancel()
-        renewing?.cancel()
-        pairing = nil
-        renewing = nil
-        status = .off
-        link = nil
-        problem = nil
-        shown = nil
-    }
-}
-
-/// You › Stadeum: Connect Stadeum (a code to approve there), each workspace
-/// paired, Connect again once Stadeum no longer knows this iPhone, and
-/// Disconnect. What it is for: opening what the workspaces' assistants make,
-/// here.
+/// You › Stadeum (`AppModel.stadeum`, the model the Mac shares): Connect
+/// Stadeum (a code to approve there), each workspace paired, Connect again
+/// once Stadeum no longer knows this iPhone, and Disconnect. What it is
+/// for: opening what the workspaces' assistants make, and their apps, here
+/// (strut's specs/DESKTOP.md, "A device with no strut of its own").
 struct StadeumSection: View {
     @Environment(AppModel.self) private var model
-    @Environment(PhoneStadeum.self) private var stadeum
     @Environment(\.openURL) private var openURL
 
     var body: some View {
+        let stadeum = model.stadeum
         Section {
             switch stadeum.status {
-            case .off, .needsPairing:
-                Text(stadeum.status == .off
-                     ? "Open what your workspaces' assistants make for you, here on this iPhone."
-                     : "Stadeum no longer knows this iPhone. Connect it again to open your workspaces' work here.")
-                    .foregroundStyle(stadeum.status == .off ? Theme.quietText(on: .raised) : Theme.attention)
+            case .off:
+                Text("Open what your workspaces' assistants make for you, and their apps, here on this iPhone.")
+                    .foregroundStyle(Theme.quietText(on: .raised))
                     .fixedSize(horizontal: false, vertical: true)
-                Button(stadeum.status == .off ? "Connect Stadeum" : "Connect again") { stadeum.connect(model.profile) }
+                Button("Connect Stadeum") { stadeum.connect(as: UIDevice.current.name) }
                     .buttonStyle(.peel(.outline, size: .touch))
             case .pairing(let pairing):
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
@@ -215,7 +37,14 @@ struct StadeumSection: View {
                     .buttonStyle(.peel(.primary, size: .touch))
                 Button("Cancel") { stadeum.cancelPairing() }
                     .buttonStyle(.peel(.ghost, size: .touch))
-            case .connected:
+            case .connected, .needsPairing:
+                if stadeum.status == .needsPairing {
+                    Text("Stadeum no longer knows this iPhone. Connect it again to open your workspaces' work here.")
+                        .foregroundStyle(Theme.attention)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Connect again") { stadeum.connect(as: UIDevice.current.name) }
+                        .buttonStyle(.peel(.outline, size: .touch))
+                }
                 ForEach(stadeum.link?.peers ?? [], id: \.id) { peer in
                     LabeledContent(peer.name, value: "@" + peer.id)
                         .accessibilityElement(children: .combine)
@@ -224,7 +53,7 @@ struct StadeumSection: View {
                     LabeledContent(error.name, value: error.reason)
                         .foregroundStyle(Theme.quietText(on: .raised))
                 }
-                Button("Disconnect") { stadeum.disconnect(model.profile) }
+                Button("Disconnect") { stadeum.disconnect() }
                     .buttonStyle(.peel(.ghost, size: .touch))
             }
             if let problem = stadeum.problem {
@@ -238,5 +67,14 @@ struct StadeumSection: View {
         }
         .phoneRows(.grouped)
         .environment(\.surface, .raised)
+    }
+}
+
+extension Stadeum {
+    /// Reads the workspaces' pinned apps, each on its own strut with the
+    /// person's token: the iPhone has no strut to read through.
+    @discardableResult
+    func readWorkspaceApps() -> Task<Void, Never>? {
+        readApps(own: nil, pinned: { try await WorkspaceApp.pinned(on: $0) })
     }
 }

@@ -15,7 +15,7 @@ import WebKit
 /// shares its host with other services). The Mac's twin is `StrutPage`, on
 /// its own strut.
 struct OrgPageSheet: View {
-    let page: Page
+    let page: OrgPageRequest
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -29,76 +29,13 @@ struct OrgPageSheet: View {
                 }
         }
     }
-
-    /// What the sheet opens. Never described with its token.
-    struct Page: Identifiable, Equatable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
-        let id = UUID()
-        /// The org's UI showing it alone; no credential in it.
-        let url: URL
-        /// The person's token for the org: never shown, logged or kept.
-        let token: String
-        /// The org as the person reads it.
-        let workspace: String
-
-        var description: String { "org page on \(workspace)" }
-        var debugDescription: String { description }
-        var customMirror: Mirror { Mirror(self, children: ["workspace": workspace]) }
-
-        /// `url`'s origin as a page reads it (`location.origin`): the
-        /// scheme, the host in lower case, and a port only when not the
-        /// scheme's own.
-        var origin: String { Self.origin(of: url) ?? "" }
-
-        static func origin(of url: URL) -> String? {
-            guard let scheme = url.scheme?.lowercased(), let host = url.host()?.lowercased() else { return nil }
-            let port = url.port.flatMap { ($0 == 443 && scheme == "https") || ($0 == 80 && scheme == "http") ? nil : $0 }
-            return "\(scheme)://\(host)" + (port.map { ":\($0)" } ?? "")
-        }
-
-        /// The folder strut's UI is served from (`/`, or a swarm's `/lab/`):
-        /// `url`'s path, which `StrutUI.page` ends with its `/`.
-        var folder: String { url.path(percentEncoded: true) }
-
-        /// Whether `other` is strut's: on `url`'s origin, in its UI's folder.
-        func serves(_ other: URL) -> Bool {
-            Self.origin(of: other) == origin && other.path(percentEncoded: true).hasPrefix(folder)
-        }
-
-        /// The request that loads it: the token as its bearer.
-        var request: URLRequest {
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            return request
-        }
-
-        /// The script that hands the token to strut's UI (its `strut/apiKey`
-        /// in `sessionStorage`), run before the page's own and only in its
-        /// folder on the org's origin. The strings as JSON literals.
-        var handOver: String {
-            let literals = (try? JSONEncoder.literals.encode([origin, folder, token])).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
-            return """
-            (() => { const [origin, folder, key] = \(literals);
-              if (location.origin === origin && location.pathname.startsWith(folder)) {
-                try { sessionStorage.setItem("strut/apiKey", key); } catch (e) {} } })();
-            """
-        }
-    }
-}
-
-private extension JSONEncoder {
-    /// Strings as a script reads them: no `/` escaped, so a `</script>` could never close anything (there is no tag).
-    static var literals: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.withoutEscapingSlashes]
-        return encoder
-    }
 }
 
 /// The web view of an `OrgPageSheet`: a store that keeps nothing, the
 /// token's hand-over script, and a navigation policy that keeps it on the
 /// org's strut (`Coordinator`).
 private struct OrgWebView: UIViewRepresentable {
-    let page: OrgPageSheet.Page
+    let page: OrgPageRequest
 
     func makeCoordinator() -> Coordinator { Coordinator(page: page) }
 
@@ -130,9 +67,9 @@ private struct OrgWebView: UIViewRepresentable {
     /// from a frame in it, which is the org's or an agent's) and only on the
     /// person's own tap; nothing downloaded, and no other scheme.
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        let page: OrgPageSheet.Page
+        let page: OrgPageRequest
 
-        init(page: OrgPageSheet.Page) {
+        init(page: OrgPageRequest) {
             self.page = page
         }
 

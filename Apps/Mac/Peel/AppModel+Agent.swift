@@ -70,8 +70,8 @@ final class MacAgent: AgentHost {
     let deviceCards = DeviceCards()
     /// Account › Connections (`AppModel+Connections`).
     let connections = ConnectionsState()
-    /// The person's Hive workspaces, paired as peers (`AppModel+Hive`).
-    let hive = HiveState()
+    /// The Mac's side of the person's Stadeum workspaces, paired as peers (`AppModel+Hive`).
+    let stadeumHost = MacStadeumHost()
 
     func open(_ profile: Profile, engine: Engine, in model: AppModel) {
         model.openAgent(profile, engine: engine)
@@ -504,7 +504,7 @@ extension AppModel {
     func useOwnStrut(_ profile: Profile) {
         if strut == nil { strut = Self.strut(for: profile) }
         // Whose orgs it speaks for, kept across a switch of brain.
-        strut?.person = hive.link?.actor
+        strut?.person = stadeum.link?.actor
         strut?.onChange = { [weak self] in
             self?.lookForMemory(restarting: false)
             self?.lookForBridge()

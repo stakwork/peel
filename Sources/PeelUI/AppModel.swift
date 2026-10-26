@@ -79,7 +79,8 @@ public final class AppModel {
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
-        /// Every app listed, the person's own and those the workspaces pinned (`AppsView`); the Mac's alone.
+        /// Every app listed: on the Mac the person's own and those the
+        /// workspaces pinned (`AppsView`), on the iPhone the workspaces'.
         case apps
         /// An app a Stadeum workspace pinned, by the workspace's peer id and
         /// the app's name there, or one of the person's own (no peer); the
@@ -325,6 +326,8 @@ public final class AppModel {
     public let money = MoneyArrivals()
     /// Calls: presence, the recent calls, and the call this device is on.
     public let calls: CallStore
+    /// The person's Stadeum workspaces, paired on this device, and the apps listed.
+    public let stadeum = Stadeum()
     /// What the app supplies: panels, the clipboard, playback, calls, presence.
     @ObservationIgnored public let platform: Platform
     /// The web pane beside the chat, with this profile's website data.

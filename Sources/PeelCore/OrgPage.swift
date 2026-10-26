@@ -35,6 +35,17 @@ public struct OrgPage: Sendable, Equatable {
     /// The file's path or the app's name on the org's strut.
     public let value: String
 
+    init(peer: String, query: String, value: String) {
+        self.peer = peer
+        self.query = query
+        self.value = value
+    }
+
+    /// A workspace's app, by its name on its own strut.
+    public static func app(_ name: String, on peer: String) -> OrgPage {
+        OrgPage(peer: peer, query: "app", value: name)
+    }
+
     /// The page on the org's strut whose UI is at `base` (its peer record's `baseUrl`).
     public func url(on base: URL) -> URL? {
         StrutUI.page(on: base, query, value)

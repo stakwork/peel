@@ -303,7 +303,7 @@ final class OffscreenDriver {
             Offscreen.log("drive: selected the agent chat")
             return
         }
-        if let model = model(), let app = model.hive.apps.first(where: { $0.id == name }) {
+        if let model = model(), let app = model.stadeum.apps.first(where: { $0.id == name }) {
             // An app in Apps: a workspace's by `@<workspace>/<name>`, one of yours by its name.
             model.destination = .app(peer: app.peer, name: app.name)
             Offscreen.log("drive: selected the app \(app.id)")
@@ -425,8 +425,8 @@ final class OffscreenDriver {
         case "apps-seed":
             // Workspaces' apps in memory, read as a listing through strut is;
             // strut and Stadeum untouched.
-            model.hive.apps = WorkspaceApp.byTitle(Self.sampleApps.compactMap { app in
-                WorkspaceApp(peer: app.peer, json: .object(app.entry.merging(["pinned": .bool(true)]) { $1 }))
+            model.stadeum.apps = WorkspaceApp.byTitle(Self.sampleApps.compactMap { app in
+                WorkspaceApp(peer: app.peer, entry: Data(AgentKit.JSONValue.object(app.entry.merging(["pinned": .bool(true)]) { $1 }).jsonString.utf8))
             })
         case "app-pin":
             // The open app's pin, in its header.

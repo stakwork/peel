@@ -12,6 +12,8 @@ enum PhoneTab: Hashable {
 /// What Chats (and Search, which opens chats too) can push.
 enum ChatsRoute: Hashable {
     case automations, threads, mentions
+    /// The Stadeum workspaces' pinned apps (`AppsScreen`).
+    case apps
     /// A tribe or a direct message, by its chat id. The agent is a DM, so
     /// its chat is one of these too.
     case chat(String)
@@ -24,6 +26,7 @@ enum ChatsRoute: Hashable {
     var destination: AppModel.Destination {
         switch self {
         case .automations: .automations
+        case .apps: .apps
         case .threads: .threads
         case .mentions: .mentions
         case .chat(let chat), .details(let chat), .members(let chat): .chat(chat)
@@ -34,10 +37,11 @@ enum ChatsRoute: Hashable {
     init?(_ destination: AppModel.Destination) {
         switch destination {
         case .automations: self = .automations
+        case .apps: self = .apps
         case .threads: self = .threads
         case .mentions: self = .mentions
         case .chat(let chat): self = .chat(chat)
-        case .payments, .account, .agent, .apps, .app: return nil
+        case .payments, .account, .agent, .app: return nil
         }
     }
 
@@ -46,7 +50,7 @@ enum ChatsRoute: Hashable {
     var isConversation: Bool {
         switch self {
         case .chat, .details, .members: true
-        case .automations, .threads, .mentions: false
+        case .automations, .apps, .threads, .mentions: false
         }
     }
 }
@@ -81,6 +85,9 @@ final class PhoneRouter {
     var search: [ChatsRoute] = [] { didSet { publish() } }
     var payments: [PaymentsRoute] = []
     var you: [YouRoute] = []
+    /// An org's page over everything (`OrgPageSheet`): a deliverable from
+    /// the agent's DM, or a workspace's app.
+    var orgPage: OrgPageRequest?
 
     @ObservationIgnored private let model: AppModel
     /// The thread open over a chat when its tab (Chats or Search) was

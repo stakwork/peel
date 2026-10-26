@@ -54,10 +54,19 @@ struct BrainTests {
         try home.keep(in: item)
         #expect(try Brain.kept(in: item) == home)
 
+        // Peel Home moved: kept, so the next launch never starts this Mac's strut or bridge.
+        let moved = Brain.moved(MovedHome(host: "192.168.1.20:8090", date: Date(timeIntervalSince1970: 1_793_000_000),
+                                          answered: true, strutCopy: "Strut.moved-2026-10-26", bridgeCopy: "Bridge.moved-2026-10-26"))
+        try moved.keep(in: item)
+        #expect(try Brain.kept(in: item) == moved)
+
         try Brain.thisMac.keep(in: item)
         #expect(try item.read() == nil)
 
         try item.write(Data(#"{"url":"http://example.com","key":"k"}"#.utf8))
+        #expect(throws: PeelError.self) { try Brain.kept(in: item) }
+        // Moved and a home server at once is not a record Peel wrote: neither is taken.
+        try item.write(Data(#"{"url":"http://100.64.0.7:3000","key":"\#(Self.key)","moved":{"host":"h","date":0,"answered":true}}"#.utf8))
         #expect(throws: PeelError.self) { try Brain.kept(in: item) }
     }
 

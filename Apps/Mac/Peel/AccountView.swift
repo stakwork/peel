@@ -91,7 +91,10 @@ struct AccountView: View {
             }
             ForgetAccountControl(
                 trigger: "Forget this account on this Mac…",
-                explanation: "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
+                explanation: model.brain?.moved != nil
+                    ? "Removes the account and its messages from this Mac. Your assistant still runs in Peel Home on your home server: "
+                        + "move it back first, or wipe that box, before you sign in with your twelve words anywhere."
+                    : "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
                 section: true
             )
         }

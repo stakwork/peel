@@ -825,6 +825,17 @@ is a short plan. Update the status and the journal when you finish something.
     this Mac or the account's home server, kept in `Profile.brain` (one
     that cannot be read is never taken for this Mac), and the pairing link
     `brain/setup.sh` prints (`peel://brain?url=…&key=…`)
+  - `PeelHome.swift` — Peel Home moving to a home server and back
+    (`docs/always-on.md`, A4): `HomeLink` (`peel://home-setup?host=…&code=…`,
+    the code never printed), `HomeMover`, the one seam to strut's `move`
+    (`StrutMove`: `node desktop.js move check|send|fetch` on the bundled
+    strut, its env values in a 0600 file deleted after, the bridge's token by
+    env), and `PeelHomeMove`, the state machine: `Brain.moved` kept before
+    anything stops, this Mac's strut and bridge started again only when the
+    box still waits for a move, folders set aside as `<name>.moved-<date>`
+    once the agent answers from the box, back by `fetch`, and "Use this
+    Mac's copy". `AppModel+Home` is the app's side (`PeelHomeLocal`, the
+    ping in the agent's DM); Account › Brain shows it. Tested in `PeelHomeTests`
   - `MemoryBackup.swift` — this Mac's graph files renamed aside into
     `memory/backups/graph-<time>.lbug…` before the home server's memory is
     brought back in their place, put back on failure, the newest three kept
@@ -911,6 +922,10 @@ is a short plan. Update the status and the journal when you finish something.
   (sends and approvals by device request: the card, once, deny, expiry,
   "Always allow", the price cap, send grants),
   `BrainTests` (the pairing link, what is kept, `/health` read),
+  `PeelHomeTests` (every point a move out or back can fail leaves at most
+  one bridge able to run, and this Mac's runs only when nothing reached the
+  box; the link; `StrutMove` on a stand-in Node: arguments, the env file,
+  refusals),
   `MemoryMoveTests` (both moves against stub struts: what goes where,
   refusals in words, counts that differ, a home server gone mid-way, the
   export file deleted and never read outside strut's folder; bringing

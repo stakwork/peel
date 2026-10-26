@@ -265,9 +265,15 @@ struct BrainSection: View {
     @State private var editing = false
     @State private var leaving = false
     @State private var problem: String?
+    /// Peel Home's step waiting on the person: the box's link to open, or
+    /// "Use this Mac's copy" to confirm.
+    @State private var homeAsk: HomeAsk?
+
+    private enum HomeAsk { case link, copy }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            homeCallouts
             if let move = model.memoryMove {
                 MemoryMoveCallout(move: move) { model.memoryMove = nil }
                     .padding(.top, Theme.Space.md)
@@ -339,6 +345,18 @@ struct BrainSection: View {
     @ViewBuilder private var rows: some View {
         switch model.brain {
         case .thisMac?:
+            Fact("Peel Home") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("This Mac")
+                    Text(model.homeMoveBlocker ?? "Your assistant runs here. Move it to a home server to keep it answering while this Mac sleeps.")
+                        .muted()
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } trailing: {
+                Button("Move to a home server…") { homeAsk = .link }
+                    .buttonStyle(.peel(.outline))
+                    .disabled(model.homeMoveBlocker != nil || homeAsk != nil)
+            }
             Fact("Using") {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("This Mac")
@@ -349,6 +367,8 @@ struct BrainSection: View {
                     .buttonStyle(.peel(.outline))
                     .disabled(moving)
             }
+        case .moved(let home)?:
+            movedRows(home)
         case .homeServer(let server)?:
             Fact("Using") {
                 VStack(alignment: .leading, spacing: 2) {
@@ -384,12 +404,115 @@ struct BrainSection: View {
         }
     }
 
-    private func attempt(_ change: () throws -> Void) {
+    /// Peel Home moved: where, since when, and the way back; until the
+    /// agent has answered from there, Ping again beside it.
+    @ViewBuilder private func movedRows(_ home: MovedHome) -> some View {
+        let busy = model.homeMove?.isRunning == true || homeAsk != nil
+        Fact("Peel Home") {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your home server")
+                Text(home.host)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Theme.secondaryText)
+                    .textSelection(.enabled)
+                Text(home.answered ? "Moved \(Formatting.date(home.date)). Your assistant answers from there, even while this Mac sleeps."
+                     : "Sent \(Formatting.date(home.date)), but your assistant hasn't answered from there yet. This Mac keeps its own stopped, so two never run at once.")
+                    .foregroundStyle(home.answered ? Theme.secondaryText : Theme.attention)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } trailing: {
+            HStack(spacing: 8) {
+                if !home.answered {
+                    Button("Ping again") { model.pingHomeAgain() }
+                        .buttonStyle(.peel(.outline))
+                }
+                Button("Move back to this Mac…") { homeAsk = .link }
+                    .buttonStyle(.peel(.outline))
+            }
+            .disabled(busy)
+        }
+        Fact("This Mac's copy") {
+            Text(home.strutCopy == nil ? "This Mac's own, as it was when Peel Home was sent, for a home server that is gone."
+                 : "Kept from \(Formatting.date(home.date)), for a home server that is gone.").muted()
+        } trailing: {
+            Button("Use this Mac's copy…") { homeAsk = .copy }
+                .buttonStyle(.peel(.outline))
+                .disabled(busy)
+        }
+    }
+
+    /// A Peel Home move under way or how it ended; the box's link waiting
+    /// for a yes; or the person's next step, asked in place.
+    @ViewBuilder private var homeCallouts: some View {
+        if let move = model.homeMove {
+            HomeMoveCallout(move: move, dismiss: { model.homeMove = nil }, cancel: model.cancelHomeMove)
+                .padding(.top, Theme.Space.md)
+        }
+        if let link = model.homeLink {
+            let back = model.brain?.moved != nil
+            let away = !back && !link.isHomeNetwork
+            Callout(
+                away ? .attention : .neutral, back ? "Move Peel Home back to this Mac from \(link.host)?" : "Move Peel Home to your home server at \(link.host)?",
+                detail: model.homeMoveBlocker ?? (away
+                    ? "\(link.host) isn't on your home network. Peel Home carries your assistant's own account and keys: "
+                        + "only move it to a computer you run."
+                    : back
+                    ? "Your assistant, its memory and its automations come back and run on this Mac. It's offline for about a minute."
+                    : "Your assistant, its memory and its automations move there and keep answering while this Mac sleeps. "
+                        + "It's offline for about a minute. Your Sphinx words stay on this Mac.")
+            ) {
+                HStack(spacing: 8) {
+                    Button(back ? "Move back" : "Move") {
+                        homeAsk = nil
+                        model.moveHome()
+                    }
+                    .buttonStyle(.peel(.primary))
+                    .disabled(model.homeMoveBlocker != nil)
+                    Button("Cancel") { model.homeLink = nil }
+                        .buttonStyle(.peel(.outline))
+                }
+                .padding(.top, 6)
+            }
+            .padding(.top, Theme.Space.md)
+        } else if let ask = homeAsk {
+            switch ask {
+            case .link:
+                Callout(.neutral, "Open your home server's link", detail: model.brain?.moved == nil
+                        ? "Set up Peel Home on your home server, then open the link its page shows on this Mac."
+                        : "On your home server's page, choose Send Peel Home back, then open the link it shows on this Mac.") {
+                    Button("Cancel") { homeAsk = nil }
+                        .buttonStyle(.peel(.outline))
+                        .padding(.top, 6)
+                }
+                .padding(.top, Theme.Space.md)
+            case .copy:
+                let day = model.brain?.moved.map { Formatting.date($0.date) } ?? ""
+                Callout(.neutral, "Use this Mac's copy from \(day)?",
+                        detail: "Peel Home goes back to how it was on this Mac on \(day). What happened on your home server since is lost. "
+                            + "Only do this if your home server is gone: two copies must never run at once.") {
+                    HStack(spacing: 8) {
+                        Button("Use this Mac's copy") {
+                            homeAsk = nil
+                            attempt(couldNot: "use this Mac's copy") { try model.useThisMacCopy() }
+                        }
+                        .buttonStyle(.peel(.primary))
+                        Button("Cancel") { homeAsk = nil }
+                            .buttonStyle(.peel(.outline))
+                    }
+                    .padding(.top, 6)
+                }
+                .padding(.top, Theme.Space.md)
+            }
+        }
+    }
+
+
+    private func attempt(couldNot action: String = "switch where Peel keeps its memory", _ change: () throws -> Void) {
         do {
             try change()
             problem = nil
         } catch {
-            problem = PeelError.problem(error, couldNot: "switch where Peel keeps its memory")
+            problem = PeelError.problem(error, couldNot: action)
         }
     }
 }
@@ -425,6 +548,43 @@ private struct MemoryMoveCallout: View {
         case (.toHomeServer, .sending?): "Copying it to your home server…"
         case (.toThisMac, .reading?): "Reading what your home server remembers…"
         case (.toThisMac, .sending?): "Copying it to this Mac…"
+        }
+    }
+}
+
+/// A Peel Home move under way, or how it ended: amber when it didn't move,
+/// never red, since nothing was lost.
+private struct HomeMoveCallout: View {
+    let move: HomeMoveState
+    let dismiss: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        switch move {
+        case .running(let direction, let step):
+            Callout(detail: Self.words(direction, step), icon: .progress) {
+                Button("Cancel", action: cancel)
+                    .buttonStyle(.peel(.outline))
+            }
+        case .ended(.movedOut):
+            Callout(.neutral, detail: "Peel Home is on your home server, and your assistant answered from there.",
+                    icon: .symbol("checkmark.circle", Theme.confirmed), dismiss: dismiss)
+        case .ended(.movedBack(let answered)):
+            Callout(.neutral, detail: answered ? "Peel Home is back on this Mac, and your assistant answered."
+                        : "Peel Home is back on this Mac. Your assistant hasn't answered yet; it may still be starting.",
+                    icon: .symbol("checkmark.circle", Theme.confirmed), dismiss: dismiss)
+        case .ended(.unchanged(let why)), .ended(.unanswered(_, let why)), .ended(.stillAway(let why)):
+            Callout(.attention, detail: why, dismiss: dismiss)
+        }
+    }
+
+    static func words(_ direction: HomeMoveState.Direction, _ step: PeelHomeMove.Step) -> String {
+        switch (direction, step) {
+        case (_, .checking): "Checking your home server…"
+        case (.out, .sending): "Stopping your assistant here and sending Peel Home to your home server…"
+        case (.back, .sending): "Bringing Peel Home back to this Mac…"
+        case (.out, .waiting): "Waiting for your assistant to answer from your home server…"
+        case (.back, .waiting): "Starting your assistant here and waiting for it to answer…"
         }
     }
 }

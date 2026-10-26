@@ -88,6 +88,9 @@ extension AppModel {
         guard agent?.connection != nil || agentContact != nil else {
             return AgentSetUp(line: "Connect a model first: your assistant answers with it.")
         }
+        if brain?.moved != nil {
+            return AgentSetUp(line: "Your assistant runs in Peel Home on your home server. Message it in Direct messages.")
+        }
         guard brain == .thisMac else {
             return AgentSetUp(line: "Your assistant runs with Peel's memory on this Mac. Choose This Mac under Brain to use it.")
         }
@@ -155,18 +158,21 @@ extension AppModel {
     /// this Mac its brain.
     private var bridgeRunsHere: Bool { agent != nil && brain == .thisMac }
 
-    /// The agent's contact for the agent chat while its bridge runs on
-    /// this Mac: the one the bridge last set up (`Setting.deviceAgent`),
+    /// Whether the agent's DM is the agent chat: its bridge here, or in
+    /// Peel Home on the home server, which still asks this Mac for reads and sends.
+    private var agentDMHere: Bool { bridgeRunsHere || agent != nil && brain?.moved != nil }
+
+    /// The agent's contact for the agent chat while its DM is here: the one the bridge last set up (`Setting.deviceAgent`),
     /// read now so its DM is the chat before the bridge is back up.
     private func lookForAgentContact() {
-        guard bridgeRunsHere, let engine else {
+        guard agentDMHere, let engine else {
             agentContact = nil
             return
         }
         guard agentContact == nil else { return }
         Task {
             let contact = await engine.deviceAgent
-            guard self.engine === engine, bridgeRunsHere, agentContact == nil else { return }
+            guard self.engine === engine, agentDMHere, agentContact == nil else { return }
             agentContact = contact
         }
     }

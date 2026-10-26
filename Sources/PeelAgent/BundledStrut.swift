@@ -45,7 +45,7 @@ public final class BundledStrut {
     /// The section last rendered, by person: Node runs once per person, not per start.
     private var personal: (person: String, text: String)?
 
-    private let folder: URL
+    let folder: URL
     private let data: URL
     private let secretKey: any SecretItem
     private var process: Process?

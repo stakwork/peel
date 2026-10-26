@@ -431,12 +431,22 @@ public enum AgentDM {
         var answered = Set<String>()
         for message in messages.reversed() where message.type == MessageType.text && !message.deleted {
             guard message.fromMe else {
-                if let uuid = message.replyUUID { answered.insert(uuid) }
+                if let uuid = answer(message) { answered.insert(uuid) }
                 continue
             }
             guard message.control == nil, !message.notSent else { continue }
             return message.uuid.flatMap { answered.contains($0) ? nil : message }
         }
         return nil
+    }
+
+    /// Whether the agent has answered your message `uuid` among `messages`.
+    public static func answers(_ uuid: String, in messages: [Message]) -> Bool {
+        messages.contains { answer($0) == uuid }
+    }
+
+    /// The message an agent's text answers, by uuid; nil for anything else.
+    private static func answer(_ message: Message) -> String? {
+        message.type == MessageType.text && !message.deleted && !message.fromMe ? message.replyUUID : nil
     }
 }

@@ -517,6 +517,15 @@ final class OffscreenDriver {
             try model.setBrain(.thisMac)
         case "brain-check":
             model.checkBrain()
+        case "home-move":
+            // Account › Brain: Move (or Move back) on the Peel Home link waiting.
+            guard model.homeLink != nil else { throw Failure(description: "no Peel Home link waiting") }
+            model.moveHome()
+        case "home-ping":
+            model.pingHomeAgain()
+        case "home-copy":
+            // Account › Brain: Use this Mac's copy, then its confirm.
+            try model.useThisMacCopy()
         case "agent-rows":
             // A click on every tool row's chevron.
             if let agent = model.agent { model.agentOpenRows.openTools(of: agent) }

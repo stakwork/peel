@@ -25,6 +25,11 @@ final class MacAgent: AgentHost {
     /// runs the agent has no memory tools, so nothing writes into a graph
     /// being loaded.
     var memoryMove: MemoryMoveState?
+    /// A Peel Home link (`HomeLink`) waiting for the person's yes in Account › Brain.
+    var homeLink: HomeLink?
+    /// A Peel Home move under way, or how the last one ended (`AppModel+Home`).
+    var homeMove: HomeMoveState?
+    @ObservationIgnored var homeMoving: Task<Void, Never>?
     /// Whether this Mac's memory holds anything (`checkLocalMemory`, or
     /// what the last move left); nil when not known.
     var localHoldsMemory: Bool?
@@ -108,6 +113,9 @@ final class MacAgent: AgentHost {
     /// this Mac's memory, if it was set aside, is put back now, since Peel
     /// may be quitting before the move hears of it.
     func stopMove() {
+        // Peel Home's move keeps its mark: the account reads it again when it opens.
+        homeMoving?.cancel()
+        homeMoving = nil
         moving?.cancel()
         moving = nil
         movingStrut?.stop(quietly: true)
@@ -126,6 +134,9 @@ final class MacAgent: AgentHost {
         stop()
         if profile.kind == .app { try BundledStrut.erase() }
         try BundledBridge.erase(data: BundledBridge.dataFolder(for: profile))
+        // Peel Home's copies from a move: the agent's key and strut's secrets.
+        try PeelHomeMove.eraseCopies(of: BundledStrut.dataFolder(for: profile))
+        try PeelHomeMove.eraseCopies(of: BundledBridge.dataFolder(for: profile))
     }
 }
 
@@ -281,7 +292,7 @@ extension AppModel {
             lookForBridge()
             checkBrain()
             // A pairing link that came while the account was locked.
-            if pairing != nil { openAccount(.brain) }
+            if pairing != nil || homeLink != nil { openAccount(.brain) }
         } catch {
             notice = PeelError.noted(error, couldNot: "open the agent chat")
         }
@@ -304,6 +315,9 @@ extension AppModel {
             memory = nil
         case .homeServer(let server)?:
             memory = server
+        case .moved?:
+            // On the home server, reached over Sphinx only: no memory tools here.
+            memory = nil
         case .thisMac?:
             memory = strut?.server
             // Not running yet, or stopped since: started, and here once ready.
@@ -344,6 +358,12 @@ extension AppModel {
         guard let profile else { throw PeelError("Peel's account is not open.") }
         // The move would lose the strut it reads or loads.
         guard memoryMove?.isRunning != true else { throw PeelError("Wait for the memory move to finish.") }
+        // Its mark is all that keeps this Mac's bridge stopped while the box's runs.
+        guard brain?.moved == nil, macAgent.homeMove?.isRunning != true else {
+            throw PeelError("Peel Home is on your home server, or moving. Move it back to this Mac first.")
+        }
+        // Only Peel Home's own move keeps that mark, with this Mac's strut and bridge stopped first (`AppModel+Home`).
+        guard new.moved == nil else { throw PeelError("Peel Home moves only through Move to a home server.") }
         let left = brain?.homeServer
         let bringing = hasOwnStrut && new == .thisMac && left != nil
         let copying = hasOwnStrut && brain == .thisMac && new != .thisMac && localHoldsMemory != false
@@ -370,6 +390,9 @@ extension AppModel {
             Task { try? await engine?.setDeviceAgent(nil) }
         case .thisMac:
             useOwnStrut(profile)
+        case .moved:
+            // Only Peel Home's own move keeps this (`AppModel+Home`).
+            break
         }
         lookForMemory(reporting: true)
         lookForBridge()
@@ -381,6 +404,12 @@ extension AppModel {
     /// waits in Account › Brain for the person's yes. False for any other link.
     func openPairingLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "peel" else { return false }
+        if url.host?.lowercased() == "home-setup" {
+            if let link = HomeLink(url) { openHomeLink(link) } else {
+                notice = "That Peel Home link doesn't work. Open it again from your home server's page."
+            }
+            return true
+        }
         guard let server = Brain.pairing(url) else {
             notice = "That home server link doesn't work. Copy it again from your home server."
             return true
@@ -548,6 +577,7 @@ extension AppModel {
         // A move's strut and its state are this account's alone.
         macAgent.stopMove()
         memoryMove = nil
+        homeMove = nil
         localHoldsMemory = nil
         automations = AutomationsState()
         agentBridge.stop()

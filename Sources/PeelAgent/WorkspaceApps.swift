@@ -28,8 +28,10 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     /// The release held live (`r3`) while the workspace holds one rather
     /// than following its latest version.
     public internal(set) var release: String? = nil
-    /// The problems its page has reported lately; 0 from a strut that does
-    /// not count them.
+    /// The warnings strut's monitor raised on the live version in the last
+    /// day: its page calling the workspace too often, for too much, or
+    /// failing over and over (strut's `src/apps/monitor.ts`); 0 from a
+    /// strut that does not count them.
     public internal(set) var problems = 0
 
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`.

@@ -19,7 +19,7 @@ struct WorkspaceAppView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: app.title, subtitle: app.caption(showsWorkspace: true)) {
+            DetailHeader(title: app.title, subtitle: app.caption(showsWorkspace: model.appWorkspaces.count > 1)) {
                 WorkspaceApp.headerIcon(app.iconSymbol)
             } trailing: {
                 AppStatus(app: app)
@@ -59,12 +59,18 @@ extension WorkspaceApp {
     /// Its icon: the manifest's lucide name as the SF Symbol closest to it,
     /// or Apps' grid for one not here or this macOS lacks.
     var iconSymbol: String {
-        guard let icon, let symbol = Self.symbols[icon],
-              NSImage(systemSymbolName: symbol, accessibilityDescription: nil) != nil else { return Self.symbol }
+        guard let icon, let symbol = Self.symbols[icon], Self.available.contains(symbol) else { return Self.symbol }
         return symbol
     }
 
-    /// Under its title: `@workspace · v14`, the workspace only when asked.
+    /// The table's symbols this macOS has, found once.
+    private static let available = Set(symbols.values.filter {
+        NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil
+    })
+
+    /// Under its title and at its card's foot: `@workspace · v14`, the
+    /// workspace only when the apps come from several (Tom, 2026-10-26), as
+    /// on the sidebar's rows.
     func caption(showsWorkspace: Bool) -> String? {
         let parts = (showsWorkspace ? ["@\(peer)"] : []) + [version].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
@@ -124,7 +130,7 @@ struct AppStatus: View {
             }
             .font(Theme.font(12))
             .foregroundStyle(Theme.attention)
-            .help("Its page reported problems lately")
+            .help("In the last day strut warned about how its page uses the workspace: calls too often, too much data, or calls failing")
         } else if let release = app.release {
             Chip("Release \(release)")
                 .fixedSize()

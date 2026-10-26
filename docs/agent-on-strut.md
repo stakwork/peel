@@ -1624,7 +1624,7 @@ and #308).
   agent's DM) and in-place `ui/open-link`, which strut leaves unwired when
   the page shows alone; a workspace's apps that are not pinned; the
   iPhone (no strut of its own).
-- **Checked.** `HiveTests.aWorkspacesPinnedAppsOpenAloneOnPeelsOwnStrut`
+- **Checked.** `HiveTests.aWorkspacesPinnedAppsAreListedAndOpenAloneOnPeelsOwnStrut`
   (the read-through's path and key, pinned only, names strut gives, the
   page's `key`, `app` and `solo` read back exactly, none on a home
   server). By hand, two struts from the stage at the new pin, one standing

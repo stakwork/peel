@@ -122,13 +122,14 @@ own authoring UI. Your chat with Peel is the way in:
   Symbol (`WorkspaceApp.iconSymbol`, a table of common names; the grid
   for the template's `layout-dashboard`, an unknown name or one this
   macOS lacks); titles on two lines, descriptions on three; at the foot
-  `@workspace · v14` (`activeVersion`) and at most one status
+  `@workspace · v14` (`activeVersion`; the workspace only when there are several) and at most one status
   (`AppStatus`): "2 problems" in the attention colour while `warnings`
-  is above 0, else "Release r3" while a release is held (`live`). The
+  (strut's usage monitor: the live version's page calling too often, for
+  too much, or failing, in the last day) is above 0, else "Release r3" while a release is held (`live`). The
   app's header shows the same. Not shown: `owner` (an id, not a name),
-  `publisher`, grants, and time (not in the list). `warnings` arrives
-  only from a strut newer than Peel's pin (the usage monitor), so
-  problems show once the pin moves.
+  `publisher`, grants, and time (not in the list). `warnings` is the
+  workspace's strut's (the list is read through as it is), so it shows
+  wherever that strut counts them, whatever strut Peel ships.
 - Not yet: Recent sort (needs an open history), counts on the workspace choice, Yours
   and apps no workspace pinned (PR 2). Ids of apps no longer listed stay
   in `pinnedApps`, so one that comes back is still pinned.

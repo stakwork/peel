@@ -112,25 +112,19 @@ extension AppModel {
                 // Cancelled while Hive answered: its code is never shown.
                 try Task.checkCancellation()
                 hive.status = .pairing(pairing)
-                while !Task.isCancelled {
-                    try await Task.sleep(for: .seconds(pairing.interval))
-                    switch try await client.poll(pairing, name: name) {
-                    case .pending:
-                        continue
-                    case .denied:
-                        settle("It was turned down in Stadeum.")
-                        return
-                    case .expired:
-                        settle("The code ran out before it was approved. Try again.")
-                        return
-                    case .paired(let link):
-                        // Cancelled, or the account changed, while Hive answered: nothing kept.
-                        guard !Task.isCancelled, profile?.directory == account else { return }
-                        try keepHive(link)
-                        hive.status = .connected
-                        keepHiveRenewed(now: false)
-                        return
-                    }
+                switch try await client.answer(to: pairing, name: name) {
+                case .pending:
+                    return
+                case .denied:
+                    settle("It was turned down in Stadeum.")
+                case .expired:
+                    settle("The code ran out before it was approved. Try again.")
+                case .paired(let link):
+                    // Cancelled, or the account changed, while Hive answered: nothing kept.
+                    guard !Task.isCancelled, profile?.directory == account else { return }
+                    try keepHive(link)
+                    hive.status = .connected
+                    keepHiveRenewed(now: false)
                 }
             } catch is CancellationError {
             } catch {

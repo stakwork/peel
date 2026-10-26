@@ -555,8 +555,11 @@ so it needs the same chunking both ways (open question 4).
   Sphinx attachments through the memes server, which the bridge never
   built: the file stays on the strut that made it, an org's read through to it, a later turn's newer version is
   what opens, and nothing but the handle crosses Sphinx. A device with no
-  strut of its own shows the words; fetching the file for it, on request,
-  through the memes server, is for later.
+  strut of its own (the iPhone) opens an org's on that org's own strut,
+  with a person token of its own from its Stadeum pairing
+  (phases/07-iphone.md, "Org pages on the iPhone", 2026-10-26); one on
+  the brain's own strut is words there, and fetching it for such a device,
+  on request, through the memes server, is for later.
 - **A job's progress.** A job's result or question arrives as an agent
   message naming the job (`metadata.peel.job`). Your next message goes to
   the orchestrator, which continues the job when that is what you meant.

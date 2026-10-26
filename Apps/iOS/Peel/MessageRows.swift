@@ -32,6 +32,7 @@ struct ConversationRow: View, Equatable {
             VStack(spacing: 0) {
                 if !row.agentTools.isEmpty { AgentToolLines(tools: row.agentTools) }
                 MessageRowView(row: row, composer: composer, flashed: flashed)
+                if !row.agentArtifacts.isEmpty { AgentArtifactLines(artifacts: row.agentArtifacts) }
             }
         case .payment:
             PaymentRowView(row: row, composer: composer, flashed: flashed)
@@ -660,6 +661,84 @@ struct AgentToolLines: View {
             }
         }
         .agentLine()
+    }
+}
+
+/// What an agent's reply points to, one quiet line each as on the Mac: its
+/// label and title, and where it opens. An org's file or app opens on that
+/// org's own strut in a sheet (`PhoneStadeum`, `OrgPageSheet`), an https
+/// link in the system's browser; one on the Mac's own strut says so, since
+/// only the Mac reaches it.
+struct AgentArtifactLines: View {
+    let artifacts: [AgentArtifact]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // By position: a reply may name one thing twice.
+            ForEach(Array(artifacts.enumerated()), id: \.offset) { _, artifact in
+                AgentArtifactLine(artifact: artifact)
+            }
+        }
+        .agentLine()
+    }
+}
+
+private struct AgentArtifactLine: View {
+    @Environment(PhoneStadeum.self) private var stadeum
+    @Environment(\.openURL) private var openURL
+    let artifact: AgentArtifact
+
+    var body: some View {
+        if let open {
+            Button(action: open) { line(where: whereTo, opens: true) }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens it")
+        } else {
+            line(where: whereTo, opens: false)
+        }
+    }
+
+    private func line(where place: String?, opens: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 11))
+                .accessibilityHidden(true)
+            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+                .foregroundStyle(Theme.text)
+                .layoutPriority(1)
+            if let place {
+                Text("· " + place)
+                    .truncationMode(.tail)
+            }
+            if opens {
+                Text("Open")
+                    .foregroundStyle(Theme.link)
+                    .fixedSize()
+            }
+        }
+        .lineLimit(1)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Made again on the tap: the tokens may have been renewed since.
+    private var open: (() -> Void)? {
+        if let handle = artifact.handle {
+            guard case .page = stadeum.opening(handle) else { return nil }
+            return { if case .page(let page) = stadeum.opening(handle) { stadeum.shown = page } }
+        }
+        return artifact.url.map { url in { openURL(url) } }
+    }
+
+    /// Where it is: the workspace, the link's host, or why it does not open here.
+    private var whereTo: String? {
+        guard let handle = artifact.handle else { return artifact.url?.host() }
+        switch stadeum.opening(handle) {
+        case .page(let page): return page.workspace
+        case .connectFirst: return "Connect Stadeum in You to open"
+        case .notPaired(let peer): return "@\(peer) isn't connected here"
+        case .onMac: return "On your Mac"
+        }
     }
 }
 

@@ -110,7 +110,7 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
         guard let value = try? JSONDecoder().decode(AgentKit.JSONValue.self, from: reply) else {
             throw PeelError("The memory server's reply was not strut's. Check that strut is running there with the memory steps.")
         }
-        let words = { (text: String) in ChatData.clean(text, max: ChatData.maxText) }
+        let words = { (text: String) in TextLine.clean(text, max: ChatData.maxText) }
         guard value["status"]?.string == "success" else {
             throw PeelError("The memory server refused: " + words(value["error"]?["message"]?.string ?? "no reason given"))
         }

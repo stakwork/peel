@@ -1,6 +1,6 @@
 # Phase 7 — iPhone
 
-Last updated 2026-10-14. **A proposal for Tom's review.** Built so far: I1
+Last updated 2026-10-26. **A proposal for Tom's review.** Built so far: I1
 (`PeelUI`, on `ios/peelui`) and I2 (the first iPhone app, on `ios/app`;
 status under "I2: the first iPhone app" below).
 Resumed 2026-10-13 (paused since 2026-10-08). It builds on
@@ -112,6 +112,13 @@ never sleeps. Later the same code runs headless on Linux.
 > not the brain's Peel, runs the agent; strut stays on loopback on the Mac,
 > and a direct path is optional (foundation.md, decision 4). See
 > [../agent-architecture.md](../agent-architecture.md).
+
+> **Amended (2026-10-26):** the phone still never talks to the brain's
+> strut, but it does talk to its **orgs'** struts: paired with Stadeum as a
+> device of its own, it opens a deliverable or an app the agent's DM names
+> on that org's own strut, with its own person token for the org. See
+> "Org pages on the iPhone" below and strut's specs/DESKTOP.md, "A device
+> with no strut of its own".
 
 ## The shape
 
@@ -608,6 +615,57 @@ messages", without the jump.
 - Anchors live while Peel runs. Older pages are dropped when a chat is
   left, so a place in them is not restored. Not checked: a jump from a
   notification.
+
+### Org pages on the iPhone (2026-10-26, `feature/phone-org-pages`)
+
+**Built.** A deliverable the agent's DM names now opens on the phone. The
+Mac opens one through its own strut's read-through (`/peers/<org>/…`), on
+loopback, which the phone cannot reach; the org's strut faces the internet
+behind its own gate, so the phone reads it directly, as strut's
+specs/DESKTOP.md ("A device with no strut of its own", stakwork/strut#339)
+describes:
+
+- **Pairing.** Hive's device flow moved from PeelAgent to PeelCore
+  (`Hive.swift`: `HiveClient`, `HiveLink`, `HivePeer`, and `answer(to:)`,
+  the poll loop the Mac and the phone now share), with the two helpers it
+  needed (`TextLine.clean`, ChatData's cleaner; `Date(iso8601:)`). The
+  phone pairs as a device of its own (`PhoneStadeum`): You › Stadeum,
+  Connect Stadeum, the code, Open Stadeum to approve it in Safari; the
+  credential and each org's token in `Profile.hive`; renewed when Peel
+  comes to the front and the link is due; a revoke clears it and says to
+  connect again; Disconnect.
+- **The cards.** An agent reply's `metadata.peel.artifacts` are lines under
+  it (`AgentArtifactLines`), as on the Mac: label and title, then the
+  workspace and Open; "On your Mac" for one on the brain's own strut;
+  "Connect Stadeum in You to open" before pairing; an https link opens in
+  Safari.
+- **The page.** `AgentArtifact.Handle.onOrg` takes the brain's
+  `/peers/<org>` hop off (a second hop stays, for the org's own
+  read-through) and `StrutUI.page` builds the org's UI address alone
+  (`/lab/?artifact=…&solo=1`, `?app=<name>&solo=1`), the address
+  `MemoryServer.page` now builds through too. `OrgPageSheet` shows it in a
+  `WKWebView` whose store keeps nothing: the token as the first request's
+  bearer (a swarm's gate wants a credential for the page itself) and set
+  as `sessionStorage["strut/apiKey"]` by a script before the page's own,
+  on the org's origin only, never in an address. Navigation keeps to that
+  origin, its `srcdoc` and blob frames; a link elsewhere goes to Safari
+  only on the person's own tap (`TouchWebView`); nothing downloads.
+
+**Checked.** `swift test`: all pass but `BundledBridgeTests.theStagedRunnerExitsWhenPeelsPipeCloses`,
+which needs a bridge staged after the runner pin moved to sphinx#396
+(10-25; this Mac's stage is from 10-23). `OrgPageTests` cover the mapping
+and the address. The iPhone app builds for the simulator (an arm64
+simulator slice of the core built from v0.8.39 for it) and the Mac app
+builds. `OrgPageSheet` itself, compiled into a throwaway simulator app
+against a local strut with only a person token: an app's page rendered
+and its `step_run` call went through, a job's markdown file rendered with
+its image, and its "Open in new tab" stayed in the sheet. Not seen on
+screen: You › Stadeum and the cards in the real app (no account on the
+simulator), and a real Stadeum pairing.
+
+**Not done.** The Apps list (each workspace's pinned apps on the phone)
+is the next PR. A deliverable on the brain's own strut stays words on the
+phone.
 
 ### The project
 

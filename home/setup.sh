@@ -43,10 +43,12 @@ write_host_env() {
 
 # strut's arrival rewrite points the moved callbacks at this box's bridge,
 # and sets the two secrets Peel's device steps read (Orchestrator.useBridge).
+# The peer record's token is signed with the key strut will run with.
 # A send-back may first apply a moved.json strut hasn't, which needs strut's key.
 serve() {
     STRUT_MOVE_BRIDGE_TOKEN=$(value BRIDGE_TOKEN "$bridge_env/host.env")
-    export STRUT_MOVE_BRIDGE_TOKEN
+    STRUT_API_KEY=$(value STRUT_API_KEY "$strut_env/host.env")
+    export STRUT_MOVE_BRIDGE_TOKEN STRUT_API_KEY
     if [ -f "$strut_env/home.env" ]; then
         STRUT_SECRET_KEY=$(value STRUT_SECRET_KEY "$strut_env/home.env") || return 1
         export STRUT_SECRET_KEY
@@ -111,6 +113,12 @@ run() {
     fi
     while :; do
         if [ ! -f "$strut_env/home.env" ]; then
+            # The peer record a move in answers with carries the peer port's CA:
+            # without it, the Mac's strut could never reach this one.
+            if [ ! -s "$STRUT_MOVE_PEER_CA" ]; then
+                echo "setup: waiting for the peer port's CA ($STRUT_MOVE_PEER_CA; see: docker compose logs peer)" >&2
+                until [ -s "$STRUT_MOVE_PEER_CA" ]; do nap 2; done
+            fi
             rm -f "$gate/stop"
             # Rebuilt by strut; nothing a previous occupant left is loaded.
             rm -rf /data/cache/strut /data/cache/models

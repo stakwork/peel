@@ -945,7 +945,10 @@ is a short plan. Update the status and the journal when you finish something.
   `strut` and `bridge` run through `gate.sh`, which starts each only while
   Peel Home is on the box, with its own allow-listed keys from
   `data/env/<program>/` (read, never executed), and starts the bridge once
-  strut answers `/health`. Replaces `brain/` (A7)
+  strut answers `/health`; `peer` is Caddy in strut's network, the peer
+  port where the Mac's strut calls `POST /home/pull` and `/home/push` and
+  nothing else (TLS from its own CA, an allowlist in `Caddyfile`). Replaces
+  `brain/` (A7)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
   wire tap down, up, or freezes it (a dead connection that looks open),

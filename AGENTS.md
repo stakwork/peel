@@ -353,7 +353,8 @@ is a short plan. Update the status and the journal when you finish something.
   workspaces pinned, `refreshWorkspaceApps`; the person's pins under the
   sidebar's Apps row, `isPinned`, `setPinned`: none until the person
   pins one, `ChatSections.Layout.pinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
-  as a card, A–Z, with a search and the workspace to show;
+  as a card, A–Z, its icon, version and status (`AppStatus`), with a
+  search and the workspace to show;
   `docs/apps-browser.md`), `WorkspaceAppView` (one of
   those apps alone in the detail column, opened from Apps or its pinned
   row: Peel's own strut's UI showing its page, in a `WKWebView` whose store

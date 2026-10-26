@@ -280,12 +280,17 @@ final class OffscreenDriver {
 
     /// `apps-seed`'s apps, as strut's `GET /apps` lists them: two
     /// workspaces, so Apps shows its workspace choice.
-    private static let sampleApps: [(peer: String, name: String, title: String, about: String?)] = [
-        ("stakwork", "benchmarks", "Benchmark board", "Scores for every agent run against the eval suites, by attempt."),
-        ("stakwork", "openhealth", "OpenHealth", "Lab results, wearables and visits on one timeline."),
-        ("stakwork", "tweets", "Tweet drafts", "Drafts from the week's merged PRs, ready to review and post."),
-        ("acme", "invoices", "Invoices", "Customers, visits and invoices for an HVAC business."),
-        ("acme", "visits", "Field visits", nil),
+    private static let sampleApps: [(peer: String, entry: [String: AgentKit.JSONValue])] = [
+        ("stakwork", ["name": "benchmarks", "title": "Benchmark board", "icon": "flask-conical", "activeVersion": "v14",
+                      "live": "r3", "description": "Scores for every agent run against the eval suites, by attempt."]),
+        ("stakwork", ["name": "openhealth", "title": "OpenHealth", "icon": "heart", "activeVersion": "v9",
+                      "description": "Lab results, wearables and visits on one timeline."]),
+        ("stakwork", ["name": "tweets", "title": "Tweet drafts", "icon": "layout-dashboard", "activeVersion": "v2",
+                      "description": "Drafts from the week's merged PRs, ready to review and post."]),
+        ("acme", ["name": "invoices", "title": "Invoices for every customer visit this quarter", "icon": "receipt",
+                  "activeVersion": "v6", "warnings": 2,
+                  "description": "Customers, visits and invoices for an HVAC business, with reminders for the ones still unpaid after thirty days."]),
+        ("acme", ["name": "visits", "title": "Field visits", "activeVersion": "v1"]),
     ]
 
     /// The selection a click on the chat's sidebar row makes.
@@ -419,11 +424,7 @@ final class OffscreenDriver {
             // Workspaces' apps in memory, read as a listing through strut is;
             // strut and Stadeum untouched.
             model.hive.apps = WorkspaceApp.byTitle(Self.sampleApps.compactMap { app in
-                var entry: [String: AgentKit.JSONValue] = [
-                    "name": .string(app.name), "title": .string(app.title), "pinned": .bool(true),
-                ]
-                if let about = app.about { entry["description"] = .string(about) }
-                return WorkspaceApp(peer: app.peer, json: .object(entry))
+                WorkspaceApp(peer: app.peer, json: .object(app.entry.merging(["pinned": .bool(true)]) { $1 }))
             })
         case "app-pin":
             // The open app's pin, in its header.

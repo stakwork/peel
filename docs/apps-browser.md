@@ -117,8 +117,19 @@ own authoring UI. Your chat with Peel is the way in:
   of workspace when there are several. Empty states for no workspaces
   (Open Account), none pinned yet, a home server, and no matches.
 - The app's header gains the same pin.
-- Not yet: Recent sort (needs an open history), the manifest's icon (a
-  lucide name, not an SF Symbol), counts on the workspace choice, Yours
+- Cards v1 (Tom, 2026-10-26, the canvas's "App cards v1"): only what
+  strut's list carries. The manifest's lucide `icon` as the closest SF
+  Symbol (`WorkspaceApp.iconSymbol`, a table of common names; the grid
+  for the template's `layout-dashboard`, an unknown name or one this
+  macOS lacks); titles on two lines, descriptions on three; at the foot
+  `@workspace · v14` (`activeVersion`) and at most one status
+  (`AppStatus`): "2 problems" in the attention colour while `warnings`
+  is above 0, else "Release r3" while a release is held (`live`). The
+  app's header shows the same. Not shown: `owner` (an id, not a name),
+  `publisher`, grants, and time (not in the list). `warnings` arrives
+  only from a strut newer than Peel's pin (the usage monitor), so
+  problems show once the pin moves.
+- Not yet: Recent sort (needs an open history), counts on the workspace choice, Yours
   and apps no workspace pinned (PR 2). Ids of apps no longer listed stay
   in `pinnedApps`, so one that comes back is still pinned.
 - Checked: `ChatSectionsTests` (an older layout has no pins; pins are

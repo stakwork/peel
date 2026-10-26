@@ -17,7 +17,7 @@ struct AppsView: View {
         let apps = model.hive.apps
         VStack(spacing: 0) {
             DetailHeader(title: "Apps", subtitle: apps.isEmpty ? nil : Formatting.count(apps.count, "app")) {
-                WorkspaceApp.headerIcon
+                WorkspaceApp.headerIcon(WorkspaceApp.symbol)
             }
             if model.memoryServer?.isHomeServer == true {
                 EmptyState("Apps open on Peel's own strut, and the memory is on a home server.",
@@ -64,9 +64,10 @@ struct AppsView: View {
     }
 }
 
-/// One app in Apps: its icon, title and what it is for, and its workspace
-/// when the apps come from several; a click opens it, its pin keeps it
-/// under the sidebar's Apps row.
+/// One app in Apps: its icon, title and what it is for; at its foot its
+/// workspace (when the apps come from several) and version, and its status
+/// (`AppStatus`). A click opens it, its pin keeps it under the sidebar's
+/// Apps row.
 private struct AppCard: View {
     @Environment(AppModel.self) private var model
     let app: WorkspaceApp
@@ -78,29 +79,36 @@ private struct AppCard: View {
         } label: {
             Card {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                HStack(spacing: 10) {
-                    Image(systemName: WorkspaceApp.symbol)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: app.iconSymbol)
                         .font(.system(size: 16))
                         .foregroundStyle(Theme.secondaryText)
                         .frame(width: Theme.AvatarSize.md, height: Theme.AvatarSize.md)
                         .background(Theme.input, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                     Text(app.title)
                         .font(Theme.font(14, .semibold))
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .frame(minHeight: Theme.AvatarSize.md)
                 }
                 .padding(.trailing, 28)
                 Text(app.about ?? "")
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(2, reservesSpace: true)
+                    .lineLimit(3, reservesSpace: true)
                 // The workspace at the foot of every card, whatever is above it.
                 Spacer(minLength: 0)
-                if showsWorkspace {
-                    Text("@\(app.peer)")
-                        .font(Theme.font(12))
-                        .foregroundStyle(Theme.tertiaryText)
-                        .lineLimit(1)
+                HStack(spacing: Theme.Space.sm) {
+                    if let caption = app.caption(showsWorkspace: showsWorkspace) {
+                        Text(caption)
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.tertiaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    AppStatus(app: app)
                 }
+                // A chip's height whether or not one shows: every card's foot on one line.
+                .frame(height: 24)
             }
             .padding(Theme.Space.md)
             // As tall as the row's tallest, one without a description too.

@@ -21,6 +21,16 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     public let title: String
     /// What the app is for, in its own words.
     public let about: String?
+    /// Its manifest's icon: a lucide name (`flask-conical`), or nil.
+    public internal(set) var icon: String? = nil
+    /// The version the workspace serves (`v14`).
+    public internal(set) var version: String? = nil
+    /// The release held live (`r3`) while the workspace holds one rather
+    /// than following its latest version.
+    public internal(set) var release: String? = nil
+    /// The problems its page has reported lately; 0 from a strut that does
+    /// not count them.
+    public internal(set) var problems = 0
 
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`.
     public var id: String { "@\(peer)/\(name)" }
@@ -37,6 +47,20 @@ extension WorkspaceApp {
         self.title = title.isEmpty ? name : title
         let about = ChatData.clean(json["description"]?.string ?? "", max: ChatData.maxText)
         self.about = about.isEmpty ? nil : about
+        // Only as strut writes them: anything else is left out.
+        let icon = json["icon"]?.string ?? ""
+        if (1...64).contains(icon.count), icon.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "-") }) {
+            self.icon = icon
+        }
+        /// `value` when it is `letter` and one to six digits (`v14`, `r3`).
+        func label(_ value: AgentKit.JSONValue?, _ letter: Character) -> String? {
+            guard let value = value?.string, value.first == letter, (2...7).contains(value.count),
+                  value.dropFirst().allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+            return value
+        }
+        version = label(json["activeVersion"], "v")
+        release = label(json["live"], "r")
+        problems = max(json["warnings"]?.int ?? 0, 0)
     }
 }
 

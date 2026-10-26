@@ -211,16 +211,18 @@ struct HiveTests {
         let strut = try await HTTPStub { _, request in
             guard path(request) == "/peers/acme/apps", request.contains("Authorization: Bearer k+1") else { return (404, "{}") }
             return (200, #"""
-                {"apps":[{"name":"hive/board","title":"Board\n","pinned":true,"description":"The team's board"},
+                {"apps":[{"name":"hive/board","title":"Board\n","pinned":true,"description":"The team's board",
+                          "icon":"flask-conical","activeVersion":"v14","live":"r3","warnings":2},
                          {"name":"scratch","title":"Scratch"},
                          {"name":"x@v2","title":"Pinned to a version","pinned":true},
-                         {"name":"plain","title":"","pinned":true}]}
+                         {"name":"plain","title":"","pinned":true,"icon":"<b>","activeVersion":"14","live":"r","warnings":-1}]}
                 """#)
         }
         defer { strut.stop() }
         let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k+1"))
         let apps = try await AutomationsClient(server: server).pinnedApps(of: "acme")
-        #expect(apps == [WorkspaceApp(peer: "acme", name: "hive/board", title: "Board", about: "The team's board"),
+        #expect(apps == [WorkspaceApp(peer: "acme", name: "hive/board", title: "Board", about: "The team's board",
+                                      icon: "flask-conical", version: "v14", release: "r3", problems: 2),
                          WorkspaceApp(peer: "acme", name: "plain", title: "plain", about: nil)])
         let page = try #require(server.page(of: apps[0]))
         #expect(page.path == "/" && server.serves(page))

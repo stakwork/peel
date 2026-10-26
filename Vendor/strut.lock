@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #324, after #323 (Ladybug's vector + fts extensions pinned by sha256 and downloaded from strut's own release, so a package can no longer get ones its core cannot load — build 3's workspace that would not open), #315 (the package loads them into its addon before naming them) and #319 (dictation learns respelled and re-split names, and a name fixed twice).
-b0533d6698a3c06fe635022d718bca72b0c2712e
+# stakwork/strut main at the merge of #335 (strut move: check, send, serve and fetch, for Peel Home), after #338, #336 and #334 (the image carries Ladybug's extensions).
+9512381ab46964b423a91bff83adb0608d282a3e

@@ -187,6 +187,8 @@ struct HotkeyConfigTests {
     @Test func namesKeysWithoutACharacter() {
         #expect(HotkeyConfig.key(code: 122).label == "F1")
         #expect(HotkeyConfig.key(code: 200).label == "Key 200")
+        #expect(HotkeyConfig.key(code: 76).label == "Enter")
+        #expect(HotkeyConfig.key(code: 116).label == "Page Up")
         #expect(!HotkeyConfig.key(code: 49).canBeHotkey)
     }
 
@@ -204,6 +206,13 @@ struct HotkeyConfigTests {
     @Test func settingsPersistAndDefault() throws {
         let defaults = try #require(UserDefaults(suiteName: "dictation-test-\(UUID().uuidString)"))
         let settings = DictationSettings(defaults: defaults)
+        #expect(settings.hotkey == DictationDefaults.hotkey)
+        settings.hotkey = .fn
+        // A second reader, as after a relaunch.
+        #expect(DictationSettings(defaults: defaults).hotkey == .fn)
+        // What was kept can't be the key any more (an older rule): the default.
+        settings.hotkey = .key(code: 40, character: "k")
+        #expect(settings.hotkey == DictationDefaults.hotkey)
         #expect(settings.storedEnabled == nil)
         settings.storedEnabled = false
         #expect(settings.storedEnabled == false)
@@ -297,5 +306,80 @@ struct TextInsertionPlanTests {
     ])
     func plans(start: FocusFacts, now: FocusFacts, plan: TextInsertionPlan) {
         #expect(TextInsertionPlan.plan(from: start, to: now) == plan)
+    }
+}
+
+struct HotkeyRecordingTests {
+    private static let rightCommandDown: UInt64 = 0x10 | 0x100000
+    private static let fnDown: UInt64 = 0x80_0000
+
+    @Test func aModifierIsChosenWhenLetGoAlone() {
+        var recording = HotkeyRecording()
+        #expect(recording.flagsChanged(code: 54, flags: Self.rightCommandDown) == .swallow)
+        #expect(recording.flagsChanged(code: 54, flags: 0) == .chosen(.key(code: 54)))
+        #expect(recording.flagsChanged(code: 63, flags: Self.fnDown) == .swallow)
+        #expect(recording.flagsChanged(code: 63, flags: 0) == .chosen(.fn))
+    }
+
+    @Test func aModifierHeldForAnotherKeyIsNotChosen() {
+        // Fn held for F5 (a Mac keyboard's F-keys): F5 is chosen, not Fn.
+        var withFn = HotkeyRecording()
+        #expect(withFn.flagsChanged(code: 63, flags: Self.fnDown) == .swallow)
+        #expect(withFn.keyDown(code: 96, character: nil, isRepeat: false) == .chosen(.key(code: 96)))
+        // Command-Tab: Tab is refused, and Command let go chooses nothing.
+        var commandTab = HotkeyRecording()
+        _ = commandTab.flagsChanged(code: 55, flags: 0x08 | 0x100000)
+        guard case .refused = commandTab.keyDown(code: 48, character: "\t", isRepeat: false) else {
+            Issue.record("Tab was not refused")
+            return
+        }
+        #expect(commandTab.flagsChanged(code: 55, flags: 0) == .swallow)
+        // Two modifiers together: neither; then one alone again counts.
+        var both = HotkeyRecording()
+        _ = both.flagsChanged(code: 54, flags: Self.rightCommandDown)
+        _ = both.flagsChanged(code: 61, flags: Self.rightCommandDown | 0x40)
+        #expect(both.flagsChanged(code: 61, flags: Self.rightCommandDown) == .swallow)
+        #expect(both.flagsChanged(code: 54, flags: 0) == .swallow)
+        _ = both.flagsChanged(code: 61, flags: 0x40 | 0x80000)
+        #expect(both.flagsChanged(code: 61, flags: 0) == .chosen(.rightOption))
+    }
+
+    @Test func aReleaseOfAKeyHeldBeforeChoosingGoesOn() {
+        var recording = HotkeyRecording()
+        #expect(recording.flagsChanged(code: 61, flags: 0) == .pass)
+    }
+
+    @Test func aFunctionKeyIsChosenAndRepeatsAreSwallowed() {
+        var recording = HotkeyRecording()
+        #expect(recording.keyDown(code: 105, character: nil, isRepeat: false) == .chosen(.key(code: 105)))
+        // A held letter's repeats must not reach the app either.
+        #expect(recording.keyDown(code: 40, character: "k", isRepeat: true) == .swallow)
+    }
+
+    @Test func escapeCancels() {
+        var recording = HotkeyRecording()
+        #expect(recording.keyDown(code: 53, character: "\u{1b}", isRepeat: false) == .cancel)
+    }
+
+    @Test func otherKeysAreRefusedSayingWhich() {
+        var recording = HotkeyRecording()
+        #expect(recording.keyDown(code: 40, character: "k", isRepeat: false) == .refused(reason: "K can't be the key: it types in every app."))
+        guard case .refused(let space) = recording.keyDown(code: 49, character: " ", isRepeat: false),
+              case .refused(let capsLock) = recording.flagsChanged(code: 57, flags: 0x10000) else {
+            Issue.record("Space or Caps Lock was not refused")
+            return
+        }
+        #expect(space.contains("steers a recording"))
+        #expect(capsLock.contains("sends no release"))
+    }
+
+    @Test func conflictsThatAreKnown() {
+        #expect(HotkeyConfig.rightOption.conflict(fnKeyUsage: nil) == nil)
+        #expect(HotkeyConfig.fn.conflict(fnKeyUsage: 0) == nil)
+        #expect(HotkeyConfig.fn.conflict(fnKeyUsage: nil)?.contains("Do Nothing") == true)
+        #expect(HotkeyConfig.fn.conflict(fnKeyUsage: 2) != nil)
+        #expect(HotkeyConfig.key(code: 54).conflict(fnKeyUsage: nil)?.contains("shortcut") == true)
+        #expect(HotkeyConfig.key(code: 105).conflict(fnKeyUsage: nil) == nil)   // F13
+        #expect(HotkeyConfig.key(code: 122).conflict(fnKeyUsage: nil) != nil)   // F1
     }
 }

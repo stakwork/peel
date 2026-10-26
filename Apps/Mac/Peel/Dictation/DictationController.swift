@@ -20,8 +20,14 @@ final class DictationController {
     var isEnabled: Bool {
         DictationSettings.isEnabled(stored: stored, permissionsGranted: permissions.requiredGranted)
     }
-    /// Right Option for now; choosing another key comes back once its recorder works.
-    let hotkey = DictationDefaults.hotkey
+    /// The key held to dictate, kept in step with the settings.
+    private(set) var hotkey: HotkeyConfig
+    /// Settings is waiting for a key press to make the key (`chooseKey`).
+    private(set) var choosingKey = false
+    /// The key last pressed while choosing could not be the key, and why.
+    private(set) var keyProblem: String?
+    /// System Settings › Keyboard › Press 🌐 key, read on each `refresh`.
+    private var fnKeyUsage: Int?
     private(set) var secureInput = false
     /// The tap is running.
     private(set) var isListening = false
@@ -62,12 +68,16 @@ final class DictationController {
     @ObservationIgnored private var inserting = 0
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var poll: Timer?
+    @ObservationIgnored private var choosingTimeout: Timer?
+    /// Which choosing an outcome belongs to: one from an earlier round is dropped.
+    @ObservationIgnored private var choosingRound = 0
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
 
     private init() {
         // @Observable makes `settings` computed, so read a local copy before init completes.
         let settings = DictationSettings()
         self.settings = settings
+        hotkey = settings.hotkey
         stored = settings.storedEnabled
         offerDismissed = settings.offerDismissed
         historyOn = settings.historyOn
@@ -97,6 +107,7 @@ final class DictationController {
     /// Re-reads the permissions and starts or stops what depends on them.
     func refresh() {
         permissions.refresh()
+        fnKeyUsage = UserDefaults(suiteName: "com.apple.HIToolbox")?.object(forKey: "AppleFnUsageType") as? Int
         checkSecureInput()
         // A tap made before Accessibility was granted cannot swallow; make it again.
         if isListening && !canSwallow && permissions.accessibility == .granted { stopListening() }
@@ -146,6 +157,68 @@ final class DictationController {
         settings.offerDismissed = true
     }
 
+    /// What else on the Mac the key does, when that is known.
+    var keyConflict: String? { hotkey.conflict(fnKeyUsage: fnKeyUsage) }
+
+    /// The next key pressed anywhere becomes the key, through the tap, which
+    /// sees modifiers on their own and every app's keys; Escape, or a timeout, stops.
+    /// Not while a dictation is under way: its key's release would go to the
+    /// recorder and never end it.
+    func chooseKey() {
+        guard let tap, !choosingKey, machine.isIdle else { return }
+        choosingKey = true
+        keyProblem = nil
+        choosingRound += 1
+        let round = choosingRound
+        log.info("choosing a key (tap swallows: \(tap.swallows))")
+        tap.record { [weak self] outcome in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.recorded(outcome, round: round) } }
+        }
+        // In the common modes, so an open menu doesn't keep every key swallowed.
+        let timeout = Timer(timeInterval: DictationDefaults.choosingKeyTimeout, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopChoosingKey() }
+        }
+        RunLoop.main.add(timeout, forMode: .common)
+        choosingTimeout = timeout
+    }
+
+    func stopChoosingKey() {
+        guard choosingKey else { return }
+        tap?.record(nil)
+        choosingKey = false
+        choosingTimeout?.invalidate()
+        choosingTimeout = nil
+    }
+
+    /// A choice stands even if the round was stopped meanwhile (the timeout,
+    /// leaving Settings): the tap had already swallowed the key.
+    private func recorded(_ outcome: HotkeyRecording.Outcome, round: Int) {
+        guard round == choosingRound else { return }
+        switch outcome {
+        case .pass, .swallow: break
+        case .cancel:
+            log.info("choosing a key: cancelled")
+            stopChoosingKey()
+        case .refused(let reason):
+            guard choosingKey else { return }
+            // Not which key: someone typing elsewhere meanwhile would be logged.
+            log.info("choosing a key: refused one")
+            keyProblem = reason
+        case .chosen(let key):
+            log.info("choosing a key: \(key.label, privacy: .public)")
+            stopChoosingKey()
+            setHotkey(key)
+        }
+    }
+
+    func setHotkey(_ new: HotkeyConfig) {
+        guard new.canBeHotkey else { return }
+        keyProblem = nil
+        hotkey = new
+        settings.hotkey = new
+        tap?.setHotkey(new)
+    }
+
     private func checkSecureInput() {
         let on = SecureInput.isEnabled
         guard on != secureInput else { return }
@@ -179,6 +252,7 @@ final class DictationController {
 
     private func stopListening() {
         guard isListening else { return }
+        stopChoosingKey()
         tap?.stop()
         tap = nil
         isListening = false

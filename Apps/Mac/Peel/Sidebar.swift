@@ -34,8 +34,7 @@ struct Sidebar: View {
                             SidebarLink("Apps", to: .apps) {
                                 Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
                             }
-                            // The workspace beside each only when they come from several.
-                            let several = model.appWorkspaces.count > 1
+                            let several = model.showsAppWorkspaces
                             ForEach(shownApps(searching: sections.searching)) {
                                 WorkspaceAppLink(app: $0, showsWorkspace: several)
                             }

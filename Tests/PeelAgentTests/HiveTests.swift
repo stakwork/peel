@@ -204,8 +204,8 @@ struct HiveTests {
 
     /// A workspace's apps come through Peel's own strut's read-through,
     /// with its key: only those pinned as tabs, under names strut gives,
-    /// with their icon, version, held release and warnings as strut writes
-    /// them and none otherwise. One opens as strut's UI showing that page
+    /// with their icon, version, held release and warnings when strut gives
+    /// them as text (and a count), none otherwise. One opens as strut's UI showing that page
     /// alone, with the key, the app and `solo` encoded so strut's UI reads
     /// them back exactly; a home server opens none.
     @Test func aWorkspacesPinnedAppsAreListedAndOpenAloneOnPeelsOwnStrut() async throws {
@@ -216,7 +216,7 @@ struct HiveTests {
                           "icon":"flask-conical","activeVersion":"v14","live":"r3","warnings":2},
                          {"name":"scratch","title":"Scratch"},
                          {"name":"x@v2","title":"Pinned to a version","pinned":true},
-                         {"name":"plain","title":"","pinned":true,"icon":"<b>","activeVersion":"14","live":"r","warnings":-1}]}
+                         {"name":"plain","title":"","pinned":true,"icon":3,"activeVersion":" \n","live":null,"warnings":-1}]}
                 """#)
         }
         defer { strut.stop() }

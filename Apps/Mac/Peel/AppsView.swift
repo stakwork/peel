@@ -56,7 +56,7 @@ struct AppsView: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Theme.Space.md, alignment: .top)],
                           spacing: Theme.Space.md) {
-                    ForEach(shown) { AppCard(app: $0, showsWorkspace: peers.count > 1) }
+                    ForEach(shown) { AppCard(app: $0, showsWorkspace: model.showsAppWorkspaces) }
                 }
                 .padding(Theme.Space.xl)
             }
@@ -79,6 +79,7 @@ private struct AppCard: View {
         } label: {
             Card {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                // A one-line title centred on the icon, a two-line one from its top.
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: app.iconSymbol)
                         .font(.system(size: 16))

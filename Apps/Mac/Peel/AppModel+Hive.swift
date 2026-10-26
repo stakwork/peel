@@ -317,6 +317,12 @@ extension AppModel {
         Set(hive.apps.map(\.peer)).sorted()
     }
 
+    /// Whether an app's `@workspace` shows (its sidebar row, card and
+    /// header): only when the apps come from several (Tom, 2026-10-26).
+    var showsAppWorkspaces: Bool {
+        Set(hive.apps.map(\.peer)).count > 1
+    }
+
     /// Whether the person pinned `app` under the sidebar's Apps row
     /// (`ChatSections.Layout.pinnedApps`); none are until they do.
     func isPinned(_ app: WorkspaceApp) -> Bool {

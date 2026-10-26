@@ -28,10 +28,9 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     /// The release held live (`r3`) while the workspace holds one rather
     /// than following its latest version.
     public internal(set) var release: String? = nil
-    /// The warnings strut's monitor raised on the live version in the last
-    /// day: its page calling the workspace too often, for too much, or
-    /// failing over and over (strut's `src/apps/monitor.ts`); 0 from a
-    /// strut that does not count them.
+    /// The warnings strut's monitor raised on its live version, about how
+    /// its page uses the workspace (strut's `src/apps/monitor.ts`); 0 from
+    /// a strut that does not count them.
     public internal(set) var problems = 0
 
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`.
@@ -49,19 +48,15 @@ extension WorkspaceApp {
         self.title = title.isEmpty ? name : title
         let about = ChatData.clean(json["description"]?.string ?? "", max: ChatData.maxText)
         self.about = about.isEmpty ? nil : about
-        // Only as strut writes them: anything else is left out.
-        let icon = json["icon"]?.string ?? ""
-        if (1...64).contains(icon.count), icon.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "-") }) {
-            self.icon = icon
+        // strut's own words, shown as text (the icon only ever looked up
+        // in Peel's table): cleaned as a name is, none when empty.
+        func text(_ value: AgentKit.JSONValue?) -> String? {
+            let text = ChatData.clean(value?.string ?? "", max: 64)
+            return text.isEmpty ? nil : text
         }
-        /// `value` when it is `letter` and one to six digits (`v14`, `r3`).
-        func label(_ value: AgentKit.JSONValue?, _ letter: Character) -> String? {
-            guard let value = value?.string, value.first == letter, (2...7).contains(value.count),
-                  value.dropFirst().allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
-            return value
-        }
-        version = label(json["activeVersion"], "v")
-        release = label(json["live"], "r")
+        icon = text(json["icon"])
+        version = text(json["activeVersion"])
+        release = text(json["live"])
         problems = max(json["warnings"]?.int ?? 0, 0)
     }
 }

@@ -124,8 +124,7 @@ own authoring UI. Your chat with Peel is the way in:
   macOS lacks); titles on two lines, descriptions on three; at the foot
   `@workspace · v14` (`activeVersion`; the workspace only when there are several) and at most one status
   (`AppStatus`): "2 problems" in the attention colour while `warnings`
-  (strut's usage monitor: the live version's page calling too often, for
-  too much, or failing, in the last day) is above 0, else "Release r3" while a release is held (`live`). The
+  (strut's usage monitor, on the live version) is above 0, else "Release r3" while a release is held (`live`). The
   app's header shows the same. Not shown: `owner` (an id, not a name),
   `publisher`, grants, and time (not in the list). `warnings` is the
   workspace's strut's (the list is read through as it is), so it shows

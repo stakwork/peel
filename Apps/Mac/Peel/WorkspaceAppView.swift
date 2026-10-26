@@ -19,7 +19,7 @@ struct WorkspaceAppView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: app.title, subtitle: app.caption(showsWorkspace: model.appWorkspaces.count > 1)) {
+            DetailHeader(title: app.title, subtitle: app.caption(showsWorkspace: model.showsAppWorkspaces)) {
                 WorkspaceApp.headerIcon(app.iconSymbol)
             } trailing: {
                 AppStatus(app: app)
@@ -69,10 +69,9 @@ extension WorkspaceApp {
     })
 
     /// Under its title and at its card's foot: `@workspace · v14`, the
-    /// workspace only when the apps come from several (Tom, 2026-10-26), as
-    /// on the sidebar's rows.
+    /// workspace when asked (`AppModel.showsAppWorkspaces`).
     func caption(showsWorkspace: Bool) -> String? {
-        let parts = (showsWorkspace ? ["@\(peer)"] : []) + [version].compactMap { $0 }
+        let parts = [showsWorkspace ? "@\(peer)" : nil, version].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -125,12 +124,12 @@ struct AppStatus: View {
     var body: some View {
         if app.problems > 0 {
             HStack(spacing: 5) {
-                Circle().fill(Theme.attention).frame(width: 6, height: 6)
+                OnlineDot(color: Theme.attention)
                 Text(Formatting.count(app.problems, "problem"))
             }
             .font(Theme.font(12))
             .foregroundStyle(Theme.attention)
-            .help("In the last day strut warned about how its page uses the workspace: calls too often, too much data, or calls failing")
+            .help("Strut's monitor flagged how its page uses the workspace")
         } else if let release = app.release {
             Chip("Release \(release)")
                 .fixedSize()

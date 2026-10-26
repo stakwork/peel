@@ -1,0 +1,166 @@
+# Apps: a sidebar entry and a browser
+
+Status: PR 1 built, 2026-10-26. Tom chose layout A (grid) and personal
+pinned apps under the Apps row; opening an app stays `WorkspaceAppView`.
+
+## What's there now
+
+Evan's #368 added an **Apps** section at the bottom of the sidebar, below
+every chat. It lists the apps each paired Stadeum workspace *pinned as a
+tab* (`AutomationsClient.pinnedApps(of:)`, `GET /peers/<id>/apps` through
+Peel's strut, filtered to `pinned`). Opening one shows strut's UI with that
+page alone (`WorkspaceAppView`). The sidebar search filters the section.
+
+Why it won't hold up:
+
+- It sits under all the chats, so you scroll to the bottom to reach it, and it
+  gets longer with every app a workspace pins.
+- Only workspace-pinned apps show. Strut already lists every app
+  (`GET /apps`: name, title, description, icon, owner, versions, `pinned`,
+  `live`), and Peel throws the rest away.
+- The apps on your own strut never show at all (strut's own UI lists them).
+- There's no way to make an app, change one, or manage one from Peel.
+
+## Proposal
+
+### Sidebar
+
+- **Apps becomes a nav row**, like Automations. The nav rows go A–Z:
+  **Apps, Automations, Mentions, Payments, Threads**. Your two options give
+  the same order ("Apps and Automations first, the rest A–Z" or "everything
+  A–Z"), so there's nothing to choose between. The only real change is that
+  Threads moves from second to last.
+- **Apps you pin sit under the Apps row**, A–Z. Pins are yours and stay
+  in Peel (in `sidebarLayout`). None are pinned until you pin one.
+- **The bottom Apps section goes away.**
+- The sidebar search keeps matching apps. While searching, matching apps
+  show under the Apps row, so the arrow keys and Return still reach them.
+
+### The Apps browser (`.apps`, in the detail column)
+
+- **Header:** Apps, the count, and **New app**.
+- **Search** over the title, description and workspace.
+- **Workspace filter** as buttons: All, Yours, then one for each workspace
+  (`@stakwork`, `@acme`), each with its count. This is one view with a
+  filter, not a tab per workspace.
+- **Sort:** Recent (the order you opened them in, kept by Peel) or A–Z.
+- **Layout A, a grid (recommended):** each card shows the icon (the
+  manifest's lucide `icon`), the title, two lines of description, and the
+  workspace and when it was updated. A pin button sits in the card's
+  corner. Icon tiles are neutral, not a colour per app.
+  - B (a dense list with the metadata in aligned columns) and C (a Recent
+    strip, then the apps grouped by workspace) are on the canvas for
+    comparison. B is better past about 50 apps; C is best when people
+    mostly reopen the same few. A grid with Recent sort covers both until
+    then.
+- **No results** says so, and offers "Ask Peel to build it" with the search
+  text filled in.
+
+### One app (today's `WorkspaceAppView`, with a header)
+
+- **Header:** "‹ Apps", the icon and title, then `@workspace · vN ·
+  updated …`.
+- **Actions:** Pin to sidebar, Change with Peel, Reload.
+- **The ⋯ menu:**
+  - Copy link.
+  - Versions.
+  - Open in Stadeum (a workspace's app only).
+  - For an app of yours, Delete…; for a workspace's, Hide from Apps.
+
+### Making and changing apps
+
+The builder writes apps (strut `plans/apps.md` §8). Peel doesn't need its
+own authoring UI. Your chat with Peel is the way in:
+
+- **New app** opens a popover next to the button with two fields: "What
+  should it do?" and "Lives in" (Yours, or a workspace). Build sends that to
+  the agent DM, and the orchestrator starts the builder
+  (`job/start { workflow: builder, peer? }`).
+- **While it builds**, a dashed "Building…" card sits first in the grid,
+  and the sidebar's Apps row says "1 building". The card opens the chat.
+  When the publish lands, it becomes the real app.
+- **Change with Peel** opens the agent DM with the app attached. This is
+  Peel's version of the page's `ui/message`, which strut leaves unwired
+  for a page shown alone.
+
+## What each part needs
+
+| Part | Peel | strut |
+| --- | --- | --- |
+| Nav row, A–Z, browser over today's list | Sidebar, `.apps` destination, `AppsView` | none |
+| Every workspace app, not only pinned | `pinnedApps` → `apps(of:)`, keep `pinned` as the seed | none (`GET /peers/<id>/apps` returns them all) |
+| Yours | read `GET /apps` on Peel's own strut | none |
+| Personal pins and Recent | a Peel-local store, keyed by `WorkspaceApp.id` | none |
+| "Updated …" | show it | **add `updatedAt` to `AppListEntry`** (the active version's `createdAt`); the listing has no time today |
+| Delete, versions (yours) | ⋯ menu | exists: `DELETE /apps/:name`, `PUT /apps/:name/active`, `GET /apps/:name/versions` |
+| Versions, delete (a workspace's) | read-only "Open in Stadeum" | not through the read-through, by design (they're the peer's) |
+| New app, yours | agent DM → builder | exists |
+| New app in a workspace | agent DM → builder on the peer | **open on strut's side**: §7.4 lists a builder job on the peer as "not in this slice" |
+| Building card | agent turn → placeholder until the publish | a way to know a builder job is making app X (the job's deliverable `{ kind: "app" }`) |
+
+## Built: PR 1 (2026-10-26)
+
+- The sidebar's top rows A–Z: Apps, Automations, Mentions, Payments,
+  Threads; the arrow keys move through them in that order, Automations
+  now among them (it had been left out).
+- Pinned apps under Apps, A–Z, with no icon so their titles sit under
+  Apps'. While the sidebar search has text, every app matching it shows
+  there instead. The open app shows there too while it is open, pinned
+  or not, as a closed section keeps the open chat.
+- The pins: `ChatSections.Layout.pinnedApps`, kept with the account like
+  the rest of the layout. None until the person pins one (Tom, 2026-10-26,
+  after trying it with his workspaces' apps): the row starts empty and
+  Apps is where they are found.
+- `AppsView`: every listed app as a card, A–Z (icon, title, two lines of
+  what it is for, `@workspace` when there are several), a pin in its
+  corner; a search over the title, description and `@workspace`; a choice
+  of workspace when there are several. Empty states for no workspaces
+  (Open Account), none pinned yet, a home server, and no matches.
+- The app's header gains the same pin.
+- Cards v1 (Tom, 2026-10-26, the canvas's "App cards v1"): only what
+  strut's list carries. The manifest's lucide `icon` as the closest SF
+  Symbol (`WorkspaceApp.iconSymbol`, a table of common names; the grid
+  for the template's `layout-dashboard`, an unknown name or one this
+  macOS lacks); titles on two lines, descriptions on three; at the foot
+  `@workspace · v14` (`activeVersion`; the workspace only when there are several) and at most one status
+  (`AppStatus`): "2 problems" in the attention colour while `warnings`
+  (strut's usage monitor, on the live version) is above 0, else "Release r3" while a release is held (`live`). The
+  app's header shows the same. Not shown: `owner` (an id, not a name),
+  `publisher`, grants, and time (not in the list). `warnings` is the
+  workspace's strut's (the list is read through as it is), so it shows
+  wherever that strut counts them, whatever strut Peel ships.
+- Not yet: Recent sort (needs an open history), counts on the workspace choice, Yours
+  and apps no workspace pinned (PR 2). Ids of apps no longer listed stay
+  in `pinnedApps`, so one that comes back is still pinned.
+- Checked: `ChatSectionsTests` (an older layout has no pins; pins are
+  kept). Offscreen with `scripts/check-app.sh`
+  on a development profile, the apps seeded in memory (`apps-seed`, through the listing's own parse): the
+  grid, the workspace choice, pinning and unpinning from the header (kept
+  across a restart), Apps selected on an unpinned app, the sidebar search
+  listing a matching app under Apps, dark and narrow.
+
+## PRs, in order
+
+1. **Sidebar and browser (Peel only).** The nav row in A–Z order, the
+   bottom section removed, and `AppsView` (grid, search, workspace filter,
+   A–Z sort) over `hive.apps`. You can ship this on its own; it fixes the
+   scrolling today.
+2. **Every app, yours too, and Recent.** List apps no workspace pinned
+   and your own strut's, plus Recent sort.
+3. **strut: `updatedAt` on `GET /apps`**, then Peel shows it on cards and
+   in the app header.
+4. **New app and Change with Peel.** The popover → agent DM → builder, and
+   the header action. Yours first; a workspace's once strut's builder-on-peer
+   lands.
+5. **Manage.** The ⋯ menu: versions and delete for yours, hide and "Open in
+   Stadeum" for a workspace's.
+
+The iPhone stays out (no strut of its own). `PhoneRouter` gets the Apps row
+once a phone can reach a strut.
+
+## Questions for Tom
+
+- A list (B) as a toggle later, or the grid only? (Tom chose the grid for
+  PR 1.)
+- Is "Hide from Apps" enough for a workspace's app you don't want, or does it
+  need to be per workspace ("hide all from @acme")?

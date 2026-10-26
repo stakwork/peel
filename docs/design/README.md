@@ -96,7 +96,8 @@ chat's search, the forms) they open the next unread chat instead of the
 text view's ⌥⇧↓ and ⌥⇧↑ (select to the paragraph's end or start), as in
 Slack.
 **Keys.** Clicking a row gives the sidebar the keyboard: Down and Up move a
-soft highlight (the hover fill) through Threads, Mentions, Payments, then
+soft highlight (the hover fill) through Apps and the apps under it,
+Automations, Mentions, Payments, Threads (A–Z), then
 the chats as shown (Unread, tribes, direct messages), skipping the section
 headers, the "+" and "Show all" rows (reached by a click only), invites
 and what a trimmed or collapsed section hides, and
@@ -681,7 +682,7 @@ Built so far:
   apart (the web pane's Try again, `.peel(.outline, size: .sm)`); 24 of
   padding. `.sm` is a list in a panel: 12 pt, 8 of padding (the
   Account's "No time zone matches."). The start screen ("Pick a
-  conversation…", under the "Peel" header), Threads, Mentions, Payments
+  conversation…", under the "Peel" header), Apps, Threads, Mentions, Payments
   and the web pane's failed page use it; a screen keeps its own
   `DetailHeader` above it.
 - **Problem lines** (batch 7). Every failure the app shows goes through

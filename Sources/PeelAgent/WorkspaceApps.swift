@@ -21,6 +21,17 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     public let title: String
     /// What the app is for, in its own words.
     public let about: String?
+    /// Its manifest's icon: a lucide name (`flask-conical`), or nil.
+    public internal(set) var icon: String? = nil
+    /// The version the workspace serves (`v14`).
+    public internal(set) var version: String? = nil
+    /// The release held live (`r3`) while the workspace holds one rather
+    /// than following its latest version.
+    public internal(set) var release: String? = nil
+    /// The warnings strut's monitor raised on its live version, about how
+    /// its page uses the workspace (strut's `src/apps/monitor.ts`); 0 from
+    /// a strut that does not count them.
+    public internal(set) var problems = 0
 
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`.
     public var id: String { "@\(peer)/\(name)" }
@@ -29,7 +40,7 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
 extension WorkspaceApp {
     /// One entry of strut's `GET /apps`; nil for one not pinned, or with a
     /// name strut would not have given it.
-    init?(peer: String, json: AgentKit.JSONValue) {
+    public init?(peer: String, json: AgentKit.JSONValue) {
         guard json["pinned"] == .bool(true), let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name) else { return nil }
         self.peer = peer
         self.name = name
@@ -37,6 +48,16 @@ extension WorkspaceApp {
         self.title = title.isEmpty ? name : title
         let about = ChatData.clean(json["description"]?.string ?? "", max: ChatData.maxText)
         self.about = about.isEmpty ? nil : about
+        // strut's own words, shown as text (the icon only ever looked up
+        // in Peel's table): cleaned as a name is, none when empty.
+        func text(_ value: AgentKit.JSONValue?) -> String? {
+            let text = ChatData.clean(value?.string ?? "", max: 64)
+            return text.isEmpty ? nil : text
+        }
+        icon = text(json["icon"])
+        version = text(json["activeVersion"])
+        release = text(json["live"])
+        problems = max(json["warnings"]?.int ?? 0, 0)
     }
 }
 

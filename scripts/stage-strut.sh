@@ -63,6 +63,10 @@ NODE_DIR="$NODE_TMP/node-$NODE_VERSION-darwin-arm64"
   node scripts/package-desktop.mjs --out "$WORK"
 )
 STAGE="$WORK/strut"
+# The commit, which package-desktop.mjs reads with git and the archive has
+# none of: desktop.js stamps it as STRUT_VERSION, and `strut move check`
+# refuses a box whose strut is not this exact commit.
+plutil -replace strut -string "$COMMIT" "$STAGE/desktop.json"
 for needed in native/lbugjs.node build/steps/lib/memory/remember.js build/workflows/orchestrator.yaml \
     build/steps/lib/automation/create.js desktop.js desktop.json; do
   [ -e "$STAGE/$needed" ] || { echo "stage-strut: the package has no $needed; the strut commit in Vendor/strut.lock lacks the memory steps, the orchestrator and its automation steps, or the desktop Ladybug package" >&2; exit 1; }

@@ -230,8 +230,6 @@ struct HiveTests {
         // Encoded as strut's UI decodes it (`URLSearchParams`, where a bare `+` is a space).
         #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
                 == "key=k%2B1&app=%40acme%2Fhive%2Fboard&solo=1")
-        let home = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k", home: true))
-        #expect(home.page(of: apps[0]) == nil)
     }
 
     /// The person's own apps come from Peel's strut itself, every one of
@@ -257,8 +255,7 @@ struct HiveTests {
 
     /// A deliverable from the agent's DM opens as an app does, strut's UI
     /// showing it alone: a file's path as `artifact`, an escape in it kept
-    /// an escape once strut's UI decodes it, an app's as `app`; a home
-    /// server opens none.
+    /// an escape once strut's UI decodes it, an app's as `app`.
     @Test func aDeliverableOpensAloneOnPeelsOwnStrut() throws {
         let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:4100")!, key: "k+1"))
         let file = try #require(AgentArtifact.Handle(path: "/peers/acme/jobs/peer%2Fj-1/files/Lisbon%20plan.md"))
@@ -269,8 +266,6 @@ struct HiveTests {
         let board = try #require(AgentArtifact.Handle(app: "@acme/hive/board"))
         let app = try #require(server.page(showing: board))
         #expect(URLComponents(url: app, resolvingAgainstBaseURL: false)?.percentEncodedQuery == "key=k%2B1&app=%40acme%2Fhive%2Fboard&solo=1")
-        let home = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:4100")!, key: "k", home: true))
-        #expect(home.page(showing: file) == nil)
     }
 
     static func link(hive: URL) throws -> HiveLink {

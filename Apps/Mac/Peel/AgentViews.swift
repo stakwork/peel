@@ -304,8 +304,7 @@ private struct AgentArtifactLine: View {
         .foregroundStyle(Theme.secondaryText)
     }
 
-    /// The deliverable on Peel's own strut; nil while it is not running, or
-    /// with a home server, which holds none of this Mac's orgs.
+    /// The deliverable on Peel's own strut; nil while it is not running.
     private func strutPage(_ handle: AgentArtifact.Handle) -> StrutPage? {
         guard let server = model.memoryServer, let url = server.page(showing: handle) else { return nil }
         return StrutPage(url: url, server: server, name: handle.peer.map { "\(artifact.title) · @\($0)" } ?? artifact.title)

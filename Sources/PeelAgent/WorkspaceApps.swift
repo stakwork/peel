@@ -32,8 +32,7 @@ extension AutomationsClient {
 extension MemoryServer {
     /// strut's UI showing `app`'s page and nothing else, with this strut's
     /// key handed over as `?key=` (its UI keeps it for the tab and takes it
-    /// out of the address). Peel's own strut only: a home server holds no
-    /// workspaces of this Mac's. The address carries the key, so it is
+    /// out of the address). Peel's own strut only. The address carries the key, so it is
     /// handed to the web view and never shown, logged or kept.
     public func page(of app: WorkspaceApp) -> URL? {
         page("app", app.id)
@@ -51,7 +50,7 @@ extension MemoryServer {
     }
 
     private func page(_ name: String, _ value: String) -> URL? {
-        isHomeServer ? nil : StrutUI.page(on: base, key: key, name, value)
+        StrutUI.page(on: base, key: key, name, value)
     }
 
     /// Whether `url` is on this strut: same scheme, host and port.

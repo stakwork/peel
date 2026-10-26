@@ -386,12 +386,6 @@ public final class AppModel {
         }
         if destination == .agent, let agentChat { destination = .chat(agentChat) }
     }
-    /// Asked of Account › Brain until it is shown, which takes it: its home
-    /// server form, as "Connect a home server…" or "Change" opens it, or
-    /// "Switch back to this Mac?", as "Use this Mac" asks (the offscreen
-    /// driver's `brain-form` and `brain-leave`).
-    public var brainAsk: BrainAsk?
-    public enum BrainAsk: Sendable { case form, leave }
     /// Where the Connect panel is open from, if it is.
     public var agentConnectFrom: AgentConnectSource?
     /// The Account category shown, kept while Account is closed (`openAccount`).
@@ -470,7 +464,7 @@ public final class AppModel {
         destination = .chat(chat)
     }
 
-    /// Account, at one of its categories: the agent chat's gear, a pairing
+    /// Account, at one of its categories: the agent chat's gear, a Peel Home
     /// link, the dictation offer.
     public func openAccount(_ page: AccountPage) {
         accountPage = page
@@ -1292,7 +1286,6 @@ public final class AppModel {
         focus = nil
         destination = nil
         accountPage = .profile
-        brainAsk = nil
         searchQuery = ""
         timeline = .empty
         openThread = nil

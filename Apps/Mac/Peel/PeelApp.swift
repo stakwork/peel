@@ -186,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Links opened before the model was here (one that launched Peel).
     private var links: [URL] = []
 
-    /// A `peel://` link (`AppModel.openPairingLink`): the only scheme Peel
+    /// A `peel://` link (`AppModel.openPeelLink`): the only scheme Peel
     /// registers (`scripts/bundle-app.sh`).
     func application(_ application: NSApplication, open urls: [URL]) {
         links += urls
@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openLinks() {
         guard let model else { return }
-        for url in links { _ = model.openPairingLink(url) }
+        for url in links { _ = model.openPeelLink(url) }
         links = []
     }
 

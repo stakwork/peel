@@ -41,6 +41,12 @@ This Mac or a home server. New work uses `home`: the `home/` bundle,
    later as an add-on for the graph view and live job steps.
 4. **One Compose file is the product.** Umbrel and CasaOS are thin wrappers
    around it. No SD card image.
+5. **The Mac always runs strut** (Tom and Evan, 2026-10-26). With a home
+   box, the Mac's strut becomes a *client strut*: no agent, no bridge, no
+   automations, no memory of its own. It keeps dictation working, with the
+   vocabulary ("lingo") kept in sync with the box **strut to strut, over
+   strut's peers**, not over Sphinx. The same mechanism later syncs shared
+   lingo with an org strut. See "The Mac's client strut and lingo sync".
 
 What this gives up, for now: moving Peel Home while away from home,
 moving with no downtime, and the Mac and box running different strut
@@ -125,9 +131,11 @@ the link on the Mac. Then:
 4. The box unpacks, writes `moved.json`, and starts strut and the bridge.
    strut applies `moved.json` at boot (A2b).
 5. Peel pings the agent in the DM and waits for its answer from the box.
-6. Peel marks Peel Home as moved and never starts its own strut or bridge
-   again. It keeps its folders as `Strut.moved-<date>` and
-   `Bridge.moved-<date>`.
+6. Peel marks Peel Home as moved and never starts its own *agent* strut
+   or bridge again. It keeps its folders as `Strut.moved-<date>` and
+   `Bridge.moved-<date>`, and starts a client strut in their place (see
+   "The Mac's client strut and lingo sync"; v1's #396 still stops strut
+   entirely, and that is the next PR).
 
 If anything before step 5 fails, Peel restarts its own strut and bridge:
 "Nothing changed; Peel Home is still on this Mac." If the box's bridge came
@@ -305,131 +313,100 @@ Everything else is an improvement on the same pieces, after v1:
   - Tailscale for the graph view and live steps;
   - a remote signer, so the box holds no keys.
 
-## Dictation with Peel Home moved (proposed, for team discussion)
+## The Mac's client strut and lingo sync (decided 2026-10-26; to build)
 
-**The gap in v1.** Dictation records on the Mac and sends the audio to
-Peel's own strut on the Mac (`POST audio/transcribe`). That strut runs the
-speech model and rewrites the text with your vocabulary. The vocabulary
-lives in the memory graph (`memory/lexicon`: people's names, how they are
-misheard, your terms), so when the agent learns a name, dictation spells
-it right.
+**Why.** Dictation sends audio to Peel's own strut, which transcribes and
+rewrites it with your vocabulary from the memory graph. After a move, v1's
+Mac runs no strut, so dictation stops, and the vocabulary has moved to the
+box. Decided by Tom and Evan: the Mac always runs strut, and lingo syncs
+strut to strut over peers. Only lingo is synced. Everything else lives on
+the box, and the Mac reaches it (at home over peers, away with Tailscale or
+a later strut-to-strut reach) or pushes changes to it (model key, grants).
 
-After a move, the Mac runs no strut at all, so dictation stops working.
-The vocabulary has moved to the box with the rest of memory. v1 doesn't
-handle this. It doesn't affect anyone who never moves, but Tom's real
-move waits for it.
+**What the code says** (read 2026-10-26, strut `origin/main`):
+- **The vocabulary is every entity in memory**, not only dictation words.
+  `memory/lexicon` (`src/steps/lib/memory/lexicon.ts`) returns every live
+  entity's name, written forms, `heard` mishearings and `dictation_off`, plus
+  the `undone` mishearings. It is personal-scale: a few hundred entities,
+  roughly 50–300 KB.
+- **It is read live on every transcription** (`src/audio/routes.ts`, wired
+  to `readLexicon` in `createStrut.ts`); nothing is cached.
+- **The `dictation/*` steps write it** (add, correction, undo, remove,
+  enable) through `memory/remember` and `forget`. Correction runs the Mac's
+  local fixer, which a box may not have, so learning stays on the Mac.
+- **Ids are random and deletes are soft with no tombstones,** so sync uses a
+  full snapshot plus a hash, not deltas.
+- **Peers** (`src/peers.ts`): a strut calls a `peer: true` (or
+  `peer: person`) workflow on another strut, outbound, with input and
+  output. But a peer credential can make **any GET** on that strut, nothing
+  can scope a key to two workflows, and strut serves no TLS.
 
-**The core (the same under every option): a dictation-only strut on the
-Mac, a vocabulary cache, and the box as the only writer.**
+**The design.**
+- **A `LingoStore` seam in strut**, with two stores:
+  - **graph** (today): reads and writes the memory graph;
+  - **cache** (a client strut): the box's last snapshot
+    (`audio/lingo-cache.json`, with its hash), plus an outbox of the changes
+    dictation made here (`lingo-outbox.json`), applied on top of the
+    snapshot at once.
 
-- **Transcription stays on the Mac:** real time, offline, on the Mac's
-  hardware. Your audio never leaves the Mac, as today.
-- **After a move, the Mac starts a dictation-only strut:** no agent, no
-  bridge, no scheduler (`STRUT_SCHEDULER=0`), and its own small data
-  folder. It is not a second brain.
-- **A vocabulary cache, full from the start.** The Mac keeps its vocabulary
-  when Peel Home moves out, so the cache needs no network to fill. The
-  speech model's cache stays on the Mac too.
-- **One writer.** The box's memory graph is the only place the vocabulary is
-  written. The Mac holds the cache and an outbox of the corrections
-  dictation learned, never a second graph, so there is nothing to merge.
-  Names the agent learns reach dictation, and corrections reach the agent.
-- **It never waits on the network.** The rewrite uses the cache, and
-  corrections apply locally at once. Syncing happens in the background.
-- **Only changes travel after the move:** a correction or a new name is a
-  few words.
-- **On the box:** two workflows read and write the vocabulary,
-  `dictation-lexicon` (the vocabulary since a version) and
-  `dictation-learn` (writes queued corrections through `dictation/add`).
+  Transcription, the fixer and `dictation/*` call the seam, so they run
+  unchanged on either store.
+- **Two workflows on the box**, `lingo-pull` (the snapshot, or "unchanged" if
+  the hash matches) and `lingo-push` (replays the outbox: idempotent by op id,
+  re-checks undone and `dictation_off`, an undo found by the heard/written
+  pair). Both are `peer: person`.
+- **The box is the authority.** Every pull replaces the snapshot, so a
+  rename, merge or removal on the box simply arrives. Undoing something
+  still in the outbox just drops it. Pending counts stay per device.
+- **The client strut on the Mac** (`STRUT_LINGO_PEER=home`,
+  `STRUT_SCHEDULER=0`):
+  - **Its folder:** a fresh `Strut.client`, never the set-aside agent folder
+    (that holds the agent's secrets and is what "Use this Mac's copy"
+    restores). It copies the dictation model picks across; the speech
+    models stay where they are.
+  - **What Peel gives it:** only dictation (and the Vocabulary window, which
+    reads `dictation/lexicon`). The agent's tools get no strut.
+  - **When it syncs:** push the outbox, then pull, at launch, on wake, on a
+    network change, on a timer, and after each correction.
+  - **Off the home network:** dictation uses the cache and the outbox
+    waits.
+- **The box accepts peers safely.** A Caddy sidecar in `home/`, in strut's
+  network, on a published home-network port (`HOME_PEER_BIND`, 8443):
+  - TLS with its own CA (`tls internal`);
+  - **an allowlist:** only `POST /workflows/lingo-{pull,push}/run` and their
+    run streams. Everything else gets a 403.
+- **The move hands it over.** After a successful send, `strut move`
+  returns the peer record: the box's URL, a person token and the CA. Peel
+  adds it to the client strut with `PUT /peers/home` (not in an env var),
+  and passes the CA explicitly.
+- **Move back** pushes the outbox first, then deletes `Strut.client`.
 
-The options differ only in **how the Mac and the box exchange those
-changes**.
+**Org shared lingo, later, on the same pieces:** org struts ship the same
+two workflows, and desktop already holds org person tokens from Hive. The
+cache store reads several snapshots by peer and merges them, with personal
+winning. Only words you choose to share are pushed to an org. Org struts
+are hosted, so this works away from home.
 
-### Option A: a direct peer call, on the home network
+**PRs, in order:**
 
-```
- Mac: dictation strut ──HTTP (home network, TLS)──► box strut
-      cache + outbox     pull changes / push learned   dictation-lexicon, dictation-learn (peer: true)
-```
+| # | Repo | What | Size |
+|---|---|---|---|
+| L1 | strut | The `LingoStore` seam, graph store only; dictation tests unchanged | ~200 lines |
+| L2 | strut | `lingo/export` (hash short-circuit) and `lingo/apply` (idempotent), plus `lingo-pull` / `lingo-push` workflows, `peer: person` | ~350 |
+| L3 | strut | Client mode: `STRUT_LINGO_PEER`, the cache store and outbox, `lingo/sync`, `dictation/lexicon`. Tested with two in-process struts | ~400 |
+| L4 | strut | `strut move` returns the peer record (URL, person token, CA) | ~100 |
+| L5 | peel `home/` | The Caddy sidecar: TLS, the published port, the allowlist | ~150 |
+| L6 | peel | After a move, start the client strut: folder, env, `PUT /peers/home`, sync triggers, dictation pointed at it; move back pushes and cleans up. Moves `Vendor/strut.lock` | ~300 |
+| L7 | strut | Later: several lingo peers merged, for org shared lingo | — |
 
-- Uses strut's existing peers (`STRUT_PEERS`, `strut/run-workflow`,
-  workflows marked `peer: true`; strut `plans/federation.md`), the same
-  mechanism as Hive and Stadeum.
-- Syncs at home. Away, dictation uses the cache and queues corrections
-  until the Mac is home again. With the optional Tailscale add-on, it syncs
-  from anywhere, but every device needs Tailscale.
-- **Opens a port on the box.** Today the box's strut listens on 127.0.0.1
-  only, and a peer key (`STRUT_PEER_KEY`) can read everything. So it needs:
-  - a key scoped to the two dictation workflows;
-  - TLS, its certificate pinned through the pairing link.
-- **PRs:**
-  - strut: a scoped peer key, created when a move lands and handed back in
-    the move's result;
-  - strut: the two vocabulary workflows;
-  - strut: the dictation-only mode, with its cache, outbox and sync;
-  - peel `home/`: the peer port on the home network, with TLS;
-  - peel: start the dictation strut after a move, with the peer details from
-    the move.
+L1 → L2 → L3 in strut. L4 and L5 can run beside L3, and L6 comes last.
+Nobody moves a real account until L6 lands.
 
-### Option B: light changes over Sphinx, bulk as an attachment
-
-```
- Mac: dictation strut ⇄ Peel ──Sphinx──► bridge on the box ⇄ box strut
-      cache + outbox     "vocab v42: Itoi → Paul Itoi" / "learned: Stadium → Stadeum"
-                         a catch-up too big for a message: an encrypted snapshot
-                         on the memes server, sent as a link, like any attachment
-```
-
-- **Sphinx carries light text only.** A change is a few words, sent when
-  something changes, not on a timer. That follows Sphinx's rule that
-  messages are light text.
-- **Bulk goes the attachment route.** A big catch-up (say, 200 names
-  learned while you were away, or a wiped cache) is uploaded to the memes
-  server, encrypted, the way Sphinx already sends files. Only a link and
-  its key go in a message.
-- Syncs anywhere, with no port on the box and no Tailscale. The agent only
-  takes these requests from your own devices, end-to-end encrypted, under
-  Sphinx's existing rules.
-- A sync takes a few seconds, which is fine: it never sits in the dictation
-  path.
-- **PRs:**
-  - strut: the two vocabulary workflows;
-  - strut: the dictation-only mode, with its cache, outbox and the changes
-    format;
-  - sphinx runner: a "vocabulary" request and reply on the agent's control
-    channel, with snapshots above a size cap as a memes-server attachment
-    under the agent's sign-in;
-  - peel: start the dictation strut after a move, and carry its changes to
-    and from Sphinx (transport only; the logic stays in strut).
-
-### Comparing them
-
-| | A: direct peer call | B: Sphinx changes + attachments |
-|---|---|---|
-| Away from home | Cache only; syncs when home (or anywhere with Tailscale) | Syncs anywhere |
-| Port on the box | Yes, with TLS and a scoped key | None; the box stays outbound-only |
-| What crosses Sphinx | Nothing | A few words per change; a link for anything big |
-| New security surface | A key and a listening port | A request type on the bridge |
-| Mostly built in | strut and `home/` | strut and runner (Evan's area) |
-| Speed of a sync | Fast, on the home network | A few seconds |
-
-**Recommendation:** B, because it syncs anywhere and keeps the box
-outbound-only. Choose A for something simpler that syncs only at home.
-(C, Tailscale on every device, is A plus a VPN; it is left as an add-on.)
-
-**Rejected:**
-- Streaming audio to the box for every dictation: a Pi is slower than Apple
-  silicon, and the box can't be reached away from home. A box with a GPU
-  could take audio for a bigger model, at home, as an opt-in later.
-- Copying the vocabulary once at the move, with no sync: the Mac and the
-  box drift apart.
-
-**For the team:**
-- A or B.
-- Whether this lands before the first real move, or with it.
-- B: the size cap between a message and an attachment (say 2 KB), and the
-  memes-server upload under the agent's own account (Evan).
-- A: the scoped key's shape, and TLS on the box.
+**Open for the team:**
+- Is the edge allowlist (Caddy) acceptable, or should strut grow scoped
+  credentials so the box needs no proxy?
+- Run retention on the box: each pull is a run journaled there, so the hash
+  short-circuit matters, and so does how long those runs are kept.
 
 ## Later
 
@@ -458,10 +435,9 @@ outbound-only. Choose A for something simpler that syncs only at home.
 4. **The agent's key off the box:** can runner sign through a remote
    signer, as Sphinx's signer design does, so the box holds no keys at
    all? Not needed for the first version.
-5. **Dictation sync, option B:** a light "vocabulary" request and reply on
-   the agent's control channel, and snapshots over a size cap uploaded to
-   the memes server under the agent's sign-in. Does that fit runner, and
-   what cap?
+5. **Lingo sync:** `peer: person` workflows behind a Caddy allowlist on the
+   box, or should strut grow credentials scoped to named workflows? And is
+   `strut move` the right place to hand the client its peer record?
 
 ## Open questions
 

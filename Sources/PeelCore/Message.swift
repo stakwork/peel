@@ -531,6 +531,23 @@ extension String {
     /// This string if it is an https URL, else nil: photos are never fetched
     /// over anything else.
     public var httpsOnly: String? { URL(string: self)?.scheme?.lowercased() == "https" ? self : nil }
+
+    /// A photo link from a message, made usable for recovering the account's
+    /// own photo: trimmed, http upgraded to https (media hosts serve https),
+    /// and percent-encoded when it holds spaces or non-ASCII characters
+    /// (existing escapes are kept). Nil if empty or still not https. Used only
+    /// on that path; `httpsOnly` stays strict.
+    var recoverablePhotoURL: String? {
+        var link = trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !link.isEmpty else { return nil }
+        if link.lowercased().hasPrefix("http://") { link = "https://" + link.dropFirst("http://".count) }
+        if URL(string: link) == nil {
+            let allowed = CharacterSet.urlQueryAllowed.union(CharacterSet(charactersIn: "%#"))
+            guard let encoded = link.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+            link = encoded
+        }
+        return link.httpsOnly
+    }
 }
 
 extension Date {

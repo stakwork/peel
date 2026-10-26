@@ -162,12 +162,15 @@ extension Engine {
     func recoverOwnProfile() {
         guard !profileRecoveryDone else { return }
         var settled = true
+        var changed = false
         if ((try? storage.value(for: .alias)) ?? nil)?.isEmpty ?? true {
-            if let alias = try? storage.newestOwnAlias(), (try? setAlias(alias)) != nil {} else { settled = false }
+            if let alias = try? storage.newestOwnAlias(), (try? setAlias(alias)) != nil { changed = true } else { settled = false }
         }
         if ((try? storage.value(for: .photoURL)) ?? nil) == nil {
-            if let photo = try? storage.newestOwnPhotoURL(), (try? setPhotoURL(photo)) != nil {} else { settled = false }
+            if let photo = try? storage.newestOwnPhotoURL(), (try? setPhotoURL(photo)) != nil { changed = true } else { settled = false }
         }
+        // Last, with the final pair, so a listener never ends on a stale one.
+        if changed { emit.yield(.profile(alias: alias, photoURL: myPhotoURL)) }
         if settled { profileRecoveryDone = true }
     }
 

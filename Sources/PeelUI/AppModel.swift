@@ -1427,6 +1427,11 @@ public final class AppModel {
                 restoreProgress.restoring = false
                 restoreProgress.outcome = .finished
                 notifier.historyEnded()
+                // A safety net: a missed `.profile` must not leave the header stale.
+                let settings = await engine.settings()
+                myAlias = settings.alias.nilIfEmpty
+                myPhotoURL = settings.photoURL
+                rebuildRows()
             case .profile(let alias, let photoURL):
                 myAlias = alias.nilIfEmpty
                 myPhotoURL = photoURL

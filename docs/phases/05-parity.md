@@ -423,7 +423,14 @@ canvas, adapted: no Touch ID, devices or invite rows yet. Notifications
   the newest own message to a contact that carries one
   (`Storage.newestOwnAlias`; payments and boosts count, they keep the alias
   when they drop the photo). Contact chats only; retried after each history
-  sync and on start until both are settled. With no sent message the name
+  sync and on start until both are settled. The photo is the newest
+  *usable* one: messages with an empty or missing photo are skipped (official
+  apps send some without), an `http` link is upgraded to `https` (and
+  trimmed, percent-encoded if needed; `httpsOnly` itself stays strict), and
+  when no direct message carries a photo the newest own tribe messages are
+  tried (tribes rewrite the alias but keep `photo_url`). On `.historyDone`
+  the app re-reads the engine's settings so a missed `.profile` cannot leave
+  the header stale. With no sent message the name
   and photo stay empty until set in Profile.
 - **Contact info** with Copy and a QR code (CoreImage `qrCodeGenerator`);
   the old contact-info popover on the sidebar footer is gone.

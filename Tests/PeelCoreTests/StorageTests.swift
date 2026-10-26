@@ -247,7 +247,51 @@ struct StorageTests {
         _ = try storage.apply(Storage.Commit(messages: [
             (.fixture(uuid: "u4", serverIndex: 4, chat: "02aa", fromMe: true, sender: noPhoto), false, nil),
         ]))
-        #expect(try storage.newestOwnPhotoURL() == nil)
+        // An empty photo is skipped: the older usable one still wins.
+        #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
+    }
+
+    @Test func recoveredPhotoLinkIsNormalised() {
+        #expect("  https://img/a.png \n".recoverablePhotoURL == "https://img/a.png")
+        #expect("http://img/a.png".recoverablePhotoURL == "https://img/a.png")
+        #expect("HTTP://img/a.png".recoverablePhotoURL == "https://img/a.png")
+        #expect("https://img/a b.png".recoverablePhotoURL?.hasPrefix("https://img/a") == true)
+        #expect("https://img/a%20b/é.png".recoverablePhotoURL?.contains("%2520") == false)
+        #expect("".recoverablePhotoURL == nil)
+        #expect("   ".recoverablePhotoURL == nil)
+        #expect("ftp://img/a.png".recoverablePhotoURL == nil)
+        #expect("http://img/a.png".httpsOnly == nil)
+    }
+
+    @Test func ourPhotoIsUpgradedFromHTTPAndTrimmed() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: " http://img/me.png ")), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
+    }
+
+    @Test func ourPhotoFallsBackToTribeMessages() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        let privateTribe = "02dd"
+        try storage.save([Tribe(pubkey: privateTribe)])
+        let tribe = sender("02bb", alias: "Tribe Me", photo: "https://img/tribe.png")
+        let noPhoto = sender("02bb", alias: "Me", photo: "")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: noPhoto), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: privateTribe, fromMe: true, sender: tribe), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/tribe.png")
+        // A direct message's photo wins over a newer tribe one.
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u3", serverIndex: 3, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: "https://img/direct.png")), false, nil),
+            (.fixture(uuid: "u4", serverIndex: 4, chat: privateTribe, fromMe: true, sender: tribe), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/direct.png")
     }
 
     /// While a restore runs, a tribe's rewritten copy of our message sits in a chat that is no contact yet.

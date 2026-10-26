@@ -19,8 +19,22 @@ extension Storage {
                 ORDER BY serverIndex DESC LIMIT 50
                 """)
         }
-        let photo = senders.lazy.compactMap { JSON.decode(SenderInfo.self, from: $0)?.photoURL }.first
-        return photo?.httpsOnly
+        if let photo = Self.firstUsablePhoto(in: senders) { return photo }
+        // Some apps send the photo only in tribe messages (tribes rewrite the
+        // alias but keep the photo).
+        let tribeSenders = try pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT sender FROM message
+                WHERE fromMe = 1 AND sender IS NOT NULL AND serverIndex IS NOT NULL
+                  AND chat IN (\(Self.tribeChats))
+                ORDER BY serverIndex DESC LIMIT 50
+                """)
+        }
+        return Self.firstUsablePhoto(in: tribeSenders)
+    }
+
+    private static func firstUsablePhoto(in senders: [String]) -> String? {
+        senders.lazy.compactMap { JSON.decode(SenderInfo.self, from: $0)?.photoURL?.recoverablePhotoURL }.first
     }
 
     /// The alias on this account's newest message to a contact that names one:

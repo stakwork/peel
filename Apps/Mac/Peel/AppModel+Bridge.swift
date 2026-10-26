@@ -229,7 +229,7 @@ extension AppModel {
         }
         bridge.bridge = running
         // Who the owner is on their orgs, for runner's calls to strut.
-        running.actor = hive.link?.actor
+        running.actor = stadeum.link?.actor
         running.onChange = { [weak bridge, weak running] in
             // Runner stopped by itself: tried again only when strut starts again or on the person's Try again.
             guard let bridge, let running, running.server == nil, bridge.bridge === running,

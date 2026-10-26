@@ -302,8 +302,34 @@ extension AppModel {
             }
             // A newer read, or strut or the workspaces changed meanwhile: theirs, not this.
             guard !Task.isCancelled, memoryServer == server, hive.live.map(\.id) == peers else { return }
-            let listed = peers.flatMap { peer in read[peer] ?? hive.apps.filter { $0.peer == peer } }
+            let listed = WorkspaceApp.byTitle(peers.flatMap { peer in read[peer] ?? hive.apps.filter { $0.peer == peer } })
             if hive.apps != listed { hive.apps = listed }
         }
+    }
+
+    /// The listed app a destination opens.
+    func app(peer: String, name: String) -> WorkspaceApp? {
+        hive.apps.first { $0.peer == peer && $0.name == name }
+    }
+
+    /// The workspaces the listed apps come from, A–Z.
+    var appWorkspaces: [String] {
+        Set(hive.apps.map(\.peer)).sorted()
+    }
+
+    /// Whether `app` is under the sidebar's Apps row: every app listed (each
+    /// one a workspace pinned) but those the person took off
+    /// (`ChatSections.Layout.unpinnedApps`), so a workspace's newly pinned
+    /// app, or one not read yet, shows when it is listed.
+    func isPinned(_ app: WorkspaceApp) -> Bool {
+        !sidebarLayout.unpinnedApps.contains(app.id)
+    }
+
+    /// Puts `app` under the sidebar's Apps row, or takes it off, kept with
+    /// the account's sidebar layout.
+    func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
+        var unpinned = sidebarLayout.unpinnedApps.filter { $0 != app.id }
+        if !pinned { unpinned.append(app.id) }
+        if unpinned != sidebarLayout.unpinnedApps { sidebarLayout.unpinnedApps = unpinned }
     }
 }

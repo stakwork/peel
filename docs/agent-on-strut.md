@@ -1575,7 +1575,8 @@ proposals), P3's Connections screen, and runner #389 (proposal cards) and
 ### Built: a workspace's apps (2026-10-23)
 
 An app a Stadeum workspace pinned as a tab opens in Peel, alone in the
-detail column, from a new Apps section at the foot of the sidebar. The
+detail column, from a new Apps section at the foot of the sidebar
+(since replaced by the Apps row and its browser, `docs/apps-browser.md`). The
 app lives on the workspace's strut (its grants, runs and data); Peel's
 own strut is the window onto it (strut's plans/apps.md §7.4, strut#307
 and #308).

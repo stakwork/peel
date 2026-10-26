@@ -14,6 +14,9 @@ public struct ChatSections: Equatable, Sendable {
         /// "Show all 14 tribes" was clicked.
         public var allTribes = false
         public var allDirect = false
+        /// The apps taken off the sidebar's Apps row, by `@<workspace>/<name>`:
+        /// every other app listed (those the workspaces pinned) shows there.
+        public var unpinnedApps: [String] = []
 
         public init() {}
 
@@ -25,6 +28,7 @@ public struct ChatSections: Equatable, Sendable {
             directOpen = try values.decodeIfPresent(Bool.self, forKey: .directOpen) ?? true
             allTribes = try values.decodeIfPresent(Bool.self, forKey: .allTribes) ?? false
             allDirect = try values.decodeIfPresent(Bool.self, forKey: .allDirect) ?? false
+            unpinnedApps = try values.decodeIfPresent([String].self, forKey: .unpinnedApps) ?? []
         }
     }
 

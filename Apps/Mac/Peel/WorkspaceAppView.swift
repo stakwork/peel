@@ -20,11 +20,9 @@ struct WorkspaceAppView: View {
     var body: some View {
         VStack(spacing: 0) {
             DetailHeader(title: app.title, subtitle: "@\(app.peer)") {
-                Image(systemName: WorkspaceApp.symbol)
-                    .font(.system(size: 18))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: Theme.AvatarSize.lg, height: Theme.AvatarSize.lg)
+                WorkspaceApp.headerIcon
             } trailing: {
+                AppPinButton(app: app)
                 IconButton("arrow.clockwise", help: "Reload") { loads += 1 }
             }
             if let server = model.memoryServer, let page = server.page(of: app) {
@@ -46,8 +44,49 @@ struct WorkspaceAppView: View {
 }
 
 extension WorkspaceApp {
-    /// The sidebar row's icon and the header's.
+    /// The Apps row's icon, an app's card's and its header's.
     static let symbol = "square.grid.2x2"
+
+    /// The icon in Apps' header and an app's.
+    static var headerIcon: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 18))
+            .foregroundStyle(Theme.secondaryText)
+            .frame(width: Theme.AvatarSize.lg, height: Theme.AvatarSize.lg)
+    }
+
+    /// `apps` A–Z by title, as the sidebar and Apps list them.
+    static func byTitle(_ apps: [WorkspaceApp]) -> [WorkspaceApp] {
+        apps.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    /// Whether a search for `query` finds it: in its title, what it is for,
+    /// or `@workspace`.
+    func matches(_ query: String) -> Bool {
+        [title, about ?? "", "@\(peer)"].contains { ChatSections.matches($0, query: query) }
+    }
+}
+
+/// Pins an app under the sidebar's Apps row, or takes it off: in its header
+/// and on its card in Apps.
+struct AppPinButton: View {
+    @Environment(AppModel.self) private var model
+    let app: WorkspaceApp
+
+    var body: some View {
+        let pinned = model.isPinned(app)
+        IconButton(help: pinned ? "Unpin from the sidebar" : "Pin to the sidebar") {
+            model.setPinned(app, !pinned)
+        } label: {
+            // As the call window's keep-on-top pin.
+            if pinned {
+                Image(systemName: "pin.fill").foregroundStyle(Theme.accent)
+            } else {
+                Image(systemName: "pin")
+            }
+        }
+        .accessibilityValue(pinned ? "On" : "Off")
+    }
 }
 
 /// The web view under an app: strut's UI from Peel's own strut, on a store

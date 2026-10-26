@@ -134,10 +134,19 @@ struct ChatSectionsTests {
         let layout = try JSONDecoder().decode(ChatSections.Layout.self, from: Data(#"{"allTribes":true}"#.utf8))
         #expect(layout.allTribes)
         #expect(layout.tribesOpen && layout.directOpen && !layout.allDirect)
+        // A layout from before pins: none unpinned, so every app listed shows.
+        #expect(layout.unpinnedApps.isEmpty)
         var changed = ChatSections.Layout()
         changed.directOpen = false
         let back = try JSONDecoder().decode(ChatSections.Layout.self, from: JSONEncoder().encode(changed))
         #expect(back == changed)
+    }
+
+    @Test func appsTakenOffTheSidebarStayOff() throws {
+        var layout = ChatSections.Layout()
+        layout.unpinnedApps = ["@acme/invoices", "@stakwork/benchmarks"]
+        let back = try JSONDecoder().decode(ChatSections.Layout.self, from: JSONEncoder().encode(layout))
+        #expect(back.unpinnedApps == layout.unpinnedApps)
     }
 
     @Test func theLayoutIsKeptWithTheAccount() async throws {

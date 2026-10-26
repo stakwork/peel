@@ -350,10 +350,15 @@ is a short plan. Update the status and the journal when you finish something.
   `Profile.hive`, the orgs put on strut as peers when the bridge starts
   and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
   development profile's defaults for a test Hive; and `apps`, the apps the
-  workspaces pinned, `refreshWorkspaceApps`), `WorkspaceAppView` (one of
-  those apps alone in the detail column, the sidebar's Apps: Peel's own
-  strut's UI showing its page, in a `WKWebView` whose store keeps nothing
-  and which goes nowhere but that strut; `docs/agent-on-strut.md`, "Built:
+  workspaces pinned, `refreshWorkspaceApps`; the person's pins under the
+  sidebar's Apps row, `isPinned`, `setPinned`: every listed app but
+  those taken off, `ChatSections.Layout.unpinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
+  as a card, A–Z, with a search and the workspace to show;
+  `docs/apps-browser.md`), `WorkspaceAppView` (one of
+  those apps alone in the detail column, opened from Apps or its pinned
+  row: Peel's own strut's UI showing its page, in a `WKWebView` whose store
+  keeps nothing and which goes nowhere but that strut, and `AppPinButton`,
+  its pin in the header and on its card; `docs/agent-on-strut.md`, "Built:
   a workspace's apps"), `StrutPage` (a page of Peel's own strut's UI shown
   alone with strut's key in its address, and the rules the app view and the
   web pane's deliverable both keep to: only that strut, its `srcdoc` and
@@ -363,7 +368,7 @@ is a short plan. Update the status and the journal when you finish something.
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt (one status row and a check/reconnect action), arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
+  shell, `PaneDivider`, `Detail`), `Sidebar` (the rows at its top A–Z, Apps with the pinned apps under it, then the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt (one status row and a check/reconnect action), arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),

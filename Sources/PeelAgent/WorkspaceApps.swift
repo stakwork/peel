@@ -29,7 +29,7 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
 extension WorkspaceApp {
     /// One entry of strut's `GET /apps`; nil for one not pinned, or with a
     /// name strut would not have given it.
-    init?(peer: String, json: AgentKit.JSONValue) {
+    public init?(peer: String, json: AgentKit.JSONValue) {
         guard json["pinned"] == .bool(true), let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name) else { return nil }
         self.peer = peer
         self.name = name

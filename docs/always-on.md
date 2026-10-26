@@ -266,15 +266,16 @@ stacks).
 
 | # | Repo | What | State |
 |---|---|---|---|
-| A1 | sphinx | runner as a multi-arch image, `ghcr.io/stakwork/sphinx-runner` | PR open: stakwork/sphinx#397 |
-| A2 | strut | The image carries Ladybug's `vector` and `fts` extensions | PR open: stakwork/strut#334 |
-| A2b | strut | `moved.json`: at boot, rewrite bridge callbacks, `PEEL_BRIDGE_*` and upload paths, and drop the Mac-only parts | PR open with A2c: stakwork/strut#335 |
-| A2c | strut | `strut move`: the format (strut's parts, named sidecars, env), the pairing code and encryption, `check`, `send`, `serve` (receive and send back) and `fetch`, writing `moved.json` on arrival. Both directions tested between two strut folders | PR open: stakwork/strut#335 |
-| A3 | peel | `home/`: setup as `strut move serve`, strut and bridge behind `gate.sh`; no Tailscale. Tested with a development profile's folders on Linux Docker, and the amd64 graph check | PR open: stakwork/peel#388 |
-| A4 | peel | Account › Peel Home: move out and back through the bundled strut's `move`; stop and start strut and the bridge; ping; mark moved | Built, branch `peel-home-move`; live test on a real box next |
+| A1 | sphinx | runner as a multi-arch image, `ghcr.io/stakwork/sphinx-runner` | Merged: stakwork/sphinx#397. The ghcr package must be made public |
+| A2 | strut | The image carries Ladybug's `vector` and `fts` extensions | Merged: stakwork/strut#334 |
+| A2b | strut | `moved.json`: at boot, rewrite bridge callbacks, `PEEL_BRIDGE_*` and upload paths, and drop the Mac-only parts | Merged with A2c: stakwork/strut#335 |
+| A2c | strut | `strut move`: the format (strut's parts, named sidecars, env), the pairing code and encryption, `check`, `send`, `serve` (receive and send back) and `fetch`, writing `moved.json` on arrival. Both directions tested between two strut folders | Merged: stakwork/strut#335 |
+| A3 | peel | `home/`: setup as `strut move serve`, strut and bridge behind `gate.sh`; no Tailscale. Tested with a development profile's folders on Linux Docker, and the amd64 graph check | PR open: stakwork/peel#388 (strut pinned by digest; runner by tag until its package is public) |
+| A4 | peel | Account › Peel Home: move out and back through the bundled strut's `move`; stop and start strut and the bridge; ping; mark moved | PR open: stakwork/peel#396, with A6 and the strut pin; live test on Tom's Umbrel passed |
 | A5 | peel | Umbrel (and CasaOS) wrappers of `home/`; the Umbrel draft (`home-umbrel-app`, c6a291f1) reworked onto it | After A3 |
-| A6 | peel | The old "Home server" mode removed (`MemoryServer` to a remote strut, `MemoryMove`, `MemoryBackup`) | After A4 |
-| A7 | peel | Rename "brain" to Peel Home in existing code and copy: `Profile.brain`, `peel://brain`, Account › Brain; remove the old `brain/` bundle | After A4 |
+| A6 | peel | The old "Home server" mode removed (`MemoryServer` to a remote strut, `MemoryMove`, `MemoryBackup`) | In stakwork/peel#396 |
+| A7 | peel | Rename "brain" to Peel Home in existing code and copy: `Profile.brain`, `peel://brain`, Account › Brain; remove the old `brain/` bundle (done in #396) | Later |
+| A8 | strut | Ladybug reserves 64 GiB per graph instead of 1 TiB, so strut runs on a Raspberry Pi kernel | Merged: stakwork/strut#338 |
 
 A3's Go setup is replaced, but its README's spec (pairing code, HKDF and
 AES-GCM chunks, the routes, the test vector) is A2c's starting point.

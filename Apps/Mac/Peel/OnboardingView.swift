@@ -3,7 +3,8 @@ import PeelCore
 import PeelUI
 
 /// New account (invite → name → PIN → twelve words) or restore (twelve words →
-/// name → PIN → progress). See docs/design/README.md, "Profile and onboarding".
+/// PIN → progress; the name and photo come back from the account's own sent
+/// messages). See docs/design/README.md, "Profile and onboarding".
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
@@ -91,10 +92,10 @@ struct OnboardingView: View {
             WordEntryGrid(words: $words)
         } footer: {
             footer(next: "Continue", enabled: words.allSatisfy { !$0.isEmpty }) {
-                // Catch a mistyped word here, not after the name and PIN.
+                // Catch a mistyped word here, not after the PIN.
                 do {
                     _ = try Engine.validate(mnemonic: words.joined(separator: " "))
-                    go(.name)
+                    go(.pin)
                 } catch {
                     problem = "Those twelve words don't make a valid account. Check each one."
                 }
@@ -175,7 +176,7 @@ struct OnboardingView: View {
     /// The numbered steps of the current path; confirming the PIN counts as
     /// the PIN step, checking the words as the words step.
     private var steps: [Step] {
-        path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .name, .pin]
+        path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .pin]
     }
 
     private var position: Int? {
@@ -204,6 +205,7 @@ struct OnboardingView: View {
         } else {
             // Leaving the flow forgets what was typed; stepping back within it keeps it.
             invite = ""
+            name = ""
             words = Array(repeating: "", count: 12)
             go(.welcome)
         }
@@ -226,7 +228,7 @@ struct OnboardingView: View {
                 shownWords = try await model.createAccount(invite: invite, name: name.trimmed, pin: pin)
                 go(.showWords)
             case .restore:
-                try await model.restoreAccount(words: words, name: name.trimmed, pin: pin)
+                try await model.restoreAccount(words: words, pin: pin)
                 words = Array(repeating: "", count: 12)
                 go(.restoring)
             }

@@ -1302,9 +1302,11 @@ Engine and storage (PeelCore):
   0.5 (at most 1024 px) posted in the clear to the memes server's `/public`
   route; `https://<memes host>/public/<muid>` becomes the photo. The muid is
   checked (ASCII letters, digits, `-_=`) before it goes into a URL.
-- Own photo recovery also runs once on start, for accounts restored before
-  the restore learned it: only when no photo was ever set on this Mac, from
-  the newest own direct message (tribe copies skipped).
+- Own profile recovery (`recoverOwnProfile`) also runs on start, for accounts
+  restored before the restore learned it, and after every history sync until
+  settled: the name when none is stored, the photo when none was ever set on
+  this Mac (stored, even empty, wins), from the newest own messages to
+  contacts (tribe copies skipped).
 - `ImageDecoding.thumbnail`: one set of ImageIO options for attachments,
   avatars and the profile photo.
 - `PeelError.readable`: system network and file errors in a short sentence

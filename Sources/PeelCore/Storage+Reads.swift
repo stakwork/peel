@@ -23,6 +23,25 @@ extension Storage {
         return photo?.httpsOnly
     }
 
+    /// The alias on this account's newest message to a contact that names one:
+    /// where a restore finds the account's own name. Payments and boosts count,
+    /// as they carry the alias when they drop the photo; tribe copies do not
+    /// (tribes rewrite the sender). Nil if none says one.
+    func newestOwnAlias() throws -> String? {
+        let senders = try pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT sender FROM message
+                WHERE fromMe = 1 AND sender IS NOT NULL AND serverIndex IS NOT NULL
+                  AND chat NOT IN (\(Self.tribeChats))
+                  AND chat IN (SELECT pubkey FROM contact)
+                ORDER BY serverIndex DESC LIMIT 50
+                """)
+        }
+        return senders.lazy.compactMap {
+            JSON.decode(SenderInfo.self, from: $0)?.alias?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }.first
+    }
+
     /// The aliases the tribes echoed back on this account's own messages, by tribe.
     func echoedOwnAliases() throws -> [String: Set<String>] {
         try pool.read { db in

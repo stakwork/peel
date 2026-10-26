@@ -143,30 +143,32 @@ extension Engine {
                 emit.yield(.coreError("checking restored payments: \(PeelError.readable(error))"))
             }
         }
-        // After a restore the photo is recovered from the messages it replayed.
-        recoverOwnPhoto()
+        // After a restore the name and photo are recovered from the messages it replayed.
+        recoverOwnProfile()
         // What came while away, checked against the server's history.
         reconcileInBackground()
         checkMentionsIfNeeded()
         emit.yield(.historyDone)
     }
 
-    /// The server keeps no profile; the account's own photo comes back only
-    /// on the messages it sent (its own direct messages; tribes rewrite the
-    /// sender). Fills a photo never set on this Mac from the newest of them;
-    /// one set or removed here (stored, even empty) wins. Best effort.
-    /// Retried until a photo is found or stored: a failure here must not
-    /// stop a restore finishing.
-    func recoverOwnPhoto() {
-        guard !photoRecoveryDone else { return }
-        // Nothing found is not final: a restore's tribes may still be looked up, and the next history sync or start asks again. Only a photo stored here (even an empty one) ends it.
-        if let stored = (try? storage.value(for: .photoURL)) ?? nil {
-            _ = stored
-            photoRecoveryDone = true
-        } else if let photo = try? storage.newestOwnPhotoURL() {
-            try? setPhotoURL(photo)
-            photoRecoveryDone = true
+    /// The server keeps no profile; the account's own name and photo come back
+    /// only on the messages it sent (its own direct messages; tribes rewrite
+    /// the sender). Fills a name not set on this Mac from the newest of them,
+    /// and a photo never set here (stored, even empty, means set or removed
+    /// here and wins). Best effort: a failure here must not stop a restore
+    /// finishing. Nothing found is not final (a restore's contacts or tribes
+    /// may still be coming): it is retried after each history sync and on
+    /// start, until the name is stored or found and the photo is too.
+    func recoverOwnProfile() {
+        guard !profileRecoveryDone else { return }
+        var settled = true
+        if ((try? storage.value(for: .alias)) ?? nil)?.isEmpty ?? true {
+            if let alias = try? storage.newestOwnAlias(), (try? setAlias(alias)) != nil {} else { settled = false }
         }
+        if ((try? storage.value(for: .photoURL)) ?? nil) == nil {
+            if let photo = try? storage.newestOwnPhotoURL(), (try? setPhotoURL(photo)) != nil {} else { settled = false }
+        }
+        if settled { profileRecoveryDone = true }
     }
 
     private func historyStalled(at expected: UInt64) {

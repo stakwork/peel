@@ -81,11 +81,12 @@ public enum Account {
     }
 
     /// Brings an account back from its twelve words and marks it for a history
-    /// restore on first connect. The server and the tribes host come from the
+    /// restore on first connect. The name and photo are not asked for: they
+    /// come back from our newest sent messages (`Engine.recoverOwnProfile`). The server and the tribes host come from the
     /// public config unless given; tribes found in the history are looked up
     /// only on that host.
     public static func restore(
-        _ profile: Profile, mnemonic: String, alias: String, pin: String, network: String = "bitcoin",
+        _ profile: Profile, mnemonic: String, pin: String, network: String = "bitcoin",
         server: ServerAddress? = nil, tribeHost: String? = nil, memesHost: String? = nil
     ) async throws -> Engine {
         if profile.requiresPIN { try PIN.validate(pin) }
@@ -100,7 +101,7 @@ public enum Account {
             tribeHost = tribeHost ?? config.usableTribeHost
         }
         return try await open(
-            profile, mnemonic: words, pin: pin, alias: alias, network: network, server: address, tribeHost: tribeHost,
+            profile, mnemonic: words, pin: pin, alias: nil, network: network, server: address, tribeHost: tribeHost,
             memesHost: memesHost, needsRestore: true
         )
     }
@@ -108,7 +109,7 @@ public enum Account {
     /// Sets the account up and saves the words last, so a failure part-way
     /// leaves nothing that would block trying again.
     private static func open(
-        _ profile: Profile, mnemonic: String, pin: String, alias: String, network: String, server: ServerAddress,
+        _ profile: Profile, mnemonic: String, pin: String, alias: String?, network: String, server: ServerAddress,
         tribeHost: String?, memesHost: String?, needsRestore: Bool = false
     ) async throws -> Engine {
         let storage = try Storage(directory: profile.directory)
@@ -118,7 +119,7 @@ public enum Account {
         // once written down (`Engine.confirmWords`).
         try storage.set(needsRestore ? "1" : "0", for: .wordsConfirmed)
         let engine = try Engine(mnemonic: mnemonic, storage: storage)
-        try await engine.setAlias(alias)
+        if let alias { try await engine.setAlias(alias) }
         try await engine.setServer(server)
         if let tribeHost { try await engine.setTribeHost(tribeHost) }
         if let memesHost { try await engine.setMemesHost(memesHost) }

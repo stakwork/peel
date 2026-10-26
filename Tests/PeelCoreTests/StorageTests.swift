@@ -263,6 +263,54 @@ struct StorageTests {
         #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
     }
 
+    @Test func ourAliasIsFromTheNewestSentMessageThatNamesOne() throws {
+        let storage = try profile.storage()
+        #expect(try storage.newestOwnAlias() == nil)
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Old")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: "02aa", fromMe: true, sender: sender("02bb", alias: " Me ")), false, nil),
+            // Others' messages and ones without an index say nothing about us.
+            (.fixture(uuid: "u3", serverIndex: 3, chat: "02aa", fromMe: false, sender: sender("02aa", alias: "Ann")), false, nil),
+            (.fixture(uuid: "u4", chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Unindexed")), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
+    }
+
+    /// Payments and boosts keep the alias when they drop the photo.
+    @Test func ourAliasIsTakenFromAPayment() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Old")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, type: MessageType.directPayment, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: "")), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
+    }
+
+    @Test func ourAliasSkipsEmptyAndMissingOnes() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Me")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "  ")), false, nil),
+            (.fixture(uuid: "u3", serverIndex: 3, chat: "02aa", fromMe: true, sender: sender("02bb", alias: nil)), false, nil),
+            (.fixture(uuid: "u4", serverIndex: 4, chat: "02aa", fromMe: true, sender: nil), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
+    }
+
+    @Test func ourAliasIgnoresChatsThatAreNotContacts() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Me")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 10, chat: "02cc", fromMe: true, sender: sender("02bb", alias: "Rewritten")), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
+    }
+
     @Test func contactReadinessUpdatesWithoutTouchingAlias() throws {
         let storage = try profile.storage()
         try storage.upsertContact(pubkey: "02aa", alias: "Ann")

@@ -159,11 +159,60 @@ struct WordsConfirmationTests {
     @Test(arguments: [false, true]) func onlyARestoreStartsConfirmed(restore: Bool) async throws {
         let local = Profile(developmentAt: profile.url)
         let engine = if restore {
-            try await Account.restore(local, mnemonic: abandon.joined(separator: " "), alias: "Ann", pin: "", server: server)
+            try await Account.restore(local, mnemonic: abandon.joined(separator: " "), pin: "", server: server)
         } else {
             try await Account.create(local, alias: "Ann", pin: "", server: server).engine
         }
         #expect(try await engine.wordsConfirmed() == restore)
+    }
+
+    private func storeSent(_ engine: Engine, alias: String?, photo: String?) async throws {
+        try await engine.storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try await engine.storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Old", photo: "https://img/old.png")),
+             false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: "02aa", fromMe: true, sender: sender("02bb", alias: alias, photo: photo)), false, nil),
+        ]))
+    }
+
+    private func profileEvents(_ engine: Engine) async -> [String] {
+        await engine.close()
+        var seen: [String] = []
+        for await case .profile(let alias, let photoURL) in engine.events { seen.append("\(alias)|\(photoURL ?? "")") }
+        return seen
+    }
+
+    /// A restore asks for no name; the newest sent messages give it and the photo back.
+    @Test func restoreRecoversNameAndPhotoFromSentMessages() async throws {
+        let engine = try await Account.restore(
+            Profile(developmentAt: profile.url), mnemonic: abandon.joined(separator: " "), pin: "", server: server)
+        #expect(await engine.myAlias == "")
+        try await storeSent(engine, alias: "Ann Me", photo: "https://img/me.png")
+        await engine.recoverOwnProfile()
+        #expect(await engine.myAlias == "Ann Me")
+        #expect(await engine.myPhotoURL == "https://img/me.png")
+        #expect(await engine.profileRecoveryDone)
+        #expect(await profileEvents(engine).contains("Ann Me|https://img/me.png"))
+    }
+
+    @Test func recoveryWithNoSentMessagesSetsNothingAndRetries() async throws {
+        let engine = try await Account.restore(
+            Profile(developmentAt: profile.url), mnemonic: abandon.joined(separator: " "), pin: "", server: server)
+        await engine.recoverOwnProfile()
+        #expect(await engine.myAlias == "")
+        #expect(await engine.myPhotoURL == nil)
+        #expect(await !engine.profileRecoveryDone)
+        #expect(await profileEvents(engine).isEmpty)
+    }
+
+    @Test func recoveryKeepsANameSetBeforehand() async throws {
+        let engine = try await Account.restore(
+            Profile(developmentAt: profile.url), mnemonic: abandon.joined(separator: " "), pin: "", server: server)
+        try await engine.setAlias("Chosen")
+        try await storeSent(engine, alias: "Recovered", photo: "https://img/me.png")
+        await engine.recoverOwnProfile()
+        #expect(await engine.myAlias == "Chosen")
+        #expect(await engine.myPhotoURL == "https://img/me.png")
     }
 
     @Test func rightWordsConfirmAndAreKept() async throws {

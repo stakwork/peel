@@ -785,12 +785,12 @@ public final class AppModel {
 
     /// Brings an account back from its twelve words, then pulls contacts and
     /// history in the background; `restoreProgress` follows it.
-    public func restoreAccount(words: [String], name: String, pin: String) async throws {
+    public func restoreAccount(words: [String], pin: String) async throws {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
         let mnemonic = words.joined(separator: " ")
         try? profile.biometrics?.turnOff()
-        let engine = try await Account.restore(profile, mnemonic: mnemonic, alias: name, pin: pin)
+        let engine = try await Account.restore(profile, mnemonic: mnemonic, pin: pin)
         // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()
         await attach(engine)
@@ -1343,7 +1343,7 @@ public final class AppModel {
         self.engine = engine
         let storage = engine.storage
         let settings = await engine.settings()
-        myAlias = settings.alias
+        myAlias = settings.alias.nilIfEmpty
         myPhotoURL = settings.photoURL
         myContactInfo = settings.contactInfo
         echoedAliases = settings.echoedAliases
@@ -1428,7 +1428,7 @@ public final class AppModel {
                 restoreProgress.outcome = .finished
                 notifier.historyEnded()
             case .profile(let alias, let photoURL):
-                myAlias = alias
+                myAlias = alias.nilIfEmpty
                 myPhotoURL = photoURL
                 refreshMentionAliases()
                 rebuildRows()

@@ -418,8 +418,13 @@ canvas, adapted: no Touch ID, devices or invite rows yet. Notifications
   sent messages, whose sender JSON carries `alias` and `photo_url`. Peel now
   does the same at the end of a restore: if no photo is set, it takes the
   photo of the newest own direct message (`Storage.newestOwnPhotoURL`; tribe
-  messages left out, as the official app does). The name is not filled
-  because Peel's restore always asks for one.
+  messages left out, as the official app does). Update: the restore no longer
+  asks for a name, so `Engine.recoverOwnProfile` fills the name too, from
+  the newest own message to a contact that carries one
+  (`Storage.newestOwnAlias`; payments and boosts count, they keep the alias
+  when they drop the photo). Contact chats only; retried after each history
+  sync and on start until both are settled. With no sent message the name
+  and photo stay empty until set in Profile.
 - **Contact info** with Copy and a QR code (CoreImage `qrCodeGenerator`);
   the old contact-info popover on the sidebar footer is gone.
 - **Twelve words**: only after the PIN (`Profile.words(pin:)`, derived off

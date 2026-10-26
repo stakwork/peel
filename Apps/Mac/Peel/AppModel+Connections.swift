@@ -119,6 +119,13 @@ extension AppModel {
         keepGrants(grants)
     }
 
+    /// Private AI's switch: kept, then strut started again like a grant, to read its host delta afresh.
+    func setPrivateAI(_ on: Bool) {
+        guard let strut, strut.privateAI != on else { return }
+        strut.privateAI = on
+        restartOwnStrut()
+    }
+
     private func keepGrants(_ grants: MCPGrants) {
         guard let strut, grants != strut.grants else { return }
         do {

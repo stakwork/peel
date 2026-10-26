@@ -190,13 +190,16 @@ public enum Orchestrator {
     /// prompt runs it, made by the orchestrator on one card.
     /// `grants`: the MCP servers each agent reaches (Connections), all of
     /// their tools; strut asks first for any not read-only.
-    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil) throws -> Data {
+    /// `privateAI`: strut's privacy wrapper for every hosted model call (`settings.privacy`, strut#337):
+    /// names, emails, phones, ids, addresses and organisations are masked on the way out and restored in
+    /// the answer. Absent when off.
+    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil, privateAI: Bool = false) throws -> Data {
         let system = [section, personal].compactMap { $0 }.joined(separator: "\n\n")
         // A call to an org's assistant (a Stadeum workspace paired as a peer) asks the person first, from
         // the orchestrator or a job it starts: a card on the Mac that names the org and shows the message
         // (`PeerRequest`). strut grants `strut/run-workflow` to both, and since strut#294 no other route reaches it.
         let approve: AgentKit.JSONValue = [.string(DeviceActions.peerTool)]
-        let config: AgentKit.JSONValue = [
+        var config: AgentKit.JSONValue = [
             "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
                              "system": .string(system), "model": .null, "approve": approve],
             "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
@@ -204,6 +207,10 @@ public enum Orchestrator {
             // `grants`: the approval card takes a send grant (`DeviceStep.approve`).
             "automation": ["workflow": .string(automationWorkflow), "approve": .string(DeviceStep.approve.type), "grants": true],
         ]
+        if privateAI, case .object(var object) = config {
+            object["settings"] = ["privacy": "hosted"]
+            config = .object(object)
+        }
         return Data(config.jsonString.utf8)
     }
 

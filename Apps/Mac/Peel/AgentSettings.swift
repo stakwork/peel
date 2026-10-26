@@ -18,6 +18,7 @@ struct AgentSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             SettingsSection {
                 AgentNameRow(agent: agent)
+                if model.grantsConnections { PrivateAIRow() }
                 Fact("Provider") {
                     VStack(alignment: .leading, spacing: 4) {
                         if let connection = agent.connection {
@@ -562,6 +563,31 @@ private struct HomeServerForm: View {
             done()
         } catch {
             problem = PeelError.problem(error, couldNot: "connect to the home server")
+        }
+    }
+}
+
+/// Private AI: strut masks names, emails, phones, addresses and organisations before a hosted model
+/// sees them (a device preference, off unless set). A change starts Peel's strut again (`setPrivateAI`).
+private struct PrivateAIRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var isOn = UserDefaults.standard.bool(forKey: BundledStrut.privateAIKey)
+
+    var body: some View {
+        let set = { (on: Bool) in
+            isOn = on
+            model.setPrivateAI(on)
+        }
+        Fact("Private AI") {
+            Text("Masks names, emails, phones, addresses and organisations before they are sent to the hosted model, and puts them back in the answer. Dates, links and cities stay visible. This is not full anonymity.")
+                .muted()
+                .fixedSize(horizontal: false, vertical: true)
+        } trailing: {
+            HStack(spacing: 6) {
+                PeelSwitch(isOn: Binding(get: { isOn }, set: set))
+                    .accessibilityRepresentation { Toggle("Hide names and contact details from the AI model", isOn: Binding(get: { isOn }, set: set)) }
+                Text("Hide names and contact details from the AI model").font(Theme.font(12)).fixedSize()
+            }
         }
     }
 }

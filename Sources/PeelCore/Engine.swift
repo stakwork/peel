@@ -187,6 +187,10 @@ public actor Engine {
     var historyWatchdog: Task<Void, Never>?
     /// Each `poll` waiting to check again.
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    /// Whether a result's publishes are leaving, and the publishes waiting
+    /// their turn, oldest first (`publish`).
+    private var publishing = false
+    private var publishTurns: [CheckedContinuation<Void, Never>] = []
     static let historyStall: Duration = .seconds(30)
 
     static let historyPageSize: UInt32 = 100
@@ -1115,8 +1119,21 @@ public actor Engine {
 
     /// Publishes in order on the current transport, read at call time so a
     /// reconnect during the register wait is used. Counts what left in `published`.
+    /// One batch's publishes leave together, never between another's: a long
+    /// message's type 34 fragments then take consecutive server indices,
+    /// which the official apps need to put it back together from a page of
+    /// history (three agent replies sent at once spread theirs over 150
+    /// indices, and the Mac app's 100-message pages never held one whole).
     private func publish(_ publishes: [Publish], published: inout Int) async throws {
         guard !publishes.isEmpty else { return }
+        if publishing {
+            await withCheckedContinuation { publishTurns.append($0) }
+        }
+        publishing = true
+        defer {
+            // Handed straight on, so no newcomer goes in between.
+            if publishTurns.isEmpty { publishing = false } else { publishTurns.removeFirst().resume() }
+        }
         guard let transport else { throw Failure.notConnected }
         for publish in publishes {
             try await transport.publish(publish.topic, publish.payload)

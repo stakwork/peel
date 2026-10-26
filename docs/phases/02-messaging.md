@@ -203,6 +203,16 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    payment must never be split (phase 4 refuses such notes). A history page
    made only of fragments of an unfinished message no longer ends catch-up
    early: the cursor moves by the indices the server sent (item 13).
+   2026-10-26: one send's fragments now leave together (`Engine.publish`
+   takes turns), never between another send's. Three agent replies
+   answered at once on 2026-10-23 interleaved theirs over ~150 indices;
+   the Mac app's 100-message history pages never held one whole, and its
+   catch-up stuck there (its cursor waits for a whole message). The same
+   day the Mac app, opened with that stale history, set the server's
+   read markers back to its newest messages and Peel took them (51
+   unread). Not floored in Peel: a marker behind our own newest message
+   is also what "Mark as unread" sets, so the fix is the Mac app's
+   (markers only forward when seen; a cursor that moves past fragments).
 7. **Read markers and mutes.** Done 2026-10-07 (branch
    `phase2/status-and-composer`). The engine asks for `getReads` and
    `getMutes` each time it comes online; the replies land in a new

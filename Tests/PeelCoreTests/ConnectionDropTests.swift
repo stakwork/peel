@@ -25,6 +25,11 @@ private func cutTransport(accepting accepted: Int, then error: any Error & Senda
     return (transport, writes)
 }
 
+/// Which of several sends at once a write belongs to.
+private enum Sending {
+    @TaskLocal static var label = ""
+}
+
 /// A write the closing connection cut short: it may have left.
 private let cutShort = PeelError("the write was cut short")
 
@@ -334,6 +339,29 @@ struct ConnectionDropTests {
             let stored = try #require(try storage.message(id: row["id"]))
             #expect(stored.delivery == .failed)
         }
+    }
+
+    /// Two long messages sent at once: each one's fragments leave together,
+    /// so the server gives them consecutive indices and the official apps
+    /// can put each back together from one page of history.
+    @Test func longMessagesSentAtOnceDoNotInterleave() async throws {
+        let sends = Mutex<[String]>([])
+        let transport = Transport(publishing: { _, _ in
+            sends.withLock { $0.append(Sending.label) }
+            // A slow write, so a send waiting its turn would get in between.
+            try await Task.sleep(for: .milliseconds(2))
+        })
+        let long = String(repeating: "word ", count: 600)
+        try await withEngine(contact: keyG, transport: transport) { engine, _ throws in
+            async let a = Sending.$label.withValue("a") { try await engine.sendText(long, to: keyG) }
+            async let b = Sending.$label.withValue("b") { try await engine.sendText(long, to: keyG) }
+            _ = try await (a, b)
+        }
+        let order = sends.withLock { $0 }
+        // Both long enough to split, each in one run.
+        #expect(order.filter { $0 == "a" }.count > 1)
+        #expect(order.filter { $0 == "a" }.count == order.filter { $0 == "b" }.count)
+        #expect(zip(order, order.dropFirst()).filter { $0 != $1 }.count == 1)
     }
 
     /// An invoice payment cut short stays pending, and paying it again is

@@ -133,7 +133,7 @@ struct Sidebar: View {
         }
         // A newly published app shows within minutes (or as Apps opens); the
         // workspaces or Peel's strut changing reads them at once.
-        .task(id: AppsSource(peers: model.hive.live.map(\.id), server: model.memoryServer)) {
+        .task(id: AppsSource(peers: model.stadeum.live.map(\.id), server: model.memoryServer)) {
             while !Task.isCancelled {
                 model.refreshApps()
                 try? await Task.sleep(for: .seconds(300))
@@ -166,9 +166,9 @@ struct Sidebar: View {
     /// open, as a closed section keeps the open chat; while searching, every
     /// app that matches.
     private func shownApps(searching: Bool) -> [WorkspaceApp] {
-        if searching { return model.hive.apps.filter { $0.matches(model.searchQuery) } }
+        if searching { return model.stadeum.apps.filter { $0.matches(model.searchQuery) } }
         let open = model.destination
-        return model.hive.apps.filter { model.isPinned($0) || open == .app(peer: $0.peer, name: $0.name) }
+        return model.stadeum.apps.filter { model.isPinned($0) || open == .app(peer: $0.peer, name: $0.name) }
     }
 
     /// The agent's row, first in Direct messages: while the section is open

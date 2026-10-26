@@ -58,7 +58,7 @@ struct Composer: View {
         let typed = String(mention.dropFirst())
         let agent = model.isAgentChat(composer)
         if trigger == "/" { return agent ? MentionQuery.suggestions(ComposerSuggestion.commands, names: \.names, typed: typed) : [] }
-        if agent { return MentionQuery.suggestions(model.hive.live.map(ComposerSuggestion.init(workspace:)), names: \.names, typed: typed) }
+        if agent { return MentionQuery.suggestions(model.stadeum.live.map(ComposerSuggestion.init(workspace:)), names: \.names, typed: typed) }
         return MentionQuery.suggestions(mentionable, typed: typed).map(ComposerSuggestion.init(member:))
     }
 

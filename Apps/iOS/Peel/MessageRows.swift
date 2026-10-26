@@ -666,7 +666,7 @@ struct AgentToolLines: View {
 
 /// What an agent's reply points to, one quiet line each as on the Mac: its
 /// label and title, and where it opens. An org's file or app opens on that
-/// org's own strut in a sheet (`PhoneStadeum`, `OrgPageSheet`), else its
+/// org's own strut in a sheet (`Stadeum.opening`, `OrgPageSheet`), else its
 /// https link in the system's browser; with neither, the line says why (one
 /// on the Mac's own strut, which only the Mac reaches).
 struct AgentArtifactLines: View {
@@ -684,7 +684,8 @@ struct AgentArtifactLines: View {
 }
 
 private struct AgentArtifactLine: View {
-    @Environment(PhoneStadeum.self) private var stadeum
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
     @Environment(\.openURL) private var openURL
     let artifact: AgentArtifact
 
@@ -724,8 +725,8 @@ private struct AgentArtifactLine: View {
     /// How it opens here, if it does: on its org's strut, else its link.
     /// Made again on the tap: the tokens may have been renewed since.
     private var open: (() -> Void)? {
-        if let handle = artifact.handle, case .page = stadeum.opening(handle) {
-            return { if case .page(let page) = stadeum.opening(handle) { stadeum.shown = page } }
+        if let handle = artifact.handle, case .page = model.stadeum.opening(handle) {
+            return { if case .page(let page) = model.stadeum.opening(handle) { router.orgPage = page } }
         }
         return artifact.url.map { url in { openURL(url) } }
     }
@@ -733,7 +734,7 @@ private struct AgentArtifactLine: View {
     /// Where it is: the workspace, the link's host, or why it does not open here.
     private var whereTo: String? {
         guard let handle = artifact.handle else { return artifact.url?.host() }
-        switch stadeum.opening(handle) {
+        switch model.stadeum.opening(handle) {
         case .page(let page): return page.workspace
         case _ where artifact.url != nil: return artifact.url?.host()
         case .connectFirst: return "Connect Stadeum in You to open"

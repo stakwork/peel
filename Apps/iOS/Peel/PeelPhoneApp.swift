@@ -7,7 +7,6 @@ import UIKit
 struct PeelPhoneApp: App {
     @State private var model: AppModel
     @State private var router: PhoneRouter
-    @State private var stadeum = PhoneStadeum()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -39,14 +38,13 @@ struct PeelPhoneApp: App {
             RootView()
                 .environment(model)
                 .environment(router)
-                .environment(stadeum)
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         model.becameActive()
-                        // Renewed when due: Stadeum's tokens last a week.
-                        stadeum.refresh(model.profile)
+                        // Renewed when due: the hourly look may have slept through its turn.
+                        model.stadeum.renewIfDue()
                     }
                     if phase == .background { model.leftForeground() }
                 }
@@ -60,10 +58,16 @@ struct PeelPhoneApp: App {
                         model.noteActivity()
                     }
                 }
-                // Locked or forgotten: Stadeum's tokens and an open org page
-                // go with the account, and are read again when it opens.
+                // Stadeum opens with the account; locked or forgotten, its
+                // tokens and an open org page go, read again when it opens.
                 .onChange(of: model.phase) { _, phase in
-                    if phase != .ready { stadeum.close() }
+                    if phase == .ready, let profile = model.profile {
+                        // Renewed when due, not at every unlock.
+                        model.stadeum.open(profile, renewNow: false)
+                    } else {
+                        model.stadeum.close()
+                        router.orgPage = nil
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Diagnostics.memoryWarning()

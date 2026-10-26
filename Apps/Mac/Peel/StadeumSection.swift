@@ -13,7 +13,7 @@ struct StadeumSection: View {
     @State private var unpairing = false
 
     var body: some View {
-        let hive = model.hive
+        let hive = model.stadeum
         VStack(alignment: .leading, spacing: 6) {
             SettingsSection("Stadeum workspaces") {
                 switch hive.status {
@@ -119,7 +119,7 @@ private struct WorkspaceRow: View {
                     do {
                         try model.agent?.revoke(rule)
                     } catch {
-                        model.hive.problem = PeelError.problem(error, couldNot: "change how \(peer.name) is asked")
+                        model.stadeum.problem = PeelError.problem(error, couldNot: "change how \(peer.name) is asked")
                     }
                 }
                     .buttonStyle(.peel(.outline))

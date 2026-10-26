@@ -16,7 +16,7 @@ struct AppsView: View {
     @State private var source: String?
 
     var body: some View {
-        let apps = model.hive.apps
+        let apps = model.stadeum.apps
         VStack(spacing: 0) {
             DetailHeader(title: "Apps", subtitle: apps.isEmpty ? nil : Formatting.count(apps.count, "app")) {
                 WorkspaceApp.headerIcon(WorkspaceApp.symbol)
@@ -32,7 +32,7 @@ struct AppsView: View {
                            title: "No apps yet") {
                     HStack(spacing: Theme.Space.sm) {
                         Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.primary))
-                        if model.hive.live.isEmpty {
+                        if model.stadeum.live.isEmpty {
                             Button("Connect Stadeum") { model.openAccount(.connections) }.buttonStyle(.peel(.outline))
                         }
                     }

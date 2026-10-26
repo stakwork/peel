@@ -234,7 +234,13 @@ is a short plan. Update the status and the journal when you finish something.
     for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
     (polled until the person answers), renew), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
-    one org's strut and the person's token for it)
+    one org's strut and the person's token for it), and the Hive a profile
+    pairs with (`HiveClient(for:)`: a development profile's `-hiveURL`)
+  - `WorkspaceApps.swift` — `WorkspaceApp`, an app a Stadeum workspace
+    pinned as a tab or one of the person's own: read from strut's `GET
+    /apps` (`listing`, `init(peer:entry:)`), on a workspace's own strut
+    with the person's token for the iPhone (`pinned(on:)`), and A–Z
+    (`byTitle`); its words for the person are PeelUI's
   - `OrgPage.swift` — a deliverable from the agent's DM on its org's own
     strut, as the iPhone opens it (`AgentArtifact.Handle.onOrg`: the brain's
     `/peers/<org>` hop taken off; none for the brain's own), and
@@ -299,6 +305,19 @@ is a short plan. Update the status and the journal when you finish something.
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
+  `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
+  pairing: open with the account (renewed at once on the Mac, when due on
+  the iPhone), Connect (Hive's device flow), renew hourly and when due,
+  the revoke rule (orgs kept and listed, none `live`, kept with the link
+  as `HiveLink.revokedAt` so an unlock or a restart does not use them
+  again, no renewal tried), close, Disconnect; the apps listed,
+  `readApps` (the Mac through its strut, the iPhone on each org's own;
+  `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
+  app's words for the person; `opening`, how a deliverable or a workspace's
+  app opens on its org's own strut; `StadeumHost`, what a device does
+  beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
+  with its token: its origin and folder, the token's hand-over script and
+  the first request, never described with the token);
   `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
   the recent calls across chats watched while unlocked and the open chat's,
   the call you are on, join, start, leave; the view passes the call
@@ -361,12 +380,12 @@ is a short plan. Update the status and the journal when you finish something.
   and `setUpAgent`, the person's Set up or Try again, the only start that
   pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
   `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`),
-  `AppModel+Hive` (`HiveState`: Connect Stadeum's device flow against
-  Hive's API (the user-facing name is Stadeum), the credential in
-  `Profile.hive`, the orgs put on strut as peers when the bridge starts
-  and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
-  development profile's defaults for a test Hive; and `apps`, the
-  person's own apps on Peel's strut and those the workspaces pinned,
+  `AppModel+Hive` (`MacStadeumHost`, the Mac's side of PeelUI's
+  `Stadeum` (the user-facing name of Hive): the orgs put on strut as
+  peers and their tokens handed to the bridge when they change, strut
+  started again for another person, the workspaces' "Always allow" rules,
+  Pair again after a revoke, Unpair; and the apps, the person's own on
+  Peel's strut and those the workspaces pinned read through it,
   `refreshApps`, `appSources`; the person's pins under the
   sidebar's Apps row, `isPinned`, `setPinned`: none until the person
   pins one, `ChatSections.Layout.pinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
@@ -531,7 +550,8 @@ is a short plan. Update the status and the journal when you finish something.
   flat logo for docs and pages. `Shared/` holds the files both apps
   compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
   `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and
-  `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`);
+  `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
+  `WorkspaceAppIcon` (an app's lucide icon as an SF Symbol);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
   `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the
@@ -541,7 +561,8 @@ is a short plan. Update the status and the journal when you finish something.
   `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
-  the selected tab and each tab's path, `openChat`, `open(_ message:)`,
+  the selected tab and each tab's path, the org page over them (`orgPage`),
+  `openChat`, `open(_ message:)`,
   `openThread`, `openDetails` (a chat's details over it), `openMembers`,
   `openPayment`, `openFromNotification`, the thread sheet's
   binding; it writes `AppModel.destination` from what is on screen and
@@ -555,16 +576,16 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListRow`, `PhoneCard`), `PhonePlatform` (`Platform.phone()`:
   `UIApplication` presence and badge, `Clipboard`; files, playback and the
   web pane do nothing and are never offered; the web pane and calls throw
-  their words), `Stadeum` (`PhoneStadeum`, the iPhone's own Hive pairing:
-  Connect Stadeum's device flow, the credential and each org's token in
-  `Profile.hive`, renewed when Peel comes to the front and due; how a
-  deliverable opens here, `opening(_:)`; and `StadeumSection`, You's
-  Stadeum: connect, the workspaces, Disconnect), `OrgPageSheet` (a
-  deliverable on its org's own strut, strut's UI showing it alone in a
-  `WKWebView` whose store keeps nothing: the person's token as the first
+  their words), `Stadeum` (`StadeumSection`, You's Stadeum over
+  `AppModel.stadeum`: connect, the workspaces, Connect again, Disconnect;
+  `readWorkspaceApps`, each org's pinned apps on its own strut), `AppsScreen`
+  (Chats' Apps row: the workspaces' pinned apps, A–Z, opened in
+  `OrgPageSheet`, pulled to read again), `OrgPageSheet` (a
+  deliverable or an app on its org's own strut, strut's UI showing it alone in a
+  `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
   request's bearer and handed to the page's storage before its script
-  runs, never in an address; only that strut, its `srcdoc` and blob
-  frames, a link out only on the person's own tap, `TouchWebView`; strut's
+  runs, never in an address; only that strut's UI folder, its `srcdoc` and blob
+  frames, a link out only from strut's own page on the person's own tap, `TouchWebView`; strut's
   specs/DESKTOP.md, "A device with no strut of its own"), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,
@@ -574,7 +595,8 @@ is a short plan. Update the status and the journal when you finish something.
   `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `PayControls`
   (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
   `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
-  pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
+  pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, Apps among
+  them once Stadeum is connected, then
   Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
   the swipe actions and long-press menu, pull to refresh, the sections'
   actions (Join and Create a tribe, pending invites, Add contact, Invite
@@ -715,7 +737,8 @@ is a short plan. Update the status and the journal when you finish something.
     `HiveClient`, `HiveLink`): strut's peers made Hive's (`syncPeers`), and
     the org call a `proposal:` card is for, read from strut's record
     (`peerRequest`)
-  - `WorkspaceApps.swift` — the apps a workspace pinned as tabs, read
+  - `WorkspaceApps.swift` — the Mac's reads of PeelCore's `WorkspaceApp`:
+    the apps a workspace pinned as tabs, read
     through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), the
     person's own on it (`ownApps`, `GET /apps`, less what strut seeds), and
     the address of one shown alone (`MemoryServer.page(of:)`, through

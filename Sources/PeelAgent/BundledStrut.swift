@@ -29,8 +29,18 @@ public final class BundledStrut {
     /// since (kept while it was starting) needs one more start.
     public private(set) var launchedGrants: MCPGrants?
     private var launchedPerson: String?
-    /// Started with grants or a person that have changed since.
-    public var launchedStale: Bool { launchedGrants.map { $0 != grants || launchedPerson != person } ?? false }
+    private var launchedPrivateAI = false
+    /// Private AI (Account › Assistant): strut masks names and contact details before a hosted model
+    /// sees them. A device preference, off unless set, read into the host delta from the next start.
+    public static let privateAIKey = "privateAI"
+    public var privateAI: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.privateAIKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.privateAIKey) }
+    }
+    /// Started with grants, a person or the privacy setting that have changed since.
+    public var launchedStale: Bool {
+        launchedGrants.map { $0 != grants || launchedPerson != person || launchedPrivateAI != privateAI } ?? false
+    }
 
     public func keep(_ grants: MCPGrants) throws {
         try grants.write(in: data)
@@ -179,12 +189,13 @@ public final class BundledStrut {
         let secrets = try Self.secretKey(in: secretKey)
         // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
         let hostConfig = data.appending(path: "host-config.json")
-        let (grants, person) = (grants, person)
+        let (grants, person, privateAI) = (grants, person, privateAI)
         var personal: String?
         if let person { personal = await personalSection(for: person) }
-        try Orchestrator.hostConfig(grants: grants, personal: personal).write(to: hostConfig, options: .atomic)
+        try Orchestrator.hostConfig(grants: grants, personal: personal, privateAI: privateAI).write(to: hostConfig, options: .atomic)
         launchedGrants = grants
         launchedPerson = person
+        launchedPrivateAI = privateAI
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)
         let process = Process()
         process.executableURL = folder.appending(path: "native/node")

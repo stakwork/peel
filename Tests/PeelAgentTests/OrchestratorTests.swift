@@ -34,6 +34,17 @@ struct OrchestratorTests {
         #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))
     }
 
+    @Test func privateAIAddsOnlyTheHostedPrivacySetting() throws {
+        func read(_ data: Data) throws -> AgentKit.JSONValue { try AgentKit.JSONValue(parsing: String(decoding: data, as: UTF8.self)) }
+        let off = try read(Orchestrator.hostConfig())
+        #expect(off["settings"] == nil)
+        let on = try read(Orchestrator.hostConfig(privateAI: true))
+        #expect(on["settings"] == ["privacy": "hosted"])
+        guard case .object(var rest) = on else { Issue.record("not an object"); return }
+        rest["settings"] = nil
+        #expect(AgentKit.JSONValue.object(rest) == off)
+    }
+
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
         let section = Orchestrator.section
         for words in ["sphinx/unseen with no chat", "on their Mac, by asking it", "waiting for their Mac", "sphinx/send sends",

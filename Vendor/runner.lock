@@ -1,2 +1,2 @@
-# stakwork/sphinx#396 (runner exits when its stdout is a broken pipe), on master after #395 and #392.
-183cc67d972bdb462e5185849456ec5248c003b1
+# stakwork/sphinx master at the merge of #396 (runner exits when its stdout is a broken pipe), after #398.
+75898d01a57836c67508d03636f91cb756965a87

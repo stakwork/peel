@@ -71,7 +71,7 @@ extension SphinxTools {
             throw ToolFailure(errorDescription: "The message has invisible, control or direction-changing characters; write it without them.")
         }
         let chat = try resolve(query, among: try await chats())
-        let name = ChatData.clean(chat.name, max: ChatData.maxName)
+        let name = TextLine.clean(chat.name, max: ChatData.maxName)
         var details: [String] = []
 
         let thread = Self.optional("thread_uuid", in: input)
@@ -142,6 +142,6 @@ extension SphinxTools {
     /// "Kate: 'lunch?'": a message the send links to, for the card.
     private func quote(_ message: Message, in chat: Conversation) -> String {
         let sender = message.fromMe ? "you" : chat.isTribe ? message.senderAlias ?? "someone" : chat.name
-        return "\(ChatData.clean(sender, max: ChatData.maxName)): '\(ChatData.clean(message.preview, max: 120))'"
+        return "\(TextLine.clean(sender, max: ChatData.maxName)): '\(TextLine.clean(message.preview, max: 120))'"
     }
 }

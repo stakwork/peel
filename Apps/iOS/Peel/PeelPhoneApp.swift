@@ -7,6 +7,7 @@ import UIKit
 struct PeelPhoneApp: App {
     @State private var model: AppModel
     @State private var router: PhoneRouter
+    @State private var stadeum = PhoneStadeum()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -38,10 +39,15 @@ struct PeelPhoneApp: App {
             RootView()
                 .environment(model)
                 .environment(router)
+                .environment(stadeum)
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { model.becameActive() }
+                    if phase == .active {
+                        model.becameActive()
+                        // Renewed when due: Stadeum's tokens last a week.
+                        stadeum.refresh(model.profile)
+                    }
                     if phase == .background { model.leftForeground() }
                 }
                 // The PIN timeout counts the time Peel is away: in front is
@@ -53,6 +59,11 @@ struct PeelPhoneApp: App {
                     while scenePhase == .active, (try? await Task.sleep(for: .seconds(30))) != nil {
                         model.noteActivity()
                     }
+                }
+                // Locked or forgotten: Stadeum's tokens and an open org page
+                // go with the account, and are read again when it opens.
+                .onChange(of: model.phase) { _, phase in
+                    if phase != .ready { stadeum.close() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Diagnostics.memoryWarning()

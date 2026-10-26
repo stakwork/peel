@@ -259,7 +259,7 @@ public struct DeviceActions: Sendable {
         }
         var details = ["To \(asked.name)'s assistant (@\(asked.peer)) in Stadeum, as you"]
         let assistant = asked.workflow == "orchestrator"
-        if !assistant { details.append("Runs its workflow \u{201C}\(ChatData.clean(asked.workflow, max: ChatData.maxName))\u{201D}") }
+        if !assistant { details.append("Runs its workflow \u{201C}\(TextLine.clean(asked.workflow, max: ChatData.maxName))\u{201D}") }
         let card = ToolIntent(action: "Send this to \(asked.name)?", content: prompt, details: details,
                               target: assistant ? ToolIntent.Target(id: Self.peerRuleTarget(asked.peer), name: asked.name) : nil)
         if let refusal = await decide(request, tool: Self.peerTool, intent: card) { return refusal.answer }
@@ -316,7 +316,7 @@ public struct DeviceActions: Sendable {
                 throw ToolFailure(errorDescription: notFound.text)
             }
             if !chats.contains(where: { $0.id == chat.chat }) {
-                chats.append(ToolIntent.Target(id: chat.chat, name: ChatData.clean(chat.name, max: ChatData.maxName)))
+                chats.append(ToolIntent.Target(id: chat.chat, name: TextLine.clean(chat.name, max: ChatData.maxName)))
                 if priced, chat.isTribe {
                     guard let price = try await engine.messagePrice(to: chat.chat) else {
                         throw ToolFailure(errorDescription: "\(ChatData.quoted(chat))'s price is not known on this Mac yet; name grant.max_price_sats")

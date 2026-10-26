@@ -228,7 +228,23 @@ is a short plan. Update the status and the journal when you finish something.
     (`paymentAmounts`)
   - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
     sender, a core reply) is read into a type; `JWT.payload` (a token's
-    claims, unchecked) and `.hex` for bytes
+    claims, unchecked), `.hex` for bytes and `Date(iso8601:)`, the one
+    reader of strut's and Hive's dates
+  - `Hive.swift` — Hive's device flow (the person knows it as Stadeum),
+    for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
+    (polled until the person answers), renew), what is kept of a pairing
+    (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
+    one org's strut and the person's token for it)
+  - `OrgPage.swift` — a deliverable from the agent's DM on its org's own
+    strut, as the iPhone opens it (`AgentArtifact.Handle.onOrg`: the brain's
+    `/peers/<org>` hop taken off; none for the brain's own), and
+    `StrutUI.page`, the one address of strut's UI showing one thing alone
+    (`?artifact=` or `?app=`, `&solo=1`, the UI's folder with its `/`), with
+    strut's key in it only for Peel's own strut
+  - `TextLine.swift` — `TextLine.clean`, words someone else wrote as one
+    safe line (control and direction characters out, no `<<<` marker,
+    capped): the one cleaner the agent's chat data, Stadeum and strut's
+    listings share
   - `BiometricUnlock.swift` — Face ID in place of the PIN, opt-in: the
     PIN kept in a Keychain item behind `.biometryCurrentSet` (this device,
     a passcode set), released by a face and then used as a typed PIN;
@@ -539,7 +555,17 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListRow`, `PhoneCard`), `PhonePlatform` (`Platform.phone()`:
   `UIApplication` presence and badge, `Clipboard`; files, playback and the
   web pane do nothing and are never offered; the web pane and calls throw
-  their words), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
+  their words), `Stadeum` (`PhoneStadeum`, the iPhone's own Hive pairing:
+  Connect Stadeum's device flow, the credential and each org's token in
+  `Profile.hive`, renewed when Peel comes to the front and due; how a
+  deliverable opens here, `opening(_:)`; and `StadeumSection`, You's
+  Stadeum: connect, the workspaces, Disconnect), `OrgPageSheet` (a
+  deliverable on its org's own strut, strut's UI showing it alone in a
+  `WKWebView` whose store keeps nothing: the person's token as the first
+  request's bearer and handed to the page's storage before its script
+  runs, never in an address; only that strut, its `srcdoc` and blob
+  frames, a link out only on the person's own tap, `TouchWebView`; strut's
+  specs/DESKTOP.md, "A device with no strut of its own"), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
@@ -570,13 +596,15 @@ is a short plan. Update the status and the journal when you finish something.
   the newest at the bottom, the "N new messages" pill over `ListBottom`,
   older pages through `AppModel.loadOlder`), `MessageRows` (the flat rows:
   messages, payments, requests, notes, quotes, boosts, thread summaries,
-  Retry and Discard), `MessageMedia` (images, GIFs' first frame, files
+  Retry and Discard; an agent reply's tool lines and its deliverables,
+  `AgentArtifactLines`, each opening in `OrgPageSheet` or saying why it
+  does not), `MessageMedia` (images, GIFs' first frame, files
   named), `MessageMenu` (`MessageActions`: the long-press menu, swipe
   right to reply in the thread, VoiceOver's actions), `ThreadSheet`,
   `Composer` (`PhoneComposer`: the glass capsule over a `UITextView`,
   attach from Photos, the camera or Files, `@` mentions, the mic and the
   bolt saying what is coming) and `YouTab` (photo, name and balance;
-  Agent; the words, Change PIN, Face ID, the PIN timeout, boost amount,
+  Agent; Stadeum; the words, Change PIN, Face ID, the PIN timeout, boost amount,
   the confirmation threshold, server; Forget).
   `Peel/Assets.xcassets` holds `Logo`, a link to
   `Apps/Assets/peel.svg`, for the phone's own use
@@ -683,15 +711,15 @@ is a short plan. Update the status and the journal when you finish something.
     the tools and which ask first), remove (with its key); and `MCPGrants`,
     which agents (the assistant, its jobs) reach each server, written into
     the host delta as `mcp/<server>/*`
-  - `Hive.swift` — Hive's device flow for a strut desktop app
-    (`HiveClient`: start, poll, renew), what is kept of a pairing
-    (`HiveLink`, its peers and credential, never in a database), strut's
-    peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
-    for, read from strut's record (`peerRequest`)
+  - `Hive.swift` — the Mac's side of a Hive pairing (PeelCore's
+    `HiveClient`, `HiveLink`): strut's peers made Hive's (`syncPeers`), and
+    the org call a `proposal:` card is for, read from strut's record
+    (`peerRequest`)
   - `WorkspaceApps.swift` — the apps a workspace pinned as tabs, read
     through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), the
     person's own on it (`ownApps`, `GET /apps`, less what strut seeds), and
-    the address of one shown alone (`MemoryServer.page(of:)`: strut's UI
+    the address of one shown alone (`MemoryServer.page(of:)`, through
+    PeelCore's `StrutUI.page`: strut's UI
     with its key as `?key=`, `&app=@<id>/<name>&solo=1`, or `&app=<name>` for
     one of the person's own; Peel's own strut
     only), and of a deliverable from the agent's DM the same way

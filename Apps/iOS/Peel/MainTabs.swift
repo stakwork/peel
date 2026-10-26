@@ -9,9 +9,11 @@ import UIKit
 struct MainTabs: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
+    @Environment(PhoneStadeum.self) private var stadeum
 
     var body: some View {
         @Bindable var router = router
+        @Bindable var stadeum = stadeum
         TabView(selection: $router.tab) {
             Tab("Chats", systemImage: "bubble.left.and.bubble.right", value: PhoneTab.chats) {
                 ChatsTab()
@@ -35,6 +37,12 @@ struct MainTabs: View {
             Tab(value: PhoneTab.search, role: .search) {
                 SearchTab()
             }
+        }
+        // The account is open: what it kept of Stadeum, renewed when due.
+        .task { stadeum.refresh(model.profile) }
+        // Closed by `PhoneStadeum.close` when the account locks or is forgotten.
+        .sheet(item: $stadeum.shown) { page in
+            OrgPageSheet(page: page)
         }
     }
 }

@@ -69,14 +69,9 @@ final class HiveState {
 extension AppModel {
     var hive: HiveState { macAgent.hive }
 
-    /// The Hive a development profile pairs with: `-hiveURL` (a local or
-    /// staging Hive, or a test's stand-in); the app account's is Hive itself.
+    /// The Hive this account pairs with (`HiveClient(for:)`).
     var hiveClient: HiveClient {
-        if profile?.kind == .development, let given = UserDefaults.standard.string(forKey: "hiveURL"),
-           let url = URL(string: given), Web.isStrut(url) {
-            return HiveClient(hive: url)
-        }
-        return HiveClient()
+        profile.map(HiveClient.init(for:)) ?? HiveClient()
     }
 
     /// Reads what this account kept of Hive when its agent opens, tells
@@ -112,25 +107,19 @@ extension AppModel {
                 // Cancelled while Hive answered: its code is never shown.
                 try Task.checkCancellation()
                 hive.status = .pairing(pairing)
-                while !Task.isCancelled {
-                    try await Task.sleep(for: .seconds(pairing.interval))
-                    switch try await client.poll(pairing, name: name) {
-                    case .pending:
-                        continue
-                    case .denied:
-                        settle("It was turned down in Stadeum.")
-                        return
-                    case .expired:
-                        settle("The code ran out before it was approved. Try again.")
-                        return
-                    case .paired(let link):
-                        // Cancelled, or the account changed, while Hive answered: nothing kept.
-                        guard !Task.isCancelled, profile?.directory == account else { return }
-                        try keepHive(link)
-                        hive.status = .connected
-                        keepHiveRenewed(now: false)
-                        return
-                    }
+                switch try await client.answer(to: pairing, name: name) {
+                case .pending:
+                    return
+                case .denied:
+                    settle("It was turned down in Stadeum.")
+                case .expired:
+                    settle("The code ran out before it was approved. Try again.")
+                case .paired(let link):
+                    // Cancelled, or the account changed, while Hive answered: nothing kept.
+                    guard !Task.isCancelled, profile?.directory == account else { return }
+                    try keepHive(link)
+                    hive.status = .connected
+                    keepHiveRenewed(now: false)
                 }
             } catch is CancellationError {
             } catch {

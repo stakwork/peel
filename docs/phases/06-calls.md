@@ -36,6 +36,8 @@ decided (Tom, 2026-10-08; see "Decided" below).
   recent call (at most eight across chats), so the sidebar's green phone
   shows on any tribe or DM with people on its call and a card shows its
   count at once after switching chats; see its journal.
+- Built (floating call bar): a small always-on-top control bar shows while
+  the call window is not key; see its journal.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), PR 8 (the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
@@ -1477,6 +1479,21 @@ app. Each uses `present(using:)` with the matching style and only that
 kind's `allowedPickerModes`; a window or an app may still be several. No
 new permission. While sharing, the button is
 still the one filled Stop sharing.
+
+## Floating call bar
+
+A non-activating `NSPanel` (`Apps/Mac/Peel/CallFloatingBar.swift`) with
+Mute, Camera, Share / Stop sharing, Return to call and Leave, shown
+bottom-centre (dragged position remembered) whenever the call window is open
+but not key during a connected or reconnecting call, so you can control the
+call from another window or while sharing. `CallRoomView` owns it: attached
+through its `WindowReader` window, updated on key, miniaturize and close
+notifications and on the call's state, detached on disappear. The buttons
+call the same `CallSession` / `model.calls` actions as the control bar. It is
+out of captures with `sharingType = .none`; the picker's filter is not
+built by Peel, so there is nothing else to exclude it from. Ported in shape
+from the Sphinx Mac app's draggable panel. Not built or run in this session:
+manual testing of focus, drag, Spaces, full screen and display share is open.
 
 ## Decided (Tom, 2026-10-08)
 

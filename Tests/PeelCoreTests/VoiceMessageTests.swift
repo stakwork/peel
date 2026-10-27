@@ -23,6 +23,9 @@ struct VoiceMessageTests {
     @Test func releaseDecidesByTimeAndSlide() {
         #expect(VoiceMessage.outcome(elapsed: 3, dx: 0, dy: 0) == .send)
         #expect(VoiceMessage.outcome(elapsed: 0.4, dx: 0, dy: 0) == .tooShort)
+        // A second exactly is dropped, as the Sphinx apps do; keeping needs more.
+        #expect(VoiceMessage.outcome(elapsed: 1, dx: 0, dy: 0) == .tooShort)
+        #expect(VoiceMessage.outcome(elapsed: 1.1, dx: 0, dy: 0) == .send)
         #expect(VoiceMessage.outcome(elapsed: 3, dx: -120, dy: 0) == .cancel)
         #expect(VoiceMessage.outcome(elapsed: 3, dx: 0, dy: -120) == .cancel)
         #expect(VoiceMessage.outcome(elapsed: 3, dx: 120, dy: 120) == .send)
@@ -72,5 +75,61 @@ struct VoiceMessageTests {
         #expect(state.elapsed == VoiceMessage.maximumDuration)
         state.abort()
         #expect(state.elapsed == 0 && !state.isRecording)
+    }
+
+    @Test func audioTypesFromOtherClientsGetTheirExtension() {
+        for type in ["audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave", "AUDIO/WAV", "audio/wav; codecs=1"] {
+            #expect(AttachmentKind.fileExtension(mediaType: type) == "wav")
+            #expect(AttachmentKind(mediaType: type) == .audio)
+        }
+        #expect(AttachmentKind.fileExtension(mediaType: "audio/mpeg") == "mp3")
+        #expect(AttachmentKind.fileExtension(mediaType: "audio/mp4") == "m4a")
+        #expect(AttachmentKind.fileExtension(mediaType: "audio/x-m4a") == "m4a")
+        #expect(AttachmentKind.fileExtension(mediaType: "audio/ogg") == "ogg")
+        #expect(AttachmentKind.fallbackName(mediaType: "audio/vnd.wave") == "audio.wav")
+    }
+
+    @Test func aWavGoesUpAsAudioWavWhateverItsNameOrNone() {
+        let wav = MediaInfoTests.wav()
+        for name in ["recording.wav", "RECORDING.WAV", "voice", "voice.bin", ""] {
+            #expect(OutgoingFile(name: name, data: wav) == OutgoingFile(fileName: "audio.wav", mediaType: "audio/wav"))
+        }
+    }
+
+    @Test func wavHeadersOfTheSphinxAppsAreRead() throws {
+        // Android's WavRecorder: 8 kHz mono 16-bit, one second.
+        let android = try #require(WavHeader(Self.wav(rate: 8000, seconds: 1)))
+        #expect(android.sampleRate == 8000 && android.channels == 1 && android.bitsPerSample == 16)
+        #expect(android.duration == 1)
+        // iOS's: 44.1 kHz mono, 2 seconds.
+        #expect(try #require(WavHeader(Self.wav(rate: 44_100, seconds: 2))).duration == 2)
+        // A header whose size was never fixed (zero, or all ones) reads what the file holds.
+        var unfixed = Self.wav(rate: 8000, seconds: 3)
+        unfixed.replaceSubrange(40..<44, with: [0, 0, 0, 0])
+        #expect(WavHeader(unfixed)?.duration == 3)
+        unfixed.replaceSubrange(40..<44, with: [0xFF, 0xFF, 0xFF, 0xFF])
+        #expect(WavHeader(unfixed)?.duration == 3)
+        #expect(WavHeader(Data("RIFF....WAVE".utf8)) == nil)
+        #expect(WavHeader(Data([1, 2, 3])) == nil)
+    }
+
+    @Test func theRowShowsLoadingUntilItCanPlay() {
+        typealias S = VoiceMessage
+        #expect(S.rowState(uploading: true, hasFile: false, downloadFailed: false, loaded: false, unplayable: false) == .uploading)
+        // Ours, uploading, with its file on disk: playable already.
+        #expect(S.rowState(uploading: true, hasFile: true, downloadFailed: false, loaded: true, unplayable: false) == .ready)
+        #expect(S.rowState(uploading: false, hasFile: false, downloadFailed: false, loaded: false, unplayable: false) == .loading)
+        #expect(S.rowState(uploading: false, hasFile: true, downloadFailed: false, loaded: false, unplayable: false) == .loading)
+        #expect(S.rowState(uploading: false, hasFile: false, downloadFailed: true, loaded: false, unplayable: false) == .failed)
+        #expect(S.rowState(uploading: false, hasFile: true, downloadFailed: false, loaded: true, unplayable: true) == .failed)
+        #expect(S.rowState(uploading: false, hasFile: true, downloadFailed: false, loaded: true, unplayable: false) == .ready)
+    }
+
+    /// A PCM WAV of silence, 16-bit mono.
+    static func wav(rate: Int, seconds: Int) -> Data {
+        func le(_ v: Int, _ n: Int) -> Data { Data((0..<n).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) }) }
+        let samples = Data(count: rate * 2 * seconds)
+        return Data("RIFF".utf8) + le(36 + samples.count, 4) + Data("WAVEfmt ".utf8) + le(16, 4) + le(1, 2) + le(1, 2)
+            + le(rate, 4) + le(rate * 2, 4) + le(2, 2) + le(16, 2) + Data("data".utf8) + le(samples.count, 4) + samples
     }
 }

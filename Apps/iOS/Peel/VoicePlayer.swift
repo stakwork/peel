@@ -14,6 +14,10 @@ final class VoicePlayer {
     private(set) var isPlaying = false
     private(set) var time: TimeInterval = 0
     private(set) var duration: TimeInterval?
+    /// The file is read and its length known.
+    private(set) var isLoaded = false
+    /// AVFoundation cannot play it (ogg, say).
+    private(set) var isUnplayable = false
 
     @ObservationIgnored private var player: AVPlayer?
     @ObservationIgnored private var observer: Any?
@@ -22,10 +26,24 @@ final class VoicePlayer {
 
     func load(_ file: URL) async {
         guard loaded != file else { return }
-        loaded = file
         stop()
+        loaded = file
+        isLoaded = false
+        isUnplayable = false
         let asset = MediaInfo.asset(file)
-        duration = (try? await asset.load(.duration)).flatMap { $0.isNumeric ? $0.seconds : nil }
+        let playable = (try? await asset.load(.isPlayable)) ?? false
+        var length = (try? await asset.load(.duration)).flatMap { $0.isNumeric && $0.seconds > 0 ? $0.seconds : nil }
+        if length == nil, let head = try? Data(contentsOf: file, options: .mappedIfSafe).prefix(4096) {
+            // A WAV from a recorder that never fixed its header: the header's own reckoning.
+            length = WavHeader(Data(head))?.duration
+        }
+        guard loaded == file else { return }
+        guard playable || length != nil else {
+            isUnplayable = true
+            return
+        }
+        duration = length
+        isLoaded = true
         let item = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: item)
         self.player = player
@@ -79,6 +97,8 @@ final class VoicePlayer {
         ended = nil
         player = nil
         isPlaying = false
+        isLoaded = false
+        loaded = nil
         time = 0
     }
 }
@@ -94,13 +114,23 @@ struct VoiceBubble: View {
     var body: some View {
         let handle = message.id.map(model.attachment)
         let file = handle?.file
-        let ready = file != nil
+        let state = VoiceMessage.rowState(
+            uploading: message.uploadState == .pending, hasFile: file != nil,
+            downloadFailed: handle?.failureReason != nil, loaded: player.isLoaded, unplayable: player.isUnplayable
+        )
+        let ready = state == .ready
         let fraction = VoiceMessage.fraction(current: player.time, total: player.duration)
         PhoneCard {
             HStack(spacing: Theme.Space.md) {
                 Button { player.toggle() } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 16))
+                    Group {
+                        if state == .loading || state == .uploading {
+                            ProgressView().controlSize(.small).tint(Theme.buttonText)
+                        } else {
+                            Image(systemName: state == .failed ? "exclamationmark.triangle" : player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 16))
+                        }
+                    }
                         .foregroundStyle(Theme.buttonText)
                         .frame(width: 36, height: 36)
                         .background(Theme.button.opacity(ready ? 1 : 0.4), in: Circle())
@@ -109,14 +139,21 @@ struct VoiceBubble: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!ready)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+                .accessibilityLabel(switch state {
+                case .ready: player.isPlaying ? "Pause" : "Play"
+                case .failed: "Can't play"
+                default: "Loading"
+                })
                 VStack(alignment: .leading, spacing: 4) {
                     SeekBar(fraction: fraction, enabled: ready && (player.duration ?? 0) > 0) { x, width in
                         player.seek(to: VoiceMessage.seekTime(x: x, width: width, total: player.duration ?? 0))
                     }
-                    Text(ready || message.uploadState != .pending
-                         ? VoiceMessage.timeLabel(current: player.time, total: player.duration)
-                         : "Uploading…")
+                    Text(switch state {
+                    case .ready: VoiceMessage.timeLabel(current: player.time, total: player.duration)
+                    case .uploading: "Uploading…"
+                    case .loading: "Loading…"
+                    case .failed: "Can't play this audio"
+                    })
                         .phoneFont(.time)
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
@@ -131,7 +168,7 @@ struct VoiceBubble: View {
         .task(id: file) {
             if let file {
                 await player.load(file)
-            } else {
+            } else if handle?.failureReason == nil {
                 await model.autoDownload(message)
             }
         }

@@ -2,6 +2,7 @@ import AVFoundation
 import Observation
 import PeelCore
 import SwiftUI
+import UIKit
 
 /// Records a voice message while the mic is held: 16 kHz mono 16-bit WAV
 /// (`VoiceMessage`), into a folder of Peel's (`IncomingFiles`) so the
@@ -50,6 +51,7 @@ final class VoiceRecorder {
             self.recorder = recorder
             file = url
             state.begin()
+            Self.haptic(.medium)
             ticker = Task { [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(100))
@@ -75,6 +77,7 @@ final class VoiceRecorder {
         guard state.isRecording else { return nil }
         let outcome = state.finish(dx: dx, dy: dy)
         let url = stop()
+        Self.haptic(outcome == .send ? .light : .rigid)
         guard outcome == .send, let url else {
             url.map(IncomingFiles.discard)
             return nil
@@ -104,8 +107,19 @@ final class VoiceRecorder {
         stop().map(IncomingFiles.discard)
     }
 
+    private static func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+
+    /// Asked the first time the mic is pressed (the system prompt shows
+    /// once); a granted or refused answer comes back at once after that.
     private static func permission() async -> Bool {
-        await AVAudioApplication.requestRecordPermission()
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted: return true
+        case .denied: return false
+        default: break
+        }
+        return await AVAudioApplication.requestRecordPermission()
     }
 }
 

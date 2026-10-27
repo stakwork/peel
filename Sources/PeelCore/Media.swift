@@ -49,6 +49,7 @@ public enum AttachmentKind: String, Sendable, Equatable {
     /// app's `video/mov`, which is no MIME type UTType knows.
     public static func fileExtension(mediaType: String?) -> String? {
         guard let mediaType else { return nil }
+        if let ext = VoiceMessage.fileExtension(audioType: mediaType) { return ext }
         if let ext = UTType(mimeType: mediaType)?.preferredFilenameExtension { return ext }
         return mediaType.lowercased() == "video/mov" ? "mov" : nil
     }
@@ -131,8 +132,10 @@ struct OutgoingFile: Equatable {
         if ext != "pdf", let frames = AttachmentKind.imageFrames(data) {
             let animated = frames > 1
             self.init(fileName: animated ? "image.gif" : "image.jpg", mediaType: animated ? "image/gif" : "image/jpg")
-        } else if ext == "wav", AttachmentKind.container(data)?.mimeType == "audio/wav" {
-            // A recording, as the Mac app names it (UTType's "audio/vnd.wave" is no one's).
+        } else if AttachmentKind.container(data)?.mimeType == "audio/wav" {
+            // A WAV by its bytes, whatever its name (or none): as the Sphinx apps
+            // send a recording, "audio.wav" and exactly "audio/wav", which iOS
+            // Sphinx matches to show it as audio (UTType's "audio/vnd.wave" is no one's).
             self.init(fileName: VoiceMessage.fileName, mediaType: VoiceMessage.mediaType)
         } else if ["mov", "mp4", "m4v", "3gp"].contains(ext) {
             // The Mac app's `URL.isVideo`; other videos go as plain files.

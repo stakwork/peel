@@ -253,6 +253,17 @@ private final class AttachingTextView: NSTextView {
     /// The drag over the field holds files; decided once as it enters.
     private var takesDrag = false
 
+    /// A screenshot copied to the clipboard is image bytes with no text, and
+    /// a plain-text field reads none of its types, so AppKit would grey out
+    /// Edit > Paste and ⌘V would do nothing before `paste` is ever called.
+    /// Paste is on whenever the clipboard holds something for the tray.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(NSText.paste(_:)), isEditable, PasteboardFiles.hasFiles(.general) {
+            return true
+        }
+        return super.validateUserInterfaceItem(item)
+    }
+
     override func paste(_ sender: Any?) {
         let items = PasteboardFiles.items(on: .general, promises: false)
         if items.isEmpty { super.paste(sender) } else { attach?(items) }

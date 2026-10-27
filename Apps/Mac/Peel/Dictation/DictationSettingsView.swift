@@ -113,7 +113,7 @@ struct DictationOffer: View {
 
     var body: some View {
         OfferBar(
-            icon: "mic", text: "Dictation that works everywhere and stays local and private.", action: "Set up",
+            icon: "mic", text: "Dictation that works everywhere and stays local and private. Turning it on asks for the microphone; Input Monitoring and Accessibility are enabled with their own Allow buttons.", action: "Set up",
             dismiss: { DictationController.shared.dismissOffer() },
             accept: {
                 DictationController.shared.dismissOffer()

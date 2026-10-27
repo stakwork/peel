@@ -125,7 +125,7 @@ final class DictationController {
 
     /// Polls while dictation is on and waiting for permissions; stops once they are in or it is off.
     private func updatePermissionWatch() {
-        guard isEnabled && !permissions.requiredGranted else {
+        guard isEnabled && !(permissions.requiredGranted && permissions.accessibility == .granted) else {
             permissionWatch?.invalidate()
             permissionWatch = nil
             return
@@ -133,12 +133,14 @@ final class DictationController {
         guard permissionWatch == nil else { return }
         permissionWatch = repeating(every: 1.5) { me in
             me.permissions.refresh()
-            // Granted: the full refresh starts the tap, fresh. Not yet: keep waiting.
-            if me.permissions.requiredGranted || !me.isEnabled { me.refresh() }
+            // Granted: the full refresh starts the tap, fresh (or remakes one that
+            // cannot swallow once Accessibility is in). Not yet: keep waiting.
+            let tapNeeded = me.permissions.requiredGranted && !me.isListening
+            if tapNeeded || me.permissions.accessibility == .granted || !me.isEnabled { me.refresh() }
         }
     }
 
-    /// Asks for what is missing, the microphone first, then Input Monitoring.
+    /// Asks for the microphone; the other permissions have their own Allow buttons.
     private func requestPermissions() {
         guard requesting == nil else { return }
         requesting = Task {

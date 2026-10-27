@@ -54,8 +54,8 @@ final class DictationPermissions {
     /// dismissed) opens its pane, where Peel is now listed to switch on.
     func requestInputMonitoring() {
         if inputMonitoring == .granted { return }
+        guard !Offscreen.refuses("a device prompt") else { return }
         if inputMonitoring == .notAsked {
-            guard !Offscreen.refuses("a device prompt") else { return }
             inputMonitoringAsked = true
             if !CGRequestListenEventAccess() {
                 _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
@@ -65,14 +65,22 @@ final class DictationPermissions {
         if inputMonitoring != .granted { open("Privacy_ListenEvent") }
     }
 
-    /// Everything the hotkey and the capture need, one after the other: the
-    /// microphone, then Input Monitoring. Only what is not yet granted is asked.
+    /// What turning dictation on asks for: the microphone, if not yet decided.
+    /// Input Monitoring and Accessibility are never asked automatically.
     func requestAll() async {
         if microphone == .notAsked { await requestMicrophone() }
-        requestInputMonitoring()
     }
 
-    func requestAccessibility() { open("Privacy_Accessibility") }
+    /// Accessibility: asks the system to prompt; when that still leaves it off,
+    /// opens its pane.
+    func requestAccessibility() {
+        if accessibility == .granted { return }
+        guard !Offscreen.refuses("a device prompt") else { return }
+        // The literal of kAXTrustedCheckOptionPrompt, which is a non-Sendable global.
+        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        refresh()
+        if accessibility != .granted { open("Privacy_Accessibility") }
+    }
 
     func open(_ pane: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
@@ -92,12 +100,12 @@ struct DictationPermissionRows: View {
             button(permissions.microphone) { Task { await permissions.requestMicrophone() } }
         }
         Fact("Input Monitoring") {
-            state(permissions.inputMonitoring, needed: "Needed to see the dictation key. Peel will ask once.")
+            state(permissions.inputMonitoring, needed: "Needed to see the dictation key. Turn it on with Allow.")
         } trailing: {
             button(permissions.inputMonitoring) { permissions.requestInputMonitoring() }
         }
         Fact("Accessibility") {
-            state(permissions.accessibility, needed: "Needed to type what you said, and to keep Space and Esc from reaching the app")
+            state(permissions.accessibility, needed: "Needed to type what you said, and to keep Space and Esc from reaching the app. Turn it on with Allow.")
         } trailing: {
             button(permissions.accessibility) { permissions.requestAccessibility() }
         }

@@ -5,16 +5,16 @@ import UIKit
 import UniformTypeIdentifiers
 import UserNotifications
 
-// The iPhone's side of `Platform` (the Mac's is `MacPlatform.swift`). This
-// first app reads chats; what it cannot do yet throws or says so, and the
-// views never offer it (docs/phases/07-iphone.md, I2).
+// The iPhone's side of `Platform` (the Mac's is `MacPlatform.swift`). What
+// it cannot do yet throws or says so, and the views never offer it
+// (docs/phases/07-iphone.md, I2); calls are on LiveKit (I6).
 
 extension Platform {
     /// A new set each call: the app makes its one model with it.
     static func phone() -> Platform {
         Platform(
             presence: PhonePresence(), files: PhoneFiles(), pasteboard: ClipboardPasteboard(),
-            playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: PhoneCalls(), agent: nil,
+            playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: LiveKitCalls(), agent: nil,
             // Chats is a list to come back to, not a pane to fill.
             opensFirstChat: false
         )
@@ -66,13 +66,11 @@ final class PhoneWeb: WebPresenting {
     func forgetWebsiteData() async {}
 }
 
-/// Calls come with I6; joining one says so in the chat.
-struct PhoneCalls: CallProvider {
-    /// The model asks first (`CallStore.start`, `join`), so nothing is
-    /// posted or fetched for a call the phone cannot join.
-    var unavailable: String? { "Calls aren't on iPhone yet. Join from the Mac." }
-
-    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) throws -> any OngoingCall {
-        throw PeelError(unavailable ?? "")
+/// Calls over LiveKit, each an `IOSCallSession`.
+struct LiveKitCalls: CallProvider {
+    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) -> any OngoingCall {
+        IOSCallSession(ticket: ticket, link: link, chat: chat, title: title, camera: camera)
     }
 }
+
+extension IOSCallSession: OngoingCall {}

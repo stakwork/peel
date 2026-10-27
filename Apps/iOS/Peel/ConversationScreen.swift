@@ -17,6 +17,8 @@ struct ConversationScreen: View {
 
     /// A contact's local time, when they shared one and it is not yours.
     @State private var localTime: LocalTime?
+    /// A call waiting for "Leave and start", while on another.
+    @State private var pendingCall: PendingCall?
 
     private var conversation: Conversation? {
         model.conversations.first { $0.chat == chat }
@@ -55,6 +57,7 @@ struct ConversationScreen: View {
         .floatingBar(.bottom) { footer(tribe: tribe) }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { header(tribe: tribe) }
+        .callSwitchConfirmation($pendingCall, model: model, router: router)
         .sheet(item: threadHere, onDismiss: router.threadDismissed) { thread in
             ThreadSheet(thread: thread, conversation: conversation)
         }
@@ -108,10 +111,17 @@ struct ConversationScreen: View {
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
             if !isAgent, tribe?.canPost != false {
-                // Through the model, which says calls aren't on the phone yet
-                // (`CallProvider.unavailable`) before posting anything.
-                Button("Call", systemImage: "phone") {
-                    Task { _ = await model.calls.start(in: chat, audioOnly: true) }
+                // An account with no call server has no calls to start, as on the Mac.
+                if model.calls.server != nil {
+                    Menu("Call", systemImage: "phone") {
+                        Button("Audio call", systemImage: "phone") {
+                            PendingCall.start(chat: chat, audioOnly: true).ask(model, router, pending: $pendingCall)
+                        }
+                        Button("Video call", systemImage: "video") {
+                            PendingCall.start(chat: chat, audioOnly: false).ask(model, router, pending: $pendingCall)
+                        }
+                    }
+                    .disabled(model.calls.startingIn != nil || model.calls.joiningRoom != nil)
                 }
             }
             Menu("More", systemImage: "ellipsis") { moreMenu(tribe: tribe) }
@@ -166,7 +176,7 @@ struct ConversationScreen: View {
     }
 }
 
-/// The chat's notice (a send refused, calls not on the phone yet), over
+/// The chat's notice (a send refused, a call that could not start), over
 /// the composer, dismissed with its ✕.
 struct NoticeBar: View {
     let text: String

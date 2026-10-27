@@ -85,10 +85,16 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var router = router
         phase
             .sheet(item: $model.diagnosticsRecord) { record in
                 DiagnosticRecordSheet(record: record)
                     .environment(model)
+            }
+            .fullScreenCover(isPresented: $router.callShown) {
+                IOSCallScreen()
+                    .environment(model)
+                    .environment(router)
             }
             // Here, not in the tabs, so a chat opened while locked (a
             // notification) is the one shown after the PIN.

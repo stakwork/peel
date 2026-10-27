@@ -461,8 +461,10 @@ struct SendStatusTests {
             (.fixture(uuid: uuid(1), chat: dm, fromMe: true, tag: "a", status: pending), false, nil),
             (.fixture(uuid: uuid(2), chat: dm, fromMe: true, tag: "b"), false, nil),
             (.fixture(uuid: uuid(3), type: MessageType.boost, chat: dm, fromMe: true, tag: "c", status: pending), false, nil),
+            (.fixture(uuid: uuid(4), chat: dm, fromMe: true, tag: "d", status: Message.Delivery.failed.rawValue), false, nil),
         ]))
         _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: uuid(4), serverIndex: 10, chat: dm, fromMe: true), false, nil),
             (.fixture(uuid: uuid(1), serverIndex: 7, chat: dm, fromMe: true), false, nil),
             (.fixture(uuid: uuid(2), serverIndex: 8, chat: dm, fromMe: true), false, nil),
             (.fixture(uuid: uuid(3), serverIndex: 9, type: MessageType.boost, chat: dm, fromMe: true), false, nil),
@@ -471,6 +473,8 @@ struct SendStatusTests {
         #expect(try storage.message(uuid: uuid(2), in: dm)?.delivery == .delivered)
         // A payment waits for the mixer's own word.
         #expect(try storage.message(uuid: uuid(3), in: dm)?.delivery == .pending)
+        // A failure is the server's word too: an echo never undoes it.
+        #expect(try storage.message(uuid: uuid(4), in: dm)?.delivery == .failed)
     }
 
     @Test func unrecordedOldPaymentsFailWhenTheServerHasNoRecord() {

@@ -404,14 +404,14 @@ extension Storage {
     /// tables that track one by tag: our payments, boosts and purchases,
     /// messages that paid a tribe's price, and other text that has waited
     /// past `cutoff` (newest first, at most 200,
-    /// `message_pending`); our payments, boosts and purchases with no status
-    /// at all, which came from history or another device (newest first, at
-    /// most 200; payments review F4), never failed for want of a record:
+    /// `message_pending`); our messages of every kind, payments, boosts and
+    /// purchases included, with no status at all, which came from history or
+    /// another device (newest first, at most 200; payments review F4), never
+    /// failed for want of a record:
     /// only the server's own COMPLETE or FAILED moves them; invoices we pay
     /// (newest first, at most 200); and invites whose funding payment is
     /// still sending.
     func pendingSendTags(textBefore cutoff: Int64) throws -> [PendingSend] {
-        let moneySends = MessageType.sqlList(MessageType.moneySends)
         return try pool.read { db in
             try Row.fetchAll(
                 db,
@@ -423,7 +423,7 @@ extension Storage {
                         ORDER BY id DESC LIMIT 200)
                     UNION ALL SELECT * FROM (
                         SELECT tag, COALESCE(timestamp, 0), 0
-                        FROM message WHERE type IN (\(moneySends)) AND fromMe = 1 AND status IS NULL AND tag IS NOT NULL
+                        FROM message WHERE fromMe = 1 AND status IS NULL AND tag IS NOT NULL
                         ORDER BY id DESC LIMIT 200)
                     UNION ALL SELECT * FROM (
                         SELECT tag, createdAt, 1 FROM invoice WHERE incoming = 0 AND status = 'PENDING' AND tag IS NOT NULL
@@ -432,6 +432,23 @@ extension Storage {
                     """,
                 arguments: [cutoff, InviteRecord.Status.sending.rawValue]
             ).map { PendingSend(tag: $0["tag"], createdAt: $0["createdAt"], movesMoney: $0["movesMoney"]) }
+        }
+    }
+
+    /// The tags of this chat's own messages the server has not confirmed or
+    /// refused (no status, or pending), newest first, at most 200: what
+    /// `Engine.checkOwnMessageStatus` asks about when the chat is open.
+    func unconfirmedTags(in chat: String) throws -> [String] {
+        try pool.read { db in
+            try String.fetchAll(
+                db,
+                sql: """
+                    SELECT tag FROM message WHERE chat = ? AND fromMe = 1 AND deleted = 0 AND tag IS NOT NULL
+                        AND (status IS NULL OR status = 'PENDING')
+                    ORDER BY id DESC LIMIT 200
+                    """,
+                arguments: [chat]
+            )
         }
     }
 

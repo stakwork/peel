@@ -67,6 +67,14 @@ public actor Engine {
     /// them if it ever got them, asked about on this connection; see
     /// `checkPendingSends`.
     private var unrecordedPayments: Set<String> = []
+    /// When each chat's own messages were last asked about
+    /// (`checkOwnMessageStatus`), the tags asked on this connection, those
+    /// the server's records named (any status), and those it had no record
+    /// of at the next ask: not asked about again on this connection.
+    private var ownStatusCheckedAt: [String: ContinuousClock.Instant] = [:]
+    private var ownStatusAsked: Set<String> = []
+    private var ownStatusHeard: Set<String> = []
+    private var unknownTags: Set<String> = []
     /// Contacts by the child index the core uses for them, so a live message's
     /// topic names its sender without a core call.
     private var contactsByChildIndex: [UInt64: String] = [:]
@@ -541,6 +549,10 @@ public actor Engine {
         cameOnlineHere = false
         // A reply to this connection's status query can only come on it.
         unrecordedPayments = []
+        ownStatusCheckedAt = [:]
+        ownStatusAsked = []
+        ownStatusHeard = []
+        unknownTags = []
         resendGate = nil
         connectedAt = nil
         keepAliveTask?.cancel()
@@ -923,6 +935,7 @@ public actor Engine {
         history = cursor
         if let records {
             unrecordedPayments = []
+            if !ownStatusAsked.isEmpty { ownStatusHeard.formUnion(records.compactMap(\.tag)) }
             // Merged: a record once heard stays heard.
             if let gate = resendGate {
                 resendGate?.recorded = (gate.recorded ?? []).union(records.compactMap(\.tag))
@@ -1442,6 +1455,42 @@ public actor Engine {
     private func publishPendingReads() async throws {
         for (chat, index) in try storage.pendingReads() {
             try await publishRead(chat, index: index)
+        }
+    }
+
+    /// How long a chat's own messages are left before they are asked about again.
+    static let ownStatusWait: Duration = .seconds(60)
+    /// How many tags one `getTags` carries.
+    static let ownStatusChunk = 50
+
+    /// Asks the server what became of this chat's own messages it has not
+    /// confirmed (no status, or pending), a chunk at a time: the answers
+    /// land as statuses and the chat's bolts follow. Called when the chat is
+    /// opened, the app comes to the front and history pages arrive; at most
+    /// once per `ownStatusWait` for a chat, and not for a tag the server had
+    /// no record of at the last ask. Best effort: a failure is left to the
+    /// next ask or connect (`checkPendingSends`).
+    public func checkOwnMessageStatus(in chat: String) async {
+        guard transport != nil, cameOnlineHere else { return }
+        if let asked = ownStatusCheckedAt[chat], ContinuousClock.now - asked < Self.ownStatusWait { return }
+        // A reply to an earlier ask has come by now.
+        unknownTags.formUnion(ownStatusAsked.subtracting(ownStatusHeard))
+        ownStatusAsked = []
+        ownStatusHeard = []
+        guard let unconfirmed = try? storage.unconfirmedTags(in: chat) else { return }
+        let tags = unconfirmed.filter { !unknownTags.contains($0) }
+        guard !tags.isEmpty else { return }
+        ownStatusCheckedAt[chat] = .now
+        ownStatusAsked.formUnion(tags)
+        for start in stride(from: 0, to: tags.count, by: Self.ownStatusChunk) {
+            let chunk = Array(tags[start..<min(start + Self.ownStatusChunk, tags.count)])
+            do {
+                try await run { time, state in
+                    try Sphinxrs.getTags(seed: seed, uniqueTime: time, state: state, tags: chunk, pubkey: nil)
+                }
+            } catch {
+                return
+            }
         }
     }
 

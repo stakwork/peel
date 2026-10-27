@@ -3313,3 +3313,27 @@ mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.
 ## The last reply on a thread's row (2026-10-26)
 
 A collapsed thread's row (Mac `ThreadSummaryLine`, iPhone `ThreadSummaryButton`) now also shows the newest reply's words under its reply count and "replied …" label: smaller, indented, with its sender's photo and name, two lines at most. `ThreadSummary.latest` already carried the message from `threadsSQL`'s `latestID` (one query for all rows), so no storage change. `Message.threadReplyPreview` (PeelCore) is the one string: text cut at 120 characters, else "Photo", "Video", "Voice message", "File", "Payment", "Payment request", "Call". Tested in `MessageTests`; the Apple UI was not built on this Linux pod.
+
+## Voice messages on the iPhone (2026-10-27)
+
+Built: hold the mic in the composer to record, release to send, slide left or
+up to cancel (under a second is dropped). Recording is 16 kHz mono 16-bit WAV
+(`audio.wav`, `audio/wav`): what the Mac app's `getFileAndMime` names a
+recording and what the Sphinx apps play, so it goes as an ordinary type 6
+attachment (same memes-server sign-in, media key and send path, contacts and
+tribes). Rows with an audio attachment show play/pause, a seekable bar and
+"current / total" (`VoiceBubble`). The rules are in `VoiceMessage.swift`
+(tested); `NSMicrophoneUsageDescription` is set on both targets, and the
+Mac's entitlements already carry `device.audio-input`. The Mac has it too:
+hold the mic in the composer (it stands where Send does while there is
+nothing to send), release to send, drag away past the cancel distance or press
+Escape to cancel; its permission is `AVCaptureDevice`'s, and a refusal says so
+with a button to System Settings. The recorder, the player, the seek bar and
+the recording indicator are shared (`Apps/Shared/Voice`: `VoiceRecorder`,
+`VoicePlayer`, `VoiceControls`), with `#if os(iOS)` only for the audio session,
+permission and haptic (`UIImpactFeedbackGenerator` / `NSHapticFeedbackManager`);
+each app's `VoiceStyle` gives its type and sizes. On the Mac an audio message's
+card shows `VoiceControls` once the file is there, and its old Load / failed
+states before. Open: a voice message and the Mac's video player (`MediaPlayback`)
+do not pause each other; not built or run here (no Swift toolchain on the
+dev server), so the phone and Mac builds are still to be run.

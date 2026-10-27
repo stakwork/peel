@@ -121,11 +121,28 @@ struct ConversationScreen: View {
                         Button("Video call", systemImage: "video") {
                             PendingCall.start(chat: chat, audioOnly: false).ask(model, router, pending: $pendingCall)
                         }
+                        jamiePicker
                     }
                     .disabled(model.calls.startingIn != nil || model.calls.joiningRoom != nil)
                 }
             }
             Menu("More", systemImage: "ellipsis") { moreMenu(tribe: tribe) }
+        }
+    }
+
+    /// Who a call here brings Jamie from, with Stadeum connected: one of
+    /// the person's workspaces, or none (docs/hive-calls.md).
+    @ViewBuilder private var jamiePicker: some View {
+        let workspaces = model.stadeum.live
+        if !workspaces.isEmpty {
+            Picker("Jamie", selection: Binding(
+                get: { model.callJamie(in: chat)?.id ?? "" },
+                set: { id in model.calls.pickJamie(workspaces.first { $0.id == id }, in: chat) }
+            )) {
+                ForEach(workspaces, id: \.id) { Text($0.name).tag($0.id) }
+                Text("No Jamie").tag("")
+            }
+            .pickerStyle(.inline)
         }
     }
 

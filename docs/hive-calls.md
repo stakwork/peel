@@ -1,6 +1,7 @@
 # Hive calls from Peel
 
-Status: proposed 2026-10-27, nothing built. This reopens decision 5 of
+Status: proposed 2026-10-27. Peel's side is built (below) and waits for
+Hive's route. This reopens decision 5 of
 `docs/phases/06-calls.md` ("Hive: join only"), which is Tom's to change.
 
 Starting a call in Peel can bring Jamie into it, for an org the person
@@ -98,47 +99,76 @@ two routes cannot drift apart.
 
 ## Peel
 
-**`HiveClient.startCall(credential:workspace:) async throws -> URL`** in
-`Hive.swift`, next to `peers`. A 404 means a Hive without the route: the
-error reads "Jamie can't join calls from Peel yet."
+Built 2026-10-27 on this branch; waiting for Hive's route.
 
-**Engine.** `startCall(in:audioOnly:)` gains an optional `link: CallLink`.
-Given one, it posts that link instead of `CallLink.new`, with the same
-rules: connected only, 3 sats in a tribe. The caller builds the link from
-Hive's URL with `CallLink(link:server:)` against `callServer()`. A URL on
-another host is refused with a message naming both hosts. Peel sets
-`startAudioOnly` itself; Hive's link has no query.
+**`HiveClient.startCall(_ link: HiveLink, workspace:) async throws -> String`**
+in `Sources/PeelCore/Hive.swift`, beside `renew`: the link as Hive wrote it.
+What it says when Hive makes none:
+
+| Hive answers | Peel says |
+|---|---|
+| 401 (a revoked device, or a Hive without the route: its middleware answers the same) | "Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again." |
+| any other error | "Stadeum could not start a call with Jamie: <Hive's error>." |
+| 200 without a `url` | "Stadeum's call link could not be read." |
+
+**`CallLink.hive(_:server:audioOnly:)`** (`Call.swift`) checks Hive's link
+as any link against the account's call server. A link on another host is
+refused, naming both hosts. Peel sets `startAudioOnly` itself, since Hive's
+link has no query.
+
+**Engine.** `startCall(in:audioOnly:hiveLink:)`: given Hive's link, it
+posts that call instead of a new room, with the same rules (connected
+only, 3 sats in a tribe).
 
 **`CallStore.start(in:audioOnly:jamie:)`**, where `jamie` is a `HivePeer?`.
-With a peer, it asks Stadeum (`Sources/PeelUI/Stadeum.swift`, which holds
-the `HiveLink`) for the link, then posts and joins as today. Nothing is
-posted until Hive has answered.
+With a peer, it asks for the link first, through `hiveCall`, which
+`AppModel` points at `Stadeum.callLink(on:)` (the `HiveLink` is
+Stadeum's). Then it posts and joins as before. Nothing is posted until Hive
+has answered, and nothing at all if Hive fails.
 
-**The menu.** On the Mac this is `showMenu` in `Apps/Mac/Peel/CallViews.swift`
-(today "Audio call" and "Video call"). On iOS it is the call button in
-`ConversationScreen.swift`. It gains a section under the two buttons:
+**The pick.** `CallStore.jamiePicks` maps a chat to a peer id, "" for No
+Jamie. `pickJamie` stores it in `Setting.callJamie`: the account's, on this
+device, not synced. `AppModel.callJamie(in:)` works out which workspace a
+call in a chat uses (`HivePeer.jamie`):
+1. the chat's pick, while that org is still live;
+2. with no pick, the org whose swarm matches the tribe's `app_url` or
+   `second_brain_url` (the first label of the host on both sides: the
+   tribe's URL and the peer's `baseUrl`), so a tribe that works in the
+   official apps works the same here;
+3. else No Jamie.
+
+**The menu** gains a section under the two buttons. On the Mac it is
+`CallHeaderButton.showMenu` in `Apps/Mac/Peel/CallViews.swift`; on the
+iPhone, an inline picker in the Call menu (`ConversationScreen.jamiePicker`),
+with `PendingCall.run` passing the pick:
 
 ```
 Start a new call
   Audio call            ⌥⌘A
+    With Jamie from Stakwork
   Video call            ⌥⌘V
+    With Jamie from Stakwork
 Jamie
 ✓ Stakwork
   Open Health
   No Jamie
 ```
 
-- One row per `HivePeer`, by `name`. An org in `HiveLink.errors` is not
-  listed.
-- The checked row is what the next call uses. A pick is remembered per chat
-  on this device (not synced).
-- The first default is the org whose swarm matches the tribe's `app_url` or
-  `second_brain_url`, so a tribe that works in the official apps works the
-  same here. That is the first label of the host on both sides: the tribe's
-  URL and the peer's `baseUrl`. Otherwise the default is No Jamie.
-- With no pairing, or a revoked one, the section is not shown.
+- One row per live `HivePeer`, by `name`. An org in `HiveLink.errors` is
+  not listed. With no pairing, or a revoked one, the section is not shown.
+- Picking a row closes the menu, as every Peel menu does. The next Audio or
+  Video call, or ⌥⌘A or ⌥⌘V, uses it.
 - It is in every chat, DMs included: Hive does not care where the link is
   posted.
+- **iPhone:** the same picker, without the "With Jamie from …" lines under
+  Audio and Video. Its code was type-checked against `AppModel` on macOS;
+  the iPhone app was not built here (no iOS core slices on this Mac), and
+  CI does not build it.
+
+**Tests:**
+- `HiveTests`: the request, Hive's refusals in words, and the default
+  pick.
+- `CallTests`: `HiveCallLinkTests`, and the pick kept with the account.
 
 ## Unchanged
 
@@ -188,6 +218,7 @@ Jamie was dispatched into. Not checked on a device.
 ## Work
 
 1. Hive: `lib/calls/startCall.ts`, the route, the middleware entry, tests.
-2. Peel, once that is deployed: `HiveClient.startCall`, the engine's
-   `link`, `CallStore`, the menu on Mac and iOS, and the default from
-   `app_url`. Then a phase entry in `docs/phases/06-calls.md`.
+2. Peel: `HiveClient.startCall`, `CallLink.hive`, the engine's
+   `hiveLink`, `CallStore`, the Mac and iPhone menus and the default from `app_url`.
+   Built on this branch, with an entry in `docs/phases/06-calls.md`. To
+   check against a Hive that has the route.

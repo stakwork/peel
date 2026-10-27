@@ -407,7 +407,7 @@ private struct CallControls: View {
     /// a connection that was lost.
     @ViewBuilder private var notes: some View {
         if let sharing = call.sharing {
-            note(sharing.note, action: "Stop", perform: call.stopScreenShare)
+            note(sharing.note(includingPeel: call.sharingIncludesPeel), action: "Stop", perform: call.stopScreenShare)
         }
         let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
             .compactMap { $0 }
@@ -461,6 +461,8 @@ private struct CallControls: View {
             .button("Entire screen", systemImage: "display") { call.startScreenShare(.display) },
             .button("A window", systemImage: "macwindow") { call.startScreenShare(.window) },
             .button("An app", systemImage: "app") { call.startScreenShare(.application) },
+            .divider,
+            .button("Include Peel windows", systemImage: "macwindow.on.rectangle", checked: call.includePeelWindows) { call.includePeelWindows.toggle() },
         ]
         presenter?.show(entries, at: anchor, source: "call-share", minWidth: 200)
     }

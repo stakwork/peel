@@ -71,20 +71,22 @@ final class DictationPermissions {
 /// The permission rows, in Settings and in the first-use offer.
 struct DictationPermissionRows: View {
     let permissions: DictationPermissions
+    /// The dictation key's name, as Input Monitoring's row says it.
+    let key: String
 
     var body: some View {
         Fact("Microphone") {
-            state(permissions.microphone, needed: "Needed to hear you")
+            state(permissions.microphone, needed: "Lets Peel hear what you say")
         } trailing: {
             button(permissions.microphone) { Task { await permissions.requestMicrophone() } }
         }
         Fact("Input Monitoring") {
-            state(permissions.inputMonitoring, needed: "Needed to see the dictation key. Peel may need a restart after you allow it.")
+            state(permissions.inputMonitoring, needed: "Lets Peel notice when you hold \(key). Quit and reopen Peel after allowing it.")
         } trailing: {
             button(permissions.inputMonitoring) { permissions.requestInputMonitoring() }
         }
         Fact("Accessibility") {
-            state(permissions.accessibility, needed: "Needed to type what you said, and to keep Space and Esc from reaching the app")
+            state(permissions.accessibility, needed: "Lets Peel type into the app you're in. Optional: without it, what you say goes to the clipboard.")
         } trailing: {
             button(permissions.accessibility) { permissions.requestAccessibility() }
         }

@@ -68,7 +68,7 @@ struct DictationSettingsSection: View {
                         .accessibilityLabel("History")
                 }
             }
-            DictationPermissionRows(permissions: dictation.permissions)
+            DictationPermissionRows(permissions: dictation.permissions, key: dictation.hotkey.label)
         }
     }
 

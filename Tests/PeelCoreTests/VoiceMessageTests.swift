@@ -62,16 +62,20 @@ struct VoiceMessageTests {
         #expect(state.phase == .cancelling)
         state.drag(dx: -10, dy: 0)
         #expect(state.phase == .recording)
-        #expect(state.finish(dx: -10, dy: 0) == .send)
+        let sent = state.finish(dx: -10, dy: 0)
+        #expect(sent == .send)
         #expect(!state.isRecording)
-        #expect(state.finish(dx: 0, dy: 0) == .cancel)
+        let again = state.finish(dx: 0, dy: 0)
+        #expect(again == .cancel)
     }
 
     @Test func recorderStopsAtTheMaximum() {
         var state = VoiceRecorderState()
         state.begin()
-        #expect(!state.tick(elapsed: 10))
-        #expect(state.tick(elapsed: VoiceMessage.maximumDuration + 2))
+        let early = state.tick(elapsed: 10)
+        #expect(!early)
+        let atLimit = state.tick(elapsed: VoiceMessage.maximumDuration + 2)
+        #expect(atLimit)
         #expect(state.elapsed == VoiceMessage.maximumDuration)
         state.abort()
         #expect(state.elapsed == 0 && !state.isRecording)
@@ -127,9 +131,25 @@ struct VoiceMessageTests {
 
     /// A PCM WAV of silence, 16-bit mono.
     static func wav(rate: Int, seconds: Int) -> Data {
-        func le(_ v: Int, _ n: Int) -> Data { Data((0..<n).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) }) }
+        func le(_ v: Int, _ n: Int) -> Data {
+            var bytes: [UInt8] = []
+            for i in 0..<n { bytes.append(UInt8(truncatingIfNeeded: v >> (8 * i))) }
+            return Data(bytes)
+        }
         let samples = Data(count: rate * 2 * seconds)
-        return Data("RIFF".utf8) + le(36 + samples.count, 4) + Data("WAVEfmt ".utf8) + le(16, 4) + le(1, 2) + le(1, 2)
-            + le(rate, 4) + le(rate * 2, 4) + le(2, 2) + le(16, 2) + Data("data".utf8) + le(samples.count, 4) + samples
+        var data = Data("RIFF".utf8)
+        data.append(le(36 + samples.count, 4))
+        data.append(Data("WAVEfmt ".utf8))
+        data.append(le(16, 4))
+        data.append(le(1, 2))
+        data.append(le(1, 2))
+        data.append(le(rate, 4))
+        data.append(le(rate * 2, 4))
+        data.append(le(2, 2))
+        data.append(le(16, 2))
+        data.append(Data("data".utf8))
+        data.append(le(samples.count, 4))
+        data.append(samples)
+        return data
     }
 }

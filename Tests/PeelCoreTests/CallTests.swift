@@ -183,6 +183,40 @@ struct StartCallTests {
         deleted.deleted = true
         #expect(await engine.callLink(in: deleted) == nil)
     }
+
+    /// The Jamie picked in each chat stays with the account (docs/hive-calls.md).
+    @Test func theJamiePickedInEachChatIsKept() async throws {
+        let engine = try engine(server: "mqtts://lsp.example.com:8883")
+        #expect(try await engine.callJamie().isEmpty)
+        try await engine.setCallJamie([keyG: "acme-hive", "tribe": ""])
+        #expect(try await engine.callJamie() == [keyG: "acme-hive", "tribe": ""])
+        #expect(await engine.settings().callJamie == [keyG: "acme-hive", "tribe": ""])
+    }
+}
+
+/// A call with Jamie in it is Hive's link, checked as any link (docs/hive-calls.md).
+struct HiveCallLinkTests {
+    private let hiveRoom = "sphinx.call.-acme-hive.sphinx.chat-.1792900000"
+
+    @Test(arguments: [true, false])
+    func hivesLinkIsPostedAsTheCallChosen(audioOnly: Bool) throws {
+        let link = try CallLink.hive(base + hiveRoom, server: server, audioOnly: audioOnly)
+        #expect(link.room == hiveRoom && link.audioOnly == audioOnly && link.callKey == nil)
+        #expect(link.url.absoluteString == base + hiveRoom + (audioOnly ? "?startAudioOnly=true" : ""))
+    }
+
+    @Test func aLinkOnAnotherServerIsRefusedNamingBoth() {
+        #expect {
+            try CallLink.hive("https://call.livekit.io/rooms/\(hiveRoom)", server: server, audioOnly: false)
+        } throws: { error in
+            "\(error)" == "Stadeum's call is on call.livekit.io, not on this account's call server (chat.sphinx.chat)."
+        }
+        #expect {
+            try CallLink.hive(base + "not-a-room", server: server, audioOnly: false)
+        } throws: { error in
+            "\(error)" == "Stadeum's call link is not one Peel can join."
+        }
+    }
 }
 
 struct CallMessageTests {

@@ -38,6 +38,10 @@ decided (Tom, 2026-10-08; see "Decided" below).
   count at once after switching chats; see its journal.
 - Built (floating call bar): a small always-on-top control bar shows while
   the call window is not key; see its journal.
+- Built (Hive calls, 2026-10-27, waiting for Hive's route): with Stadeum
+  connected, the call menu can bring Jamie into a call from one of the
+  person's workspaces; see the journal below and `../hive-calls.md`. It
+  reopens decision 5 (Tom's call).
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), PR 8 (the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
@@ -1524,6 +1528,26 @@ Open questions:
 - Interaction with Keep on top.
 - Multiple Peel windows.
 
+## Hive calls with Jamie (2026-10-27)
+
+The design is `../hive-calls.md`. A call can bring Jamie from a workspace
+Peel is paired with (Stadeum), so a tribe needs no `app_url` and the person
+no Sphinx key linked in Hive. Peel asks Hive's new
+`POST /api/strut-devices/calls` with the device credential and the org's
+peer id. Hive dispatches Jamie into a new room and answers the link, which
+Peel checks against its call server (`CallLink.hive`), posts and joins.
+
+- `HiveClient.startCall`, `Stadeum.callLink(on:)`, `CallStore.start(in:audioOnly:jamie:)`,
+  `Engine.startCall(in:audioOnly:hiveLink:)`.
+- The pick per chat is `Setting.callJamie`. With none, the tribe's swarm
+  decides, as in the official apps; else no Jamie (`HivePeer.jamie`).
+- The menu's Jamie section is on the Mac and, as an inline picker, on the
+  iPhone.
+- Nothing is posted when Hive cannot make the call.
+- Hive's side is stakwork/hive#5647. Not yet checked against a Hive with
+  the route; a Hive without it turns the device away with a 401, as for a
+  revoked device.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:
@@ -1535,7 +1559,7 @@ Tom approved the five defaults PR 1 used:
 4. **Pubkey in metadata** (question 5): left out; PR 2 sends only the
    photo URL.
 5. **Hive** (question 8): join only. Hive links are read and validated,
-   never made.
+   never made. Reopened 2026-10-27 (`../hive-calls.md`).
 
 ## Open questions for Tom
 

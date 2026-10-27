@@ -36,7 +36,8 @@ enum PendingCall {
         model.calls.openingWindow({ router.callShown = true }) {
             switch self {
             case .join(let link, let chat): await model.calls.join(link, in: chat, failureInChat: true)
-            case .start(let chat, let audioOnly): await model.calls.start(in: chat, audioOnly: audioOnly)
+            case .start(let chat, let audioOnly):
+                await model.calls.start(in: chat, audioOnly: audioOnly, jamie: model.callJamie(in: chat))
             }
         }
     }

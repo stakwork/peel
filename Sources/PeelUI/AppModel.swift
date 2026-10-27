@@ -424,6 +424,10 @@ public final class AppModel {
         }
         notifier.model = self
         calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
+        calls.hiveCall = { [weak self] peer in
+            guard let self else { throw PeelError("Peel is closing.") }
+            return try await stadeum.callLink(on: peer)
+        }
         calls.chatNotice = { [weak self] chat, change in
             guard let self else { return }
             let notice = change(conversationNotices[chat])
@@ -1355,7 +1359,7 @@ public final class AppModel {
         echoedAliases = settings.echoedAliases
         refreshMentionAliases()
         myServer = settings.server
-        calls.attach(engine, server: settings.callServer)
+        calls.attach(engine, server: settings.callServer, jamiePicks: settings.callJamie ?? [:])
         pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = settings.balanceMsat
         wordsConfirmed = settings.wordsConfirmed ?? false

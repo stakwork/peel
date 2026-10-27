@@ -26,6 +26,25 @@ public struct HivePeer: Codable, Sendable, Equatable {
         let label = label.map { TextLine.clean($0, max: TextLine.maxName) } ?? ""
         return label.isEmpty ? TextLine.clean(id, max: TextLine.maxName) : label
     }
+
+    /// The org a call in a chat brings Jamie from (docs/hive-calls.md):
+    /// `picked`, the peer id chosen there ("" for No Jamie), while it is
+    /// among `peers`; with nothing picked, the org whose swarm a tribe's
+    /// `app_url` or `second_brain_url` is on, as the official apps choose;
+    /// else none.
+    public static func jamie(picked: String?, pages: [String?], in peers: [HivePeer]) -> HivePeer? {
+        if let picked { return peers.first { $0.id == picked } }
+        let swarms = pages.compactMap { $0.flatMap { Self.swarm(of: $0) } }
+        return swarms.lazy.compactMap { name in peers.first { Self.swarm(of: $0.baseUrl) == name } }.first
+    }
+
+    /// A swarm's name: the first label of an address's host
+    /// (`swarm38.sphinx.chat` → `swarm38`); nil for a host of one label.
+    static func swarm(of address: String) -> String? {
+        guard let host = URL(string: address)?.host?.lowercased() else { return nil }
+        let labels = host.split(separator: ".")
+        return labels.count > 1 ? String(labels[0]) : nil
+    }
 }
 
 /// An org Hive gave no record for this time, and why, in Hive's words.
@@ -181,6 +200,26 @@ public struct HiveClient: Sendable {
         link.expiresAt = renewed.expiresAt
         link.renewedAt = now
         return link
+    }
+
+    /// A call with Jamie in it, for `workspace` (a peer's id: the org's
+    /// central workspace), as the person `link` pairs: Hive dispatches Jamie
+    /// into a new room and answers its link (docs/hive-calls.md). The link
+    /// as Hive wrote it; the caller checks it against the call server.
+    public func startCall(_ link: HiveLink, workspace: String) async throws -> String {
+        let (status, data) = try await request("POST", "api/strut-devices/calls", ["workspace": workspace], bearer: link.credential)
+        let answer = try? JSONDecoder.hive.decode([String: String].self, from: data)
+        switch status {
+        case 200:
+            guard let url = answer?["url"] else { throw PeelError("Stadeum's call link could not be read.") }
+            return url
+        // A revoked device, and a Hive from before the route alike: its
+        // middleware turns away the device credential on any path it does not know.
+        case 401:
+            throw PeelError("Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again.")
+        default:
+            throw Self.failure(status, data, couldNot: "start a call with Jamie")
+        }
     }
 
     // MARK: - Hive's answers

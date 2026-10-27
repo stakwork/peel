@@ -1495,6 +1495,26 @@ built by Peel, so there is nothing else to exclude it from. Ported in shape
 from the Sphinx Mac app's draggable panel. Not built or run in this session:
 manual testing of focus, drag, Spaces, full screen and display share is open.
 
+Reference: sphinx-mac-v2. Sphinx (`WindowsManager.createControlsPanel`,
+`showControlsPanel`, `presentCallControlWindowWith`) keeps one lazily created
+`DraggablePanel` (an `NSPanel`, style `[.nonactivatingPanel, .borderless]`,
+transparent, level `.mainMenu`, `canJoinAllSpaces` + `fullScreenAuxiliary`,
+392x100, bottom-centre, position remembered, manual `mouseDragged`) hosting
+`CallControlView` bound to the `RoomContext`. `RoomContext` is the call
+window's `NSWindowDelegate`: `windowDidResignKey` (when connected) shows the
+panel, `windowDidBecomeKey` hides it (alpha 0), and `windowWillClose` or the
+call ending closes it. `getWindowsToExclude()` feeds the panel's
+`windowNumber` and the call window's into LiveKit
+`ScreenShareCaptureOptions.excludeWindowIDs`.
+
+Open questions:
+
+- `sharingType = .none` against ScreenCaptureKit on current macOS: the system
+  picker's filter may still capture the bar. Verify in a real share.
+- Full-screen and Spaces behaviour.
+- Interaction with Keep on top.
+- Multiple Peel windows.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

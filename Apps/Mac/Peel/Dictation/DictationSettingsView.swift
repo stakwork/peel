@@ -93,6 +93,7 @@ struct DictationSettingsSection: View {
     private var stateText: String {
         if !dictation.isEnabled { return "Off" }
         if !dictation.permissions.requiredGranted { return "Waiting for permissions" }
+        if dictation.needsRestart { return "Restart Peel to finish" }
         return dictation.isListening ? "On" : "Starting…"
     }
 
@@ -112,10 +113,11 @@ struct DictationOffer: View {
 
     var body: some View {
         OfferBar(
-            icon: "mic", text: "Dictation that works everywhere and stays local and private.", action: "Set up",
+            icon: "mic", text: "Dictation that works everywhere and stays local and private. Turning it on asks for the microphone; Input Monitoring and Accessibility are enabled with their own Allow buttons.", action: "Set up",
             dismiss: { DictationController.shared.dismissOffer() },
             accept: {
                 DictationController.shared.dismissOffer()
+                DictationController.shared.setEnabled(true)
                 model.openAccount(.dictation)
             }
         )

@@ -186,9 +186,10 @@ struct AuditCallTests {
 }
 
 struct AuditPrivacyTests {
-    /// T1.8: `setPushToken` must never be called; the server keeps one push
-    /// token per account and would take notifications from the official app.
-    /// Nothing outside the generated bindings names it.
+    /// T1.8: `setPushToken` is not called unless the push flag allows it; the
+    /// server keeps one push token per account and would take notifications
+    /// from the official app. Nothing outside the generated bindings names it
+    /// but `Engine+Push.swift`, which must check `PeelPushFlags` first.
     @Test func nothingCallsSetPushToken() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         var checked = 0
@@ -198,6 +199,11 @@ struct AuditPrivacyTests {
                 .compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" } ?? []
             for file in files {
                 let text = try String(contentsOf: file, encoding: .utf8)
+                if file.lastPathComponent == "Engine+Push.swift" {
+                    #expect(text.contains("registrationAllowed"), "the call must sit behind the flag")
+                    #expect(text.contains("PeelPushFlags.registerWithHub()"), "the flag must default to the app's switch")
+                    continue
+                }
                 #expect(!text.contains("setPushToken"), "\(file.lastPathComponent)")
                 checked += 1
             }

@@ -61,4 +61,44 @@ public struct NotificationPolicy: Sendable {
               !isQuiet(message.chat, mentioningMe: message.mentionsMe) else { return nil }
         return kind
     }
+
+    // MARK: Banner and sound
+
+    /// What a notification does when it arrives. Banner + Sound is what
+    /// every notification did before this was a choice.
+    public enum Style: String, Sendable, Equatable, CaseIterable {
+        case bannerAndSound = "banner_sound"
+        case banner
+        case soundOnly = "sound"
+        case none
+
+        public static let `default` = Style.bannerAndSound
+
+        /// Whether a banner shows.
+        public var showsBanner: Bool { self == .banner || self == .bannerAndSound }
+        /// Whether a sound plays.
+        public var playsSound: Bool { self == .soundOnly || self == .bannerAndSound }
+    }
+
+    /// How one notification is delivered.
+    public enum Delivery: Sendable, Equatable {
+        /// Nothing.
+        case silent
+        /// A banner, with this sound attached (nil: none; "" the default).
+        case banner(sound: String?)
+        /// No banner; this sound is played ("" the default).
+        case soundOnly(sound: String)
+    }
+
+    /// How a notification is delivered under `style`, with `sound` the name
+    /// of the chosen system sound, nil or empty for the default.
+    public static func delivery(style: Style, sound: String?) -> Delivery {
+        let name = sound ?? ""
+        switch style {
+        case .none: return .silent
+        case .banner: return .banner(sound: nil)
+        case .bannerAndSound: return .banner(sound: name)
+        case .soundOnly: return .soundOnly(sound: name)
+        }
+    }
 }

@@ -54,6 +54,9 @@ public protocol AppPresence {
     func showBadge(_ count: Int)
     /// Peel's page in the system's notification settings.
     func openNotificationSettings()
+    /// Plays a system sound by name ("" for the default alert sound), for a
+    /// notification that shows no banner.
+    func playSound(named name: String)
 }
 
 /// The main window's menus and panels, as `AppModel.takesCommands` asks

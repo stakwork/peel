@@ -135,6 +135,22 @@ extension Preference where Value == Bool {
     }
 }
 
+extension Preference where Value == NotificationPolicy.Style {
+    /// What a notification does: banner, sound, both or neither. This
+    /// device only: it is about this Mac's screen and speakers.
+    public static var notificationStyle: Self {
+        Self(key: "device.notification_style", scope: .device,
+             read: { $0.string.flatMap(NotificationPolicy.Style.init(rawValue:)) }, write: { .string($0.rawValue) })
+    }
+}
+
+extension Preference where Value == String {
+    /// The name of the sound a notification plays; "" is the default.
+    public static var notificationSound: Self {
+        Self(key: "device.notification_sound", scope: .device, read: \.string, write: { .string($0) })
+    }
+}
+
 /// Every registered key and whether it follows the account: what sync may
 /// read from the file and write to it, and nothing else.
 public enum Preferences {
@@ -162,6 +178,8 @@ public enum Preferences {
         Preference<TimeZoneSharing>.timeZoneSharing.entry,
         Preference<Int>.pinTimeoutHours.entry,
         Preference<Bool>.notificationText.entry,
+        Preference<NotificationPolicy.Style>.notificationStyle.entry,
+        Preference<String>.notificationSound.entry,
         Preference<String>.preferencesFileSeen.entry,
         Preference<Bool>.mayStartPreferences.entry,
     ])

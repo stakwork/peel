@@ -41,6 +41,9 @@ struct PhonePresence: AppPresence {
             UIApplication.shared.open(url)
         }
     }
+
+    /// Notifications here always carry their sound; there is no sound-only style.
+    func playSound(named name: String) {}
 }
 
 /// No file panels yet: nothing here attaches, saves or picks a photo (I3).

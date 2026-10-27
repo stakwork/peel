@@ -210,7 +210,7 @@ extension View {
 
 /// What the composer shows while recording: a red dot, the elapsed time
 /// and the way to cancel.
-struct RecordingIndicator: View {
+struct VoiceRecordingIndicator: View {
     let state: VoiceRecorderState
 
     var body: some View {

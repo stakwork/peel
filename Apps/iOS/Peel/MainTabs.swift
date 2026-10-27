@@ -36,12 +36,6 @@ struct MainTabs: View {
                 SearchTab()
             }
         }
-        // On a call with the call screen down: its bar, to return or mute.
-        .safeAreaInset(edge: .bottom) {
-            if let call = model.calls.phoneSession, !router.callShown {
-                IOSOnCallBar(call: call)
-            }
-        }
         .sheet(item: $router.orgPage) { page in
             OrgPageSheet(page: page)
         }
@@ -130,6 +124,7 @@ private struct SearchTab: View {
                     ChatList()
                 }
             }
+            .onCallBannerInset()
             .navigationTitle("Search")
             .searchable(text: $model.searchQuery, prompt: "Search chats")
             .chatsDestinations()

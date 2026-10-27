@@ -55,6 +55,7 @@ struct ConversationScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .floatingBar(.bottom) { footer(tribe: tribe) }
+        .onCallBannerInset()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { header(tribe: tribe) }
         .callSwitchConfirmation($pendingCall, model: model, router: router)

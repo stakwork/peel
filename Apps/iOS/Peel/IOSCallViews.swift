@@ -104,8 +104,32 @@ private struct CallTitle: View {
 
 // MARK: - On a call
 
-/// Over the tab bar while you are on a call and the call screen is down, like
-/// the Mac's sidebar bar: the chat, the running time, Mute and Return.
+extension View {
+    /// The on-call banner, at the top of this screen's content, just under the
+    /// navigation bar, while on a call with the call screen down. Applied once
+    /// per screen (each tab's root, and a conversation); a pushed screen
+    /// covers the one beneath it, so only one shows. At the top it never
+    /// meets the composer or the tab bar.
+    func onCallBannerInset() -> some View {
+        modifier(OnCallBannerInset())
+    }
+}
+
+private struct OnCallBannerInset: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .top, spacing: 0) {
+            if let call = model.calls.phoneSession, !router.callShown {
+                IOSOnCallBar(call: call)
+            }
+        }
+    }
+}
+
+/// Under the navigation bar while you are on a call and the call screen is
+/// down, like the Mac's sidebar bar: the chat, the running time, Mute and Return.
 struct IOSOnCallBar: View {
     @Environment(PhoneRouter.self) private var router
     let call: IOSCallSession
@@ -142,8 +166,9 @@ struct IOSOnCallBar: View {
             .accessibilityLabel(call.micOn ? "Mute" : "Unmute")
         }
         .padding(.horizontal, Theme.Space.md)
-        .background(Theme.menu, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-        .padding(.horizontal, Theme.Space.md)
+        .frame(maxWidth: .infinity)
+        .background(Theme.menu)
+        .overlay(alignment: .bottom) { Divider() }
         .accessibilityElement(children: .contain)
     }
 }

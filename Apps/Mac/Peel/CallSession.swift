@@ -90,7 +90,8 @@ final class CallSession {
     /// Includes or leaves out Peel's own windows, at once if a share is running.
     func setIncludePeelWindows(_ include: Bool) {
         includePeelWindows = include
-        share?.setIncludesPeel(include)
+        guard let share else { return }
+        Task { await share.setIncludesPeel(include) }
     }
     /// The tile shown large with the others in a strip beside it; nil for
     /// the grid. A screen someone starts sharing takes it.

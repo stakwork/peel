@@ -55,8 +55,10 @@ struct CallStatusText: View {
 }
 
 private struct CallRoomView: View {
+    @Environment(AppModel.self) private var model
     let call: CallSession
     @State private var window: NSWindow?
+    @State private var bar = CallFloatingBar()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,8 +70,12 @@ private struct CallRoomView: View {
         .onChange(of: window) {
             window?.collectionBehavior.insert(.fullScreenPrimary)
             keepOnTopChanged()
+            if let window { bar.attach(window: window, call: call, leave: { model.calls.leave() }) } else { bar.detach() }
         }
         .onChange(of: call.keepOnTop) { keepOnTopChanged() }
+        .onChange(of: call.state) { bar.update() }
+        // The floating bar must not outlive the call.
+        .onDisappear { bar.detach() }
         // Escape goes back to the grid. A button rather than `onExitCommand`,
         // which needs a focused view the call window usually lacks.
         .hiddenShortcut(.cancelAction, enabled: call.focus != nil, action: call.showGrid)

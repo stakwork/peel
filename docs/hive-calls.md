@@ -89,13 +89,6 @@ record, and the dispatch. `generate-link` keeps its slug-or-`swarmName`
 lookup and calls it, and the new route calls it with the device's user. The
 two routes cannot drift apart.
 
-**Room names.** Today the room is
-`sphinx.call.-<swarm>.sphinx.chat-.<unix seconds>`, which anyone can guess.
-In `startCall`, end it with 128 random bits instead:
-`sphinx.call.-<swarm>.sphinx.chat-.<32 hex>`. This is Peel's own naming
-(06-calls decision 2), keeping the `-<host>-` part. Both routes get it, so
-the Mac and iOS apps' Hive links change too (see open question 4).
-
 **Tests:** an integration test in the shape of
 `workspaces-calls-generate-link.test.ts`, covering:
 - credential: none, revoked, valid;
@@ -152,33 +145,37 @@ Jamie
 - Joining a Hive link from anyone (06-calls: `callKey` and `hiveToken`
   passed on).
 - The official apps' `app_url` path and `generate-link`'s contract.
+- Hive's room names, `sphinx.call.-<swarm>.sphinx.chat-.<unix seconds>`.
 - sphinx-voice: it gets the `callKey` from the dispatch either way.
 - The pairing and its daily renewal.
 
-## Open questions
+## For Tom
 
-1. **Tom:** reopening "Hive: join only".
-2. **Who speaks as you.** Hive runs every turn of a call as the person who
-   started it, whoever on the call is speaking (sphinx-voice `AGENTS.md`).
-   In a large public tribe that is everyone who joins. Some of Jamie's
-   writes wait for your approval, but what it reads, and the jobs it
-   starts, run as you.
-   Should the menu say so? Should the default in a tribe with more than a
-   few members always be No Jamie?
-3. **The call server's host.** Peel accepts only links on its own call
-   server (`chat.sphinx.chat` unless set). Hive's production
-   `LIVEKIT_CALL_BASE_URL` must be on that host. Peel joined the real #hive
-   call (06-calls, 2026-10-12), so it most likely is. Confirm.
-4. **Random room names for everyone.** meet reads nothing from a room's
-   name; a recording is named `<time>-<room>.mp4`. Does anything that reads
-   recordings parse the stamp? If so, keep the stamp and add the random
-   part after it.
-5. **A limit per device.** Each call dispatches Jamie on LiveKit. Something
-   like 20 calls an hour per device, or none until abuse shows up?
-6. **The call's org token.** `startCall` still mints one and keeps it behind
-   the `callKey` for `/api/calls/exchange-token`, which sphinx-voice no
-   longer calls (it sends the `callKey` to `/api/calls/*`). Dropping it is a
-   separate cleanup.
+Reopening "Hive: join only" (06-calls decision 5).
+
+## Decided (2026-10-27)
+
+For each of these, the simple choice for now, to revisit once it is in use:
+
+1. **Who speaks as you.** The same as the official apps today. Hive runs
+   every turn of a call as the person who started it, whoever on the call
+   is speaking (sphinx-voice `AGENTS.md`). In a large public tribe that is
+   everyone who joins. Some of Jamie's writes wait for your approval, but
+   what it reads, and the jobs it starts, run as you. For now, no warning
+   in the menu and no rule by tribe size.
+2. **The call server's host.** Peel accepts a link only on its own call
+   server (`chat.sphinx.chat` unless set) and refuses any other, naming
+   both hosts. Hive's production `LIVEKIT_CALL_BASE_URL` is most likely
+   that host: Peel joined the real #hive call (06-calls, 2026-10-12). The
+   first real call confirms it.
+3. **Room names** stay as Hive makes them today, ending in a timestamp
+   anyone can guess. Making them random would change the official apps'
+   Hive links too, so it is a change of its own.
+4. **No limit** on how many calls a device starts.
+5. **The call's org token stays.** `startCall` mints it as `generate-link`
+   does, though sphinx-voice no longer uses it: it sends the `callKey` to
+   `/api/calls/*` and never calls `/api/calls/exchange-token`. Dropping the
+   token is a separate cleanup.
 
 ## Found along the way
 

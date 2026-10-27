@@ -24,6 +24,8 @@ struct PeelHomeTests {
         enum State { case waiting, installing, holding, sendingBack, gone }
         var state = State.waiting
         var bridgeRuns: Bool { state == .holding || state == .installing }
+        /// What happened, in order, on both sides: `sync`, `stop client`, `fetch`.
+        var events: [String] = []
     }
 
     /// Where a fake move fails.
@@ -42,7 +44,7 @@ struct PeelHomeTests {
             }
         }
 
-        func send(_ link: HomeLink, _ parts: HomeParts, callbacks: BundledBridge.Server?) async throws {
+        func send(_ link: HomeLink, _ parts: HomeParts, callbacks: BundledBridge.Server?) async throws -> HomePeer? {
             if fails == .refused { throw HomeMoveRefused(description: "the move was refused: not a move") }
             if fails == .beforeArrival { throw PeelError("could not reach 192.168.1.20:8090") }
             if fails == .whileInstalling {
@@ -51,9 +53,11 @@ struct PeelHomeTests {
             }
             box.state = .holding
             if fails == .afterArrival { throw PeelError("the connection was lost") }
+            return PeelHomeTests.peer
         }
 
         func fetch(_ link: HomeLink, _ parts: HomeParts) async throws -> [String: String] {
+            box.events.append("fetch")
             if fails == .beforeArrival { throw PeelError("the move could not be downloaded") }
             try FileManager.default.createDirectory(at: parts.strut.appending(path: "workspace"), withIntermediateDirectories: true)
             try Data("from the box".utf8).write(to: parts.strut.appending(path: "workspace/graph.lbug"))
@@ -90,6 +94,15 @@ struct PeelHomeTests {
 
         func pingAgent() async -> Bool { answers && (running || box.bridgeRuns) }
 
+        /// The Mac's strut for dictation: no bridge, and as the app does, only under a moved brain.
+        var clientRunning = false
+        func startClient() { clientRunning = kept.moved != nil }
+        func syncClient() async { if clientRunning { box.events.append("sync") } }
+        func stopClient() {
+            if clientRunning { box.events.append("stop client") }
+            clientRunning = false
+        }
+
         /// Whether strut opens what came back.
         var strutOpens = true
         func homeStarted() async -> Bool {
@@ -101,6 +114,8 @@ struct PeelHomeTests {
         func expectOneBridge(_ comment: Comment? = nil) {
             #expect(!(running && box.bridgeRuns), comment)
             #expect(running == (kept == .thisMac), comment)
+            // The client's strut, never beside Peel Home's own here.
+            #expect(!(running && clientRunning), comment)
         }
     }
 
@@ -112,13 +127,23 @@ struct PeelHomeTests {
         let root = temp.url
         let parts = HomeParts(strut: root.appending(path: "Strut"), bridge: root.appending(path: "Bridge"),
                               secretKey: FileItem(file: root.appending(path: "strut-key")),
-                              identity: ["BROKER_URL": "127.0.0.1:1883", "BRIDGE_DEVICE": "mac-3f2a"])
+                              identity: ["BROKER_URL": "127.0.0.1:1883", "BRIDGE_DEVICE": "mac-3f2a"],
+                              peerActor: "tom", homePeer: FileItem(file: root.appending(path: "home-peer")))
         try FileManager.default.createDirectory(at: parts.strut.appending(path: "workspace"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: parts.bridge, withIntermediateDirectories: true)
         try Data("this Mac".utf8).write(to: parts.strut.appending(path: "workspace/graph.lbug"))
         try Data(#"{"assistant":["notes"],"jobs":[]}"#.utf8).write(to: parts.strut.appending(path: MCPGrants.file))
+        try FileManager.default.createDirectory(at: parts.strut.appending(path: "workspace/audio"), withIntermediateDirectories: true)
+        try Data(#"{"fixer":"qwen3-1.7b-q4"}"#.utf8).write(to: parts.strut.appending(path: "workspace/audio/dictation.json"))
         return parts
     }
+
+    nonisolated static let ca = "-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----\n"
+    /// When the peer's token runs out: a year after the move.
+    nonisolated static let expires = Date(timeIntervalSince1970: 1_824_536_000)
+    /// The box as strut's `move send` gives it (strut S1).
+    nonisolated static let peer = HomePeer(baseUrl: URL(string: "https://192.168.1.20:8443")!, token: "person-token", actor: "tom",
+                                           expires: expires, ca: ca, servername: "peel-home")!
 
     static let moveDay = Date(timeIntervalSince1970: 1_793_000_000)
 
@@ -135,6 +160,25 @@ struct PeelHomeTests {
         #expect(home.strutCopy == "Strut.moved-2026-10-26" && home.bridgeCopy == "Bridge.moved-2026-10-26")
         #expect(!FileManager.default.fileExists(atPath: parts.strut.path) && !FileManager.default.fileExists(atPath: parts.bridge.path))
         #expect(FileManager.default.fileExists(atPath: root.appending(path: "Strut.moved-2026-10-26/workspace/graph.lbug").path))
+    }
+
+    /// After a move, the Mac's strut for dictation runs on a fresh folder of
+    /// its own, never the one set aside: dictation's model picks copied
+    /// across, and the box's peer record kept for it (in the Keychain in the app).
+    @Test func outStartsTheClient() async throws {
+        let box = Box(), local = FakeLocal(box: box), parts = try folders()
+        let move = PeelHomeMove(mover: FakeMover(box: box), local: local, parts: parts, now: { Self.moveDay })
+        guard case .movedOut = await move.out(Self.link) else { Issue.record("not moved"); return }
+        local.expectOneBridge()
+        #expect(local.clientRunning && parts.client.lastPathComponent == "Strut.client")
+        #expect(try String(contentsOf: parts.client.appending(path: "workspace/audio/dictation.json"), encoding: .utf8)
+            == #"{"fixer":"qwen3-1.7b-q4"}"#)
+        // Nothing of the agent's: its graph and grants stayed in the copy set aside.
+        #expect(!FileManager.default.fileExists(atPath: parts.client.appending(path: "workspace/graph.lbug").path))
+        #expect(!FileManager.default.fileExists(atPath: parts.client.appending(path: MCPGrants.file).path))
+        #expect(HomePeer.read(try #require(parts.homePeer)) == Self.peer)
+        // Nothing of the peer's in the folder: its token is in the Keychain only.
+        #expect(try FileManager.default.subpathsOfDirectory(atPath: parts.client.path).allSatisfy { !$0.contains("peer") })
     }
 
     /// Each way out can fail, and what the person is told: nothing moved
@@ -158,8 +202,13 @@ struct PeelHomeTests {
         local.expectOneBridge("\(failure)")
         #expect(box.bridgeRuns == arrived)
         switch outcome {
-        case .unchanged(let why): #expect(unchanged && why.hasSuffix("Nothing changed; Peel Home is still on this Mac."))
-        case .unanswered(let home, _): #expect(!unchanged && !home.answered && local.kept == .moved(home))
+        case .unchanged(let why):
+            #expect(unchanged && why.hasSuffix("Nothing changed; Peel Home is still on this Mac."))
+            #expect(!local.clientRunning && !FileManager.default.fileExists(atPath: parts.client.path))
+        case .unanswered(let home, _):
+            #expect(!unchanged && !home.answered && local.kept == .moved(home))
+            // Dictation keeps a strut while this Mac's stays stopped.
+            #expect(local.clientRunning)
         default: Issue.record("\(failure): \(outcome)")
         }
         // This Mac's folders are where they were either way.
@@ -213,6 +262,10 @@ struct PeelHomeTests {
         #expect(try String(contentsOf: parts.strut.appending(path: "workspace/graph.lbug"), encoding: .utf8) == "from the box")
         #expect(MCPGrants.read(in: parts.strut).assistant == ["notes"])
         #expect(try parts.secretKey.read() == Data(String(repeating: "c", count: 64).utf8))
+        // Synced once more and stopped before the fetch; its folder gone once Peel Home is back.
+        #expect(box.events == ["sync", "stop client", "fetch"])
+        #expect(!local.clientRunning && !FileManager.default.fileExists(atPath: parts.client.path))
+        #expect(HomePeer.read(try #require(parts.homePeer)) == nil)
     }
 
     /// Back, but strut can't open what came (a graph naming the box's paths): marked moved
@@ -248,11 +301,14 @@ struct PeelHomeTests {
         local.kept = .moved(home)
         local.running = false
         box.state = failure == .check ? .holding : .sendingBack
+        local.clientRunning = true
         let outcome = await PeelHomeMove(mover: FakeMover(box: box, fails: failure), local: local, parts: try folders())
             .back(Self.link, from: home)
         guard case .stillAway = outcome else { Issue.record("\(failure): \(outcome)"); return }
-        // Still marked moved (with this Mac's copy, once set aside for the fetch), nothing running.
-        #expect(local.kept.moved?.host == home.host && !local.running)
+        // Still marked moved (with this Mac's copy, once set aside for the fetch), nothing running
+        // but the strut for dictation, started again.
+        #expect(local.kept.moved?.host == home.host && !local.running && local.clientRunning)
+        local.expectOneBridge()
     }
 
     /// Only the box Peel Home went to: another's link (any page can open
@@ -281,6 +337,10 @@ struct PeelHomeTests {
         #expect(try String(contentsOf: parts.strut.appending(path: "workspace/graph.lbug"), encoding: .utf8) == "this Mac")
         let left = try FileManager.default.contentsOfDirectory(atPath: parts.bridge.deletingLastPathComponent().path)
         #expect(left.contains { $0.hasPrefix("Bridge.old-") } && !left.contains("Bridge.moved-2026-10-26"))
+        // The box is gone: the strut for dictation with it, and its peer record.
+        let peerItem = try #require(parts.homePeer)
+        #expect(!local.clientRunning && !left.contains("Strut.client") && HomePeer.read(peerItem) == nil)
+        local.expectOneBridge()
     }
 
     // MARK: The link and the seam
@@ -319,11 +379,14 @@ struct PeelHomeTests {
     /// Forgetting the account takes the copies a move set aside, which hold the agent's key.
     @Test func forgettingTakesTheCopies() throws {
         let parts = try folders(), root = parts.strut.deletingLastPathComponent()
-        for name in ["Bridge.moved-2026-10-26", "Bridge.old-2026-10-26T101010", "Bridgework"] {
+        for name in ["Bridge.moved-2026-10-26", "Bridge.old-2026-10-26T101010", "Bridgework", "Strut.client"] {
             try FileManager.default.createDirectory(at: root.appending(path: name), withIntermediateDirectories: true)
         }
         try PeelHomeMove.eraseCopies(of: parts.bridge)
+        try PeelHomeMove.eraseCopies(of: parts.strut)
         #expect(Set(try FileManager.default.contentsOfDirectory(atPath: root.path)).isSuperset(of: ["Bridge", "Bridgework", "Strut"]))
+        // The client's, with the box's token.
+        #expect(!FileManager.default.fileExists(atPath: parts.client.path))
         #expect(!FileManager.default.fileExists(atPath: root.appending(path: "Bridge.moved-2026-10-26").path))
         #expect(!FileManager.default.fileExists(atPath: root.appending(path: "Bridge.old-2026-10-26T101010").path))
     }
@@ -361,7 +424,8 @@ struct PeelHomeTests {
         var parts = try folders()
         parts.identity = ["BROKER_URL": "broker.example:8883", "RUNNER_ALIAS": "Ada's agent"]
         try parts.secretKey.write(Data(String(repeating: "a", count: 64).utf8))
-        try await mover.send(Self.link, parts, callbacks: BundledBridge.Server(base: URL(string: "http://127.0.0.1:5555")!, token: "tok"))
+        // A strut from before it returned the box as a peer: none.
+        #expect(try await mover.send(Self.link, parts, callbacks: BundledBridge.Server(base: URL(string: "http://127.0.0.1:5555")!, token: "tok")) == nil)
 
         let args = try String(contentsOf: seen.appending(path: "args"), encoding: .utf8).split(separator: "\n").map(String.init)
         let envFile = try String(contentsOf: seen.appending(path: "path"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -369,7 +433,7 @@ struct PeelHomeTests {
         #expect(Array(args.dropFirst(4)) == ["--data", parts.strut.appending(path: "workspace").path,
                                              "--host-config", parts.strut.appending(path: "host-config.json").path,
                                              "--sidecar", "bridge=\(parts.bridge.path)", "--env", envFile,
-                                             "--bridge", "http://127.0.0.1:5555"])
+                                             "--bridge", "http://127.0.0.1:5555", "--peer-actor", "tom"])
         #expect(try String(contentsOf: seen.appending(path: "move.env"), encoding: .utf8) == """
             STRUT_SECRET_KEY='\(String(repeating: "a", count: 64))'
             bridge.BROKER_URL='broker.example:8883'
@@ -415,5 +479,118 @@ struct PeelHomeTests {
             """)
         let env = try await mover.fetch(Self.link, try folders())
         #expect(env == ["STRUT_SECRET_KEY": String(repeating: "d", count: 64)])
+    }
+
+    /// The box as the Mac's strut's peer, from `move send`'s result (strut
+    /// S1, `exp` in milliseconds): only https, a plain token and actor, and a
+    /// PEM CA if any; never printed with its token. A box given no peer
+    /// address answers `{ error }`: none.
+    @Test(arguments: [
+        (#"{"baseUrl":"https://192.168.1.20:8443","token":"person-token","actor":"tom","exp":1824536000000,"ca":"-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----\n","servername":"peel-home"}"#, true),
+        (#"{"error":"this host hands out no peer record (serve --peer-url)"}"#, false),
+    ])
+    func sendReturnsTheBoxAsAPeer(peer: String, given: Bool) async throws {
+        let answer = #"{"event":"sent","from":"/x","sidecars":["bridge"],"peer":"# + peer + "}"
+        let (mover, seen) = try fakeStrut("printf '%s\\n' '\(answer)'")
+        let parts = try folders()
+        try parts.secretKey.write(Data(String(repeating: "a", count: 64).utf8))
+        #expect(try await mover.send(Self.link, parts, callbacks: nil) == (given ? Self.peer : nil))
+        let args = try String(contentsOf: seen.appending(path: "args"), encoding: .utf8).split(separator: "\n").map(String.init)
+        #expect(Array(args.suffix(2)) == ["--peer-actor", "tom"])
+    }
+
+    @Test func aPeerRecordPeelCanTake() throws {
+        #expect(!"\(Self.peer)".contains("person-token") && !String(reflecting: Self.peer).contains("person-token"))
+        let url = URL(string: "https://192.168.1.20:8443")!
+        #expect(HomePeer(baseUrl: URL(string: "http://192.168.1.20:8443")!, token: "t", actor: "tom", expires: Self.expires, ca: nil) == nil)
+        #expect(HomePeer(baseUrl: url, token: "t t", actor: "tom", expires: Self.expires, ca: nil) == nil)
+        #expect(HomePeer(baseUrl: url, token: "t", actor: "to\nm", expires: Self.expires, ca: nil) == nil)
+        #expect(HomePeer(baseUrl: url, token: "t", actor: "tom", expires: Self.expires, ca: "not a certificate") == nil)
+        // A server name only names the certificate its CA issued, and is a host name.
+        #expect(HomePeer(baseUrl: url, token: "t", actor: "tom", expires: Self.expires, ca: nil, servername: "peel-home") == nil)
+        #expect(HomePeer(baseUrl: url, token: "t", actor: "tom", expires: Self.expires, ca: Self.ca, servername: "peel home") == nil)
+        // No CA: a certificate the Mac already trusts. Put on file as strut's `checkPeer` takes it.
+        let plain = try #require(HomePeer(baseUrl: url, token: "t", actor: "tom", expires: Self.expires, ca: nil))
+        #expect(StrutHomeSync.record(plain) == ["baseUrl": "https://192.168.1.20:8443", "token": "t", "label": "Peel Home"])
+        #expect(StrutHomeSync.record(Self.peer)["ca"]?.string == Self.ca)
+        #expect(StrutHomeSync.record(Self.peer)["servername"]?.string == "peel-home")
+        // Kept and read back as it was.
+        let item = FileItem(file: temp.url.appending(path: "home-peer"))
+        try FileManager.default.createDirectory(at: temp.url, withIntermediateDirectories: true)
+        try Self.peer.keep(in: item)
+        #expect(HomePeer.read(item) == Self.peer)
+    }
+
+    // MARK: The Mac's strut while Peel Home is on the box
+
+    /// A stand-in for strut's peers and `home-sync` (strut S1 and S2).
+    final class FakeSync: HomeSyncing, @unchecked Sendable {
+        var peers: [HomePeer] = []
+        var syncs = 0
+        var fails = false
+        var pulls = false
+        func addPeer(_ peer: HomePeer, on server: MemoryServer) async throws {
+            if fails { throw PeelError("could not reach 192.168.1.20:8443") }
+            peers.append(peer)
+        }
+        func sync(on server: MemoryServer) async throws -> Bool {
+            if fails { throw PeelError("could not reach 192.168.1.20:8443") }
+            syncs += 1
+            return pulls
+        }
+    }
+
+    /// The box put on file as the peer each time the client's strut starts,
+    /// then synced; each sync's time kept for the next launch; a failure
+    /// quiet. No peer record, or one run out: nothing tried.
+    @Test func theSyncerPutsThePeerAndKeepsTheLastSync() async throws {
+        let client = temp.url.appending(path: "Strut.client"), item = FileItem(file: temp.url.appending(path: "home-peer"))
+        try HomeClient.prepare(client, from: try folders().strut)
+        var now = Date(timeIntervalSince1970: 1_793_000_000)
+        let fake = FakeSync(), syncer = HomeSyncer(syncing: fake, client: client, peer: item, now: { now })
+        let server = MemoryServer(base: URL(string: "http://127.0.0.1:4100")!, key: "k")!
+        syncer.use(server)
+        await syncer.finish()
+        #expect(fake.peers.isEmpty && fake.syncs == 0 && syncer.status == .noPeer)
+        try Self.peer.keep(in: item)
+        fake.fails = true
+        await syncer.finish()
+        #expect(syncer.lastSync == nil && syncer.status == .notYet)
+        fake.fails = false
+        var pulled = 0
+        syncer.onPull = { pulled += 1 }
+        await syncer.finish()
+        #expect(fake.peers == [Self.peer] && fake.syncs == 1 && syncer.status == .synced(now) && pulled == 0)
+        // Asked twice before it began: one sync; then the move back's one more. The peer put once per start.
+        now = now.addingTimeInterval(60)
+        fake.pulls = true
+        syncer.sync()
+        syncer.sync()
+        await syncer.finish()
+        #expect(fake.peers == [Self.peer] && fake.syncs == 3 && pulled == 2)
+        #expect(HomeSyncer(syncing: fake, client: client, peer: item).lastSync == now)
+        // A strut started again (a new port and key): put again.
+        syncer.use(MemoryServer(base: URL(string: "http://127.0.0.1:4101")!, key: "k2")!)
+        await syncer.finish()
+        #expect(fake.peers.count == 2)
+        // The token ran out: nothing tried.
+        now = Self.expires.addingTimeInterval(1)
+        await syncer.finish()
+        #expect(fake.syncs == 5 && syncer.status == .expired(Self.expires))
+        // Stopped: nothing runs.
+        now = Self.moveDay
+        syncer.use(nil)
+        syncer.sync()
+        await syncer.finish()
+        #expect(fake.syncs == 5)
+    }
+
+    /// The client's strut runs no automations and has `home-sync`; Peel Home's own neither.
+    @Test func theClientRunsNoSchedulerAndSyncs() throws {
+        let data = temp.url.appending(path: "Strut.client"), config = data.appending(path: "host-config.json")
+        let env = BundledStrut.environment([:], key: "k", secretKey: "s", data: data, hostConfig: config, homeClient: true)
+        #expect(env["STRUT_SCHEDULER"] == "0" && env["STRUT_HOME_SYNC"] == "copy")
+        let home = BundledStrut.environment([:], key: "k", secretKey: "s", data: data, hostConfig: config)
+        #expect(home["STRUT_SCHEDULER"] == nil && home["STRUT_HOME_SYNC"] == nil)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import PeelCore
 import Synchronization
 
@@ -92,12 +93,22 @@ public struct HomeParts: Sendable {
     public var secretKey: any SecretItem
     /// The bridge's settings that make it this agent (`BundledBridge.identity`).
     public var identity: [String: String]
+    /// Who the person is to the box's strut, for the peer record a move out
+    /// asks for (`--peer-actor`); none asks for none.
+    public var peerActor: String?
+    /// Where the box's peer record is kept (`Profile.homePeer`).
+    public var homePeer: (any SecretItem)?
+    /// The Mac's strut while Peel Home is on the box (`HomeClient`).
+    public var client: URL { HomeClient.folder(for: strut) }
 
-    public init(strut: URL, bridge: URL, secretKey: any SecretItem, identity: [String: String] = [:]) {
+    public init(strut: URL, bridge: URL, secretKey: any SecretItem, identity: [String: String] = [:],
+                peerActor: String? = nil, homePeer: (any SecretItem)? = nil) {
         self.strut = strut
         self.bridge = bridge
         self.secretKey = secretKey
         self.identity = identity
+        self.peerActor = peerActor
+        self.homePeer = homePeer
     }
 }
 
@@ -119,8 +130,9 @@ public protocol HomeMover: Sendable {
     func check(_ link: HomeLink, _ parts: HomeParts) async throws -> HomeLink.Mode
     /// Packs this Mac's stopped folders and sends them; `callbacks`, the
     /// bridge just stopped, which strut's callbacks point at until the box
-    /// points them at its own.
-    func send(_ link: HomeLink, _ parts: HomeParts, callbacks: BundledBridge.Server?) async throws
+    /// points them at its own. Returns the box as a peer for the Mac's
+    /// strut (`HomePeer`); nil from a strut that gives none.
+    func send(_ link: HomeLink, _ parts: HomeParts, callbacks: BundledBridge.Server?) async throws -> HomePeer?
     /// Downloads the box's move into this Mac's folders and tells the box,
     /// which then sets its copy aside. Returns strut's env values that came with it.
     func fetch(_ link: HomeLink, _ parts: HomeParts) async throws -> [String: String]
@@ -135,6 +147,7 @@ public protocol HomeMover: Sendable {
 /// its words on stderr are dropped. A fetch names no bridge: Peel's starts
 /// after strut and points strut at itself then (`AutomationsClient.useBridge`).
 public struct StrutMove: HomeMover {
+    private static let log = Logger(subsystem: "dev.peel.mac", category: "peel-home")
     let node: URL
     let desktop: URL
 
@@ -185,14 +198,18 @@ public struct StrutMove: HomeMover {
         }
     }
 
-    public func send(_ link: HomeLink, _ parts: HomeParts, callbacks: BundledBridge.Server?) async throws {
+    public func send(_ link: HomeLink, _ parts: HomeParts, callbacks: BundledBridge.Server?) async throws -> HomePeer? {
         try await withEnvFile { file in
             let secretKey = try BundledStrut.secretKey(in: parts.secretKey)
             try Self.write(Self.envFile(secretKey: secretKey, identity: parts.identity), to: file)
             var command = ["send", link.url.absoluteString] + Self.folders(parts, envFile: file)
             if let callbacks { command += ["--bridge", callbacks.base.absoluteString] }
+            if let actor = parts.peerActor { command += ["--peer-actor", actor] }
             let result = try await run(command, parts, link: link, secretKey: secretKey, bridgeToken: callbacks?.token)
             guard result["event"] as? String == "sent" else { throw PeelError("Peel's strut didn't say Peel Home was sent.") }
+            // A box given no peer address says why; dictation then keeps this Mac's last copy.
+            if let refusal = HomePeer.refusal(result["peer"]) { Self.log.notice("no peer record: \(refusal, privacy: .public)") }
+            return HomePeer(result["peer"])
         }
     }
 
@@ -324,6 +341,14 @@ public protocol PeelHomeLocal: AnyObject {
     func homeStarted() async -> Bool
     /// Pings the agent in its DM: true once it answers.
     func pingAgent() async -> Bool
+    /// Starts the Mac's strut on `HomeParts.client`, for dictation only:
+    /// scheduler off, no bridge, no agent. A failure is quiet.
+    func startClient()
+    /// Syncs it with the box once more, if it is running: what dictation
+    /// learned here reaches the box before Peel Home comes back.
+    func syncClient() async
+    /// Stops it (its own folder; Peel Home's is never its).
+    func stopClient()
 }
 
 /// Peel Home moving between this Mac and a home server (docs/always-on.md,
@@ -390,19 +415,22 @@ public struct PeelHomeMove {
         }
         progress(.sending)
         let callbacks = await local.stopHome()
+        let peer: HomePeer?
         do {
-            try await mover.send(link, parts, callbacks: callbacks)
+            peer = try await mover.send(link, parts, callbacks: callbacks)
         } catch {
             let why = PeelError.noted(error, couldNot: "send Peel Home")
             // Only a box that refused it, and still waits, has none of it: one
             // still saying "receive" may be unpacking an upload whose answer was lost.
             guard error is HomeMoveRefused, (try? await mover.check(link, parts)) == .receive,
                   (try? local.keep(.thisMac)) != nil else {
+                startClient(peer: nil)
                 return .unanswered(home, why + " " + Self.mayHaveArrived)
             }
             local.startHome()
             return .unchanged(why + " " + Self.stillHere)
         }
+        startClient(peer: peer)
         return await answered(home, progress: progress)
     }
 
@@ -432,10 +460,14 @@ public struct PeelHomeMove {
                 return .stillAway("Your home server is waiting for a move, not sending one back. Peel Home is still there.")
             }
             progress(.sending)
+            // What dictation learned here goes to the box first; then nothing writes beside the fetch.
+            await local.syncClient()
+            local.stopClient()
             // This Mac's copy from the move, kept to fall back on, if the agent never answered from the box.
             home = setAside(home)
             env = try await mover.fetch(link, parts)
         } catch {
+            local.startClient()
             return .stillAway(PeelError.noted(error, couldNot: "bring Peel Home back") + " It's still on your home server.")
         }
         // The key strut's secrets are encrypted with now; the same one unless the box made its own.
@@ -465,9 +497,11 @@ public struct PeelHomeMove {
         guard await local.homeStarted() else {
             try? local.keep(.moved(home))
             restoreKey()
+            local.startClient()
             return .stillAway("Peel Home came back, but Peel's strut couldn't start with it. Your home server kept what it sent "
                 + "in its data folder. To carry on here, use this Mac's copy from the move.")
         }
+        removeClient()
         progress(.waiting)
         return .movedBack(answered: await local.pingAgent())
     }
@@ -487,7 +521,25 @@ public struct PeelHomeMove {
             try FileManager.default.moveItem(at: kept, to: folder)
         }
         try local.keep(.thisMac)
+        // Only now: until the copy is back in place, dictation keeps the client's strut.
+        local.stopClient()
+        removeClient()
         local.startHome()
+    }
+
+    /// The Mac's strut for dictation while Peel Home is on the box, on a
+    /// folder made now from Peel Home's, still in place (`HomeClient`), and
+    /// the box's peer record kept for it.
+    private func startClient(peer: HomePeer?) {
+        if let peer, let item = parts.homePeer { try? peer.keep(in: item) }
+        try? HomeClient.prepare(parts.client, from: parts.strut)
+        local.startClient()
+    }
+
+    /// The Mac's strut for dictation, gone with the box's peer record.
+    private func removeClient() {
+        try? HomeClient.remove(parts.client)
+        try? parts.homePeer?.delete()
     }
 
     /// The agent pinged; once it answers, the move is kept as done and this
@@ -523,11 +575,12 @@ public struct PeelHomeMove {
     }
 
     /// Removes the folders set aside beside `folder` (`<name>.moved-…`,
-    /// `<name>.old-…`): with the account, since they hold the agent's key and strut's secrets.
+    /// `<name>.old-…`) and the client's (`<name>.client`): with the account,
+    /// since they hold the agent's key, strut's secrets and the box's token.
     public nonisolated static func eraseCopies(of folder: URL) throws {
         let parent = folder.deletingLastPathComponent(), name = folder.lastPathComponent
         let names = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
-        for other in names where other.hasPrefix(name + ".moved-") || other.hasPrefix(name + ".old-") {
+        for other in names where other.hasPrefix(name + ".moved-") || other.hasPrefix(name + ".old-") || other == HomeClient.folder(for: folder).lastPathComponent {
             try FileManager.default.removeItem(at: parent.appending(path: other))
         }
     }

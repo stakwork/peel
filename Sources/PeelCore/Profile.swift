@@ -94,6 +94,16 @@ public struct Profile: Sendable {
          FileItem(file: directory.appendingPathComponent("hive")))
     }
 
+    /// The home server as a peer of the Mac's strut while Peel Home is there
+    /// (`HomePeer`, docs/always-on.md): its address, CA and a person token
+    /// that lives about a year. In the Keychain for an app profile.
+    public var homePeer: any SecretItem {
+        switch kind {
+        case .app: KeychainItem(service: "dev.peel.home-peer", account: name)
+        case .development: FileItem(file: directory.appendingPathComponent("home-peer"))
+        }
+    }
+
     /// Where the agent's database lives, beside the account's.
     public var agentDatabase: URL { directory.appendingPathComponent("agent.sqlite") }
 
@@ -146,7 +156,7 @@ public struct Profile: Sendable {
         // The automation token #221 kept; strut is now handed one per launch.
         try? KeychainItem(service: "dev.peel.automations", account: name).delete()
         var failure: (any Error)?
-        for key in [agentCredential, strutKey, brain, hive] {
+        for key in [agentCredential, strutKey, brain, homePeer, hive] {
             do { try key.delete() } catch { failure = failure ?? error }
         }
         if let failure { throw failure }

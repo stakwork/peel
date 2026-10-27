@@ -5,6 +5,12 @@
 # the keys NAME takes are read, and never run: a move can't set PATH,
 # NODE_OPTIONS or LD_PRELOAD. The bridge starts only once strut answers
 # /health, and starts again whenever strut does.
+#
+# It also keeps the programs that share strut's network in it: when strut's
+# mark changes, the gate exits, and Docker starts the container again in
+# strut's network. The peer port's Caddy (NAME peer) only does that: it
+# takes no values and runs with or without Peel Home, since its CA must exist
+# before the move that hands it to the Mac.
 set -u
 
 # Reads FILE's KEY='value' lines (strut move's format: ' escaped as '\'')
@@ -37,22 +43,27 @@ name=$1
 shift
 env=/data/env/$name
 gate=/data/gate
+# strut's gate writes two marks, each a new value:
+# - strut.ready each time strut answers /health after a start. The bridge
+#   starts on one and follows it: its first turn needs strut.
+# - strut.box each time strut's container starts, with a new network. The
+#   peer follows that: strut starting again inside its container keeps it.
+ready=$gate/strut.ready
+# gated: runs only with Peel Home, with its values and a heartbeat for setup.sh.
+# follow: the mark whose change restarts this container.
 case $name in
-strut) moved=$env/home.env keys="STRUT_SECRET_KEY|STRUT_API_KEY" ;;
-bridge) moved=$env/bridge.env keys="BROKER_URL|BRIDGE_DEVICE|RUNNER_ALIAS|BRIDGE_WORKFLOW|BRIDGE_ACTOR|RUNNER_ADMIN_TOKEN|BRIDGE_TOKEN|BRIDGE_STRUT_KEY" ;;
+strut) gated=1 follow= moved=$env/home.env keys="STRUT_SECRET_KEY|STRUT_API_KEY" ;;
+bridge) gated=1 follow=$ready moved=$env/bridge.env keys="BROKER_URL|BRIDGE_DEVICE|RUNNER_ALIAS|BRIDGE_WORKFLOW|BRIDGE_ACTOR|RUNNER_ADMIN_TOKEN|BRIDGE_TOKEN|BRIDGE_STRUT_KEY" ;;
+peer) gated= follow=$gate/strut.box ;;
 *) echo "gate: unknown program $name" >&2; exit 2 ;;
 esac
 
-# strut's gate writes a new value here each time strut answers /health after
-# a start. The bridge starts on one, and when it changes (strut, or strut's
-# container, started again) the bridge's container exits for Docker to
-# restart it: it rejoins strut's network, and its first turn finds strut.
-ready=$gate/strut.ready
-[ "$name" = strut ] && rm -f "$ready"
+mark() { od -An -N8 -tx1 /dev/urandom | tr -d ' \n' >"$1.tmp" && mv "$1.tmp" "$1"; }
+[ "$name" = strut ] && { rm -f "$ready"; mark "$gate/strut.box"; }
 
 child= health=
 nap() { sleep "$1" & wait $!; }
-beat() { touch "$gate/$name.running"; }
+beat() { [ -z "$gated" ] || touch "$gate/$name.running"; }
 # Stops the program and everything it started (gate.sh is the container's
 # first process), keeping the heartbeat fresh while it waits, then removes
 # the heartbeat: setup.sh reads a missing or stale one as "stopped".
@@ -74,7 +85,10 @@ stop_child() {
 }
 trap 'stop_child; exit 0' TERM INT
 
-has_home() { [ -f "$moved" ] && [ -f "$env/host.env" ] && [ ! -f "$gate/stop" ]; }
+has_home() {
+    [ -z "$gated" ] && return 0
+    [ -f "$moved" ] && [ -f "$env/host.env" ] && [ ! -f "$gate/stop" ]
+}
 missing() {
     [ -f "$gate/stop" ] && { echo "a send-back (see the setup service)"; return; }
     [ -f "$moved" ] || { echo "$moved"; return; }
@@ -83,22 +97,25 @@ missing() {
 
 # Exports the keys this program takes; this box's host.env, read last, wins.
 export_keys() {
+    [ -z "$gated" ] && return 0
     each() { case "|$keys|" in *"|$1|"*) export "$1=$2" ;; esac; }
     read_env "$moved" && read_env "$env/host.env"
 }
 
+# The mark as it was when this container started (taken once it exists): a
+# change, even while the program is down, means another network.
+started=
 while :; do
     if ! has_home; then
         stop_child
         echo "gate: $name waits for Peel Home ($(missing))"
         while ! has_home; do nap 2; done
     fi
-    started=
     if [ "$name" = bridge ]; then
         [ -s "$ready" ] || echo "gate: bridge waits for strut"
         while has_home && [ ! -s "$ready" ]; do nap 2; done
-        started=$(cat "$ready" 2>/dev/null)
     fi
+    [ -n "$started" ] || started=$(cat "$follow" 2>/dev/null)
     # The heartbeat before the program, then the stop check again: setup.sh
     # writes the stop request before it looks at the heartbeat.
     beat
@@ -108,7 +125,7 @@ while :; do
     if [ "$name" = strut ]; then
         rm -f "$ready"
         (until curl -fsS -o /dev/null "http://127.0.0.1:${STRUT_PORT:-3000}/health" 2>/dev/null; do sleep 1; done
-            od -An -N8 -tx1 /dev/urandom | tr -d ' \n' >"$ready.tmp" && mv "$ready.tmp" "$ready") &
+            mark "$ready") &
         health=$!
     fi
     # The heartbeat every 10 s (setup.sh allows 30), the checks every 2.
@@ -116,8 +133,8 @@ while :; do
     while kill -0 "$child" 2>/dev/null && has_home; do
         [ $((i % 5)) -eq 0 ] && beat
         i=$((i + 1))
-        if [ "$name" = bridge ] && [ -s "$ready" ] && [ "$(cat "$ready")" != "$started" ]; then
-            echo "gate: strut started again; restarting the bridge's container to rejoin its network"
+        if [ -n "$follow" ] && [ -s "$follow" ] && [ "$(cat "$follow")" != "$started" ]; then
+            echo "gate: strut started again; restarting $name's container to rejoin its network"
             stop_child
             exit 1
         fi

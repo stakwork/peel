@@ -80,6 +80,13 @@ final class CallSession {
     private(set) var deviceNotice: String?
     /// What you share, while you share it (and while it is being published).
     var sharing: ScreenShare.Content? { share?.content }
+    /// Whether shares include Peel's own windows, which are left out by
+    /// default. Applies to the running share at once, and to the next one.
+    private(set) var includePeelWindows = false
+    /// Whether the running share includes Peel's own windows. Reads the
+    /// tracked setting, which the running share always follows, so views
+    /// refresh when it changes.
+    var sharingIncludesPeel: Bool { share != nil && includePeelWindows }
     /// The tile shown large with the others in a strip beside it; nil for
     /// the grid. A screen someone starts sharing takes it.
     private(set) var focus: Tile.ID?
@@ -289,6 +296,13 @@ final class CallSession {
         Task { await startSharing(kind) }
     }
 
+    /// Includes Peel's windows in shares or leaves them out, in the running
+    /// share too.
+    func setIncludePeelWindows(_ include: Bool) {
+        includePeelWindows = include
+        share?.setIncludesPeel(include)
+    }
+
     func stopScreenShare() {
         Task { await stopSharing() }
     }
@@ -299,10 +313,10 @@ final class CallSession {
         defer { switchingShare = false }
         // Nothing is shared unless the picker returned something and the
         // call is still on when it did.
-        guard let filter = await ScreenShare.pick(kind), !leaving, state == .connected else { return }
+        guard let filter = await ScreenShare.pick(kind, includePeel: includePeelWindows), !leaving, state == .connected else { return }
         let started: ScreenShare
         do {
-            started = try await ScreenShare.start(filter) { [weak self] in self?.shareEnded() }
+            started = try await ScreenShare.start(filter, includePeel: includePeelWindows) { [weak self] in self?.shareEnded() }
         } catch {
             deviceNotice = "Could not start sharing"
             return

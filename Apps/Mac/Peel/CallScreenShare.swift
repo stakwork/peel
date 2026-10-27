@@ -7,8 +7,9 @@ import Synchronization
 /// A screen, window or app you share on a call. macOS's own picker chooses
 /// it, so Peel needs no standing Screen Recording permission and sees only
 /// what was picked. Frames go from a ScreenCaptureKit stream into a LiveKit
-/// buffer track. While it runs, Peel's own windows are left out of every
-/// capture, so a shared display never shows your chats or the call itself.
+/// buffer track. Unless asked to include them, Peel's own windows are left out
+/// of every capture, so a shared display never shows your chats or the call
+/// itself; that can be switched while the share runs.
 @MainActor
 final class ScreenShare {
     /// What the picker chose.
@@ -16,9 +17,10 @@ final class ScreenShare {
         case display, window, application
 
         /// The line under the control bar while it is shared.
-        var note: String {
+        func note(includingPeel: Bool) -> String {
             switch self {
-            case .display: "You're sharing your screen, without Peel's windows"
+            case .display:
+                includingPeel ? "You're sharing your screen, with Peel's windows" : "You're sharing your screen, without Peel's windows"
             case .window: "You're sharing a window"
             case .application: "You're sharing an app"
             }
@@ -44,13 +46,17 @@ final class ScreenShare {
     }
 
     let content: Content
+    /// Whether Peel's own windows are part of the capture. Changes while it
+    /// runs, through `setIncludesPeel`.
+    private(set) var includesPeel: Bool
     /// The screen share track, publishable once the first frame is in.
     let track: LocalVideoTrack
     private let stream: SCStream
     private let output: ShareOutput
 
-    private init(content: Content, track: LocalVideoTrack, stream: SCStream, output: ShareOutput) {
+    private init(content: Content, includesPeel: Bool, track: LocalVideoTrack, stream: SCStream, output: ShareOutput) {
         self.content = content
+        self.includesPeel = includesPeel
         self.track = track
         self.stream = stream
         self.output = output
@@ -62,12 +68,12 @@ final class ScreenShare {
 
     /// Shows macOS's sharing picker for one kind of content, so it opens in
     /// that mode; nil when it was cancelled or could not open. Peel's own
-    /// windows and apps are not offered.
-    static func pick(_ kind: Content) async -> SCContentFilter? {
+    /// windows and apps are not offered, unless `includePeel`.
+    static func pick(_ kind: Content, includePeel: Bool = false) async -> SCContentFilter? {
         guard !Offscreen.refuses("the share picker") else { return nil }
         let shared = SCContentSharingPicker.shared
         var configuration = SCContentSharingPickerConfiguration()
-        if let peel = Bundle.main.bundleIdentifier { configuration.excludedBundleIDs = [peel] }
+        if !includePeel, let peel = Bundle.main.bundleIdentifier { configuration.excludedBundleIDs = [peel] }
         // A change of content from the menu bar would bypass this code.
         configuration.allowsChangingSelectedContent = false
         configuration.allowedPickerModes = kind.pickerModes
@@ -90,10 +96,11 @@ final class ScreenShare {
     private static let maxSide: CGFloat = 1920
     private static let fps: Int32 = 15
 
-    /// Starts capturing `filter`, after hiding Peel's windows from capture.
+    /// Starts capturing `filter`, after hiding Peel's windows from capture,
+    /// unless `includePeel`.
     /// `stopped` runs when macOS ends the capture (the menu bar's Stop, a
     /// closed window).
-    static func start(_ filter: SCContentFilter, stopped: @escaping @MainActor () -> Void) async throws -> ScreenShare {
+    static func start(_ filter: SCContentFilter, includePeel: Bool = false, stopped: @escaping @MainActor () -> Void) async throws -> ScreenShare {
         let content: Content = switch filter.style {
         case .window: .window
         case .application: .application
@@ -120,8 +127,9 @@ final class ScreenShare {
         let output = ShareOutput(capturer: capturer) { Task { @MainActor in stopped() } }
         let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: output.queue)
-        // Only a display can show Peel: the picker never offers its windows.
-        if content == .display { WindowCloak.hide() }
+        // Only a display can show Peel unasked: the picker never offers its
+        // windows.
+        if content == .display, !includePeel { WindowCloak.hide() }
         do {
             try await stream.startCapture()
         } catch {
@@ -129,11 +137,20 @@ final class ScreenShare {
             throw error
         }
         output.startResending()
-        return ScreenShare(content: content, track: track, stream: stream, output: output)
+        return ScreenShare(content: content, includesPeel: includePeel, track: track, stream: stream, output: output)
     }
 
     /// macOS ended the capture on its own.
     var ended: Bool { output.ended }
+
+    /// Includes Peel's windows in the capture, or leaves them out, at once.
+    /// Only a display can show them: a window or an app capture holds just
+    /// what was picked, so for those only the flag changes.
+    func setIncludesPeel(_ include: Bool) {
+        includesPeel = include
+        guard content == .display else { return }
+        if include { WindowCloak.show() } else { WindowCloak.hide() }
+    }
 
     /// Stops the capture and lets Peel's windows be captured again.
     func stop() async {

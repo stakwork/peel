@@ -309,16 +309,25 @@ private struct CallControls: View {
     }
 
     /// Share starts on the entire screen, its chevron offers a window or an
-    /// app; while you share it is one filled button that stops it.
+    /// app; while you share it is one filled button that stops it, with a
+    /// chevron for the share's options.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
-            Button { call.stopScreenShare() } label: {
-                pill("rectangle.inset.filled.and.person.filled", "Stop sharing", weight: .medium,
-                     text: Theme.buttonText, fill: Theme.accent)
+            HStack(spacing: 0) {
+                Button { call.stopScreenShare() } label: {
+                    pill("rectangle.inset.filled.and.person.filled", "Stop sharing", weight: .medium,
+                         text: Theme.buttonText, fill: .clear)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .help("Stop sharing (⌘⇧S)")
+                Theme.buttonText.opacity(0.25).frame(width: 1)
+                chevron(shareChevron, help: "Share options", label: "Share options", tint: Theme.buttonText) {
+                    showShareMenu(at: shareChevron)
+                }
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut("s", modifiers: [.command, .shift])
-            .help("Stop sharing (⌘⇧S)")
+            .frame(height: 44)
+            .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
         } else {
             shareSegment
         }
@@ -388,11 +397,14 @@ private struct CallControls: View {
     }
 
     /// The chevron half of a segment, which opens a menu beside `anchor`.
-    private func chevron(_ anchor: MenuAnchor, help: String, label: String, action: @escaping () -> Void) -> some View {
+    private func chevron(
+        _ anchor: MenuAnchor, help: String, label: String, tint: Color = Theme.secondaryText,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: "chevron.up")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText)
+                .foregroundStyle(tint)
                 .frame(width: 26)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -407,7 +419,7 @@ private struct CallControls: View {
     /// a connection that was lost.
     @ViewBuilder private var notes: some View {
         if let sharing = call.sharing {
-            note(sharing.note, action: "Stop", perform: call.stopScreenShare)
+            note(sharing.note(includingPeel: call.sharingIncludesPeel), action: "Stop", perform: call.stopScreenShare)
         }
         let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
             .compactMap { $0 }
@@ -454,13 +466,20 @@ private struct CallControls: View {
         presenter?.show(entries, at: anchor, source: "call-devices", minWidth: 268)
     }
 
-    /// What the picker opens on: the entire screen, a window or an app.
+    /// While you share, whether Peel's windows are in it; otherwise what the
+    /// picker opens on (the entire screen, a window or an app), and the same
+    /// option for the share to come.
     private func showShareMenu(at anchor: MenuAnchor) {
-        let entries: [MenuEntry] = [
+        let includePeel = MenuEntry.button(
+            "Include Peel windows", systemImage: "macwindow.on.rectangle", checked: call.includePeelWindows
+        ) { call.setIncludePeelWindows(!call.includePeelWindows) }
+        let entries: [MenuEntry] = call.sharing != nil ? [includePeel] : [
             .header("Share"),
             .button("Entire screen", systemImage: "display") { call.startScreenShare(.display) },
             .button("A window", systemImage: "macwindow") { call.startScreenShare(.window) },
             .button("An app", systemImage: "app") { call.startScreenShare(.application) },
+            .divider,
+            includePeel,
         ]
         presenter?.show(entries, at: anchor, source: "call-share", minWidth: 200)
     }

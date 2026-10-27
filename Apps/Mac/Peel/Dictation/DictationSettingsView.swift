@@ -93,6 +93,7 @@ struct DictationSettingsSection: View {
     private var stateText: String {
         if !dictation.isEnabled { return "Off" }
         if !dictation.permissions.requiredGranted { return "Waiting for permissions" }
+        if dictation.needsRestart { return "Restart Peel to finish" }
         return dictation.isListening ? "On" : "Starting…"
     }
 
@@ -116,6 +117,7 @@ struct DictationOffer: View {
             dismiss: { DictationController.shared.dismissOffer() },
             accept: {
                 DictationController.shared.dismissOffer()
+                DictationController.shared.setEnabled(true)
                 model.openAccount(.dictation)
             }
         )

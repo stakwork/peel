@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import AVFoundation
+import IOKit.hid
 import Observation
 import SwiftUI
 import PeelUI
@@ -48,15 +49,27 @@ final class DictationPermissions {
         }
     }
 
+    /// Input Monitoring: asks the system, which lists Peel there and prompts;
+    /// when that still leaves it off (turned down before, or the prompt was
+    /// dismissed) opens its pane, where Peel is now listed to switch on.
     func requestInputMonitoring() {
+        if inputMonitoring == .granted { return }
         if inputMonitoring == .notAsked {
             guard !Offscreen.refuses("a device prompt") else { return }
             inputMonitoringAsked = true
-            _ = CGRequestListenEventAccess()
+            if !CGRequestListenEventAccess() {
+                _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+            }
             refresh()
-        } else {
-            open("Privacy_ListenEvent")
         }
+        if inputMonitoring != .granted { open("Privacy_ListenEvent") }
+    }
+
+    /// Everything the hotkey and the capture need, one after the other: the
+    /// microphone, then Input Monitoring. Only what is not yet granted is asked.
+    func requestAll() async {
+        if microphone == .notAsked { await requestMicrophone() }
+        requestInputMonitoring()
     }
 
     func requestAccessibility() { open("Privacy_Accessibility") }
@@ -79,7 +92,7 @@ struct DictationPermissionRows: View {
             button(permissions.microphone) { Task { await permissions.requestMicrophone() } }
         }
         Fact("Input Monitoring") {
-            state(permissions.inputMonitoring, needed: "Needed to see the dictation key. Peel may need a restart after you allow it.")
+            state(permissions.inputMonitoring, needed: "Needed to see the dictation key. Peel will ask once.")
         } trailing: {
             button(permissions.inputMonitoring) { permissions.requestInputMonitoring() }
         }

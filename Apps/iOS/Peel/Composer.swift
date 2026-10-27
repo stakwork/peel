@@ -24,6 +24,8 @@ struct PhoneComposer: View {
     @State private var mention: String?
     @State private var mentionable: [TribeMember] = []
     @State private var insertion: MentionInsertion?
+    @State private var recorder = VoiceRecorder()
+    @Environment(\.scenePhase) private var scenePhase
 
     private var files: [URL] { model.pendingFiles[composer] ?? [] }
 
@@ -74,11 +76,15 @@ struct PhoneComposer: View {
                 FilesTray(files: files) { model.removeFile($0, from: composer) }
             }
             HStack(alignment: .bottom, spacing: 0) {
-                ComposerTextField(
-                    text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0,
-                    mention: $mention, insertion: insertion
-                )
-                .padding(.leading, 16)
+                if recorder.state.isRecording {
+                    RecordingIndicator(state: recorder.state)
+                } else {
+                    ComposerTextField(
+                        text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0,
+                        mention: $mention, insertion: insertion
+                    )
+                    .padding(.leading, 16)
+                }
                 if let paysTo, composer.chat != nil, composer.thread == nil {
                     ComingButton(systemImage: "bolt", label: "Send sats",
                                  note: "Sending sats to \(paysTo) from here is coming. Send from the Mac for now.")
@@ -90,12 +96,30 @@ struct PhoneComposer: View {
                     let hasName = model.myAlias?.nilIfEmpty != nil
                     SendButton(enabled: hasName) { Task { await model.sendDraft(from: composer) } }
                 } else {
-                    ComingButton(systemImage: "mic", label: "Record a voice message",
-                                 note: "Voice messages are coming.")
+                    HoldToRecordButton(recorder: recorder) { file in sendVoice(file) }
                 }
             }
+            if recorder.denied {
+                Text("Allow the microphone in Settings to record voice messages.")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, Theme.Space.sm)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { recorder.cancel() }
         }
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.touchTarget / 2, style: .continuous))
+    }
+}
+
+extension PhoneComposer {
+    /// A recording goes as one voice message (an audio attachment) through
+    /// the model's send path, to a contact or a tribe alike.
+    fileprivate func sendVoice(_ file: URL) {
+        model.addFiles([file], to: composer)
+        Task { await model.sendDraft(from: composer) }
     }
 }
 

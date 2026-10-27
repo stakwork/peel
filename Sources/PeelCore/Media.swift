@@ -131,6 +131,9 @@ struct OutgoingFile: Equatable {
         if ext != "pdf", let frames = AttachmentKind.imageFrames(data) {
             let animated = frames > 1
             self.init(fileName: animated ? "image.gif" : "image.jpg", mediaType: animated ? "image/gif" : "image/jpg")
+        } else if ext == "wav", AttachmentKind.container(data)?.mimeType == "audio/wav" {
+            // A recording, as the Mac app names it (UTType's "audio/vnd.wave" is no one's).
+            self.init(fileName: VoiceMessage.fileName, mediaType: VoiceMessage.mediaType)
         } else if ["mov", "mp4", "m4v", "3gp"].contains(ext) {
             // The Mac app's `URL.isVideo`; other videos go as plain files.
             self.init(fileName: "video.mov", mediaType: "video/mov")

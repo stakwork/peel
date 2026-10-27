@@ -26,6 +26,8 @@ struct AttachmentBlock: View {
             FileMark(message: message, note: "Paid. Buy it on the Mac for now.")
         } else if message.attachmentKind == .image {
             ImageTile(message: message)
+        } else if message.attachmentKind == .audio {
+            VoiceBubble(message: message)
         } else {
             FileMark(message: message, note: message.uploadState == .pending ? "Uploading…" : "Opens on the Mac for now")
         }

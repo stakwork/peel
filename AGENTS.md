@@ -163,6 +163,11 @@ is a short plan. Update the status and the journal when you finish something.
     `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`,
     `MediaInfo` (a cached video's or recording's duration, picture size and
     poster frame, read in place with the container type from its bytes)
+  - `VoiceMessage.swift` — voice messages, the platform-independent part: audio/wav
+    (16 kHz mono PCM, `audio.wav`) sent as an ordinary attachment, release
+    rules (minimum length, slide to cancel), the recorder's state and clock,
+    the player's progress and seek maths, `Engine.sendVoiceMessage` (tested in
+    `VoiceMessageTests`); the phone's `VoiceRecorder` and `VoicePlayer` use it
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,

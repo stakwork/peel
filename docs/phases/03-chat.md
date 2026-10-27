@@ -3313,3 +3313,17 @@ mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.
 ## The last reply on a thread's row (2026-10-26)
 
 A collapsed thread's row (Mac `ThreadSummaryLine`, iPhone `ThreadSummaryButton`) now also shows the newest reply's words under its reply count and "replied …" label: smaller, indented, with its sender's photo and name, two lines at most. `ThreadSummary.latest` already carried the message from `threadsSQL`'s `latestID` (one query for all rows), so no storage change. `Message.threadReplyPreview` (PeelCore) is the one string: text cut at 120 characters, else "Photo", "Video", "Voice message", "File", "Payment", "Payment request", "Call". Tested in `MessageTests`; the Apple UI was not built on this Linux pod.
+
+## Voice messages on the iPhone (2026-10-27)
+
+Built: hold the mic in the composer to record, release to send, slide left or
+up to cancel (under a second is dropped). Recording is 16 kHz mono 16-bit WAV
+(`audio.wav`, `audio/wav`): what the Mac app's `getFileAndMime` names a
+recording and what the Sphinx apps play, so it goes as an ordinary type 6
+attachment (same memes-server sign-in, media key and send path, contacts and
+tribes). Rows with an audio attachment show play/pause, a seekable bar and
+"current / total" (`VoiceBubble`). The rules are in `VoiceMessage.swift`
+(tested); `NSMicrophoneUsageDescription` is set on the iOS target. Open: the
+Mac has no recorder (it plays audio as before); not built or run here (no
+Swift toolchain on the dev server), so `swift test` and the phone build are
+still to be run.

@@ -201,6 +201,8 @@ struct CallPeopleStack: View {
 /// Video call (⌥⌘V). While a recent call here has someone on it, "● Join · N"
 /// joins the newest such call instead, with "Start a new call" behind its
 /// chevron. On another call, either asks in place to leave it first (C5).
+/// With Stadeum connected, the menu also picks who a call here brings
+/// Jamie from: one of the person's workspaces, or none (docs/hive-calls.md).
 struct CallHeaderButton: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
@@ -304,11 +306,21 @@ struct CallHeaderButton: View {
     private var menuOpen: Bool { presenter?.isOpen(from: menuSource) == true }
 
     private func showMenu(header: Bool) {
+        let jamie = model.callJamie(in: chat)
+        let with = jamie.map { "With Jamie from \($0.name)" }
         let items: [MenuEntry] = [
-            .button("Audio call", systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
-            .button("Video call", systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
+            .button("Audio call", subtitle: with, systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
+            .button("Video call", subtitle: with, systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
         ]
-        presenter?.show((header ? [.header("Start a new call")] : []) + items, at: header ? chevron : anchor, source: menuSource)
+        let workspaces = model.stadeum.live
+        let picks: [MenuEntry] = workspaces.isEmpty ? [] : [.header("Jamie")]
+            + workspaces.map { peer in
+                .button(peer.name, checked: peer.id == jamie?.id) { model.calls.pickJamie(peer, in: chat) }
+            }
+            + [.button("No Jamie", checked: jamie == nil) { model.calls.pickJamie(nil, in: chat) }]
+        presenter?.show(
+            .sections((header ? [.header("Start a new call")] : []) + items, picks), at: header ? chevron : anchor, source: menuSource
+        )
     }
 
     private func start(audioOnly: Bool) {
@@ -324,7 +336,8 @@ struct CallHeaderButton: View {
         model.calls.openingWindow({ openWindow(id: CallWindow.id) }) {
             let done = switch action {
             case .join(let link): await model.calls.join(link, in: chat, failureInChat: true)
-            case .start(let audioOnly): await model.calls.start(in: chat, audioOnly: audioOnly)
+            case .start(let audioOnly):
+                await model.calls.start(in: chat, audioOnly: audioOnly, jamie: model.callJamie(in: chat))
             }
             pending = nil
             return done

@@ -263,6 +263,17 @@ extension Engine {
         try storage.set(String(decoding: try JSONEncoder().encode(workflows.sorted()), as: UTF8.self), for: .systemAutomationsOn)
     }
 
+    /// The Jamie picked for calls in each chat (`Setting.callJamie`).
+    public func callJamie() throws -> [String: String] {
+        JSON.decode([String: String].self, from: try storage.value(for: .callJamie)) ?? [:]
+    }
+
+    public func setCallJamie(_ picks: [String: String]) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        try storage.set(String(decoding: try encoder.encode(picks), as: UTF8.self), for: .callJamie)
+    }
+
     /// What an app shows of the account when it opens, read in one call off
     /// its actor. A setting that cannot be read is nil, as each getter's
     /// failure would be.
@@ -280,6 +291,7 @@ extension Engine {
         public let boostAmountMsat: UInt64?
         public let notificationShowsText: Bool?
         public let sidebarLayout: ChatSections.Layout?
+        public let callJamie: [String: String]?
         public let wordsConfirmed: Bool?
         public let connection: ConnectionState
         /// A restore from the words has not finished (`Setting.needsRestore`).
@@ -294,7 +306,7 @@ extension Engine {
             balanceMsat: try? storage.balanceMsat(),
             paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
             notificationShowsText: try? notificationShowsText(), sidebarLayout: try? sidebarLayout(),
-            wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
+            callJamie: try? callJamie(), wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
         )
     }
 

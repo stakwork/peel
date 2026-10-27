@@ -244,6 +244,17 @@ public final class Stadeum {
         apps.removeAll { $0.peer != nil }
     }
 
+    // MARK: - Calls with Jamie
+
+    /// A call with Jamie in it for `peer`'s workspace: the link Hive makes
+    /// for this device's person (`HiveClient.startCall`, docs/hive-calls.md).
+    public func callLink(on peer: HivePeer) async throws -> String {
+        guard let link, !revoked, live.contains(where: { $0.id == peer.id }) else {
+            throw PeelError("Connect Stadeum to call with Jamie from \(peer.name).")
+        }
+        return try await HiveClient(hive: link.hive).startCall(link, workspace: peer.id)
+    }
+
     // MARK: - Opening an org's page
 
     /// How something opens on its org's own strut, for a device with no

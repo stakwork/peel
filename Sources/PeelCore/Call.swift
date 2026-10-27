@@ -139,12 +139,29 @@ public struct CallLink: Sendable, Equatable {
     /// A new room on `server` (`host[:port]`) named with 128 random bits
     /// from the system's secure generator, as the words are, where the
     /// official apps' timestamps can be guessed from when a call started.
-    /// Peel never makes Hive links.
+    /// A call with Jamie in it is Hive's to make (`hive(_:server:audioOnly:)`).
     public static func new(server: String, audioOnly: Bool) throws -> CallLink {
         guard let base = TribeLink.baseURL(server) else { throw Engine.Failure.unreadableCallServer(server) }
         let name = (0..<16).map { _ in UInt8.random(in: .min ... .max) }.hex
         return CallLink(
             server: server, base: base, room: roomPrefix + name, audioOnly: audioOnly, callKey: nil, hiveToken: nil
+        )
+    }
+
+    /// The call Hive made with Jamie in it (`HiveClient.startCall`), checked
+    /// as any link against `server`, audio or video as the person chose:
+    /// Hive's link says neither.
+    public static func hive(_ link: String, server: String, audioOnly: Bool) throws -> CallLink {
+        guard let call = CallLink(link: link, server: server) else {
+            let host = URLComponents(string: link)?.host?.lowercased()
+            guard let host, host != TribeLink.baseURL(server)?.host?.lowercased() else {
+                throw PeelError("Stadeum's call link is not one Peel can join.")
+            }
+            throw PeelError("Stadeum's call is on \(TextLine.clean(host, max: 100)), not on this account's call server (\(server)).")
+        }
+        return CallLink(
+            server: call.server, base: call.base, room: call.room, audioOnly: audioOnly,
+            callKey: call.callKey, hiveToken: call.hiveToken
         )
     }
 

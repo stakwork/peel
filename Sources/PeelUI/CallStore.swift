@@ -60,6 +60,15 @@ public final class CallStore {
     /// A chat's title for the call window ("#tribe" or the contact's name),
     /// looked up when a call is joined, so a rejoin shows a rename.
     @ObservationIgnored var chatTitle: (_ chat: String) -> String = { _ in "Call" }
+    /// A call with Jamie in it for a Stadeum workspace: the link Hive made
+    /// (`Stadeum.callLink`). Throws when there is none to be had.
+    @ObservationIgnored var hiveCall: (_ peer: HivePeer) async throws -> String = { _ in
+        throw PeelError("Connect Stadeum to call with Jamie.")
+    }
+    /// The Jamie picked for calls in each chat, by peer id, "" for none
+    /// (`Engine.callJamie`): this device's. A chat with no pick takes its
+    /// tribe's (`HivePeer.jamie`).
+    public private(set) var jamiePicks: [String: String] = [:]
 
     @ObservationIgnored private let provider: any CallProvider
     @ObservationIgnored private var engine: Engine?
@@ -70,16 +79,19 @@ public final class CallStore {
 
     // MARK: Account
 
-    /// The account's engine and call server, once it opens.
-    func attach(_ engine: Engine, server: String?) {
+    /// The account's engine and call server, once it opens, and the Jamie
+    /// picked in each chat.
+    func attach(_ engine: Engine, server: String?, jamiePicks: [String: String] = [:]) {
         self.engine = engine
         self.server = server
+        self.jamiePicks = jamiePicks
     }
 
     /// The account is gone: no watch, no failure, and the call is left.
     func reset() {
         engine = nil
         server = nil
+        jamiePicks = [:]
         presence = [:]
         watchers = [:]
         recentMessages = []
@@ -258,10 +270,22 @@ public final class CallStore {
         }
     }
 
+    /// Calls in `chat` bring Jamie from `peer`'s workspace, or none (nil),
+    /// kept with the account on this device.
+    public func pickJamie(_ peer: HivePeer?, in chat: String) {
+        jamiePicks[chat] = peer?.id ?? ""
+        guard let engine else { return }
+        let picks = jamiePicks
+        Task { try? await engine.setCallJamie(picks) }
+    }
+
     /// Starts a call in `chat` (the call message, free in a DM and 3 sats
     /// in a tribe) and joins it, with your camera on for a video call.
-    /// Nothing is sent while a join or another start runs.
-    public func start(in chat: String, audioOnly: Bool) async -> Bool {
+    /// With `jamie`, Hive makes the call with Jamie in it for that
+    /// workspace first; nothing is posted if it cannot, never a call
+    /// without Jamie in its place (docs/hive-calls.md). Nothing is sent
+    /// while a join or another start runs.
+    public func start(in chat: String, audioOnly: Bool, jamie: HivePeer? = nil) async -> Bool {
         // Nothing posted (a call message costs 3 sats in a tribe) for a
         // call this device could not join.
         if let reason = provider.unavailable {
@@ -273,7 +297,9 @@ public final class CallStore {
         startingIn = chat
         defer { startingIn = nil }
         do {
-            let link = try await engine.startCall(in: chat, audioOnly: audioOnly).link
+            var hiveLink: String?
+            if let jamie { hiveLink = try await hiveCall(jamie) }
+            let link = try await engine.startCall(in: chat, audioOnly: audioOnly, hiveLink: hiveLink).link
             return await join(link, in: chat, camera: !audioOnly, failureInChat: true)
         } catch {
             let notice = PeelError.noted(error, couldNot: "start the call")

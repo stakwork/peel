@@ -109,6 +109,60 @@ struct HiveTests {
         #expect(try await HiveClient(hive: link.hive).renew(link) == nil)
     }
 
+    /// A call with Jamie in it: asked of Hive with the device credential
+    /// for one workspace, its link answered (docs/hive-calls.md).
+    @Test func aCallWithJamieIsAskedOfHiveForOneWorkspace() async throws {
+        let room = "https://chat.sphinx.chat/rooms/sphinx.call.-acme-hive.sphinx.chat-.1792900000"
+        let hive = try await HTTPStub { _, request in
+            guard path(request) == "/api/strut-devices/calls", request.contains("Authorization: Bearer hivedev_abc") else {
+                return (404, "{}")
+            }
+            return (200, #"{"url":"\#(room)"}"#)
+        }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        #expect(try await HiveClient(hive: link.hive).startCall(link, workspace: "acme-hive") == room)
+        #expect(hive.requests[0].hasPrefix("POST ") && body(hive.requests[0]) == #"{"workspace":"acme-hive"}"#)
+    }
+
+    /// What Hive answers instead of a link, in words. A Hive from before the
+    /// route answers its middleware's 401, as for a revoked device.
+    @Test(arguments: [
+        (404, #"{"error":"Workspace not found"}"#, "Stadeum could not start a call with Jamie: Workspace not found."),
+        (403, #"{"error":"Access denied"}"#, "Stadeum could not start a call with Jamie: Access denied."),
+        (502, #"{"error":"Could not start Jamie for the call"}"#,
+         "Stadeum could not start a call with Jamie: Could not start Jamie for the call."),
+        (401, #"{"error":"Unauthorized"}"#,
+         "Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again."),
+        (200, #"{"link":"x"}"#, "Stadeum's call link could not be read."),
+    ])
+    func aCallHiveCannotMakeIsSaid(status: Int, answer: String, said: String) async throws {
+        let hive = try await HTTPStub { _, _ in (status, answer) }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        await #expect {
+            try await HiveClient(hive: link.hive).startCall(link, workspace: "acme-hive")
+        } throws: { error in
+            "\(error)" == said
+        }
+    }
+
+    /// Who a call brings Jamie from: the pick in that chat while the org is
+    /// paired, else the tribe's own swarm, else none.
+    @Test func aCallBringsJamieFromThePickElseTheTribesSwarm() throws {
+        let peers = try ["acme-hive", "globex"].map {
+            try JSONDecoder.hive.decode(HivePeer.self, from: Data(Self.peer($0, $0.capitalized).utf8))
+        }
+        let tribe = "https://globex.sphinx.chat/app"
+        #expect(HivePeer.jamie(picked: "acme-hive", pages: [tribe], in: peers)?.id == "acme-hive")
+        #expect(HivePeer.jamie(picked: "", pages: [tribe], in: peers) == nil)
+        #expect(HivePeer.jamie(picked: "initech", pages: [tribe], in: peers) == nil)
+        #expect(HivePeer.jamie(picked: nil, pages: [tribe, nil], in: peers)?.id == "globex")
+        #expect(HivePeer.jamie(picked: nil, pages: [nil, "https://ACME-HIVE.sphinx.chat"], in: peers)?.id == "acme-hive")
+        #expect(HivePeer.jamie(picked: nil, pages: ["https://initech.sphinx.chat", "https://localhost/x", "x"], in: peers) == nil)
+        #expect(HivePeer.jamie(picked: nil, pages: [], in: []) == nil)
+    }
+
     @Test func theLinkIsKeptWholeAndRenewedDaily() throws {
         let file = FileItem(file: FileManager.default.temporaryDirectory.appending(path: "peel-hive-\(UUID().uuidString)"))
         defer { try? file.delete() }

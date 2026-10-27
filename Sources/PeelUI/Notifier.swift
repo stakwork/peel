@@ -23,6 +23,10 @@ public final class Notifier {
     public private(set) var permission: Permission = .unavailable
     /// Whether a notification may say what a message says; kept with the account.
     public var showsText = true
+    /// Whether a notification shows a banner, plays a sound, both or neither; kept on this device.
+    public var style = NotificationPolicy.Style.default
+    /// The chosen sound's name; "" is the default.
+    public var sound = ""
     /// "Not now" on the offer, for this Mac.
     public private(set) var offerDismissed = UserDefaults.standard.bool(forKey: Notifier.offerDismissedKey)
 
@@ -301,11 +305,20 @@ public final class Notifier {
         _ center: UNUserNotificationCenter, id: String, chat: String, message: Int64?, locked: Bool,
         title: String, subtitle: String?, body: String, hidden: String = hiddenText
     ) {
+        let delivery = NotificationPolicy.delivery(style: style, sound: sound)
         let content = UNMutableNotificationContent()
+        switch delivery {
+        case .silent:
+            return
+        case .soundOnly(let name):
+            presence.playSound(named: name)
+            return
+        case .banner(let name):
+            content.sound = name.map { $0.isEmpty ? .default : UNNotificationSound(named: UNNotificationSoundName($0)) }
+        }
         content.title = locked ? "Peel" : title
         if let subtitle, !locked { content.subtitle = subtitle }
         content.body = locked ? hidden : body
-        content.sound = .default
         content.threadIdentifier = chat
         content.categoryIdentifier = Self.category
         var info: [String: Any] = ["chat": chat]

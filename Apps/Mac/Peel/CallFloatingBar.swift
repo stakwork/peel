@@ -54,7 +54,7 @@ final class CallFloatingBar {
         watches = names.map { name in
             center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 // The next key window is set only after the notification.
-                MainActor.assumeIsolated { Task { @MainActor in self?.update() } }
+                MainActor.assumeIsolated { self?.update() }
             }
         }
         watches.append(center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
@@ -157,7 +157,7 @@ private struct CallFloatingBarView: View {
     let leave: () -> Void
 
     var body: some View {
-        HStack(spacing: Theme.Space.xs) {
+        HStack(spacing: Theme.Space.md) {
             IconButton(help: call.micOn ? "Mute" : "Unmute", variant: .outline, action: call.toggleMicrophone) {
                 Image(systemName: call.micOn ? "mic" : "mic.slash")
                     .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
@@ -185,7 +185,8 @@ private struct CallFloatingBarView: View {
             .help("Leave the call")
             .accessibilityLabel("Leave the call")
         }
-        .padding(Theme.Space.sm)
+        .padding(.vertical, Theme.Space.md)
+        .padding(.horizontal, Theme.Space.lg)
         .background(Theme.callBackground, in: Capsule())
         .overlay { Capsule().strokeBorder(Theme.callDivider, lineWidth: 1) }
         .fixedSize()

@@ -144,7 +144,7 @@ struct Composer: View {
                     .opacity(recorder.state.isRecording ? 0 : 1)
                     .allowsHitTesting(!recorder.state.isRecording)
                     .overlay {
-                        if recorder.state.isRecording { RecordingIndicator(state: recorder.state) }
+                        if recorder.state.isRecording { VoiceRecordingIndicator(state: recorder.state) }
                     }
                     // As tall as the buttons on one line, its text level with them.
                     .frame(minHeight: PeelButton.Size.sm.height)

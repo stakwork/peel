@@ -77,7 +77,7 @@ struct PhoneComposer: View {
             }
             HStack(alignment: .bottom, spacing: 0) {
                 if recorder.state.isRecording {
-                    RecordingIndicator(state: recorder.state)
+                    VoiceRecordingIndicator(state: recorder.state)
                 } else {
                     ComposerTextField(
                         text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0,

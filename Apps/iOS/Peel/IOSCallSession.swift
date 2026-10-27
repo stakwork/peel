@@ -62,6 +62,9 @@ final class IOSCallSession {
     /// Everyone on the call, the others in the order they joined, you last.
     private(set) var tiles: [Tile] = []
     private(set) var micOn = false
+    /// Whether the call server is recording the call (the room says so);
+    /// everyone on it must be told.
+    private(set) var isRecording = false
     private(set) var cameraOn = false
     /// Whether you last chose the camera on (or started a video call):
     /// what a rejoin brings back.
@@ -295,6 +298,7 @@ final class IOSCallSession {
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
+        if room.isRecording != isRecording { isRecording = room.isRecording }
 
         let now: State
         switch room.connectionState {

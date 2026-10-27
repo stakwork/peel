@@ -3323,7 +3323,17 @@ recording and what the Sphinx apps play, so it goes as an ordinary type 6
 attachment (same memes-server sign-in, media key and send path, contacts and
 tribes). Rows with an audio attachment show play/pause, a seekable bar and
 "current / total" (`VoiceBubble`). The rules are in `VoiceMessage.swift`
-(tested); `NSMicrophoneUsageDescription` is set on the iOS target. Open: the
-Mac has no recorder (it plays audio as before); not built or run here (no
-Swift toolchain on the dev server), so `swift test` and the phone build are
-still to be run.
+(tested); `NSMicrophoneUsageDescription` is set on both targets, and the
+Mac's entitlements already carry `device.audio-input`. The Mac has it too:
+hold the mic in the composer (it stands where Send does while there is
+nothing to send), release to send, drag away past the cancel distance or press
+Escape to cancel; its permission is `AVCaptureDevice`'s, and a refusal says so
+with a button to System Settings. The recorder, the player, the seek bar and
+the recording indicator are shared (`Apps/Shared/Voice`: `VoiceRecorder`,
+`VoicePlayer`, `VoiceControls`), with `#if os(iOS)` only for the audio session,
+permission and haptic (`UIImpactFeedbackGenerator` / `NSHapticFeedbackManager`);
+each app's `VoiceStyle` gives its type and sizes. On the Mac an audio message's
+card shows `VoiceControls` once the file is there, and its old Load / failed
+states before. Open: a voice message and the Mac's video player (`MediaPlayback`)
+do not pause each other; not built or run here (no Swift toolchain on the
+dev server), so the phone and Mac builds are still to be run.

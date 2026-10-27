@@ -355,19 +355,22 @@ struct AudioCard: View {
         let info = known ?? nil
         let status = MediaStatus(message, handle, unplayable: known != nil && info == nil)
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            HStack(spacing: Theme.Space.md) {
-                // Held or failed, a click loads it (again) and plays.
-                PlayButton(message: message, handle: handle, disabled: status.map { !$0.canLoad } ?? false)
-                if let status {
+            if let status {
+                HStack(spacing: Theme.Space.md) {
+                    // Held or failed, a click loads it (again) and plays.
+                    PlayButton(message: message, handle: handle, disabled: !status.canLoad)
                     Text(status.text("Audio"))
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    AudioScrubber(id: id, file: file, duration: info?.duration)
                 }
+            } else {
+                // Downloaded, or on its way: the voice message's own controls
+                // (play, a bar to seek, current / total, loading and failed),
+                // shared with the phone. `MediaLoading` below does the download.
+                VoiceControls(message: message, autoDownload: false)
             }
             AttachmentStatus(message: message, handle: handle, isRecording: true)
         }
@@ -409,37 +412,5 @@ private struct PlayButton: View {
         .buttonStyle(.plain)
         .disabled(busy || disabled || message.uploadState == .pending && handle.file == nil)
         .help(playing ? "Pause" : "Play")
-    }
-}
-
-/// The scrubber and "0:12 / 1:05": the only part of a card that redraws as
-/// it plays.
-private struct AudioScrubber: View {
-    let id: Int64
-    let file: URL?
-    let duration: TimeInterval?
-
-    /// Where the scrubber is held while it is dragged.
-    @State private var scrubbing: TimeInterval?
-
-    var body: some View {
-        let playback = MediaPlayback.shared
-        let total = duration ?? 0
-        let position = scrubbing ?? (playback.current == id ? playback.time : 0)
-        VStack(alignment: .leading, spacing: 2) {
-            Slider(value: Binding(get: { min(position, total) }, set: { scrubbing = $0 }), in: 0...max(total, 0.1)) { editing in
-                guard !editing, let target = scrubbing, let file else { return }
-                playback.seek(id, file: file, to: target)
-                scrubbing = nil
-            }
-            .controlSize(.small)
-            .disabled(file == nil || duration == nil)
-            Text(duration.map { "\(MediaInfo.format(duration: position)) / \(MediaInfo.format(duration: $0))" } ?? "Audio")
-                .font(Theme.font(12))
-                .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

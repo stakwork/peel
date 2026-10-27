@@ -167,7 +167,8 @@ is a short plan. Update the status and the journal when you finish something.
     (16 kHz mono PCM, `audio.wav`) sent as an ordinary attachment, release
     rules (minimum length, slide to cancel), the recorder's state and clock,
     the player's progress and seek maths, `Engine.sendVoiceMessage` (tested in
-    `VoiceMessageTests`); the phone's `VoiceRecorder` and `VoicePlayer` use it
+    `VoiceMessageTests`); the shared `Apps/Shared/Voice` (`VoiceRecorder`, `VoicePlayer`,
+    `VoiceControls`) use it on the phone and the Mac
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,

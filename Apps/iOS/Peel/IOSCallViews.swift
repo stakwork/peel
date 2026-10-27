@@ -131,6 +131,7 @@ private struct OnCallBannerInset: ViewModifier {
 /// Under the navigation bar while you are on a call and the call screen is
 /// down, like the Mac's sidebar bar: the chat, the running time, Mute and Return.
 struct IOSOnCallBar: View {
+    @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
     let call: IOSCallSession
 
@@ -164,6 +165,13 @@ struct IOSOnCallBar: View {
             .buttonStyle(.plain)
             .disabled(call.micAccess == .refused)
             .accessibilityLabel(call.micOn ? "Mute" : "Unmute")
+            Button { model.calls.leave() } label: {
+                Image(systemName: "phone.down.fill")
+                    .foregroundStyle(Theme.destructive)
+                    .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Leave the call")
         }
         .padding(.horizontal, Theme.Space.md)
         .frame(maxWidth: .infinity)

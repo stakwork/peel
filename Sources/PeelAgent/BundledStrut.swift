@@ -38,6 +38,10 @@ public final class BundledStrut {
     /// Whether an MCP server on this Mac may be registered
     /// (`STRUT_MCP_LOCAL`): a development profile's test server only.
     public var allowsLocalMCP = false
+    /// The Mac's strut while Peel Home is on the box (`HomeClient`): its
+    /// scheduler off (`STRUT_SCHEDULER=0`) and its `home-sync` workflow seeded
+    /// (`STRUT_HOME_SYNC=copy`). The box's CA is in its peer record.
+    public var isHomeClient = false
     /// The person's actor on their Hive orgs, once paired: the orchestrator
     /// is then told its peers are those orgs (strut's
     /// `personalOrchestratorSystem`), from the next start.
@@ -184,7 +188,7 @@ public final class BundledStrut {
         process.arguments = [folder.appending(path: "desktop.js").path]
         process.currentDirectoryURL = folder
         process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data,
-                                               hostConfig: hostConfig, allowsLocalMCP: allowsLocalMCP)
+                                               hostConfig: hostConfig, allowsLocalMCP: allowsLocalMCP, homeClient: isHomeClient)
         let input = Pipe(), output = Pipe(), errors = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -291,8 +295,11 @@ public final class BundledStrut {
     /// configuration and loads no engine or provider: it was built for
     /// Homebrew's folders, which another user may own. `hostConfig`: the
     /// file of Peel's delta for the workflows strut ships (`STRUT_HOST_CONFIG`).
+    /// `homeClient`: the Mac's strut while Peel Home is on the box, which
+    /// runs no automations and syncs with the box (`STRUT_HOME_SYNC=copy`).
     nonisolated static func environment(
-        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL, allowsLocalMCP: Bool = false
+        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL, allowsLocalMCP: Bool = false,
+        homeClient: Bool = false
     ) -> [String: String] {
         var environment = inherited.filter { name, _ in
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
@@ -316,6 +323,10 @@ public final class BundledStrut {
             "OPENSSL_MODULES": "/var/empty",
             "OPENSSL_ENGINES": "/var/empty",
         ]) { _, new in new }
+        if homeClient {
+            environment["STRUT_SCHEDULER"] = "0"
+            environment["STRUT_HOME_SYNC"] = "copy"
+        }
         // strut clears its environment at boot (strut's env.ts); a stand-in model on this Mac (the
         // tests') is kept for the model library, which reads it from there. Any other is ignored.
         let loopback: Set = ["127.0.0.1", "localhost", "::1"]

@@ -19,7 +19,7 @@ services:
   setup:
     # strut's image, running `strut move serve` (setup.sh): the move is
     # strut's own (its AGENTS.md, "Moving strut to another host").
-    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:9512381@sha256:a49a256c2a8f2faa437274d073baae51d88480f56f8130084e15c7563886bf90}
+    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:133e61e@sha256:7049af75b46f48712934763ecb53bdde0751974ba359eeb09788824dfc814bf3}
     restart: unless-stopped
     entrypoint: ["sh", "/setup.sh"]
     # The image's check is strut's /health, which setup doesn't serve.
@@ -56,7 +56,7 @@ services:
     # Must be the strut commit Peel ships (Vendor/strut.lock): a move refuses
     # two different struts (`strut move check`). The image carries Ladybug's
     # extensions, so strut starts with no download.
-    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:9512381@sha256:a49a256c2a8f2faa437274d073baae51d88480f56f8130084e15c7563886bf90}
+    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:133e61e@sha256:7049af75b46f48712934763ecb53bdde0751974ba359eeb09788824dfc814bf3}
     restart: unless-stopped
     entrypoint: ["sh", "/gate.sh", "strut", "docker-entrypoint.sh"]
     command: ["node", "--import", "tsx", "build/server.js"]

@@ -325,6 +325,12 @@ struct BrainSection: View {
                      : "Sent \(Formatting.date(home.date)), but your assistant hasn't answered from there yet. This Mac keeps its own stopped, so two never run at once.")
                     .foregroundStyle(home.answered ? Theme.secondaryText : Theme.attention)
                     .fixedSize(horizontal: false, vertical: true)
+                // This Mac's strut for dictation, kept in step with the box (`HomeSyncer`).
+                if home.answered, let status = model.macAgent.homeSyncer?.status {
+                    Text(Self.homeSync(status))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.secondaryText)
+                }
             }
         } trailing: {
             HStack(spacing: 8) {
@@ -344,6 +350,19 @@ struct BrainSection: View {
             Button("Use this Mac's copy…") { homeAsk = .copy }
                 .buttonStyle(.peel(.outline))
                 .disabled(busy)
+        }
+    }
+
+    /// When this Mac's strut for dictation last synced with the box; or that
+    /// it can't, with no peer record or one whose token ran out (a year
+    /// after the move: moving back and out again makes a new one).
+    private static func homeSync(_ status: HomeSyncer.Status) -> String {
+        switch status {
+        case .noPeer: "Your home server gave this Mac no way to sync with it, so dictation uses what it knew at the move."
+        case .expired(let date):
+            "This Mac's sync with your home server ran out \(Formatting.date(date)). Move Peel Home back and out again to renew it."
+        case .notYet: "Not synced with this Mac yet."
+        case .synced(let date): "Last synced with this Mac \(Formatting.date(date))."
         }
     }
 

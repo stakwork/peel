@@ -87,6 +87,16 @@ public struct Profile: Sendable {
          FileItem(file: directory.appendingPathComponent("hive")))
     }
 
+    /// The home server as a peer of the Mac's strut while Peel Home is there
+    /// (`HomePeer`, docs/always-on.md): its address, CA and a person token
+    /// that lives about a year. In the Keychain for an app profile.
+    public var homePeer: any SecretItem {
+        switch kind {
+        case .app: KeychainItem(service: "dev.peel.home-peer", account: name)
+        case .development: FileItem(file: directory.appendingPathComponent("home-peer"))
+        }
+    }
+
     /// Where the agent's database lives, beside the account's.
     public var agentDatabase: URL { directory.appendingPathComponent("agent.sqlite") }
 
@@ -136,6 +146,7 @@ public struct Profile: Sendable {
         try? KeychainItem(service: "dev.peel.automations", account: name).delete()
         try strutKey.delete()
         try brain.delete()
+        try homePeer.delete()
         try hive.delete()
         try biometrics?.turnOff()
         try secrets.deleteMnemonic()

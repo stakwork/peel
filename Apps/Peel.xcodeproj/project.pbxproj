@@ -10,6 +10,7 @@
 		B20000000000000000000101 /* PeelUI in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000901 /* PeelUI */; };
 		B20000000000000000000102 /* PeelCore in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000902 /* PeelCore */; };
 		B20000000000000000000103 /* AgentKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000903 /* AgentKit */; };
+		B20000000000000000000104 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000904 /* LiveKit */; };
 		B20000000000000000000121 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000221 /* AppIcon.icon */; };
 		B30000000000000000000101 /* PeelUI in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000901 /* PeelUI */; };
 		B30000000000000000000102 /* PeelCore in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000902 /* PeelCore */; };
@@ -57,6 +58,7 @@
 				B20000000000000000000101 /* PeelUI in Frameworks */,
 				B20000000000000000000102 /* PeelCore in Frameworks */,
 				B20000000000000000000103 /* AgentKit in Frameworks */,
+				B20000000000000000000104 /* LiveKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -157,6 +159,7 @@
 				B20000000000000000000901 /* PeelUI */,
 				B20000000000000000000902 /* PeelCore */,
 				B20000000000000000000903 /* AgentKit */,
+				B20000000000000000000904 /* LiveKit */,
 			);
 			productName = Peel;
 			productReference = B20000000000000000000201 /* Peel.app */;
@@ -297,11 +300,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hold the microphone button to record a voice message to send in a chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, to scan an invoice, or to take a photo to send.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, and to record voice messages you hold the microphone button for.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -330,11 +334,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hold the microphone button to record a voice message to send in a chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, to scan an invoice, or to take a photo to send.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, and to record voice messages you hold the microphone button for.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -549,6 +554,11 @@
 			productName = PeelAgent;
 		};
 		B30000000000000000000905 /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B40000000000000000000952 /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+		B20000000000000000000904 /* LiveKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B40000000000000000000952 /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
 			productName = LiveKit;

@@ -560,7 +560,11 @@ is a short plan. Update the status and the journal when you finish something.
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the
   `peel:` link). `Apps/iOS/Peel/` is the iPhone app (phase 7, I2; iOS 26, iPhone
   only), a synchronized folder (every file in it is in the target):
-  `PeelPhoneApp` (the app, `RootView` by phase),
+  `PeelPhoneApp` (the app, `RootView` by phase, the call screen as a
+  full-screen cover), `IOSCallSession` (I6: the call you are on over
+  LiveKit, the audio session, microphone and camera; the phone's
+  `LiveKitCalls` in `PhonePlatform`) and `IOSCallViews` (the call screen with its tiles and
+  controls, the on-a-call bar, the leave-and-join question, `PendingCall`),
   `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:

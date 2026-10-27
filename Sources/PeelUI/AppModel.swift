@@ -830,6 +830,16 @@ public final class AppModel {
         notifier.showsText = shows
     }
 
+    public func setNotificationStyle(_ style: NotificationPolicy.Style) async throws {
+        try await signedIn().setNotificationStyle(style)
+        notifier.style = style
+    }
+
+    public func setNotificationSound(_ name: String) async throws {
+        try await signedIn().setNotificationSound(name)
+        notifier.sound = name
+    }
+
     /// A click on a notification: Peel to the front with that chat open,
     /// at the message it was for, or Payments for sats received.
     public func openFromNotification(_ chat: String, messageID: Int64?) {
@@ -1362,6 +1372,8 @@ public final class AppModel {
         // chat: the agent is this account's own, from the same words.
         if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
         if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
+        notifier.style = settings.notificationStyle ?? .default
+        notifier.sound = settings.notificationSound ?? ""
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }

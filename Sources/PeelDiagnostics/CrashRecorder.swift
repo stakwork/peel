@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit) && !os(macOS)
+import UIKit
+#endif
 #if canImport(CrashReporter)
 import CrashReporter
 #endif
@@ -47,9 +50,22 @@ public enum CrashRecorder {
             }
         }
         #endif
-        Diagnostics.start(DiagnosticsRuntime(root: root, appVersion: version, crash: crash))
+        let front = launchedInFront()
+        Diagnostics.start(DiagnosticsRuntime(root: root, appVersion: version, crash: crash,
+                                             state: front ? .foreground : .background))
         startPressureSource()
-        Diagnostics.setForeground(true)
+        Diagnostics.setForeground(front)
+    }
+
+    /// False for a launch the system made in the background (push, background
+    /// refresh): the phone's scene phase does not report the initial phase.
+    private static func launchedInFront() -> Bool {
+        #if canImport(UIKit) && !os(macOS)
+        guard Thread.isMainThread else { return true }
+        return MainActor.assumeIsolated { UIApplication.shared.applicationState != .background }
+        #else
+        return true
+        #endif
     }
 
     #if canImport(CrashReporter)

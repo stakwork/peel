@@ -124,6 +124,7 @@ private struct SearchTab: View {
                     ChatList()
                 }
             }
+            .onCallBannerInset()
             .navigationTitle("Search")
             .searchable(text: $model.searchQuery, prompt: "Search chats")
             .chatsDestinations()

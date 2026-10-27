@@ -459,7 +459,7 @@ is a short plan. Update the status and the journal when you finish something.
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
   and devices), `CallWindow` (the grid, the focus layout with its strip,
-  keep on top and the control bar) and `CallScreenShare` (the system picker,
+  keep on top, the recording indicator and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
   `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
@@ -546,7 +546,8 @@ is a short plan. Update the status and the journal when you finish something.
   compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
   flat logo for docs and pages. `Shared/` holds the files both apps
   compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
-  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and
+  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
+  `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
   `WorkspaceAppIcon` (an app's lucide icon as an SF Symbol);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as

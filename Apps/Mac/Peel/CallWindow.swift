@@ -57,6 +57,8 @@ struct CallStatusText: View {
 private struct CallRoomView: View {
     let call: CallSession
     @State private var window: NSWindow?
+    @State private var notice = RecordingNotice()
+    @State private var toast: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,6 +72,11 @@ private struct CallRoomView: View {
             keepOnTopChanged()
         }
         .onChange(of: call.keepOnTop) { keepOnTopChanged() }
+        // Everyone on the call is told it is being recorded, and when it stops.
+        .onChange(of: call.isRecording, initial: true) { _, recording in
+            if let words = notice.update(recording) { toast = words }
+        }
+        .recordingToast($toast)
         // Escape goes back to the grid. A button rather than `onExitCommand`,
         // which needs a focused view the call window usually lacks.
         .hiddenShortcut(.cancelAction, enabled: call.focus != nil, action: call.showGrid)
@@ -79,7 +86,8 @@ private struct CallRoomView: View {
         window?.level = call.keepOnTop ? .floating : .normal
     }
 
-    /// The chat and the running time, centred in the title bar; Keep on top
+    /// The chat, the running time and, while recorded, the indicator, centred
+    /// in the title bar; Keep on top
     /// at its right.
     private var titleBar: some View {
         HStack(spacing: Theme.Space.sm) {
@@ -87,6 +95,7 @@ private struct CallRoomView: View {
                 .font(Theme.font(13, .semibold))
                 .lineLimit(1)
             CallStatusText(call: call, size: 13)
+            if call.isRecording { RecordingIndicator() }
         }
         .padding(.horizontal, 80)
         .frame(maxWidth: .infinity)

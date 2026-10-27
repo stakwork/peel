@@ -311,7 +311,16 @@ built for them yet:
 - **Joining a second call** turns the Join button into an in-place confirm
   next to it: "Leave the call in #design and join?". It never leaves
   silently.
-- **Out of v1**: recording, removing participants, in-call chat, E2EE (the
+- **Recording indicator only**: tribe calls are recorded by the call
+  server (egress), and everyone on the call must be told. The room's
+  `isRecording` (from its metadata) shows a pulsing red "Recording" in the
+  title bar and on the sidebar's bar, and a 5-second toast when it starts
+  ("Recording in progress. Please be aware this call is being recorded.")
+  and when it ends. Peel has no control to start or stop a recording. The
+  words are `RecordingNotice` (`Sources/PeelUI`); the views are
+  `RecordingIndicator` and `RecordingToast` in `Apps/Shared/UI/`, with no
+  LiveKit, so the iPhone gets them once it can join calls.
+- **Out of v1**: recording controls, removing participants, in-call chat, E2EE (the
   official apps would not be able to join), reactions, and background blur.
 
 ### On a call (the main window)

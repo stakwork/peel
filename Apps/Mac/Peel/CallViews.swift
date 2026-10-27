@@ -399,6 +399,7 @@ struct OnCallBar: View {
                     CallStatusText(call: call, size: 12)
                 }
                 HStack(spacing: 7) {
+                    if call.isRecording { RecordingIndicator() }
                     CallPeopleStack(people: people, size: Theme.AvatarSize.sm, border: Theme.quote)
                     Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
                         .font(Theme.font(12))

@@ -133,6 +133,7 @@ private final class OnCall: OngoingCall {
     let title = "#tribe"
     let identity = "me"
     var isOn = true
+    var isRecording = false
     let wantsCamera = false
     let people: [CallParticipant]
 

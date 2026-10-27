@@ -140,6 +140,9 @@ public protocol OngoingCall: AnyObject {
     var wantsCamera: Bool { get }
     /// Everyone on the call, for the sidebar's count.
     var people: [CallParticipant] { get }
+    /// Whether the call server is recording the call: only an indicator, Peel
+    /// neither starts nor stops it.
+    var isRecording: Bool { get }
     /// Leaves the room, saying goodbye.
     func leave() async
 }

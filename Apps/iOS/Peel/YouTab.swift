@@ -77,6 +77,7 @@ struct YouTab: View {
             .phoneList(.grouped)
             .phoneFont(.row)
             .task { biometryName = model.biometryName }
+            .onCallBannerInset()
             .navigationTitle("You")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $editingName) { NameEditor() }

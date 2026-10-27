@@ -16,6 +16,19 @@ struct NotificationPolicyTests {
         return message
     }
 
+    @Test func deliveryFollowsTheStyle() {
+        typealias Policy = NotificationPolicy
+        #expect(Policy.Style.default == .bannerAndSound)
+        #expect(Policy.delivery(style: .bannerAndSound, sound: nil) == .banner(sound: ""))
+        #expect(Policy.delivery(style: .bannerAndSound, sound: "Glass") == .banner(sound: "Glass"))
+        #expect(Policy.delivery(style: .banner, sound: "Glass") == .banner(sound: nil))
+        #expect(Policy.delivery(style: .soundOnly, sound: "Glass") == .soundOnly(sound: "Glass"))
+        #expect(Policy.delivery(style: .soundOnly, sound: nil) == .soundOnly(sound: ""))
+        #expect(Policy.delivery(style: .none, sound: "Glass") == .silent)
+        #expect(Policy.Style.allCases.filter(\.showsBanner) == [.bannerAndSound, .banner])
+        #expect(Policy.Style.allCases.filter(\.playsSound) == [.bannerAndSound, .soundOnly])
+    }
+
     private func kind(_ message: Message) -> NotificationPolicy.Kind? {
         NotificationPolicy.kind(of: message, callServer: server, now: now)
     }

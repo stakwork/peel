@@ -55,10 +55,12 @@ struct CallStatusText: View {
 }
 
 private struct CallRoomView: View {
+    @Environment(AppModel.self) private var model
     let call: CallSession
     @State private var window: NSWindow?
     @State private var notice = RecordingNotice()
     @State private var toast: String?
+    @State private var bar = CallFloatingBar()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,6 +72,7 @@ private struct CallRoomView: View {
         .onChange(of: window) {
             window?.collectionBehavior.insert(.fullScreenPrimary)
             keepOnTopChanged()
+            if let window { bar.attach(window: window, call: call, leave: { model.calls.leave() }) } else { bar.detach() }
         }
         .onChange(of: call.keepOnTop) { keepOnTopChanged() }
         // Everyone on the call is told it is being recorded, and when it stops.
@@ -77,6 +80,9 @@ private struct CallRoomView: View {
             if let words = notice.update(recording) { toast = words }
         }
         .recordingToast($toast)
+        .onChange(of: call.state) { bar.update() }
+        // The floating bar must not outlive the call.
+        .onDisappear { bar.detach() }
         // Escape goes back to the grid. A button rather than `onExitCommand`,
         // which needs a focused view the call window usually lacks.
         .hiddenShortcut(.cancelAction, enabled: call.focus != nil, action: call.showGrid)
@@ -416,7 +422,7 @@ private struct CallControls: View {
     /// a connection that was lost.
     @ViewBuilder private var notes: some View {
         if let sharing = call.sharing {
-            note(sharing.note, action: "Stop", perform: call.stopScreenShare)
+            note(sharing.note(includingPeel: call.sharingIncludesPeel), action: "Stop", perform: call.stopScreenShare)
         }
         let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
             .compactMap { $0 }
@@ -470,6 +476,8 @@ private struct CallControls: View {
             .button("Entire screen", systemImage: "display") { call.startScreenShare(.display) },
             .button("A window", systemImage: "macwindow") { call.startScreenShare(.window) },
             .button("An app", systemImage: "app") { call.startScreenShare(.application) },
+            .divider,
+            .button("Include Peel windows", systemImage: "macwindow.on.rectangle", checked: call.includePeelWindows) { call.includePeelWindows.toggle() },
         ]
         presenter?.show(entries, at: anchor, source: "call-share", minWidth: 200)
     }

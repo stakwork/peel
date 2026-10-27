@@ -54,6 +54,9 @@ public protocol AppPresence {
     func showBadge(_ count: Int)
     /// Peel's page in the system's notification settings.
     func openNotificationSettings()
+    /// Plays a system sound by name ("" for the default alert sound), for a
+    /// notification that shows no banner.
+    func playSound(named name: String)
 }
 
 /// The main window's menus and panels, as `AppModel.takesCommands` asks
@@ -110,11 +113,11 @@ public protocol WebPresenting: AnyObject {
 /// imports both it and PeelCore inherits the `RustBuffer` header clash.
 @MainActor
 public protocol CallProvider {
-    /// Why this device cannot join calls at all (the iPhone, until I6);
-    /// nil where it can. Asked before a call is started or joined, so
+    /// Why this device cannot join calls at all; nil where it can (the Mac
+    /// and the iPhone both can). Asked before a call is started or joined, so
     /// nothing is posted or fetched for a call that cannot happen.
     var unavailable: String? { get }
-    /// Throws where this device cannot join calls (the iPhone, until I6).
+    /// Throws where this device cannot join calls (see `unavailable`).
     func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) throws -> any OngoingCall
 }
 

@@ -38,6 +38,10 @@ struct MacPresence: AppPresence {
             NSWorkspace.shared.open(url)
         }
     }
+
+    func playSound(named name: String) {
+        if name.isEmpty { NSSound.beep() } else { NSSound(named: name)?.play() }
+    }
 }
 
 extension MenuPresenter: MenuHosting {

@@ -83,6 +83,11 @@ final class CallSession {
     private(set) var deviceNotice: String?
     /// What you share, while you share it (and while it is being published).
     var sharing: ScreenShare.Content? { share?.content }
+    /// Whether the next share includes Peel's own windows, which are left out
+    /// by default. Applies when a share starts, not to one already running.
+    var includePeelWindows = false
+    /// Whether the running share includes Peel's own windows.
+    var sharingIncludesPeel: Bool { share?.includesPeel ?? false }
     /// The tile shown large with the others in a strip beside it; nil for
     /// the grid. A screen someone starts sharing takes it.
     private(set) var focus: Tile.ID?
@@ -302,10 +307,10 @@ final class CallSession {
         defer { switchingShare = false }
         // Nothing is shared unless the picker returned something and the
         // call is still on when it did.
-        guard let filter = await ScreenShare.pick(kind), !leaving, state == .connected else { return }
+        guard let filter = await ScreenShare.pick(kind, includePeel: includePeelWindows), !leaving, state == .connected else { return }
         let started: ScreenShare
         do {
-            started = try await ScreenShare.start(filter) { [weak self] in self?.shareEnded() }
+            started = try await ScreenShare.start(filter, includePeel: includePeelWindows) { [weak self] in self?.shareEnded() }
         } catch {
             deviceNotice = "Could not start sharing"
             return

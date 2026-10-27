@@ -94,6 +94,21 @@ struct PreferencesTests {
         #expect(Preference<Bool>.notificationText.read(.string("FALSE")) == false)
     }
 
+    /// Notification type and sound stay on this device; unset reads as the old behaviour.
+    @Test func notificationChoicesDefaultAndPersist() throws {
+        let storage = try profile.storage()
+        #expect(try storage.preference(.notificationStyle) == nil)
+        #expect(try storage.preference(.notificationSound) == nil)
+        try storage.setPreference(.notificationStyle, .soundOnly)
+        try storage.setPreference(.notificationSound, "Glass")
+        #expect(try storage.preference(.notificationStyle) == .soundOnly)
+        #expect(try storage.preference(.notificationSound) == "Glass")
+        #expect(Preference<NotificationPolicy.Style>.notificationStyle.read(.string("bogus")) == nil)
+        #expect(Preference<NotificationPolicy.Style>.notificationStyle.scope == .device)
+        #expect(Preference<String>.notificationSound.key.hasPrefix(Preferences.devicePrefix))
+        #expect(Preferences.registry["device.notification_style"] != nil)
+    }
+
     // MARK: Storing
 
     /// A change is dated now, but always after the version it replaces, and

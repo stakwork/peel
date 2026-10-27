@@ -88,6 +88,9 @@ final class PhoneRouter {
     /// An org's page over everything (`OrgPageSheet`): a deliverable from
     /// the agent's DM, or a workspace's app.
     var orgPage: OrgPageRequest?
+    /// The call screen is up over everything (`IOSCallScreen`); the call
+    /// goes on, with its bar over the tabs, while it is down.
+    var callShown = false
 
     @ObservationIgnored private let model: AppModel
     /// The thread open over a chat when its tab (Chats or Search) was

@@ -506,16 +506,16 @@ final class OffscreenDriver {
             guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }
             model.setUpAgent()
         case "brain-this-mac":
-            // Account › Brain's Use this Mac, when where Peel Home is could not be read.
+            // Account › Peel Home's Use this Mac, when where Peel Home is could not be read.
             try model.useThisMac()
         case "home-move":
-            // Account › Brain: Move (or Move back) on the Peel Home link waiting.
+            // Account › Peel Home: Move (or Move back) on the Peel Home link waiting.
             guard model.homeLink != nil else { throw Failure(description: "no Peel Home link waiting") }
             model.moveHome()
         case "home-ping":
             model.pingHomeAgain()
         case "home-copy":
-            // Account › Brain: Use this Mac's copy, then its confirm.
+            // Account › Peel Home: Turn off Peel Home, then its confirm.
             try model.useThisMacCopy()
         case "agent-rows":
             // A click on every tool row's chevron.

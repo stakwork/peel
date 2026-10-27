@@ -14,7 +14,7 @@ final class MacAgent: AgentHost {
     /// Where Peel Home is (`Profile.brain`), read when its agent opens;
     /// nil when it could not be read, and then no strut at all.
     var brain: Brain?
-    /// A Peel Home link (`HomeLink`) waiting for the person's yes in Account › Brain.
+    /// A Peel Home link (`HomeLink`) waiting for the person's yes in Account › Peel Home.
     var homeLink: HomeLink?
     /// A Peel Home move under way, or how the last one ended (`AppModel+Home`).
     var homeMove: HomeMoveState?
@@ -28,7 +28,7 @@ final class MacAgent: AgentHost {
     /// The Mac's strut while Peel Home is on the box (`HomeClient`), for
     /// dictation only, and what keeps it in step with the box.
     @ObservationIgnored var homeClient: BundledStrut?
-    /// Where its sync stands shows in Account › Brain.
+    /// Where its sync stands shows in Account › Peel Home.
     var homeSyncer: HomeSyncer?
     @ObservationIgnored var homeSyncTriggers: HomeSyncTriggers?
     /// The agent's bridge beside it (`AppModel+Bridge`).
@@ -296,7 +296,7 @@ extension AppModel {
     }
 
     /// A `peel://` link Peel takes: a Peel Home link (`HomeLink`), which waits
-    /// in Account › Brain for the person's yes. False for any other scheme.
+    /// in Account › Peel Home for the person's yes. False for any other scheme.
     func openPeelLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "peel" else { return false }
         if url.host?.lowercased() == "home-setup", let link = HomeLink(url) {

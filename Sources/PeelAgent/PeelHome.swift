@@ -1,3 +1,4 @@
+import AgentKit
 import Foundation
 import os
 import PeelCore
@@ -344,9 +345,15 @@ public protocol PeelHomeLocal: AnyObject {
     /// Starts the Mac's strut on `HomeParts.client`, for dictation only:
     /// scheduler off, no bridge, no agent. A failure is quiet.
     func startClient()
-    /// Syncs it with the box once more, if it is running: what dictation
-    /// learned here reaches the box before Peel Home comes back.
+    /// Lets a sync under way end, then tries once more, if it is running.
     func syncClient() async
+    /// What dictation learned or undid in its memory from `since` (its last
+    /// push that landed; nil: everything), as `dictation/changes-since`
+    /// gives it; nil when it isn't running or couldn't say.
+    func clientChanges(since: AgentKit.JSONValue?) async -> AgentKit.JSONValue?
+    /// Replays `changes` into this Mac's own strut, just started, with
+    /// `dictation/apply-changes`: true once they are in.
+    func applyChanges(_ changes: AgentKit.JSONValue) async -> Bool
     /// Stops it (its own folder; Peel Home's is never its).
     func stopClient()
 }
@@ -455,13 +462,17 @@ public struct PeelHomeMove {
         if let refusal = Self.refusal(link, from: moved) { return .stillAway(refusal) }
         progress(.checking)
         let env: [String: String]
+        var unpushed: AgentKit.JSONValue?
         do {
             guard try await mover.check(link, parts) == .sendBack else {
                 return .stillAway("Your home server is waiting for a move, not sending one back. Peel Home is still there.")
             }
             progress(.sending)
-            // What dictation learned here goes to the box first; then nothing writes beside the fetch.
+            // Any sync under way ends first, so nothing writes beside the fetch. Its own try rarely lands: Send back
+            // stopped the box's strut. So what dictation changed here since the last push that landed is read now,
+            // and replayed into Peel Home's own strut once it is back.
             await local.syncClient()
+            unpushed = await local.clientChanges(since: HomeClient.pushedUntil(in: parts.client))
             local.stopClient()
             // This Mac's copy from the move, kept to fall back on, if the agent never answered from the box.
             home = setAside(home)
@@ -499,9 +510,15 @@ public struct PeelHomeMove {
             restoreKey()
             local.startClient()
             return .stillAway("Peel Home came back, but Peel's strut couldn't start with it. Your home server kept what it sent "
-                + "in its data folder. To carry on here, use this Mac's copy from the move.")
+                + "in its data folder. To carry on here as of the move, turn off Peel Home.")
         }
-        removeClient()
+        // The client's folder goes only once what it learned is in Peel Home's memory; else it stays, and its next
+        // push (a move out again) replays it.
+        if let changes = unpushed, changes.array?.isEmpty == false, await !local.applyChanges(changes) {
+            try? parts.homePeer?.delete()
+        } else {
+            removeClient()
+        }
         progress(.waiting)
         return .movedBack(answered: await local.pingAgent())
     }

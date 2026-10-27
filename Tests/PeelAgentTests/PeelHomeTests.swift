@@ -1,3 +1,4 @@
+import AgentKit
 import Foundation
 import Synchronization
 import Testing
@@ -98,6 +99,24 @@ struct PeelHomeTests {
         var clientRunning = false
         func startClient() { clientRunning = kept.moved != nil }
         func syncClient() async { if clientRunning { box.events.append("sync") } }
+        /// What dictation changed in the client's strut that no push landed with,
+        /// the `since` it was asked from, and what this Mac's own strut took in.
+        var unpushed: AgentKit.JSONValue?
+        var askedSince: AgentKit.JSONValue?
+        var applied: [AgentKit.JSONValue] = []
+        var applyFails = false
+        func clientChanges(since: AgentKit.JSONValue?) async -> AgentKit.JSONValue? {
+            guard clientRunning else { return nil }
+            box.events.append("read changes")
+            askedSince = since
+            return unpushed
+        }
+        func applyChanges(_ changes: AgentKit.JSONValue) async -> Bool {
+            box.events.append("apply")
+            guard running, !applyFails else { return false }
+            applied.append(changes)
+            return true
+        }
         func stopClient() {
             if clientRunning { box.events.append("stop client") }
             clientRunning = false
@@ -263,9 +282,34 @@ struct PeelHomeTests {
         #expect(MCPGrants.read(in: parts.strut).assistant == ["notes"])
         #expect(try parts.secretKey.read() == Data(String(repeating: "c", count: 64).utf8))
         // Synced once more and stopped before the fetch; its folder gone once Peel Home is back.
-        #expect(box.events == ["sync", "stop client", "fetch"])
+        #expect(box.events == ["sync", "read changes", "stop client", "fetch"])
         #expect(!local.clientRunning && !FileManager.default.fileExists(atPath: parts.client.path))
         #expect(HomePeer.read(try #require(parts.homePeer)) == nil)
+    }
+
+    /// Back after a correction no push landed with (Send back stopped the
+    /// box's strut first): read from the client's strut from its last push,
+    /// replayed into Peel Home's own once it is back, and only then the
+    /// client's folder gone. When the replay fails, the folder stays.
+    @Test(arguments: [true, false])
+    func backHandsOverWhatThePushesMissed(applies: Bool) async throws {
+        let box = Box(), local = FakeLocal(box: box), parts = try folders()
+        let move = PeelHomeMove(mover: FakeMover(box: box), local: local, parts: parts, now: { Self.moveDay })
+        guard case .movedOut(let home) = await move.out(Self.link) else { Issue.record("not moved"); return }
+        let state = parts.client.appending(path: "workspace/home-sync.json")
+        try FileManager.default.createDirectory(at: state.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"since": "2026-10-27T10:51:41.000Z", "hash": "h"}"#.utf8).write(to: state)
+        let changes: AgentKit.JSONValue = [["op": "learn", "heard": "hollow mere", "written": "Hollowmere", "at": "2026-10-27T11:30:00.000Z"]]
+        local.unpushed = changes
+        local.applyFails = !applies
+        box.state = .sendingBack
+        #expect(await move.back(Self.link, from: home) == .movedBack(answered: true))
+        #expect(local.askedSince == "2026-10-27T10:51:41.000Z")
+        #expect(box.events == ["sync", "read changes", "stop client", "fetch", "apply"])
+        #expect(local.applied == (applies ? [changes] : []))
+        #expect(FileManager.default.fileExists(atPath: parts.client.path) == !applies)
+        #expect(HomePeer.read(try #require(parts.homePeer)) == nil)
+        local.expectOneBridge()
     }
 
     /// Back, but strut can't open what came (a graph naming the box's paths): marked moved
@@ -527,14 +571,18 @@ struct PeelHomeTests {
     final class FakeSync: HomeSyncing, @unchecked Sendable {
         var peers: [HomePeer] = []
         var syncs = 0
-        var fails = false
+        /// Every sync asked for, landed or not.
+        var tries = 0
+        /// The next syncs that fail (the box out of reach; `.max` for all),
+        /// then land. The Mac's own strut takes the peer all the same.
+        var failNext = 0
         var pulls = false
         func addPeer(_ peer: HomePeer, on server: MemoryServer) async throws {
-            if fails { throw PeelError("could not reach 192.168.1.20:8443") }
             peers.append(peer)
         }
         func sync(on server: MemoryServer) async throws -> Bool {
-            if fails { throw PeelError("could not reach 192.168.1.20:8443") }
+            tries += 1
+            if failNext > 0 { failNext -= 1; throw PeelError("could not reach 192.168.1.20:8443") }
             syncs += 1
             return pulls
         }
@@ -542,21 +590,22 @@ struct PeelHomeTests {
 
     /// The box put on file as the peer each time the client's strut starts,
     /// then synced; each sync's time kept for the next launch; a failure
-    /// quiet. No peer record, or one run out: nothing tried.
+    /// said, the last sync's time with it. No peer record, or one run out:
+    /// nothing tried.
     @Test func theSyncerPutsThePeerAndKeepsTheLastSync() async throws {
         let client = temp.url.appending(path: "Strut.client"), item = FileItem(file: temp.url.appending(path: "home-peer"))
         try HomeClient.prepare(client, from: try folders().strut)
         var now = Date(timeIntervalSince1970: 1_793_000_000)
-        let fake = FakeSync(), syncer = HomeSyncer(syncing: fake, client: client, peer: item, now: { now })
+        let fake = FakeSync(), syncer = HomeSyncer(syncing: fake, client: client, peer: item, retries: [], now: { now })
         let server = MemoryServer(base: URL(string: "http://127.0.0.1:4100")!, key: "k")!
         syncer.use(server)
         await syncer.finish()
         #expect(fake.peers.isEmpty && fake.syncs == 0 && syncer.status == .noPeer)
         try Self.peer.keep(in: item)
-        fake.fails = true
+        fake.failNext = .max
         await syncer.finish()
-        #expect(syncer.lastSync == nil && syncer.status == .notYet)
-        fake.fails = false
+        #expect(syncer.lastSync == nil && syncer.status == .failed(now))
+        fake.failNext = 0
         var pulled = 0
         syncer.onPull = { pulled += 1 }
         await syncer.finish()
@@ -569,6 +618,13 @@ struct PeelHomeTests {
         await syncer.finish()
         #expect(fake.peers == [Self.peer] && fake.syncs == 3 && pulled == 2)
         #expect(HomeSyncer(syncing: fake, client: client, peer: item).lastSync == now)
+        // The box gone again: said, with when it last landed.
+        let landed = now
+        now = now.addingTimeInterval(60)
+        fake.failNext = .max
+        await syncer.finish()
+        #expect(syncer.status == .failed(now) && syncer.lastSync == landed)
+        fake.failNext = 0
         // A strut started again (a new port and key): put again.
         syncer.use(MemoryServer(base: URL(string: "http://127.0.0.1:4101")!, key: "k2")!)
         await syncer.finish()
@@ -583,6 +639,34 @@ struct PeelHomeTests {
         syncer.sync()
         await syncer.finish()
         #expect(fake.syncs == 5)
+    }
+
+    /// A failure (the box's strut still starting after a move) is tried
+    /// again on its own, as many times as there are waits, then left to
+    /// the next trigger; one that lands ends the tries.
+    @Test func theSyncerTriesAgainAfterAFailure() async throws {
+        let client = temp.url.appending(path: "Strut.client"), item = FileItem(file: temp.url.appending(path: "home-peer"))
+        try HomeClient.prepare(client, from: try folders().strut)
+        try Self.peer.keep(in: item)
+        let fake = FakeSync()
+        fake.failNext = .max
+        let syncer = HomeSyncer(syncing: fake, client: client, peer: item, retries: [.milliseconds(1), .milliseconds(1)])
+        let server = MemoryServer(base: URL(string: "http://127.0.0.1:4100")!, key: "k")!
+        func settle(until done: () -> Bool) async throws {
+            for _ in 0..<600 where !done() { try await Task.sleep(for: .milliseconds(5)) }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        // The start's sync, then two more, and no further.
+        syncer.use(server)
+        try await settle { fake.tries >= 3 }
+        #expect(fake.tries == 3 && fake.syncs == 0)
+        if case .failed = syncer.status {} else { Issue.record("not failed: \(syncer.status)") }
+        // A start again: tries again, and the first that lands ends them.
+        fake.failNext = 1
+        syncer.use(MemoryServer(base: URL(string: "http://127.0.0.1:4101")!, key: "k2")!)
+        try await settle { fake.syncs >= 1 }
+        #expect(fake.tries == 5 && fake.syncs == 1)
+        if case .synced = syncer.status {} else { Issue.record("not synced: \(syncer.status)") }
     }
 
     /// The client's strut runs no automations and has `home-sync`; Peel Home's own neither.

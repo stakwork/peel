@@ -96,7 +96,7 @@ public struct HomePeer: Sendable, Equatable, Codable, CustomStringConvertible, C
 /// folder of its own (`Strut.client` beside Peel Home's), scheduler off,
 /// with no bridge and no agent, for dictation and the Vocabulary window.
 /// Never the folder set aside at the move, which holds the agent's secrets
-/// and is what "Use this Mac's copy" puts back.
+/// and is what "Turn off Peel Home" puts back.
 public enum HomeClient {
     /// strut's `home-sync { peer }` (strut's AGENTS.md, "Home sync"), one
     /// `home/sync` step: pushes what dictation changed here, then pulls the
@@ -138,6 +138,13 @@ public enum HomeClient {
     public nonisolated static func lastSync(in client: URL) -> Date? {
         (try? Data(contentsOf: client.appending(path: "last-sync.json")))
             .flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) }?["synced"]
+    }
+
+    /// How far the client's pushes landed: strut's `since` in its sync
+    /// state, where the next push starts; nil before the first.
+    public nonisolated static func pushedUntil(in client: URL) -> AgentKit.JSONValue? {
+        (try? Data(contentsOf: client.appending(path: "workspace/home-sync.json")))
+            .flatMap { try? JSONDecoder().decode(AgentKit.JSONValue.self, from: $0) }?["since"]
     }
 
     public nonisolated static func keepLastSync(_ date: Date, in client: URL) {
@@ -214,12 +221,14 @@ public struct StrutHomeSync: HomeSyncing {
 
 /// Keeps the Mac's strut in step with the box (`HomeSyncing`): the box put
 /// on file as its peer each time it starts, then one sync at a time, and
-/// one more after if asked while it ran. Failures are quiet: dictation
-/// keeps the last copy. Without a peer record, or with one run out,
-/// nothing is tried.
+/// one more after if asked while it ran. A failure is tried again a few
+/// times over the next couple of minutes (the box's strut still starting
+/// after a move), then left to the next trigger; meanwhile dictation keeps
+/// the last copy, and Account › Peel Home says it failed. Without a peer record,
+/// or with one run out, nothing is tried.
 @MainActor @Observable
 public final class HomeSyncer {
-    /// Where the sync stands, as Account › Brain says it.
+    /// Where the sync stands, as Account › Peel Home says it.
     public enum Status: Equatable, Sendable {
         /// The box gave no peer record: dictation keeps what it knew at the move.
         case noPeer
@@ -227,12 +236,21 @@ public final class HomeSyncer {
         case expired(Date)
         case notYet
         case synced(Date)
+        /// The last try, then, didn't reach the box: away from home, the box
+        /// off or its strut starting, or this Mac kept off the local network.
+        case failed(Date)
     }
+
+    /// How long after a failure each try again waits, from a start.
+    public static let retries: [Duration] = [.seconds(10), .seconds(20), .seconds(40), .seconds(80)]
 
     /// When the last sync finished, here or at an earlier launch.
     public private(set) var lastSync: Date?
-    /// From the peer record as the last sync (or the start) read it, and `lastSync`.
-    public private(set) var status = Status.notYet
+    /// From the peer record as the last sync (or the start) read it, the
+    /// last try, and `lastSync`.
+    public var status: Status {
+        peerState ?? failedAt.map(Status.failed) ?? lastSync.map(Status.synced) ?? .notYet
+    }
     /// Called after a sync that pulled the box's memory.
     @ObservationIgnored public var onPull: (() -> Void)?
 
@@ -245,11 +263,21 @@ public final class HomeSyncer {
     private var peered: MemoryServer?
     private var running: Task<Void, Never>?
     private var again = false
+    /// `.noPeer` or `.expired`, as the record last read; nil while it is in date.
+    private var peerState: Status?
+    /// When the last try failed, until one lands.
+    private var failedAt: Date?
+    private let retries: [Duration]
+    /// Failures in a row since the start or the last sync that landed.
+    private var failures = 0
+    private var retry: Task<Void, Never>?
 
-    public init(syncing: any HomeSyncing = StrutHomeSync(), client: URL, peer: any SecretItem, now: @escaping () -> Date = Date.init) {
+    public init(syncing: any HomeSyncing = StrutHomeSync(), client: URL, peer: any SecretItem,
+                retries: [Duration] = HomeSyncer.retries, now: @escaping () -> Date = Date.init) {
         self.syncing = syncing
         self.client = client
         self.peer = peer
+        self.retries = retries
         self.now = now
         lastSync = HomeClient.lastSync(in: client)
         _ = readPeer()
@@ -259,6 +287,8 @@ public final class HomeSyncer {
     public func use(_ server: MemoryServer?) {
         guard server != self.server else { return }
         self.server = server
+        failures = 0
+        retry?.cancel()
         if server != nil { sync() }
     }
 
@@ -280,32 +310,62 @@ public final class HomeSyncer {
     }
 
     private func run() async {
+        var failed = false
         repeat {
             again = false
-            guard let server, let record = readPeer() else { break }
-            if peered != server {
-                guard (try? await syncing.addPeer(record, on: server)) != nil else { break }
-                peered = server
-            }
-            // Away from home, or the box off: the last copy stays.
-            guard let pulled = try? await syncing.sync(on: server), server == self.server else { continue }
-            let date = now()
-            lastSync = date
-            status = .synced(date)
-            HomeClient.keepLastSync(date, in: client)
-            if pulled { onPull?() }
+            // No record (or one run out) now: nothing to try again.
+            guard let server, let record = readPeer() else { failed = false; break }
+            failed = await !landed(record, on: server)
         } while again
         running = nil
+        if failed { retryLater() }
     }
 
-    /// The peer record, if there is one still in date; `status` from it.
+    /// One push and pull; false when it should be tried again. A strut
+    /// stopped or started again meanwhile has nothing to try again.
+    private func landed(_ record: HomePeer, on server: MemoryServer) async -> Bool {
+        // The Mac's own strut not taking the peer yet: tried again, though the box wasn't asked.
+        if peered != server {
+            guard (try? await syncing.addPeer(record, on: server)) != nil else { return server != self.server }
+            peered = server
+        }
+        // Away from home, or the box off: the last copy stays.
+        let pulled = try? await syncing.sync(on: server)
+        guard server == self.server else { return true }
+        guard let pulled else {
+            failedAt = now()
+            return false
+        }
+        let date = now()
+        lastSync = date
+        failedAt = nil
+        failures = 0
+        retry?.cancel()
+        HomeClient.keepLastSync(date, in: client)
+        if pulled { onPull?() }
+        return true
+    }
+
+    /// The next try after a failure, while there are tries left.
+    private func retryLater() {
+        guard server != nil, failures < retries.count else { return }
+        let wait = retries[failures]
+        failures += 1
+        retry?.cancel()
+        retry = Task { [weak self] in
+            try? await Task.sleep(for: wait)
+            if !Task.isCancelled { self?.sync() }
+        }
+    }
+
+    /// The peer record, if there is one still in date; `peerState` from it.
     private func readPeer() -> HomePeer? {
         let record = HomePeer.read(peer)
-        status = switch record {
+        peerState = switch record {
         case nil: .noPeer
         case let record? where record.expires <= now(): .expired(record.expires)
-        default: lastSync.map(Status.synced) ?? .notYet
+        default: nil
         }
-        return record.flatMap { $0.expires > now() ? $0 : nil }
+        return peerState == nil ? record : nil
     }
 }

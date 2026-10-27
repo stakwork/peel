@@ -21,13 +21,13 @@ public enum Brain: Sendable, Equatable {
     public static func read(_ item: any SecretItem) throws -> (brain: Brain, oldHomeServer: Bool) {
         guard let data = try item.read() else { return (.thisMac, false) }
         guard let kept = try? JSONDecoder().decode(Kept.self, from: data) else {
-            throw PeelError("Peel couldn't read where Peel Home is. Choose This Mac in Account › Brain.")
+            throw PeelError("Peel couldn't read where Peel Home is. Choose This Mac in Account › Peel Home.")
         }
         // Moved, and nothing else: a record mixing both is not one Peel wrote.
         switch (kept.moved, kept.url) {
         case (let moved?, nil): return (.moved(moved), false)
         case (nil, _?): return (.thisMac, true)
-        default: throw PeelError("Peel couldn't read where Peel Home is. Choose This Mac in Account › Brain.")
+        default: throw PeelError("Peel couldn't read where Peel Home is. Choose This Mac in Account › Peel Home.")
         }
     }
 

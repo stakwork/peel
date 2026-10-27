@@ -282,7 +282,7 @@ stacks).
 | A4 | peel | Account › Peel Home: move out and back through the bundled strut's `move`; stop and start strut and the bridge; ping; mark moved | PR open: stakwork/peel#396, with A6 and the strut pin; live test on Tom's Umbrel passed |
 | A5 | peel | Umbrel (and CasaOS) wrappers of `home/`; the Umbrel draft (`home-umbrel-app`, c6a291f1) reworked onto it | After A3 |
 | A6 | peel | The old "Home server" mode removed (`MemoryServer` to a remote strut, `MemoryMove`, `MemoryBackup`) | In stakwork/peel#396 |
-| A7 | peel | Rename "brain" to Peel Home in existing code and copy: `Profile.brain`, `peel://brain`, Account › Brain; remove the old `brain/` bundle (done in #396) | Later |
+| A7 | peel | Rename "brain" to Peel Home in existing code and copy: `Profile.brain`, `peel://brain`, Account › Brain (its label and icon done with the sync fixes); remove the old `brain/` bundle (done in #396) | Later |
 | A8 | strut | Ladybug reserves 64 GiB per graph instead of 1 TiB, so strut runs on a Raspberry Pi kernel | Merged: stakwork/strut#338 |
 
 A3's Go setup is replaced, but its README's spec (pairing code, HKDF and
@@ -339,14 +339,17 @@ changed.
   - **No changes to dictation:** transcription, the fixer and
     `dictation/*` run as today against the Mac's own memory graph.
   - **Its folder:** a fresh `Strut.client`, never the set-aside agent folder
-    (that holds the agent's secrets and is what "Use this Mac's copy"
+    (that holds the agent's secrets and is what "Turn off Peel Home"
     restores). The dictation model picks are copied across; the speech
     models stay where they are.
 - **The box is the one writer of memory.** The Mac's copy is replaced on
   every pull. Only dictation writes on the Mac, and those writes go to the
   box first.
-- **Sync = push, then pull.** It runs on a timer, on wake, on a network
-  change, and after a correction:
+- **Sync = push, then pull.** It runs at launch, on a timer, on wake, on a
+  network change, and after a correction. A failed one is tried again a few
+  times over the next couple of minutes, since the box's strut is still
+  starting right after a move. Account › Peel Home says when it last synced, or
+  that the last try didn't reach the box:
   - **Push:** what dictation learned or undid on the Mac since the last
     sync. strut finds these in the graph itself: mishearing facts with
     `created_by: "dictation"` and their `created_at`, and forgets with
@@ -392,7 +395,21 @@ network, on a published home-network port (`HOME_PEER_BIND`, 8443):
 **The move hands it over.** After a successful send, `strut move` returns
 the peer record: the box's URL, a person token and the CA. Peel adds it to
 the Mac's strut with `PUT /peers/home` (not in an env var). Move back
-pushes once more, then removes `Strut.client`.
+can't push: Send back on the box stops its strut first thing. So it reads
+the client's `dictation/changes-since` from its last push that landed (the
+`since` in its `home-sync.json`) before stopping it, replays them into Peel
+Home's own strut with `dictation/apply-changes` once that is back, and only
+then removes `Strut.client` (kept if the replay fails). Whichever side
+started the move back, a correction made after the last good sync survives.
+
+**Learned, live on an Umbrel (2026-10-27):** the first sync after a move
+always failed (502: the box's strut not up yet) and nothing retried for up
+to 15 minutes; the move back's push after the link always failed; and
+failures were silent in Account › Brain (now Account › Peel Home). All three fixed as above. macOS
+Local Network privacy keys an app by its main executable's UUID, so every
+rebuild of Peel needs it allowed again (System Settings › Privacy & Security
+› Local Network); until then the move fails and every sync reads as not
+reaching the box.
 
 **PRs, in order:**
 

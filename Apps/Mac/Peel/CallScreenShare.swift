@@ -8,10 +8,8 @@ import Synchronization
 /// it, so Peel needs no standing Screen Recording permission and sees only
 /// what was picked. Frames go from a ScreenCaptureKit stream into a LiveKit
 /// buffer track. Unless asked to include them, Peel's own windows are left out
-/// of a shared display, so it never shows your chats or the call itself. For a
-/// display Peel builds the content filter itself (the picked display, minus
-/// Peel's app unless included), so the choice can change live with
-/// `SCStream.updateContentFilter`; the windows are also cloaked.
+/// of every capture, so a shared display never shows your chats or the call
+/// itself.
 @MainActor
 final class ScreenShare {
     /// What the picker chose.
@@ -48,43 +46,19 @@ final class ScreenShare {
     }
 
     let content: Content
-    /// Whether Peel's own windows are part of the capture. Changed while
-    /// sharing through `setIncludesPeel`.
-    private(set) var includesPeel: Bool
+    /// Whether Peel's own windows are part of the capture.
+    let includesPeel: Bool
     /// The screen share track, publishable once the first frame is in.
     let track: LocalVideoTrack
-    private var stream: SCStream
-    /// What the stream captures now.
-    private var filter: SCContentFilter
-    /// Kept so a restarted stream captures the same way.
-    private let configuration: SCStreamConfiguration
+    private let stream: SCStream
     private let output: ShareOutput
-    /// The latest value asked of `setIncludesPeel`, applied one change at a time.
-    private var wantsPeel: Bool
-    private var applying = false
-    private var stopping = false
 
-    private init(content: Content, includesPeel: Bool, track: LocalVideoTrack, stream: SCStream, filter: SCContentFilter, configuration: SCStreamConfiguration, output: ShareOutput) {
+    private init(content: Content, includesPeel: Bool, track: LocalVideoTrack, stream: SCStream, output: ShareOutput) {
         self.content = content
         self.includesPeel = includesPeel
-        self.wantsPeel = includesPeel
         self.track = track
         self.stream = stream
-        self.filter = filter
-        self.configuration = configuration
         self.output = output
-    }
-
-    /// The filter for a picked display, built here so Peel can be left in or
-    /// out of it. Keeps `picked` when the display or the shareable content
-    /// cannot be found.
-    static func displayFilter(from picked: SCContentFilter, includePeel: Bool) async -> SCContentFilter {
-        guard let content = try? await SCShareableContent.current,
-              let id = picked.includedDisplays.first?.displayID,
-              let display = content.displays.first(where: { $0.displayID == id })
-        else { return picked }
-        let peel = includePeel ? [] : content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
-        return SCContentFilter(display: display, excludingApplications: peel, exceptingWindows: [])
     }
 
     // MARK: The picker
@@ -121,8 +95,8 @@ final class ScreenShare {
     private static let maxSide: CGFloat = 1920
     private static let fps: Int32 = 15
 
-    /// Starts capturing `filter`, leaving Peel's windows out of a display
-    /// (by filter and by cloak), unless `includePeel`.
+    /// Starts capturing `filter`, after hiding Peel's windows from capture,
+    /// unless `includePeel`.
     /// `stopped` runs when macOS ends the capture (the menu bar's Stop, a
     /// closed window).
     static func start(_ filter: SCContentFilter, includePeel: Bool = false, stopped: @escaping @MainActor () -> Void) async throws -> ScreenShare {
@@ -150,13 +124,9 @@ final class ScreenShare {
         )
         guard let capturer = track.capturer as? BufferCapturer else { throw ShareError.noCapturer }
         let output = ShareOutput(capturer: capturer) { Task { @MainActor in stopped() } }
-        // A display is captured through a filter of our own, so Peel can be
-        // included later; sized from the picked one above.
-        let capture = content == .display ? await displayFilter(from: filter, includePeel: includePeel) : filter
-        let stream = SCStream(filter: capture, configuration: configuration, delegate: output)
+        let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: output.queue)
-        // The picker offers Peel's windows and apps only when asked, so only
-        // a display needs the cloak.
+        // Only a display can show Peel: the picker never offers its windows.
         if content == .display, !includePeel { WindowCloak.hide() }
         do {
             try await stream.startCapture()
@@ -165,71 +135,14 @@ final class ScreenShare {
             throw error
         }
         output.startResending()
-        return ScreenShare(content: content, includesPeel: includePeel, track: track, stream: stream, filter: capture, configuration: configuration, output: output)
+        return ScreenShare(content: content, includesPeel: includePeel, track: track, stream: stream, output: output)
     }
 
     /// macOS ended the capture on its own.
     var ended: Bool { output.ended }
 
-    /// Includes or leaves out Peel's own windows, live. For a display the
-    /// capture's filter is replaced (and the cloak follows), so viewers see the
-    /// change; if macOS refuses the update the stream is restarted with the new
-    /// filter, keeping the track and its publication. Window and app shares
-    /// just record the flag. Changes are applied one at a time; a call made
-    /// during one only records the latest value, which the running call applies.
-    func setIncludesPeel(_ include: Bool) async {
-        wantsPeel = include
-        guard content == .display else {
-            includesPeel = include
-            return
-        }
-        guard !applying else { return }
-        applying = true
-        defer { applying = false }
-        while includesPeel != wantsPeel, !stopping, !output.ended {
-            await apply(wantsPeel)
-        }
-    }
-
-    private func apply(_ include: Bool) async {
-        // Leaving Peel out: cloak first, so nothing shows while the filter changes.
-        if !include { WindowCloak.hide() }
-        let new = await Self.displayFilter(from: filter, includePeel: include)
-        guard !stopping, !output.ended else { return }
-        do {
-            try await stream.updateContentFilter(new)
-        } catch {
-            do {
-                try await restart(with: new)
-            } catch {
-                // The capture could not go on: report the share as ended.
-                WindowCloak.show()
-                output.end()
-                return
-            }
-        }
-        filter = new
-        includesPeel = include
-        if include { WindowCloak.show() }
-    }
-
-    /// Replaces the stream with a new one on `new`, same configuration, output
-    /// and queue. The output ignores the old stream's stop, so the share is
-    /// not reported as ended.
-    private func restart(with new: SCContentFilter) async throws {
-        output.restarting(true)
-        defer { output.restarting(false) }
-        let old = stream
-        try? await old.stopCapture()
-        let replacement = SCStream(filter: new, configuration: configuration, delegate: output)
-        try replacement.addStreamOutput(output, type: .screen, sampleHandlerQueue: output.queue)
-        try await replacement.startCapture()
-        stream = replacement
-    }
-
     /// Stops the capture and lets Peel's windows be captured again.
     func stop() async {
-        stopping = true
         output.stop()
         try? await stream.stopCapture()
         WindowCloak.show()
@@ -286,7 +199,6 @@ private final class ShareOutput: NSObject, SCStreamOutput, SCStreamDelegate, Sen
     private let last = Mutex(Last())
     private let resend = Mutex<Task<Void, Never>?>(nil)
     private let endedByMacOS = Mutex(false)
-    private let isRestarting = Mutex(false)
     var ended: Bool { endedByMacOS.withLock { $0 } }
 
     init(capturer: BufferCapturer, stopped: @escaping @Sendable () -> Void) {
@@ -305,24 +217,9 @@ private final class ShareOutput: NSObject, SCStreamOutput, SCStreamDelegate, Sen
     }
 
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
-        // The old stream of a restart stops on purpose; the share goes on.
-        guard !isRestarting.withLock({ $0 }) else { return }
-        end()
-    }
-
-    /// Whether the stream is being replaced, so its stop is not the share's end.
-    func restarting(_ value: Bool) {
-        isRestarting.withLock { $0 = value }
-    }
-
-    /// The capture is over for good: report it once.
-    func end() {
         stop()
-        let first = endedByMacOS.withLock { ended in
-            defer { ended = true }
-            return !ended
-        }
-        if first { stopped() }
+        endedByMacOS.withLock { $0 = true }
+        stopped()
     }
 
     func startResending() {

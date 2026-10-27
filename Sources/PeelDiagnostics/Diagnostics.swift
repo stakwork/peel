@@ -24,12 +24,12 @@ final class DiagnosticsRuntime: Sendable {
     private let sampling = Locked<Task<Void, Never>?>(nil)
 
     /// `crash` is the id of the report found at launch, if any (the record is already in the store).
-    init(root: URL, appVersion: String, crash: String?) {
+    init(root: URL, appVersion: String, crash: String?, state: RunMarker.State = .foreground) {
         store = DiagnosticsStore(root: root)
         store.prepare()
         ring = DiagnosticsRing(file: store.ringFile)
         marker = RunMarkerStore(file: store.markerFile)
-        previous = marker.begin(appVersion: appVersion, crashReportID: crash)
+        previous = marker.begin(appVersion: appVersion, crashReportID: crash, state: state)
         ring.append(.init(kind: .launch, lastAction: .launch))
         ring.append(.init(kind: .previousRun, previousRun: previous.kind))
     }

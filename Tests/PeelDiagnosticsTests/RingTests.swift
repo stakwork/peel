@@ -127,6 +127,14 @@ struct MarkerTests {
         #expect(RunMarkerStore(file: file).begin(appVersion: "1", crashReportID: nil) == .killedForeground)
     }
 
+    @Test func backgroundLaunchIsKilledInBackground() {
+        let (first, file) = store()
+        first.begin(appVersion: "1", crashReportID: nil, state: .background)
+        let previous = RunMarkerStore(file: file).begin(appVersion: "1", crashReportID: nil)
+        #expect(previous == .killedBackground)
+        #expect(!previous.isProblem)
+    }
+
     @Test func killedInBackgroundIsExpected() {
         let (first, file) = store()
         first.begin(appVersion: "1", crashReportID: nil)

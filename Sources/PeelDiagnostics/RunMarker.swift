@@ -69,11 +69,11 @@ public final class RunMarkerStore: Sendable {
     /// Classifies the last run and starts this one's marker.
     @discardableResult
     public func begin(launchID: String = UUID().uuidString, appVersion: String, crashReportID: String?,
-                      now: Date = Date()) -> PreviousRun {
+                      state: RunMarker.State = .foreground, now: Date = Date()) -> PreviousRun {
         let data = try? Data(contentsOf: url)
         let marker = data.flatMap { try? Self.decoder().decode(RunMarker.self, from: $0) }
         let previous = Self.classify(marker, markerReadable: data == nil || marker != nil, crashReportID: crashReportID)
-        write(RunMarker(launchID: launchID, appVersion: appVersion, startedAt: now, phase: .running, lastKnownState: .foreground))
+        write(RunMarker(launchID: launchID, appVersion: appVersion, startedAt: now, phase: .running, lastKnownState: state))
         return previous
     }
 

@@ -80,11 +80,18 @@ final class CallSession {
     private(set) var deviceNotice: String?
     /// What you share, while you share it (and while it is being published).
     var sharing: ScreenShare.Content? { share?.content }
-    /// Whether the next share includes Peel's own windows, which are left out
-    /// by default. Applies when a share starts, not to one already running.
-    var includePeelWindows = false
+    /// Whether a share includes Peel's own windows, which are left out by
+    /// default. Applies to the next share and, through `setIncludePeelWindows`,
+    /// to one already running.
+    private(set) var includePeelWindows = false
     /// Whether the running share includes Peel's own windows.
-    var sharingIncludesPeel: Bool { share?.includesPeel ?? false }
+    var sharingIncludesPeel: Bool { share != nil && includePeelWindows }
+
+    /// Includes or leaves out Peel's own windows, at once if a share is running.
+    func setIncludePeelWindows(_ include: Bool) {
+        includePeelWindows = include
+        share?.setIncludesPeel(include)
+    }
     /// The tile shown large with the others in a strip beside it; nil for
     /// the grid. A screen someone starts sharing takes it.
     private(set) var focus: Tile.ID?

@@ -312,13 +312,21 @@ private struct CallControls: View {
     /// app; while you share it is one filled button that stops it.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
-            Button { call.stopScreenShare() } label: {
-                pill("rectangle.inset.filled.and.person.filled", "Stop sharing", weight: .medium,
-                     text: Theme.buttonText, fill: Theme.accent)
+            HStack(spacing: 0) {
+                Button { call.stopScreenShare() } label: {
+                    pill("rectangle.inset.filled.and.person.filled", "Stop sharing", weight: .medium,
+                         text: Theme.buttonText, fill: .clear)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .help("Stop sharing (⌘⇧S)")
+                Theme.buttonText.opacity(0.25).frame(width: 1)
+                chevron(shareChevron, help: "Sharing options", label: "Sharing options", tint: Theme.buttonText) {
+                    showShareMenu(at: shareChevron)
+                }
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut("s", modifiers: [.command, .shift])
-            .help("Stop sharing (⌘⇧S)")
+            .frame(height: 44)
+            .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
         } else {
             shareSegment
         }
@@ -387,12 +395,13 @@ private struct CallControls: View {
         .opacity(refused ? 0.45 : 1)
     }
 
-    /// The chevron half of a segment, which opens a menu beside `anchor`.
-    private func chevron(_ anchor: MenuAnchor, help: String, label: String, action: @escaping () -> Void) -> some View {
+    /// The chevron half of a segment, which opens a menu beside `anchor`,
+    /// drawn in `tint`.
+    private func chevron(_ anchor: MenuAnchor, help: String, label: String, tint: Color = Theme.secondaryText, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "chevron.up")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText)
+                .foregroundStyle(tint)
                 .frame(width: 26)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -454,15 +463,19 @@ private struct CallControls: View {
         presenter?.show(entries, at: anchor, source: "call-devices", minWidth: 268)
     }
 
-    /// What the picker opens on: the entire screen, a window or an app.
+    /// What the picker opens on: the entire screen, a window or an app. While
+    /// sharing, only the Peel windows toggle, which takes effect at once.
     private func showShareMenu(at anchor: MenuAnchor) {
-        let entries: [MenuEntry] = [
+        let toggle = MenuEntry.button("Include Peel windows", systemImage: "macwindow.on.rectangle", checked: call.includePeelWindows) {
+            call.setIncludePeelWindows(!call.includePeelWindows)
+        }
+        let entries: [MenuEntry] = call.sharing != nil ? [toggle] : [
             .header("Share"),
             .button("Entire screen", systemImage: "display") { call.startScreenShare(.display) },
             .button("A window", systemImage: "macwindow") { call.startScreenShare(.window) },
             .button("An app", systemImage: "app") { call.startScreenShare(.application) },
             .divider,
-            .button("Include Peel windows", systemImage: "macwindow.on.rectangle", checked: call.includePeelWindows) { call.includePeelWindows.toggle() },
+            toggle,
         ]
         presenter?.show(entries, at: anchor, source: "call-share", minWidth: 200)
     }

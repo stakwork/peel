@@ -46,8 +46,9 @@ final class ScreenShare {
     }
 
     let content: Content
-    /// Whether Peel's own windows are part of the capture.
-    let includesPeel: Bool
+    /// Whether Peel's own windows are part of the capture. Changed while
+    /// sharing through `setIncludesPeel`.
+    private(set) var includesPeel: Bool
     /// The screen share track, publishable once the first frame is in.
     let track: LocalVideoTrack
     private let stream: SCStream
@@ -140,6 +141,14 @@ final class ScreenShare {
 
     /// macOS ended the capture on its own.
     var ended: Bool { output.ended }
+
+    /// Includes or leaves out Peel's own windows, live. Only a display share
+    /// can be cloaked, so for a window or app share just the flag changes.
+    func setIncludesPeel(_ include: Bool) {
+        includesPeel = include
+        guard content == .display else { return }
+        include ? WindowCloak.show() : WindowCloak.hide()
+    }
 
     /// Stops the capture and lets Peel's windows be captured again.
     func stop() async {

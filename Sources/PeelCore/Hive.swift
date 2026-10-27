@@ -166,6 +166,7 @@ public struct HiveClient: Sendable {
             default: throw Self.failure(status, data, couldNot: "pair")
             }
         }
+        if status >= 500 { throw Unanswered(failure: Self.failure(status, data, couldNot: "pair")) }
         guard status == 200 else { throw Self.failure(status, data, couldNot: "pair") }
         let paired = try JSONDecoder.hive.decode(Paired.self, from: data)
         guard paired.credential.hasPrefix("hivedev_") else { throw PeelError("Stadeum's device credential could not be read.") }
@@ -176,13 +177,35 @@ public struct HiveClient: Sendable {
     }
 
     /// Polls `pairing` every `interval` until the person answers in Hive or
-    /// the code runs out: never `.pending`. Cancelling the task stops it.
-    public func answer(to pairing: Pairing, name: String) async throws -> Poll {
+    /// the code runs out: never `.pending`. A poll that gets no answer (the
+    /// network, or Hive failing for a moment) is tried again until
+    /// `deadline`, when the code runs out: on the iPhone the person approves
+    /// in Safari, and the first poll back in Peel often goes out on a
+    /// connection the system dropped while Peel was away. `wait` is how it
+    /// waits between polls. Cancelling the task stops it.
+    public func answer(
+        to pairing: Pairing, name: String, until deadline: Date,
+        wait: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) async throws -> Poll {
         while true {
-            try await Task.sleep(for: .seconds(pairing.interval))
-            let poll = try await poll(pairing, name: name)
-            if poll != .pending { return poll }
+            await wait(.seconds(pairing.interval))
+            try Task.checkCancellation()
+            do {
+                let poll = try await poll(pairing, name: name)
+                if poll != .pending { return poll }
+            } catch let unanswered as Unanswered {
+                guard Date() < deadline else { throw unanswered.failure }
+            } catch let error as URLError where error.code != .cancelled {
+                guard Date() < deadline else { throw error }
+            }
         }
+    }
+
+    /// A poll Hive could not answer this time (a 5xx): `answer(to:)` polls
+    /// again. Said in Hive's words, as `failure`.
+    struct Unanswered: Error, CustomStringConvertible {
+        let failure: PeelError
+        var description: String { failure.description }
     }
 
     /// `link` with Hive's peers as they are now; nil once Hive no longer

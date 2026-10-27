@@ -41,11 +41,7 @@ struct PeelPhoneApp: App {
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
-                        model.becameActive()
-                        // Renewed when due: the hourly look may have slept through its turn.
-                        model.stadeum.renewIfDue()
-                    }
+                    if phase == .active { model.becameActive() }
                     if phase == .background { model.leftForeground() }
                 }
                 // The PIN timeout counts the time Peel is away: in front is

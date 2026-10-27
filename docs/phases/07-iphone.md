@@ -753,6 +753,37 @@ both harmless: on a revoke the strut and bridge sync runs in its own
 task, and Disconnect revokes the "Always allow" rules even when the
 Keychain delete fails.
 
+### Pairing that survives the trip to Safari (2026-10-27, `fix/iphone-stadeum-pairing`)
+
+**Found.** A developer paired an iPhone: Stadeum said "Approved, it
+finishes pairing on its own", and the iPhone never did. On the Mac the
+browser sits beside Peel, which keeps polling; on the iPhone, approving
+takes Peel off the screen, and three things could end the pairing after
+Hive's yes. The first poll back in Peel often went out on a connection
+the system dropped while Peel was away, and one error ended the pairing
+(`answer(to:)` threw it). Hive's 500 for a moment did the same. And a
+code approved but collected after its 10 minutes (signing in to Hive
+counts) said "The code ran out before it was approved", which Stadeum had
+just contradicted.
+
+**Built.** `answer(to:until:wait:)` polls again after a poll that reached
+no one (a `URLError` other than a cancel) or a 5xx (`Unanswered`), until
+the code's end by this device's clock (`deadline`: `expiresIn` from when
+the code was asked for, never later than Hive's); past it, the last error
+is said. A refusal still ends it at once. `Stadeum.cameToFront` (from
+`AppModel.becameActive`, both apps, while unlocked) cuts the wait before
+the next poll short, so coming back from Safari collects at once; it also
+renews when due, which the iPhone's scene did itself before. A code Hive
+no longer has is said for what it is: past the deadline, "ran out before
+pairing finished", with the minutes to come back in; sooner, "Stadeum no
+longer has this code".
+
+**Checked.** `HiveTests` (a 5xx tried again and then said; a refusal not
+tried again; a port no one listens on tried again until the deadline) and
+`StadeumTests` (coming to the front polls a 600-second interval at once;
+the two expired messages), each failing with its fix taken out; the full
+`swift test`. Not seen: a real iPhone paired against Hive.
+
 ### The project
 
 - An Xcode project for the iOS app, an extension and signing. SwiftPM

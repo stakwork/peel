@@ -88,6 +88,11 @@ struct PhoneComposer: View {
                 if let paysTo, composer.chat != nil, composer.thread == nil {
                     ComingButton(systemImage: "bolt", label: "Send sats",
                                  note: "Sending sats to \(paysTo) from here is coming. Send from the Mac for now.")
+                        // Hidden while the mic is held, keeping its space so
+                        // the mic does not move under the finger.
+                        .opacity(recorder.state.isRecording ? 0 : 1)
+                        .allowsHitTesting(!recorder.state.isRecording)
+                        .accessibilityHidden(recorder.state.isRecording)
                 }
                 if canSend {
                     // A restore that settled with no name to recover leaves

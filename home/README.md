@@ -23,6 +23,7 @@ away once Peel moves to this one (A7).
 |---|---|
 | Raspberry Pi 4 or 5, 4 GB+ | 64-bit Raspberry Pi OS and Docker. Keep this folder on an SSD, not the SD card |
 | PC or NAS (amd64 or arm64) | Docker with Compose v2 |
+| Umbrel | None: install Peel Home from the Peel community app store, a wrapper of this folder ([umbrel/](umbrel/README.md)), and open it from Umbrel's home screen |
 | VPS | As a PC, with `HOME_SETUP_BIND=127.0.0.1` in `.env`, and the setup page reached through an SSH tunnel: otherwise anyone on the internet sees its code and can move in first. The peer port too ("The peer port") |
 | Old Mac | OrbStack or Docker Desktop. Turn on automatic login, prevent sleep, and start up after a power failure |
 
@@ -38,6 +39,7 @@ away once Peel moves to this one (A7).
 | | |
 |---|---|
 | Logs | `docker compose logs -f` |
+| Where it is | `docker compose exec setup sh /setup.sh status`: one line, its state and, while a move is offered, its link (the states are listed in `setup.sh`). The Umbrel app's page is built on it |
 | Send Peel Home back to the Mac | `docker compose exec setup sh /setup.sh send-back <the box's address>[:<port>]` (or set `HOME_SETUP_HOST` and leave the address out). It prints the link; the QR code is in `docker compose logs setup` |
 | Keep it here after all | `docker compose exec setup sh /setup.sh cancel` (once the link is out, `cancel --force`: if the Mac already fetched Peel Home, it would then run in both places) |
 | Update | Copy the new release's folder over this one, then `docker compose pull && docker compose up -d --force-recreate`. Peel and the box must run the same strut ("Images") |
@@ -142,6 +144,7 @@ containers (`docker compose up -d --force-recreate`).
 | `.move/` | `strut move`'s state: the receive code, a packed send-back |
 | `gate/` | The gate's stop request, each program's heartbeat, and strut's marks (`strut.ready`, `strut.box`) |
 | `setup/` | `setup.sh`'s send-back request, and `events`, the JSON lines the current `strut move serve` printed (emptied at each start) |
+| `page/` | Only with `SETUP_PAGE` (the Umbrel app): `status`, which setup's relay writes for a page that can't see the rest, and `ask`, the page's one request (`setup.sh`, `relay`) |
 | `peer/caddy/` | The peer port's CA (`pki/authorities/local/root.crt`, and its key) and certificate. This box's own, never moved, kept across moves |
 | `sent/sent-<time>/` | What was sent back to the Mac, kept in case it is needed. Only `setup` can see it: it holds the agent's seed and strut's key |
 

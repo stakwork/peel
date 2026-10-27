@@ -239,7 +239,8 @@ is a short plan. Update the status and the journal when you finish something.
     reader of strut's and Hive's dates
   - `Hive.swift` — Hive's device flow (the person knows it as Stadeum),
     for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
-    (polled until the person answers), renew, `startCall`: a call with
+    (polled until the person answers; a poll that reaches no one or gets a
+    5xx is tried again until the code runs out), renew, `startCall`: a call with
     Jamie in it for one workspace, docs/hive-calls.md), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
     one org's strut and the person's token for it, and `HivePeer.jamie`,
@@ -315,7 +316,8 @@ is a short plan. Update the status and the journal when you finish something.
   matches, stepping through them with `focus(on:inThread:)`);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
-  the iPhone), Connect (Hive's device flow), renew hourly and when due,
+  the iPhone), Connect (Hive's device flow; `cameToFront`, from
+  `becameActive`, polls at once after the browser), renew hourly and when due,
   the revoke rule (orgs kept and listed, none `live`, kept with the link
   as `HiveLink.revokedAt` so an unlock or a restart does not use them
   again, no renewal tried), close, Disconnect; the apps listed,

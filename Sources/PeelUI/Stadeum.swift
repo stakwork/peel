@@ -70,6 +70,10 @@ public final class Stadeum {
     @ObservationIgnored private var pairing: Task<Void, Never>?
     @ObservationIgnored private var renewing: Task<Void, Never>?
     @ObservationIgnored private var appsReading: Task<Void, Never>?
+    /// The pairing's wait for its next poll, which `cameToFront` cuts short.
+    @ObservationIgnored private var nap: Task<Void, Never>?
+    /// Peel came to the front while a pairing's poll was in flight: its next wait is skipped.
+    @ObservationIgnored private var pollSoon = false
     /// Counts resets: a pairing, renewal or read begun before the last one
     /// keeps nothing and says nothing (the account closed, or Disconnect).
     @ObservationIgnored private var generation = 0
@@ -110,21 +114,30 @@ public final class Stadeum {
         guard let profile else { return }
         pairing?.cancel()
         problem = nil
+        pollSoon = false
         let client = client(profile)
         let generation = generation
         pairing = Task {
             do {
+                // When the code runs out, by this device's clock: no later than Hive's.
+                let asked = Date()
                 let pairing = try await client.start(name: name)
                 // Cancelled while Stadeum answered: its code is never shown.
                 try Task.checkCancellation()
                 status = .pairing(pairing)
-                switch try await client.answer(to: pairing, name: name) {
+                let deadline = asked.addingTimeInterval(TimeInterval(pairing.expiresIn))
+                switch try await client.answer(to: pairing, name: name, until: deadline,
+                                               wait: { await self.napUntilNextPoll($0) }) {
                 case .pending:
                     return
                 case .denied:
                     settle("It was turned down in Stadeum.")
                 case .expired:
-                    settle("The code ran out before it was approved. Try again.")
+                    // Approved or not, Peel collects it only once it is back in front.
+                    let minutes = Formatting.count(max(1, (pairing.expiresIn + 59) / 60), "minute")
+                    settle(Date() >= deadline
+                        ? "The code ran out before pairing finished. Connect again, then approve it in Stadeum and come back to Peel within \(minutes)."
+                        : "Stadeum no longer has this code, so pairing didn't finish. Connect again.")
                 case .paired(let link):
                     // Cancelled, or the account closed, while Stadeum answered: nothing kept.
                     guard !Task.isCancelled, generation == self.generation else { return }
@@ -165,9 +178,32 @@ public final class Stadeum {
         if let failed { problem = PeelError.noted(failed, couldNot: "forget the Stadeum connection") }
     }
 
-    /// Renews now if due: the iPhone back in front, where the hourly look
-    /// may have slept through its turn.
-    public func renewIfDue() {
+    /// Peel came back to the front: a pairing under way polls Hive now (the
+    /// person likely just approved it there, on the iPhone in Safari), and
+    /// the workspaces are renewed if due.
+    public func cameToFront() {
+        if case .pairing = status {
+            // Waiting: woken now. Polling: the next wait is skipped.
+            if let nap { nap.cancel() } else { pollSoon = true }
+        }
+        renewIfDue()
+    }
+
+    /// The pairing's wait between polls: none when Peel has just come to the front.
+    private func napUntilNextPoll(_ duration: Duration) async {
+        if pollSoon {
+            pollSoon = false
+            return
+        }
+        let nap = Task<Void, Never> { try? await Task.sleep(for: duration) }
+        self.nap = nap
+        await withTaskCancellationHandler { await nap.value } onCancel: { nap.cancel() }
+        if self.nap == nap { self.nap = nil }
+    }
+
+    /// Renews now if due: Peel back in front (`cameToFront`), where the
+    /// hourly look may have slept through its turn.
+    func renewIfDue() {
         guard let link, link.revokedAt == nil, link.due() else { return }
         keepRenewed(now: true)
     }
@@ -235,6 +271,8 @@ public final class Stadeum {
         pairing = nil
         renewing = nil
         appsReading = nil
+        nap = nil
+        pollSoon = false
         readingApps = false
         unreadApps = []
         status = .off

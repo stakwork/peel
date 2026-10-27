@@ -15,9 +15,9 @@ struct HiveTests {
         #"{"id":"\#(id)","baseUrl":"https://\#(id).sphinx.chat:3355/lab","token":"jwt-\#(id)","label":"\#(label)","description":"\#(label) on Hive. Workspaces: \#(id).","repos":["https://github.com/acme/\#(id)"]}"#
     }
 
-    static func pairing(_ port: UInt16, page: String? = nil) -> String {
+    static func pairing(_ port: UInt16, page: String? = nil, code: String = "dc-secret") -> String {
         let page = page ?? "http://127.0.0.1:\(port)/pair?code=BCDF-GHJK"
-        return #"{"deviceCode":"dc-secret","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"\#(page)","expiresIn":600,"interval":5}"#
+        return #"{"deviceCode":"\#(code)","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"\#(page)","expiresIn":600,"interval":5}"#
     }
 
     static let paired = #"""
@@ -69,6 +69,61 @@ struct HiveTests {
         let client = HiveClient(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
         let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(hive.port).utf8))
         #expect(try await client.poll(pairing, name: "Mac") == poll)
+    }
+
+    /// A poll Hive does not answer (a 5xx) is tried again until the code runs
+    /// out, then said in Hive's words; a refusal ends it at once.
+    @Test func aPollHiveDoesNotAnswerIsTriedAgainUntilTheCodeRunsOut() async throws {
+        let polls = Mutex(0)
+        let hive = try await HTTPStub { _, request in
+            if request.contains("dc-refused") { return (404, #"{"error":"Not found"}"#) }
+            if request.contains("dc-down") { return (503, #"{"error":"Failed to complete pairing"}"#) }
+            return polls.withLock { $0 += 1; return $0 } < 3 ? (500, #"{"error":"Failed to complete pairing"}"#) : (200, Self.paired)
+        }
+        defer { hive.stop() }
+        let client = HiveClient(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(hive.port).utf8))
+        let later = Date(timeIntervalSinceNow: 600)
+        guard case .paired(let link) = try await client.answer(to: pairing, name: "iPhone", until: later, wait: { _ in }) else {
+            Issue.record("not paired")
+            return
+        }
+        #expect(link.credential == "hivedev_abc" && polls.withLock { $0 } == 3)
+
+        // Each polled once: past its end, a 5xx is said; a refusal ends it however long is left.
+        for (code, deadline, said) in [("dc-down", Date(), "Stadeum could not pair: Failed to complete pairing."),
+                                       ("dc-refused", later, "Stadeum could not pair: Not found.")] {
+            let waits = Mutex(0)
+            let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(hive.port, code: code).utf8))
+            let error = try await #require(throws: PeelError.self) {
+                try await client.answer(to: pairing, name: "iPhone", until: deadline, wait: { _ in waits.withLock { $0 += 1 } })
+            }
+            #expect(PeelError.problem(error) == said && waits.withLock { $0 } == 1)
+        }
+    }
+
+    /// A poll that reaches no one (on the iPhone, a connection the system
+    /// dropped while Peel was away in Safari) is tried again until the code
+    /// runs out.
+    @Test func aPollThatReachesNoOneIsTriedAgainUntilTheCodeRunsOut() async throws {
+        // A privileged port no test can listen on: refused.
+        let client = HiveClient(hive: URL(string: "http://127.0.0.1:1")!)
+        let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(1).utf8))
+        // Time left: asked again and again, in a task of its own the third wait cancels.
+        let waits = Mutex(0)
+        let asking = Task {
+            try await client.answer(to: pairing, name: "iPhone", until: Date(timeIntervalSinceNow: 600)) { _ in
+                if waits.withLock({ $0 += 1; return $0 }) == 3 { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await asking.value }
+        #expect(waits.withLock { $0 } == 3)
+        // None left: said after the one try.
+        let once = Mutex(0)
+        await #expect(throws: URLError.self) {
+            try await client.answer(to: pairing, name: "iPhone", until: Date()) { _ in once.withLock { $0 += 1 } }
+        }
+        #expect(once.withLock { $0 } == 1)
     }
 
     /// Only Hive's own page is shown or opened, and only an account Peel can name is kept.

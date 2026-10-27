@@ -149,7 +149,8 @@ public struct HiveClient: Sendable {
         for page in [pairing.verificationUri, pairing.verificationUriComplete] where !isHive(page) {
             throw PeelError("Stadeum gave a pairing page on another site (\(page.host ?? "none")); nothing was opened.")
         }
-        guard (1...600).contains(pairing.interval), !pairing.userCode.isEmpty, pairing.userCode.count <= 32 else {
+        guard (1...600).contains(pairing.interval), (1...3600).contains(pairing.expiresIn),
+              !pairing.userCode.isEmpty, pairing.userCode.count <= 32 else {
             throw PeelError("Stadeum's pairing code could not be read.")
         }
         return pairing
@@ -166,7 +167,11 @@ public struct HiveClient: Sendable {
             default: throw Self.failure(status, data, couldNot: "pair")
             }
         }
-        guard status == 200 else { throw Self.failure(status, data, couldNot: "pair") }
+        guard status == 200 else {
+            // Busy or failing, as `Web.retryLater` judges it: `answer(to:)` asks again.
+            let failure = Self.failure(status, data, couldNot: "pair")
+            throw status == 429 || status >= 500 ? Unanswered(failure: failure) : failure
+        }
         let paired = try JSONDecoder.hive.decode(Paired.self, from: data)
         guard paired.credential.hasPrefix("hivedev_") else { throw PeelError("Stadeum's device credential could not be read.") }
         let (peers, refused) = reachable(paired.peers)
@@ -176,13 +181,40 @@ public struct HiveClient: Sendable {
     }
 
     /// Polls `pairing` every `interval` until the person answers in Hive or
-    /// the code runs out: never `.pending`. Cancelling the task stops it.
-    public func answer(to pairing: Pairing, name: String) async throws -> Poll {
+    /// the code runs out: never `.pending`. A poll that gets no answer (the
+    /// network, or Hive failing for a moment) is tried again until
+    /// `deadline`, when the code runs out: on the iPhone the person approves
+    /// in Safari, and the first poll back in Peel often goes out on a
+    /// connection the system dropped while Peel was away. `wait` is how it
+    /// waits between polls. Cancelling the task stops it.
+    public func answer(
+        to pairing: Pairing, name: String, until deadline: Date,
+        wait: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) async throws -> Poll {
         while true {
-            try await Task.sleep(for: .seconds(pairing.interval))
-            let poll = try await poll(pairing, name: name)
-            if poll != .pending { return poll }
+            await wait(.seconds(pairing.interval))
+            try Task.checkCancellation()
+            do {
+                let poll = try await poll(pairing, name: name)
+                if poll != .pending { return poll }
+            } catch where error is Unanswered || (error as? URLError).map({ Self.unreached.contains($0.code) }) == true {
+                guard Date() < deadline else { throw (error as? Unanswered)?.failure ?? error }
+            }
         }
+    }
+
+    /// A poll that reached no one, which may reach Hive next time: never a
+    /// certificate Peel will not trust, which fails at once.
+    static let unreached: Set<URLError.Code> = [
+        .networkConnectionLost, .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+        .cannotFindHost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff, .callIsActive,
+    ]
+
+    /// A poll Hive could not answer this time (429, 5xx): `answer(to:)` polls
+    /// again. Said in Hive's words, as `failure`.
+    struct Unanswered: Error, CustomStringConvertible {
+        let failure: PeelError
+        var description: String { failure.description }
     }
 
     /// `link` with Hive's peers as they are now; nil once Hive no longer

@@ -43,14 +43,8 @@ struct StadeumTests {
     }
 
     @Test func aPairingIsKeptWithTheAccountAndTheHostIsTold() async throws {
-        let hive = try await HTTPStub { port, request in
-            if request.hasPrefix("POST /api/strut-devices/pair/token") {
-                return (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
-            }
-            if request.hasPrefix("POST /api/strut-devices/pair") {
-                return (200, #"{"deviceCode":"dc","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"http://127.0.0.1:\#(port)/pair?code=BCDF-GHJK","expiresIn":600,"interval":1}"#)
-            }
-            return (404, "{}")
+        let hive = try await hive(interval: 1) {
+            (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
         }
         defer { hive.stop() }
         let profile = try profile()
@@ -69,6 +63,58 @@ struct StadeumTests {
         again.open(profile)
         #expect(again.link?.credential == "hivedev_abc" && again.status == .connected)
         again.close()
+        stadeum.close()
+    }
+
+    /// A stand-in Hive whose code lasts `expiresIn` and is polled every
+    /// `interval`, answering each poll with `token`.
+    private func hive(interval: Int, expiresIn: Int = 600, token: @escaping @Sendable () -> (Int, String)) async throws -> HTTPStub {
+        try await HTTPStub { port, request in
+            if request.hasPrefix("POST /api/strut-devices/pair/token") { return token() }
+            if request.hasPrefix("POST /api/strut-devices/pair") {
+                return (200, #"{"deviceCode":"dc","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"http://127.0.0.1:\#(port)/pair?code=BCDF-GHJK","expiresIn":\#(expiresIn),"interval":\#(interval)}"#)
+            }
+            return (404, "{}")
+        }
+    }
+
+    /// Back in front (from Safari, where the person approved it), a pairing
+    /// polls Hive at once rather than at its next interval.
+    @Test func comingBackToTheFrontPollsHiveAtOnce() async throws {
+        let hive = try await hive(interval: 600) {
+            (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
+        }
+        defer { hive.stop() }
+        let stadeum = Stadeum()
+        stadeum.client = { _ in HiveClient(hive: URL(string: "http://127.0.0.1:\(hive.port)")!) }
+        stadeum.open(try profile())
+        stadeum.connect(as: "iPhone")
+        await until { if case .pairing = stadeum.status { true } else { false } }
+        stadeum.cameToFront()
+        await until { stadeum.status == .connected }
+        #expect(stadeum.live.map(\.id) == ["acme"] && hive.requests.count == 2)
+        stadeum.close()
+    }
+
+    /// A code Hive no longer has is said for what it is: run out (approved
+    /// or not, Peel was not back in time to collect it), or gone sooner.
+    @Test(arguments: [
+        // Polled after its one second: run out.
+        (1, false, "The code ran out before pairing finished. Connect again, then approve it in Stadeum and come back to Peel within 1 minute."),
+        // Polled at once, back in front, with ten minutes left: gone sooner.
+        (600, true, "Stadeum no longer has this code, so pairing didn't finish. Connect again."),
+    ])
+    func aCodeHiveNoLongerHasIsSaidForWhatItIs(expiresIn: Int, front: Bool, said: String) async throws {
+        let hive = try await hive(interval: 1, expiresIn: expiresIn) { (400, #"{"error":"expired_token"}"#) }
+        defer { hive.stop() }
+        let stadeum = Stadeum()
+        stadeum.client = { _ in HiveClient(hive: URL(string: "http://127.0.0.1:\(hive.port)")!) }
+        stadeum.open(try profile())
+        stadeum.connect(as: "iPhone")
+        await until { if case .pairing = stadeum.status { true } else { false } }
+        if front { stadeum.cameToFront() }
+        await until { stadeum.problem != nil }
+        #expect(stadeum.status == .off && stadeum.problem == said)
         stadeum.close()
     }
 

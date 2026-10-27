@@ -721,6 +721,10 @@ public final class AppModel {
     public func becameActive() {
         Diagnostics.setForeground(true)
         lockIfDue()
+        // A pairing under way polls now (the person may have just approved
+        // it in the browser); the workspaces are renewed if due, which the
+        // hourly look may have slept through.
+        if phase == .ready { stadeum.cameToFront() }
         // Asked first, so the open chat's `read` goes after the ask and its
         // answer is not applied over it.
         Task {

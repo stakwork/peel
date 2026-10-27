@@ -149,7 +149,8 @@ public struct HiveClient: Sendable {
         for page in [pairing.verificationUri, pairing.verificationUriComplete] where !isHive(page) {
             throw PeelError("Stadeum gave a pairing page on another site (\(page.host ?? "none")); nothing was opened.")
         }
-        guard (1...600).contains(pairing.interval), !pairing.userCode.isEmpty, pairing.userCode.count <= 32 else {
+        guard (1...600).contains(pairing.interval), (1...3600).contains(pairing.expiresIn),
+              !pairing.userCode.isEmpty, pairing.userCode.count <= 32 else {
             throw PeelError("Stadeum's pairing code could not be read.")
         }
         return pairing
@@ -166,8 +167,11 @@ public struct HiveClient: Sendable {
             default: throw Self.failure(status, data, couldNot: "pair")
             }
         }
-        if status >= 500 { throw Unanswered(failure: Self.failure(status, data, couldNot: "pair")) }
-        guard status == 200 else { throw Self.failure(status, data, couldNot: "pair") }
+        guard status == 200 else {
+            // Busy or failing, as `Web.retryLater` judges it: `answer(to:)` asks again.
+            let failure = Self.failure(status, data, couldNot: "pair")
+            throw status == 429 || status >= 500 ? Unanswered(failure: failure) : failure
+        }
         let paired = try JSONDecoder.hive.decode(Paired.self, from: data)
         guard paired.credential.hasPrefix("hivedev_") else { throw PeelError("Stadeum's device credential could not be read.") }
         let (peers, refused) = reachable(paired.peers)
@@ -193,15 +197,20 @@ public struct HiveClient: Sendable {
             do {
                 let poll = try await poll(pairing, name: name)
                 if poll != .pending { return poll }
-            } catch let unanswered as Unanswered {
-                guard Date() < deadline else { throw unanswered.failure }
-            } catch let error as URLError where error.code != .cancelled {
-                guard Date() < deadline else { throw error }
+            } catch where error is Unanswered || (error as? URLError).map({ Self.unreached.contains($0.code) }) == true {
+                guard Date() < deadline else { throw (error as? Unanswered)?.failure ?? error }
             }
         }
     }
 
-    /// A poll Hive could not answer this time (a 5xx): `answer(to:)` polls
+    /// A poll that reached no one, which may reach Hive next time: never a
+    /// certificate Peel will not trust, which fails at once.
+    static let unreached: Set<URLError.Code> = [
+        .networkConnectionLost, .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+        .cannotFindHost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff, .callIsActive,
+    ]
+
+    /// A poll Hive could not answer this time (429, 5xx): `answer(to:)` polls
     /// again. Said in Hive's words, as `failure`.
     struct Unanswered: Error, CustomStringConvertible {
         let failure: PeelError

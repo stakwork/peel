@@ -72,7 +72,7 @@ public final class Stadeum {
     @ObservationIgnored private var appsReading: Task<Void, Never>?
     /// The pairing's wait for its next poll, which `cameToFront` cuts short.
     @ObservationIgnored private var nap: Task<Void, Never>?
-    /// Peel came to the front while a pairing was under way: its next wait is skipped.
+    /// Peel came to the front while a pairing's poll was in flight: its next wait is skipped.
     @ObservationIgnored private var pollSoon = false
     /// Counts resets: a pairing, renewal or read begun before the last one
     /// keeps nothing and says nothing (the account closed, or Disconnect).
@@ -114,6 +114,7 @@ public final class Stadeum {
         guard let profile else { return }
         pairing?.cancel()
         problem = nil
+        pollSoon = false
         let client = client(profile)
         let generation = generation
         pairing = Task {
@@ -126,7 +127,7 @@ public final class Stadeum {
                 status = .pairing(pairing)
                 let deadline = asked.addingTimeInterval(TimeInterval(pairing.expiresIn))
                 switch try await client.answer(to: pairing, name: name, until: deadline,
-                                               wait: { [weak self] in await self?.napUntilNextPoll($0) }) {
+                                               wait: { await self.napUntilNextPoll($0) }) {
                 case .pending:
                     return
                 case .denied:
@@ -182,8 +183,8 @@ public final class Stadeum {
     /// the workspaces are renewed if due.
     public func cameToFront() {
         if case .pairing = status {
-            pollSoon = true
-            nap?.cancel()
+            // Waiting: woken now. Polling: the next wait is skipped.
+            if let nap { nap.cancel() } else { pollSoon = true }
         }
         renewIfDue()
     }
@@ -198,12 +199,11 @@ public final class Stadeum {
         self.nap = nap
         await withTaskCancellationHandler { await nap.value } onCancel: { nap.cancel() }
         if self.nap == nap { self.nap = nil }
-        pollSoon = false
     }
 
     /// Renews now if due: Peel back in front (`cameToFront`), where the
     /// hourly look may have slept through its turn.
-    public func renewIfDue() {
+    func renewIfDue() {
         guard let link, link.revokedAt == nil, link.due() else { return }
         keepRenewed(now: true)
     }

@@ -767,7 +767,9 @@ counts) said "The code ran out before it was approved", which Stadeum had
 just contradicted.
 
 **Built.** `answer(to:until:wait:)` polls again after a poll that reached
-no one (a `URLError` other than a cancel) or a 5xx (`Unanswered`), until
+no one (a dropped or refused connection, a timeout, no network:
+`unreached`; a certificate Peel will not trust still fails at once) or a
+5xx (`Unanswered`), until
 the code's end by this device's clock (`deadline`: `expiresIn` from when
 the code was asked for, never later than Hive's); past it, the last error
 is said. A refusal still ends it at once. `Stadeum.cameToFront` (from
@@ -782,7 +784,28 @@ longer has this code".
 tried again; a port no one listens on tried again until the deadline) and
 `StadeumTests` (coming to the front polls a 600-second interval at once;
 the two expired messages), each failing with its fix taken out; the full
-`swift test`. Not seen: a real iPhone paired against Hive.
+`swift test`; the iPhone app built for the simulator. `scripts/risk.sh`:
+medium. Not seen: a real iPhone paired against Hive, nor You › Stadeum on
+screen (no account on the simulator).
+
+**Review.** `/code-review`, `/simplify` and `/security-review` (no
+findings). Applied: a certificate Peel will not trust fails at once
+rather than being retried for ten minutes (`unreached`); the wait holds
+`self` strongly (a released model would have polled with no wait); the
+front's shortcut is one flag only while a poll is in flight, so it never
+leaks into the next pairing; 429 counts as busy, as `Web.retryLater`
+judges it; `expiresIn` is range-checked like `interval`; `renewIfDue`
+internal; the tests share the stand-in Hive and no longer sleep. Not
+applied: an `AsyncStream` as the wake signal (cancelling the race with
+the sleep ends the stream, so a later wake would be lost); one shared
+transient-error helper (`PeelError.diagnosticKind` counts any unlisted
+code as network, `.badURL` included, which would be retried for ten
+minutes); the Mac now renews on coming to the front when due, and a
+renewal already in flight then runs beside a second (seconds' window,
+as the iPhone already had); a lost reply leaves a device in Stadeum's
+list that nothing holds (Hive's to say; it answers `expired_token` for
+expired, unknown and collected alike); a persistent 5xx re-mints the
+orgs' tokens each poll (Hive mints before it spends the code).
 
 ### The project
 

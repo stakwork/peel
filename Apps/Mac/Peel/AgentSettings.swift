@@ -255,14 +255,14 @@ private struct AgentNameRow: View {
     }
 }
 
-/// Account › Brain: where Peel Home is, this Mac or a home server
+/// Account › Peel Home: where Peel Home is, this Mac or a home server
 /// (docs/always-on.md), with its move out and back; a link waiting for a
 /// yes, and a move's progress and result, above it.
 struct BrainSection: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?
     /// Peel Home's step waiting on the person: the box's link to open, or
-    /// "Use this Mac's copy" to confirm.
+    /// "Turn off Peel Home" to confirm.
     @State private var homeAsk: HomeAsk?
 
     private enum HomeAsk { case link, copy }
@@ -326,8 +326,8 @@ struct BrainSection: View {
                     .foregroundStyle(home.answered ? Theme.secondaryText : Theme.attention)
                     .fixedSize(horizontal: false, vertical: true)
                 // This Mac's strut for dictation, kept in step with the box (`HomeSyncer`).
-                if home.answered, let status = model.macAgent.homeSyncer?.status {
-                    Text(Self.homeSync(status))
+                if home.answered, let syncer = model.macAgent.homeSyncer {
+                    Text(Self.homeSync(syncer.status, lastSync: syncer.lastSync))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.secondaryText)
                 }
@@ -343,26 +343,30 @@ struct BrainSection: View {
             }
             .disabled(busy)
         }
-        Fact("This Mac's copy") {
-            Text(home.strutCopy == nil ? "This Mac's own, as it was when Peel Home was sent, for a home server that is gone."
-                 : "Kept from \(Formatting.date(home.date)), for a home server that is gone.").muted()
+        Fact("Turn off Peel Home") {
+            Text(home.strutCopy == nil ? "Back to this Mac as it was when Peel Home was sent, for a home server that is gone."
+                 : "Back to this Mac as it was on \(Formatting.date(home.date)), for a home server that is gone.").muted()
         } trailing: {
-            Button("Use this Mac's copy…") { homeAsk = .copy }
+            Button("Turn off Peel Home…") { homeAsk = .copy }
                 .buttonStyle(.peel(.outline))
                 .disabled(busy)
         }
     }
 
-    /// When this Mac's strut for dictation last synced with the box; or that
-    /// it can't, with no peer record or one whose token ran out (a year
-    /// after the move: moving back and out again makes a new one).
-    private static func homeSync(_ status: HomeSyncer.Status) -> String {
+    /// When this Mac's strut for dictation last synced with the box, or that
+    /// its last try didn't reach it; or that it can't, with no peer record or
+    /// one whose token ran out (a year after the move: moving back and out
+    /// again makes a new one).
+    private static func homeSync(_ status: HomeSyncer.Status, lastSync: Date?) -> String {
         switch status {
         case .noPeer: "Your home server gave this Mac no way to sync with it, so dictation uses what it knew at the move."
         case .expired(let date):
             "This Mac's sync with your home server ran out \(Formatting.date(date)). Move Peel Home back and out again to renew it."
         case .notYet: "Not synced with this Mac yet."
-        case .synced(let date): "Last synced with this Mac \(Formatting.date(date))."
+        case .synced(let date): "Last synced with this Mac \(Formatting.dateAndTime(date))."
+        case .failed(let at):
+            "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps "
+                + (lastSync.map { "what it last synced, \(Formatting.dateAndTime($0))." } ?? "what it knew at the move.")
         }
     }
 
@@ -412,13 +416,13 @@ struct BrainSection: View {
                 .padding(.top, Theme.Space.md)
             case .copy:
                 let day = model.brain?.moved.map { Formatting.date($0.date) } ?? ""
-                Callout(.neutral, "Use this Mac's copy from \(day)?",
-                        detail: "Peel Home goes back to how it was on this Mac on \(day). What happened on your home server since is lost. "
+                Callout(.neutral, "Turn off Peel Home?",
+                        detail: "This Mac goes back to how it was on \(day), when Peel Home moved. What happened on your home server since then is lost. "
                             + "Only do this if your home server is gone: two copies must never run at once.") {
                     HStack(spacing: 8) {
-                        Button("Use this Mac's copy") {
+                        Button("Turn off Peel Home") {
                             homeAsk = nil
-                            attempt(couldNot: "use this Mac's copy") { try model.useThisMacCopy() }
+                            attempt(couldNot: "turn off Peel Home") { try model.useThisMacCopy() }
                         }
                         .buttonStyle(.peel(.primary))
                         Button("Cancel") { homeAsk = nil }

@@ -453,7 +453,7 @@ is a short plan. Update the status and the journal when you finish something.
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key
   and model, kept and handed to strut) and `AgentSettings` (Account › Assistant, with
   the "Always allowed" rules and Revoke, and the send grants ("May post
-  as you") and Revoke; Account › Brain, `BrainSection`:
+  as you") and Revoke; Account › Peel Home, `BrainSection`:
   where Peel Home is, its move out and back, and a link waiting for a yes);
   `CallViews` (the call card, the header's call button and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
@@ -832,7 +832,7 @@ is a short plan. Update the status and the journal when you finish something.
     box still waits for a move, folders set aside as `<name>.moved-<date>`
     once the agent answers from the box, back by `fetch`, and "Use this
     Mac's copy". `AppModel+Home` is the app's side (`PeelHomeLocal`, the
-    ping in the agent's DM); Account › Brain shows it. Tested in `PeelHomeTests`
+    ping in the agent's DM); Account › Peel Home shows it. Tested in `PeelHomeTests`
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
     from Peel's own strut's ready line, on this Mac only (`BundledStrut`;

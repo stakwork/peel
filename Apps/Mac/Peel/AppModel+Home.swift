@@ -1,3 +1,4 @@
+import AgentKit
 import AppKit
 import Foundation
 import Network
@@ -6,7 +7,7 @@ import PeelCore
 import PeelUI
 
 /// A move of Peel Home between this Mac and a home server
-/// (docs/always-on.md), for Account › Brain: under way, or how it ended.
+/// (docs/always-on.md), for Account › Peel Home: under way, or how it ended.
 enum HomeMoveState: Equatable {
     enum Direction { case out, back }
 
@@ -69,7 +70,7 @@ extension AppModel {
 
     /// Cancel on a move under way: its strut command is stopped. The mark
     /// stays as far as it got, so this Mac's strut and bridge stay stopped
-    /// once it was kept; Account › Brain then offers what is left.
+    /// once it was kept; Account › Peel Home then offers what is left.
     func cancelHomeMove() {
         macAgent.homeMoving?.cancel()
         macAgent.homeMoving = nil
@@ -82,7 +83,7 @@ extension AppModel {
         runHomeMove(.out) { move, progress in await move.pingAgain(home, progress: progress) }
     }
 
-    /// "Use this Mac's copy": the folders kept at the move put back and
+    /// "Turn off Peel Home": the folders kept at the move put back and
     /// started, for a home server that is gone.
     func useThisMacCopy() throws {
         guard let home = brain?.moved, homeMove?.isRunning != true, let profile else { return }
@@ -108,7 +109,7 @@ extension AppModel {
         return PeelHomeMove(mover: mover, local: HomeLocal(model: self, profile: profile), parts: parts)
     }
 
-    /// One move at a time; how it ended stays in Account › Brain.
+    /// One move at a time; how it ended stays in Account › Peel Home.
     private func runHomeMove(
         _ direction: HomeMoveState.Direction, needsIdentity: Bool = false,
         _ run: @escaping @MainActor (PeelHomeMove, _ progress: @escaping (PeelHomeMove.Step) -> Void) async -> PeelHomeMove.Outcome
@@ -259,6 +260,17 @@ private final class HomeLocal: PeelHomeLocal {
 
     func syncClient() async {
         await open?.macAgent.homeSyncer?.finish()
+    }
+
+    func clientChanges(since: AgentKit.JSONValue?) async -> AgentKit.JSONValue? {
+        guard let server = open?.macAgent.homeClient?.server else { return nil }
+        let input: AgentKit.JSONValue = since.map { .object(["since": $0]) } ?? .object([:])
+        return (try? await server.run(step: "dictation/changes-since", input))?["changes"]
+    }
+
+    func applyChanges(_ changes: AgentKit.JSONValue) async -> Bool {
+        guard let server = open?.strut?.server else { return false }
+        return (try? await server.run(step: "dictation/apply-changes", .object(["changes": changes]))) != nil
     }
 
     func stopClient() {

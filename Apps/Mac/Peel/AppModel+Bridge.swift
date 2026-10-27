@@ -92,7 +92,7 @@ extension AppModel {
             return AgentSetUp(line: "Your assistant runs in Peel Home on your home server. Message it in Direct messages.")
         }
         guard brain == .thisMac else {
-            return AgentSetUp(line: "Peel couldn't read where Peel Home is. Choose This Mac under Brain to use it.")
+            return AgentSetUp(line: "Peel couldn't read where Peel Home is. Choose This Mac under Peel Home to use it.")
         }
         guard hasOwnStrut else {
             return AgentSetUp(line: profile?.kind == .development

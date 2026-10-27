@@ -109,7 +109,7 @@ extension AccountPage {
         case .profile: "Profile"
         case .payments: "Payments"
         case .assistant: "Assistant"
-        case .brain: "Brain"
+        case .brain: "Peel Home"
         case .connections: "Connections"
         case .dictation: "Dictation"
         case .notifications: "Notifications"
@@ -122,7 +122,7 @@ extension AccountPage {
         case .profile: "person.crop.circle"
         case .payments: "bolt"
         case .assistant: "sparkles"
-        case .brain: "brain"
+        case .brain: "house"
         case .connections: "powerplug"
         case .dictation: "mic"
         case .notifications: "bell"
@@ -145,7 +145,7 @@ extension AccountPage {
         case .payments: ["balance", "sats", "confirm payments", "boost amount"]
         case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
                           "revoke", "old assistant chats"]
-        case .brain: ["Peel Home", "home server", "this Mac", "move"]
+        case .brain: ["brain", "home server", "this Mac", "move", "sync"]
         case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
         case .notifications: ["message text", "alerts"]

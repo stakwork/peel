@@ -17,7 +17,35 @@
 		B30000000000000000000104 /* PeelAgent in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000904 /* PeelAgent */; };
 		B30000000000000000000105 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000905 /* LiveKit */; };
 		B30000000000000000000121 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000221 /* AppIcon.icon */; };
+		B50000000000000000000101 /* PeelPush in Frameworks */ = {isa = PBXBuildFile; productRef = B50000000000000000000901 /* PeelPush */; };
+		B50000000000000000000102 /* PeelPushCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = B50000000000000000000902 /* PeelPushCrypto */; };
+		B50000000000000000000103 /* PeelPush in Frameworks */ = {isa = PBXBuildFile; productRef = B50000000000000000000903 /* PeelPush */; };
+		B50000000000000000000111 /* PeelNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B50000000000000000000201 /* PeelNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B50000000000000000000A01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B20000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B50000000000000000000601;
+			remoteInfo = PeelNotificationService;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B50000000000000000000B01 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B50000000000000000000111 /* PeelNotificationService.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		B20000000000000000000201 /* Peel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Peel.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -29,6 +57,10 @@
 		B40000000000000000000203 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		B40000000000000000000221 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		B40000000000000000000222 /* peel.svg */ = {isa = PBXFileReference; lastKnownFileType = text; path = peel.svg; sourceTree = "<group>"; };
+		B50000000000000000000201 /* PeelNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PeelNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B50000000000000000000211 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B50000000000000000000212 /* Peel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Peel.entitlements; sourceTree = "<group>"; };
+		B50000000000000000000213 /* NotificationService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "NotificationService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -47,6 +79,11 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
+		B50000000000000000000301 /* NotificationService */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = NotificationService;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +94,7 @@
 				B20000000000000000000101 /* PeelUI in Frameworks */,
 				B20000000000000000000102 /* PeelCore in Frameworks */,
 				B20000000000000000000103 /* AgentKit in Frameworks */,
+				B50000000000000000000103 /* PeelPush in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,6 +107,15 @@
 				B30000000000000000000103 /* AgentKit in Frameworks */,
 				B30000000000000000000104 /* PeelAgent in Frameworks */,
 				B30000000000000000000105 /* LiveKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000000000000000000401 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B50000000000000000000101 /* PeelPush in Frameworks */,
+				B50000000000000000000102 /* PeelPushCrypto in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -92,6 +139,7 @@
 			children = (
 				B20000000000000000000201 /* Peel.app */,
 				B30000000000000000000201 /* Peel.app */,
+				B50000000000000000000201 /* PeelNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,6 +148,10 @@
 			isa = PBXGroup;
 			children = (
 				B20000000000000000000301 /* Peel */,
+				B50000000000000000000301 /* NotificationService */,
+				B50000000000000000000211 /* Info.plist */,
+				B50000000000000000000212 /* Peel.entitlements */,
+				B50000000000000000000213 /* NotificationService-Info.plist */,
 			);
 			path = iOS;
 			sourceTree = "<group>";
@@ -143,10 +195,12 @@
 				B20000000000000000000701 /* Sources */,
 				B20000000000000000000401 /* Frameworks */,
 				B20000000000000000000702 /* Resources */,
+				B50000000000000000000B01 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B50000000000000000000C01 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B20000000000000000000301 /* Peel */,
@@ -157,6 +211,7 @@
 				B20000000000000000000901 /* PeelUI */,
 				B20000000000000000000902 /* PeelCore */,
 				B20000000000000000000903 /* AgentKit */,
+				B50000000000000000000903 /* PeelPush */,
 			);
 			productName = Peel;
 			productReference = B20000000000000000000201 /* Peel.app */;
@@ -191,7 +246,38 @@
 			productReference = B30000000000000000000201 /* Peel.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B50000000000000000000601 /* PeelNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B50000000000000000000801 /* Build configuration list for PBXNativeTarget "PeelNotificationService" */;
+			buildPhases = (
+				B50000000000000000000701 /* Sources */,
+				B50000000000000000000401 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B50000000000000000000301 /* NotificationService */,
+			);
+			name = PeelNotificationService;
+			packageProductDependencies = (
+				B50000000000000000000901 /* PeelPush */,
+				B50000000000000000000902 /* PeelPushCrypto */,
+			);
+			productName = PeelNotificationService;
+			productReference = B50000000000000000000201 /* PeelNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		B50000000000000000000C01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B50000000000000000000601 /* PeelNotificationService */;
+			targetProxy = B50000000000000000000A01 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		B20000000000000000000001 /* Project object */ = {
@@ -221,6 +307,7 @@
 			targets = (
 				B30000000000000000000601 /* Peel macOS */,
 				B20000000000000000000601 /* Peel iOS */,
+				B50000000000000000000601 /* PeelNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -282,6 +369,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B50000000000000000000701 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -291,10 +385,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = iOS/Peel.entitlements;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 8297M44YTW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = iOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
@@ -324,9 +420,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = iOS/Peel.entitlements;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 8297M44YTW;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = iOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send in a chat, or scan an invoice.";
@@ -460,6 +558,62 @@
 			};
 			name = Release;
 		};
+		B50000000000000000000802 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B40000000000000000000202 /* Peel.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = iOS/Peel.entitlements;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 8297M44YTW;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = iOS/NotificationService-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Peel Notifications";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PEEL_BUNDLE_ID).NotificationService";
+				PRODUCT_NAME = PeelNotificationService;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B50000000000000000000803 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B40000000000000000000202 /* Peel.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = iOS/Peel.entitlements;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 8297M44YTW;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = iOS/NotificationService-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Peel Notifications";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PEEL_BUNDLE_ID).NotificationService";
+				PRODUCT_NAME = PeelNotificationService;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -486,6 +640,15 @@
 			buildConfigurations = (
 				B30000000000000000000802 /* Debug */,
 				B30000000000000000000803 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B50000000000000000000801 /* Build configuration list for PBXNativeTarget "PeelNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B50000000000000000000802 /* Debug */,
+				B50000000000000000000803 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -550,6 +713,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B40000000000000000000952 /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
 			productName = LiveKit;
+		};
+		B50000000000000000000901 /* PeelPush */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000951 /* XCLocalSwiftPackageReference ".." */;
+			productName = PeelPush;
+		};
+		B50000000000000000000902 /* PeelPushCrypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000951 /* XCLocalSwiftPackageReference ".." */;
+			productName = PeelPushCrypto;
+		};
+		B50000000000000000000903 /* PeelPush */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000951 /* XCLocalSwiftPackageReference ".." */;
+			productName = PeelPush;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

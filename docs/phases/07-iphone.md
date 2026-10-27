@@ -1073,6 +1073,70 @@ What that means for Peel:
   `BGAppRefreshTask` catch-up. Never call `setPushToken` from Peel on a real
   account before then, since it would take the official app's pushes away.
 
+### Push: what is built (I5 groundwork, 2026-10-27)
+
+Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
+`registerDeviceID`, its notification extension), and **registering nothing**:
+
+- **Targets and ids.** The iPhone app and a new `PeelNotificationService`
+  extension (`<bundle ID>.NotificationService`, `Apps/iOS/NotificationService/`)
+  share `Apps/iOS/Peel.entitlements`: `aps-environment`
+  (`PEEL_APS_ENVIRONMENT`: development, production in Release), the app group
+  `PEEL_APP_GROUP` (`group.com.sphinx.peel`) and the Keychain group
+  `$(AppIdentifierPrefix)$(PEEL_KEYCHAIN_GROUP)` (`com.sphinx.peel.shared`).
+  All three come from `Apps/Config/Peel.xcconfig`, follow `PEEL_BUNDLE_ID`, and
+  reach Swift as Info.plist keys (`PeelAppID`, `PeelAppGroup`,
+  `PeelKeychainGroup`, `PeelPushEnvironment`; `PeelPush.PushConfig`). The
+  project is hand-written, so `project.pbxproj` was edited (no XcodeGen).
+- **`Sources/PeelPush`** (no dependencies, tests run anywhere:
+  `swift test --filter PeelPushTests`): `PushToken.hex`, `PushKey` (32 random
+  bytes as hex, made once by the app in the shared Keychain group; the
+  extension only reads it), `PushConfig`, `PeelPushFlags`,
+  `PushRegistration` (token, app ID, environment) with the
+  `PushRegistrationEncoding` seam, and `PushNotificationResolver` (child
+  from `aps.custom_data.child`, a Hive link left as the server sent it,
+  decrypt through `ChildIndexDecrypting`, a name from `PushNameDirectory`,
+  generic "Peel" / "You have new messages" on any failure).
+  `Sources/PeelPushCrypto` is the core's `decryptChildIndex` behind that
+  protocol, the only part the extension links besides PeelPush (not PeelCore).
+- **The app.** `PeelAppDelegate` (via `@UIApplicationDelegateAdaptor`) calls
+  `registerForRemoteNotifications` and hands the token to `PushCoordinator`,
+  which makes the push key and calls `Engine.registerPushToken`
+  (`Engine+Push.swift`, `setPushToken` as `registerDeviceID` does). The
+  notification permission is asked for only when the flag is on, since
+  nothing would come otherwise. `Notifier` is unchanged.
+- **The flag.** `PeelPushFlags.registerWithHub` (Info.plist
+  `PeelPushRegisterWithHub`, a UserDefaults value wins), **off by default**.
+  `registerPushToken` sends nothing while it is off, when not connected, or with
+  a key that is not a push key (`PushRegistrationTests`). Turn it on only on a
+  stack of your own: the server keeps one token per account, so on a real
+  account it would take the official app's notifications away.
+
+Not verified here (a Linux pod with no Swift or Xcode): none of this was
+compiled. In particular `decryptChildIndex(encryptedChild:pushKey:)` and
+`setPushToken(... pushToken:pushKey:)` follow sphinx-ios-v2's call sites, and
+`project.pbxproj` was only checked for balanced syntax and that every id it
+uses is defined. Build `Peel iOS` once in Xcode and run `swift test`.
+
+Left to do:
+
+1. **Hub routing by `app_id`** for Peel (AWS SNS platform applications for
+   `com.sphinx.peel`, its APNs key and both gateways).
+2. **Mixer: one registration per app** rather than one token per account root.
+3. **sphinx-rs: `app_id` and environment on `setPushToken`**; then write the
+   encoding in `PlainTokenEncoding`'s place (`PushRegistrationEncoding`) and
+   only then turn the flag on.
+4. **Apple portal:** the Push Notifications capability on `com.sphinx.peel`
+   and on the extension's App ID (`com.sphinx.peel.NotificationService`), the
+   app group `group.com.sphinx.peel` on both, and an APNs key for the team
+   that ships it. The project's `DEVELOPMENT_TEAM` is `8297M44YTW`, not the
+   Personal Team `T3M78XC3UV` (a free team has no push).
+5. **The names map:** the app does not yet write `PushNameDirectory` into the
+   app group (`PushNameDirectory.defaultsKey`), so a push shows the generic
+   line; and it should be sealed under the push key as sphinx-ios-v2 does.
+6. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (7): move
+   them together.
+
 ## 6. The app (Liquid Glass)
 
 The design is [../design/iphone.md](../design/iphone.md), agreed by Tom on

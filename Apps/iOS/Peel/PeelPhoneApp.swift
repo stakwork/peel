@@ -5,6 +5,7 @@ import UIKit
 
 @main
 struct PeelPhoneApp: App {
+    @UIApplicationDelegateAdaptor(PeelAppDelegate.self) private var appDelegate
     @State private var model: AppModel
     @State private var router: PhoneRouter
     @Environment(\.scenePhase) private var scenePhase
@@ -64,7 +65,9 @@ struct PeelPhoneApp: App {
                     if phase == .ready, let profile = model.profile {
                         // Renewed when due, not at every unlock.
                         model.stadeum.open(profile, renewNow: false)
+                        PushCoordinator.shared.accountOpened(model)
                     } else {
+                        PushCoordinator.shared.accountClosed()
                         model.stadeum.close()
                         router.orgPage = nil
                     }

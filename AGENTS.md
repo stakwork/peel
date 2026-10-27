@@ -670,6 +670,16 @@ is a short plan. Update the status and the journal when you finish something.
     strut was the agent, read only: its `Conversation`, `Turn` and
     `ToolCall` records, and Clear (which forgets its `Summary` records
     too); `keep` writes turns in that shape for the offscreen driver
+- `Sources/PeelPush/` and `Sources/PeelPushCrypto/` — remote push groundwork
+  (`docs/phases/07-iphone.md`, "Push: what is built"): `PeelPush` (no
+  dependencies; the APNs token as hex, the push key in the shared Keychain
+  group, `PushConfig` from Info.plist, `PeelPushFlags.registerWithHub`
+  (off: never call `setPushToken` on a real account until the hub routes by
+  app ID), `PushNotificationResolver`) and `PeelPushCrypto` (the core's
+  `decryptChildIndex`), both linked by the notification extension
+  `Apps/iOS/NotificationService/`; `Engine+Push.swift` registers behind the
+  flag; the phone's `PushRegistration.swift` is its app delegate. Tested in
+  `PeelPushTests` (also on Linux) and `PushRegistrationTests`
 - `Sources/PeelDiagnostics/` — on-device crash and memory diagnostics, the
   record, uploaded nowhere; the agent reads it redacted when asked
   (`docs/diagnostics.md`, the guarantee). No UI. `CrashRecorder.install()` (first thing in each app's

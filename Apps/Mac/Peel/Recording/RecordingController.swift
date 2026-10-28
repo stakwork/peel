@@ -64,6 +64,9 @@ final class RecordingController {
     private static let cameraKey = "recordingCamera"
     /// Under the attachment limit, with room for the captions.
     private static let maxBytes = Engine.attachmentLimit - 5_000_000
+    /// The longest captions wait for strut's fixer to load, over a whole
+    /// recording: past strut's own 30 s of leaving a slow one out.
+    private static let fixerWait: Duration = .seconds(45)
 
     private init() {
         cameraOn = UserDefaults.standard.object(forKey: Self.cameraKey) as? Bool ?? true
@@ -252,12 +255,21 @@ final class RecordingController {
         do {
             let duration = try await RecordingMedia.extractAudio(from: video, to: wav)
             try FileManager.default.createDirectory(at: pieces, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            // A dictation's length at a time, cut at pauses, so strut has time
-            // to apply the vocabulary; each piece's times moved to the recording's.
+            // A dictation's length at a time, cut at pauses, so strut's fixer has
+            // time to apply the vocabulary; each piece's times moved to the recording's.
+            let dictation = DictationController.shared
             var words: [TimedWord] = []
+            var waited = Duration.zero
             for piece in try await RecordingMedia.pieces(of: wav, in: pieces) {
-                words += try await DictationController.shared.speech.words(piece.url)
-                    .map { TimedWord(text: $0.text, start: $0.start + piece.start) }
+                var reply = try await dictation.speech.words(piece.url)
+                // A fixer loading misses its time, and strut leaves it out for a
+                // while after: the piece again once it is up, as long as is fair.
+                while !reply.fixed, !reply.words.isEmpty, dictation.models.hasActiveFixer, waited < Self.fixerWait {
+                    try await Task.sleep(for: .seconds(3))
+                    waited += .seconds(3)
+                    reply = try await dictation.speech.words(piece.url)
+                }
+                words += reply.words.map { TimedWord(text: $0.text, start: $0.start + piece.start) }
             }
             guard !words.isEmpty else {
                 captions[video] = "No speech was heard"

@@ -67,7 +67,12 @@ until you send it.
   (`POST /audio/transcribe`, the dictation engine and the user's vocabulary)
   and comes back as text with the vocabulary applied, and each word as
   heard with its start time, moved by where its piece starts: strut
-  leaves the timed words as heard. The
+  leaves the timed words as heard. Of the fixer's changes only those that
+  write a word where another was heard are kept (`StrutSpeech.swapped`):
+  its clean-up, fillers and words it takes for taken back, is right for
+  dictation but loses what was said. A fixer still loading misses its
+  time, and strut leaves it out for 30 s after: a piece without it is sent
+  again every 3 s, up to 45 s a recording, if a fixer is picked. The
   text's words take the heard words' times (`RecordingCaptions.retimed`:
   "Stakwork" at the time "stack work" was heard) and become caption
   cues (`RecordingCaptions`, at most 42 characters and 6 s each), written
@@ -136,3 +141,7 @@ vocabulary (strut applies it to the text only; `RecordingCaptions.retimed`).
 Then that the vocabulary was still missing: strut's fixer scores the
 whole transcript and has 1.5 s, so a recording's went out as heard. Now
 sent in pieces cut at pauses (`RecordingCaptions.pieces`).
+Then words missing and still no vocabulary, reproduced on a scratch strut
+with Tom's models (Parakeet, the 1.7B fixer): the fixer cut 12 of a
+piece's 34 words as clean-up, and a cold one missed every piece. Now only
+its swaps are kept, and a piece waits for it.

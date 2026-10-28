@@ -182,60 +182,88 @@ private enum SyntheticVideo {
         #expect(writer.startWriting())
         writer.startSession(atSourceTime: .zero)
 
-        // Picture and sound a frame at a time: a writer holds back one track
-        // until the other catches up, so writing all of one first can stall.
         let fps = 10
+        var frame = 0
+        let picture = Feed(video) {
+            guard frame < seconds * fps, let pool = pixels.pixelBufferPool else { return false }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            guard let pixel = buffer else { return false }
+            CVPixelBufferLockBaseAddress(pixel, [])
+            memset(CVPixelBufferGetBaseAddress(pixel), 128, CVPixelBufferGetDataSize(pixel))
+            CVPixelBufferUnlockBaseAddress(pixel, [])
+            pixels.append(pixel, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)))
+            frame += 1
+            return true
+        }
+
         let rate = 44100
         let chunk = 1024
         let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(rate), channels: 1, interleaved: false))
         var description: CMAudioFormatDescription?
         CMAudioFormatDescriptionCreate(allocator: nil, asbd: format.streamDescription, layoutSize: 0, layout: nil,
                                        magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &description)
+        let tone = try #require(description)
         var sampleAt = 0
-        for frame in 0..<(seconds * fps) {
-            try await ready(video, of: writer)
-            var buffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, try #require(pixels.pixelBufferPool), &buffer)
-            let pixel = try #require(buffer)
-            CVPixelBufferLockBaseAddress(pixel, [])
-            memset(CVPixelBufferGetBaseAddress(pixel), 128, CVPixelBufferGetDataSize(pixel))
-            CVPixelBufferUnlockBaseAddress(pixel, [])
-            pixels.append(pixel, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)))
-            guard sound else { continue }
-            while sampleAt < (frame + 1) * rate / fps {
-                try await ready(audio, of: writer)
-                let start = sampleAt
-                var samples = (0..<chunk).map { Float(sin(Double(start + $0) * 2 * .pi * 440 / Double(rate))) * 0.3 }
-                var block: CMBlockBuffer?
-                let size = chunk * 4
-                CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: size, blockAllocator: nil,
-                                                   customBlockSource: nil, offsetToData: 0, dataLength: size, flags: 0, blockBufferOut: &block)
-                CMBlockBufferReplaceDataBytes(with: &samples, blockBuffer: block!, offsetIntoDestination: 0, dataLength: size)
-                var sample: CMSampleBuffer?
-                CMAudioSampleBufferCreateReadyWithPacketDescriptions(
-                    allocator: nil, dataBuffer: block!, formatDescription: description!, sampleCount: chunk,
-                    presentationTimeStamp: CMTime(value: CMTimeValue(start), timescale: CMTimeScale(rate)),
-                    packetDescriptions: nil, sampleBufferOut: &sample
-                )
-                audio.append(sample!)
-                sampleAt += chunk
-            }
+        let tune = Feed(audio) {
+            guard sampleAt < seconds * rate else { return false }
+            let start = sampleAt
+            var samples = (0..<chunk).map { Float(sin(Double(start + $0) * 2 * .pi * 440 / Double(rate))) * 0.3 }
+            let size = chunk * 4
+            var block: CMBlockBuffer?
+            CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: size, blockAllocator: nil,
+                                               customBlockSource: nil, offsetToData: 0, dataLength: size, flags: 0, blockBufferOut: &block)
+            guard let block else { return false }
+            CMBlockBufferReplaceDataBytes(with: &samples, blockBuffer: block, offsetIntoDestination: 0, dataLength: size)
+            var sample: CMSampleBuffer?
+            CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+                allocator: nil, dataBuffer: block, formatDescription: tone, sampleCount: chunk,
+                presentationTimeStamp: CMTime(value: CMTimeValue(start), timescale: CMTimeScale(rate)),
+                packetDescriptions: nil, sampleBufferOut: &sample
+            )
+            guard let sample else { return false }
+            audio.append(sample)
+            sampleAt += chunk
+            return true
         }
-        video.markAsFinished()
-        if sound { audio.markAsFinished() }
+
+        // Each track fed whenever it asks, on its own: an encoder that holds
+        // frames back (a virtual Mac's, in CI) would stall feeding them in step.
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await picture.run() }
+            if sound { group.addTask { await tune.run() } }
+        }
         await writer.finishWriting()
         #expect(writer.status == .completed)
         return url
     }
 
-    /// Waits for `input` to take more, or throws once `writer` has failed or
-    /// stalled: a failed writer is never ready again, and would wait for ever.
-    private static func ready(_ input: AVAssetWriterInput, of writer: AVAssetWriter) async throws {
-        let until = ContinuousClock.now + .seconds(10)
-        while !input.isReadyForMoreMediaData {
-            if writer.status == .failed { throw writer.error ?? CocoaError(.fileWriteUnknown) }
-            guard ContinuousClock.now < until else { throw CocoaError(.fileWriteUnknown) }
-            try await Task.sleep(for: .milliseconds(5))
+    /// One input fed from `next` (which appends one sample, or says there
+    /// are no more) until it is done; `run` returns then.
+    private final class Feed: @unchecked Sendable {
+        private let input: AVAssetWriterInput
+        private let next: () -> Bool
+        private let queue = DispatchQueue(label: "peel.synthetic-video")
+
+        init(_ input: AVAssetWriterInput, next: @escaping () -> Bool) {
+            self.input = input
+            self.next = next
+        }
+
+        func run() async {
+            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                var finished = false
+                input.requestMediaDataWhenReady(on: queue) { [self] in
+                    while !finished, input.isReadyForMoreMediaData {
+                        guard next() else {
+                            finished = true
+                            input.markAsFinished()
+                            done.resume()
+                            return
+                        }
+                    }
+                }
+            }
         }
     }
 }

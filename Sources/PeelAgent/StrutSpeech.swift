@@ -76,11 +76,12 @@ public struct StrutSpeech: Sendable {
     }
 
     /// The WAV at `file` for a screen recording's captions
-    /// (docs/recording.md): its text, with the user's vocabulary applied, and
-    /// each word as heard with when it starts, in seconds. Strut leaves the
-    /// words as heard, so they can differ from the text. Empty when nothing
-    /// was heard.
-    public func words(wavAt file: URL) async throws -> (text: String, heard: [(text: String, start: Double)]) {
+    /// (docs/recording.md): what was said, with the user's vocabulary in
+    /// place ("stack work" → "Stakwork") and nothing else of the fixer's
+    /// (`swapped`); each word as heard with when it starts, in seconds,
+    /// strut leaving the timed words as heard; and whether the fixer ran,
+    /// which it does not while its model loads. Empty when nothing was heard.
+    public func words(wavAt file: URL) async throws -> (text: String, heard: [(text: String, start: Double)], fixed: Bool) {
         let reply = try await transcription(of: file)
         guard let text = reply["text"]?.string, let segments = reply["segments"]?.array else {
             throw Failure.refused("its reply had no text")
@@ -91,7 +92,31 @@ public struct StrutSpeech: Sendable {
                 return (text, start)
             }
         }
-        return (text.trimmingCharacters(in: .whitespacesAndNewlines), heard)
+        let said = reply["heard"]?.string.map { Self.swapped($0, reply["changes"]?.array ?? []) } ?? text
+        return (said.trimmingCharacters(in: .whitespacesAndNewlines), heard, reply["fixer"]?.string != nil)
+    }
+
+    /// `transcript` with only the fixer's changes that write a word where
+    /// another was heard: the vocabulary. Never one that leaves words out (a
+    /// filler, or words it took for taken back, which for dictation is
+    /// clean-up but in captions loses what was said). `at` counts UTF-16
+    /// units, as strut's JavaScript does; a change that does not match the
+    /// transcript there is left out.
+    static func swapped(_ transcript: String, _ changes: [AgentKit.JSONValue]) -> String {
+        let text = NSMutableString(string: transcript)
+        let swaps: [(at: Int, heard: String, written: String)] = changes.compactMap { change in
+            guard case .number(let at)? = change["at"], let heard = change["heard"]?.string,
+                  let written = change["written"]?.string, !written.trimmingCharacters(in: .whitespaces).isEmpty
+            else { return nil }
+            return (Int(at), heard, written)
+        }
+        // From the end, so each one's place is as strut counted it.
+        for swap in swaps.sorted(by: { $0.at > $1.at }) {
+            let range = NSRange(location: swap.at, length: (swap.heard as NSString).length)
+            guard swap.at >= 0, NSMaxRange(range) <= text.length, text.substring(with: range) == swap.heard else { continue }
+            text.replaceCharacters(in: range, with: swap.written)
+        }
+        return text as String
     }
 
     private func transcription(of file: URL) async throws -> AgentKit.JSONValue {

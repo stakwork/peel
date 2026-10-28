@@ -80,10 +80,10 @@ final class DictationSpeech {
     }
 
     /// A screen recording's words, with the user's vocabulary, and when
-    /// each starts.
-    func words(_ wav: URL) async throws -> [TimedWord] {
+    /// each starts; and whether strut's fixer ran to put the vocabulary in.
+    func words(_ wav: URL) async throws -> (words: [TimedWord], fixed: Bool) {
         let reply = try await ready().words(wavAt: wav)
-        return RecordingCaptions.retimed(reply.heard.map { TimedWord(text: $0.text, start: $0.start) }, as: reply.text)
+        return (RecordingCaptions.retimed(reply.heard.map { TimedWord(text: $0.text, start: $0.start) }, as: reply.text), reply.fixed)
     }
 
     /// Speech on Peel's strut once it is up and has the model.

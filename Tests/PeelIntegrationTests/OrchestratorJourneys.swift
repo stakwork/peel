@@ -640,6 +640,73 @@ extension Journeys {
             for person in [alice, fixture.bob] { await person.close() }
         }
 
+        /// Memory read through strut's graph tools (`memoryGraph`): a fact
+        /// remembered, then the orchestrator's turn and an automation's run
+        /// each search memory with `graph/graph-search` for the user, as the
+        /// prompt says (q "user", type "user"), get the user's node back,
+        /// fact back, then follow the user's links to the fact.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func theGraphToolsReadMemoryOnTheOrchestratorAndAnAutomationsRun() async throws {
+            // Search for the user, follow the user's links, answer: what each turn's model asks for.
+            let results = OSAllocatedUnfairLock(initialState: [String]())
+            let user = OSAllocatedUnfairLock(initialState: "")
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                switch body.components(separatedBy: #""type":"tool_result""#).count - 1 {
+                case 0: return Self.toolUse("graph_graph_search", ["q": "user", "type": "user"])
+                case 1:
+                    results.withLock { $0.append(body) }
+                    return Self.toolUse("graph_graph_neighbors", ["ref_id": user.withLock { $0 }])
+                default:
+                    results.withLock { $0.append(body) }
+                    return Self.toolUse("final_answer", ["text": "You live in Bristol.", "artifacts": []])
+                }
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-memory-graph-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            defer {
+                strut.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            let server = try await strut.start()
+            let client = AutomationsClient(server: server)
+            try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await client.installOrchestrator()
+
+            let tom: AgentKit.JSONValue = ["type": "user", "name": "Tom"]
+            let remembered = try await server.run("remember", [
+                "episode": "I'm Tom and I live in Bristol.", "mentions": [tom],
+                "facts": [["subject": tom, "predicate": "lives_in", "text": "Tom lives in Bristol.", "object": ["type": "Place", "name": "Bristol"]]],
+            ])
+            let me = try #require(remembered["entities"]?.array?.first { $0["name"] == "Tom" }?["ref_id"]?.string, "\(remembered)")
+            user.withLock { $0 = me }
+
+            for workflow in [BundledBridge.workflow, PeelAgent.Orchestrator.automationWorkflow] {
+                let input: AgentKit.JSONValue = workflow == BundledBridge.workflow
+                    ? ["prompt": "Where do I live?"]
+                    : ["name": "Where", "prompt": "Where do I live?", "since": .null, "now": "2026-10-28T09:00:00Z"]
+                let fired = try await Self.strutCall("POST", "workflows/\(workflow)/run", ["input": input], on: server)
+                let runId = try #require(fired["runId"]?.string, "\(fired)")
+                let run = try await eventually("\(workflow)'s run to end", timeout: .seconds(60)) {
+                    let record = try? await Self.strutCall("GET", "workflows/\(workflow)/runs/\(runId)", on: server)
+                    return ["success", "error"].contains(record?["status"]?.string ?? "") ? record : nil
+                }
+                #expect(run["status"] == "success", "\(workflow): \(run)")
+                let asked = results.withLock { $0 }
+                #expect(asked.count == 2, "\(workflow) asked \(asked.count) times")
+                // The search finds the user's node in memory, not the workspace graph; its links reach the fact.
+                let found = asked.first ?? "", linked = asked.last ?? ""
+                #expect(found.contains(me) && found.contains(#"\"node_type\":\"Self\""#), "\(workflow): \(found.prefix(600))")
+                #expect(linked.contains("Tom lives in Bristol."), "\(workflow): \(linked.prefix(1500))")
+                results.withLock { $0.removeAll() }
+            }
+        }
+
         static func strutCall(_ method: String, _ path: String, _ body: AgentKit.JSONValue? = nil, on server: MemoryServer) async throws -> AgentKit.JSONValue {
             try await AutomationsClient(server: server).call(method, path, body, what: path)
         }

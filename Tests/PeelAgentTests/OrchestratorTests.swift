@@ -20,8 +20,6 @@ struct OrchestratorTests {
                           "automation/delete", "automation/run-now", "memory/remember", "memory/forget", "memory/merge",
                           "graph/graph-search", "graph/graph-get", "graph/graph-get-batched", "graph/graph-neighbors",
                           "graph/get-ontology", "graph/get-ontology-type"])
-        // strut's default orchestrator has no memory: Peel grants it, and only its three writes.
-        #expect(!tools.contains { ["memory/recall", "memory/get", "memory/ontology"].contains($0) })
         // The graph reads read memory on the orchestrator's and an automation run's tool calls.
         #expect(config["memoryGraph"] == ["workflows": ["orchestrator", "peel-automation-run"]])
         #expect(Set(Orchestrator.memoryTools + Orchestrator.graphReads).isSubset(of: Orchestrator.automationRunTools))
@@ -44,7 +42,7 @@ struct OrchestratorTests {
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
         let section = Orchestrator.section
         for words in ["sphinx/unseen with no chat", "on their Mac, by asking it", "waiting for their Mac", "sphinx/send sends",
-                      "memory/remember", #"the type "user""#, "from the time the message starts with",
+                      "memory/remember", #"q "user" with the type "user""#, "from the time the message starts with",
                       "automation/list before changing it", ChatData.begin, AgentMessageLink.instruction] {
             #expect(section.contains(words), "\(words)")
         }

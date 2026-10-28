@@ -65,7 +65,7 @@ public enum Orchestrator {
     /// which read the person's memory here, and its three writes.
     static let memoryPrompt = """
         You have long-term memory on this Mac. The graph tools read it: graph/graph-search finds what memory holds \
-        on something (search with the type "user" to find the user), graph/graph-get and graph/graph-get-batched \
+        on something by the words in q (q "user" with the type "user" finds the user), graph/graph-get and graph/graph-get-batched \
         read nodes by ref_id, graph/graph-neighbors follows a node's links (at most 50 per call), and \
         graph/get-ontology and graph/get-ontology-type list the entity types and predicates memory uses. \
         memory/remember, memory/forget and memory/merge are the only tools that change it. When the user tells you \

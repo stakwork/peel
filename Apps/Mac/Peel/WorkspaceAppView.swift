@@ -44,38 +44,6 @@ struct WorkspaceAppView: View {
     }
 }
 
-extension WorkspaceApp {
-    /// A header's icon: Apps' and an app's.
-    static func headerIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 18))
-            .foregroundStyle(Theme.secondaryText)
-            .frame(width: Theme.AvatarSize.lg, height: Theme.AvatarSize.lg)
-    }
-}
-
-/// What an app's page needs looked at, else the release its workspace holds
-/// it at: one of them, on its card and in its header.
-struct AppStatus: View {
-    let app: WorkspaceApp
-
-    var body: some View {
-        if app.problems > 0 {
-            HStack(spacing: 5) {
-                OnlineDot(color: Theme.attention)
-                Text(Formatting.count(app.problems, "problem"))
-            }
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.attention)
-            .help("Strut's monitor flagged how its page uses the workspace")
-        } else if let release = app.release {
-            Chip("Release \(release)")
-                .fixedSize()
-                .help("Its workspace holds it at release \(release) while newer versions wait")
-        }
-    }
-}
-
 /// Pins an app under the sidebar's Apps row, or takes it off: in its header
 /// and on its card in Apps.
 struct AppPinButton: View {

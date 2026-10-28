@@ -733,8 +733,8 @@ private struct AgentArtifactLine: View {
     /// How it opens here, if it does: on its org's strut, else its link.
     /// Made again on the tap: the tokens may have been renewed since.
     private var open: (() -> Void)? {
-        if let handle = artifact.handle, case .page = model.stadeum.opening(handle) {
-            return { if case .page(let page) = model.stadeum.opening(handle) { router.orgPage = page } }
+        if let handle = artifact.handle, case .page = model.stadeum.opening(handle, title: artifact.title) {
+            return { if case .page(let page) = model.stadeum.opening(handle, title: artifact.title) { router.orgPage = page } }
         }
         return artifact.url.map { url in { openURL(url) } }
     }

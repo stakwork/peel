@@ -14,6 +14,16 @@ extension AppModel {
         )
     }
 
+    /// The Stadeum workspace a call started in `chat` brings Jamie from:
+    /// the one picked there, else the tribe's own (its `app_url`'s swarm),
+    /// else none (`HivePeer.jamie`, docs/hive-calls.md).
+    public func callJamie(in chat: String) -> HivePeer? {
+        let tribe = tribes[chat]
+        return HivePeer.jamie(
+            picked: calls.jamiePicks[chat], pages: [tribe?.appURL, tribe?.secondBrainURL], in: stadeum.live
+        )
+    }
+
     /// "#tribe" or the contact's name, for the call window.
     public func chatTitle(_ chat: String) -> String {
         conversations.first { $0.chat == chat }?.title ?? "Call"

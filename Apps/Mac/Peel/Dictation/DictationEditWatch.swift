@@ -29,8 +29,44 @@ final class DictationEditWatch {
         "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty", "com.github.wez.wezterm",
     ]
 
+    /// Code editors on Electron: asked, they offer their screen-reader mode.
+    private static let editors: Set<String> = [
+        "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf",
+    ]
+    /// How often an app that does not answer is asked.
+    private static let asks = 3
+    /// What each process came to: asks left, 0 once it showed its text or
+    /// is not Chromium's.
+    private static var asked: [pid_t: Int] = [:]
+
     /// Why a watch ends, never what was typed: so "it didn't learn" can be told apart.
     private static let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
+
+    /// Chromium, and Electron apps built on it (Claude, Slack, Notion),
+    /// build their Accessibility tree only for a screen reader: until asked,
+    /// a field shows no text and its edit cannot be watched. Electron is
+    /// asked with `AXManualAccessibility`, Chromium's browsers, which may not
+    /// know it, with `AXEnhancedUserInterface`. At key-down, so the tree is
+    /// built by the time the field is read; once per process, up to `asks`
+    /// times while it does not answer. Other apps, and code editors (VS Code,
+    /// Cursor, Windsurf), are never touched.
+    static func exposeText(pid: pid_t) {
+        let left = asked[pid, default: asks]
+        guard left > 0, pid != getpid(), let app = NSRunningApplication(processIdentifier: pid) else { return }
+        guard !editors.contains(app.bundleIdentifier ?? ""),
+              let frameworks = app.bundleURL?.appending(path: "Contents/Frameworks"),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: frameworks.path),
+              names.contains(where: { $0.hasSuffix(" Framework.framework") }) else { asked[pid] = 0; return }
+        // The quarter-second timeout set on `DictationFocus.system` holds here too.
+        let element = AXUIElementCreateApplication(pid)
+        let manual = AXUIElementSetAttributeValue(element, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        let enhanced = manual == .success ? nil
+            : AXUIElementSetAttributeValue(element, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        // Chrome answers "not implemented" to the second, and shows its text all the same.
+        let answered = manual == .success || enhanced == .success || enhanced == .notImplemented
+        asked[pid] = answered ? 0 : left - 1
+        log.notice("asked \(app.bundleIdentifier ?? "unknown", privacy: .public) to show its text: manual \(manual.rawValue, privacy: .public), enhanced \(enhanced.map { String($0.rawValue) } ?? "not tried", privacy: .public)")
+    }
 
     /// Watches the focused field for what becomes of `typed`; `done` gets
     /// the user's version of it, once, or nil when it is unchanged or

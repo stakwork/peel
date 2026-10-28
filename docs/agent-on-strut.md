@@ -201,11 +201,12 @@ empty folder of its own.
 strut ships it and seeds it at boot, as it seeds `job`
 (`src/job-seed.ts`): one version per content hash, so strut's UI shows it
 and its runs, and a changed template publishes the next version. It knows
-nothing about Peel. Its own tools are strut's: `memory/*`, `job/start`,
+nothing about Peel. Its own tools are strut's: `job/start`,
 `job/continue` and the `job/*` reads. A host adds the rest and a section
 of the prompt, as `createStrut({ job: { tools, system } })` does for
-`job` today (the lab adds `pod/*`). Peel adds the device steps
-(`sphinx/*`, `calendar/*`), the automation steps and its prompt section.
+`job` today (the lab adds `pod/*`). Peel adds strut's `memory/*` steps,
+which a host opts into, the device steps (`sphinx/*`, `calendar/*`), the
+automation steps and its prompt section.
 
 Most turns are not jobs. Like the Swift agent in the Agent chat today, the
 orchestrator calls its tools inside the turn: "when is Kate's birthday?"

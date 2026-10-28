@@ -151,7 +151,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `PersonHue.swift` — a person's colour (direction D): the official apps'
     colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the
-    account's call server, and makes new rooms (phase 6); `WatchedCall`,
+    account's call server, and makes new rooms (phase 6), or takes Hive's
+    for a call with Jamie in it (`CallLink.hive`, docs/hive-calls.md); `WatchedCall`,
     the recent calls across chats whose presence the app keeps, and their
     live query (`Storage.recentCallMessages`, beside them as
     `PaymentHistory.swift` keeps its own)
@@ -238,9 +239,12 @@ is a short plan. Update the status and the journal when you finish something.
     reader of strut's and Hive's dates
   - `Hive.swift` — Hive's device flow (the person knows it as Stadeum),
     for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
-    (polled until the person answers), renew), what is kept of a pairing
+    (polled until the person answers; a poll that reaches no one or gets a
+    5xx is tried again until the code runs out), renew, `startCall`: a call with
+    Jamie in it for one workspace, docs/hive-calls.md), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
-    one org's strut and the person's token for it), and the Hive a profile
+    one org's strut and the person's token for it, and `HivePeer.jamie`,
+    who a call in a chat brings Jamie from), and the Hive a profile
     pairs with (`HiveClient(for:)`: a development profile's `-hiveURL`)
   - `WorkspaceApps.swift` — `WorkspaceApp`, an app a Stadeum workspace
     pinned as a tab or one of the person's own: read from strut's `GET
@@ -312,20 +316,23 @@ is a short plan. Update the status and the journal when you finish something.
   matches, stepping through them with `focus(on:inThread:)`);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
-  the iPhone), Connect (Hive's device flow), renew hourly and when due,
+  the iPhone), Connect (Hive's device flow; `cameToFront`, from
+  `becameActive`, polls at once after the browser), renew hourly and when due,
   the revoke rule (orgs kept and listed, none `live`, kept with the link
   as `HiveLink.revokedAt` so an unlock or a restart does not use them
   again, no renewal tried), close, Disconnect; the apps listed,
   `readApps` (the Mac through its strut, the iPhone on each org's own;
   `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
-  app's words for the person; `opening`, how a deliverable or a workspace's
+  app's words for the person; `callLink(on:)`, a call with Jamie in it
+  for a live workspace (docs/hive-calls.md); `opening`, how a deliverable or a workspace's
   app opens on its org's own strut; `StadeumHost`, what a device does
   beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
   with its token: its origin and folder, the token's hand-over script and
   the first request, never described with the token);
   `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
   the recent calls across chats watched while unlocked and the open chat's,
-  the call you are on, join, start, leave; the view passes the call
+  the call you are on, join, start (with Jamie from a Stadeum workspace:
+  `jamiePicks`, `pickJamie`, `hiveCall`), leave; the view passes the call
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
@@ -461,7 +468,8 @@ is a short plan. Update the status and the journal when you finish something.
   the "Always allowed" rules and Revoke, and the send grants ("May post
   as you") and Revoke; Account › Peel Home, `BrainSection`:
   where Peel Home is, its move out and back, and a link waiting for a yes);
-  `CallViews` (the call card, the header's call button and presence
+  `CallViews` (the call card, the header's call button with its Jamie
+  section, and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
   and devices), `CallWindow` (the grid, the focus layout with its strip,

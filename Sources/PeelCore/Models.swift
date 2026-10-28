@@ -60,6 +60,11 @@ public enum Setting: String, Sendable {
     /// pubkey. Unset, the device answers none: the device channel stays off
     /// until the agent's bridge is launched (PR 4).
     case deviceAgent
+
+    /// Who a call started in each chat brings Jamie from: the Stadeum
+    /// workspace picked there, "" for none (`[chat: peer id]` as JSON,
+    /// docs/hive-calls.md). This device's; a chat with no pick has none.
+    case callJamie
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

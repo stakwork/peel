@@ -334,7 +334,9 @@ final class MenuPresenter {
     }
 
     /// A click outside a menu closes it and goes no further, as native menus
-    /// do; a click outside a panel closes it and goes on.
+    /// do; a click outside a panel closes it and goes on, except a plain
+    /// click on the panel's own trigger, whose button would open it again
+    /// on mouse-up.
     private func click(_ event: NSEvent) -> Bool {
         if open != nil {
             guard event.window !== menuWindow else { return false }
@@ -342,7 +344,10 @@ final class MenuPresenter {
             return true
         }
         if panelID != nil, event.window !== panelWindow {
+            let onTrigger = event.type == .leftMouseDown && !event.isMenuClick
+                && panelWindow.trigger?.contains(event) == true
             closePanel()
+            return onTrigger
         }
         return false
     }

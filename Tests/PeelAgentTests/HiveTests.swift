@@ -15,9 +15,9 @@ struct HiveTests {
         #"{"id":"\#(id)","baseUrl":"https://\#(id).sphinx.chat:3355/lab","token":"jwt-\#(id)","label":"\#(label)","description":"\#(label) on Hive. Workspaces: \#(id).","repos":["https://github.com/acme/\#(id)"]}"#
     }
 
-    static func pairing(_ port: UInt16, page: String? = nil) -> String {
+    static func pairing(_ port: UInt16, page: String? = nil, code: String = "dc-secret") -> String {
         let page = page ?? "http://127.0.0.1:\(port)/pair?code=BCDF-GHJK"
-        return #"{"deviceCode":"dc-secret","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"\#(page)","expiresIn":600,"interval":5}"#
+        return #"{"deviceCode":"\#(code)","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"\#(page)","expiresIn":600,"interval":5}"#
     }
 
     static let paired = #"""
@@ -71,6 +71,61 @@ struct HiveTests {
         #expect(try await client.poll(pairing, name: "Mac") == poll)
     }
 
+    /// A poll Hive does not answer (a 5xx) is tried again until the code runs
+    /// out, then said in Hive's words; a refusal ends it at once.
+    @Test func aPollHiveDoesNotAnswerIsTriedAgainUntilTheCodeRunsOut() async throws {
+        let polls = Mutex(0)
+        let hive = try await HTTPStub { _, request in
+            if request.contains("dc-refused") { return (404, #"{"error":"Not found"}"#) }
+            if request.contains("dc-down") { return (503, #"{"error":"Failed to complete pairing"}"#) }
+            return polls.withLock { $0 += 1; return $0 } < 3 ? (500, #"{"error":"Failed to complete pairing"}"#) : (200, Self.paired)
+        }
+        defer { hive.stop() }
+        let client = HiveClient(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(hive.port).utf8))
+        let later = Date(timeIntervalSinceNow: 600)
+        guard case .paired(let link) = try await client.answer(to: pairing, name: "iPhone", until: later, wait: { _ in }) else {
+            Issue.record("not paired")
+            return
+        }
+        #expect(link.credential == "hivedev_abc" && polls.withLock { $0 } == 3)
+
+        // Each polled once: past its end, a 5xx is said; a refusal ends it however long is left.
+        for (code, deadline, said) in [("dc-down", Date(), "Stadeum could not pair: Failed to complete pairing."),
+                                       ("dc-refused", later, "Stadeum could not pair: Not found.")] {
+            let waits = Mutex(0)
+            let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(hive.port, code: code).utf8))
+            let error = try await #require(throws: PeelError.self) {
+                try await client.answer(to: pairing, name: "iPhone", until: deadline, wait: { _ in waits.withLock { $0 += 1 } })
+            }
+            #expect(PeelError.problem(error) == said && waits.withLock { $0 } == 1)
+        }
+    }
+
+    /// A poll that reaches no one (on the iPhone, a connection the system
+    /// dropped while Peel was away in Safari) is tried again until the code
+    /// runs out.
+    @Test func aPollThatReachesNoOneIsTriedAgainUntilTheCodeRunsOut() async throws {
+        // A privileged port no test can listen on: refused.
+        let client = HiveClient(hive: URL(string: "http://127.0.0.1:1")!)
+        let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(1).utf8))
+        // Time left: asked again and again, in a task of its own the third wait cancels.
+        let waits = Mutex(0)
+        let asking = Task {
+            try await client.answer(to: pairing, name: "iPhone", until: Date(timeIntervalSinceNow: 600)) { _ in
+                if waits.withLock({ $0 += 1; return $0 }) == 3 { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await asking.value }
+        #expect(waits.withLock { $0 } == 3)
+        // None left: said after the one try.
+        let once = Mutex(0)
+        await #expect(throws: URLError.self) {
+            try await client.answer(to: pairing, name: "iPhone", until: Date()) { _ in once.withLock { $0 += 1 } }
+        }
+        #expect(once.withLock { $0 } == 1)
+    }
+
     /// Only Hive's own page is shown or opened, and only an account Peel can name is kept.
     @Test(arguments: [
         (pairing: "https://evil.example/pair?code=X", paired: nil),
@@ -107,6 +162,60 @@ struct HiveTests {
         #expect(renewed.credential == link.credential && renewed.renewedAt == now)
         revoked.withLock { $0 = true }
         #expect(try await HiveClient(hive: link.hive).renew(link) == nil)
+    }
+
+    /// A call with Jamie in it: asked of Hive with the device credential
+    /// for one workspace, its link answered (docs/hive-calls.md).
+    @Test func aCallWithJamieIsAskedOfHiveForOneWorkspace() async throws {
+        let room = "https://chat.sphinx.chat/rooms/sphinx.call.-acme-hive.sphinx.chat-.1792900000"
+        let hive = try await HTTPStub { _, request in
+            guard path(request) == "/api/strut-devices/calls", request.contains("Authorization: Bearer hivedev_abc") else {
+                return (404, "{}")
+            }
+            return (200, #"{"url":"\#(room)"}"#)
+        }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        #expect(try await HiveClient(hive: link.hive).startCall(link, workspace: "acme-hive") == room)
+        #expect(hive.requests[0].hasPrefix("POST ") && body(hive.requests[0]) == #"{"workspace":"acme-hive"}"#)
+    }
+
+    /// What Hive answers instead of a link, in words. A Hive from before the
+    /// route answers its middleware's 401, as for a revoked device.
+    @Test(arguments: [
+        (404, #"{"error":"Workspace not found"}"#, "Stadeum could not start a call with Jamie: Workspace not found."),
+        (403, #"{"error":"Access denied"}"#, "Stadeum could not start a call with Jamie: Access denied."),
+        (502, #"{"error":"Could not start Jamie for the call"}"#,
+         "Stadeum could not start a call with Jamie: Could not start Jamie for the call."),
+        (401, #"{"error":"Unauthorized"}"#,
+         "Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again."),
+        (200, #"{"link":"x"}"#, "Stadeum's call link could not be read."),
+    ])
+    func aCallHiveCannotMakeIsSaid(status: Int, answer: String, said: String) async throws {
+        let hive = try await HTTPStub { _, _ in (status, answer) }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        await #expect {
+            try await HiveClient(hive: link.hive).startCall(link, workspace: "acme-hive")
+        } throws: { error in
+            "\(error)" == said
+        }
+    }
+
+    /// Who a call brings Jamie from: the pick in that chat while the org is
+    /// paired, else the tribe's own swarm, else none.
+    @Test func aCallBringsJamieFromThePickElseTheTribesSwarm() throws {
+        let peers = try ["acme-hive", "globex"].map {
+            try JSONDecoder.hive.decode(HivePeer.self, from: Data(Self.peer($0, $0.capitalized).utf8))
+        }
+        let tribe = "https://globex.sphinx.chat/app"
+        #expect(HivePeer.jamie(picked: "acme-hive", pages: [tribe], in: peers)?.id == "acme-hive")
+        #expect(HivePeer.jamie(picked: "", pages: [tribe], in: peers) == nil)
+        #expect(HivePeer.jamie(picked: "initech", pages: [tribe], in: peers) == nil)
+        #expect(HivePeer.jamie(picked: nil, pages: [tribe, nil], in: peers)?.id == "globex")
+        #expect(HivePeer.jamie(picked: nil, pages: [nil, "https://ACME-HIVE.sphinx.chat"], in: peers)?.id == "acme-hive")
+        #expect(HivePeer.jamie(picked: nil, pages: ["https://initech.sphinx.chat", "https://localhost/x", "x"], in: peers) == nil)
+        #expect(HivePeer.jamie(picked: nil, pages: [], in: []) == nil)
     }
 
     @Test func theLinkIsKeptWholeAndRenewedDaily() throws {

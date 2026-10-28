@@ -511,7 +511,7 @@ struct ThreadSummaryButton: View {
                         .foregroundStyle(Theme.text)
                 }
                 if let last = summary.lastDate {
-                    Text("Last reply \(Formatting.time(last))")
+                    Text(Formatting.time(last))
                         .phoneFont(.time)
                         .monospacedDigit()
                         .foregroundStyle(Theme.quietText(on: surface))
@@ -520,15 +520,11 @@ struct ThreadSummaryButton: View {
             }
             if let latest = summary.latest {
                 let sender = model.sender(of: latest)
-                HStack(alignment: .top, spacing: 6) {
-                    Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.xs, hue: sender.hue)
-                    (Text(sender.label + " ").fontWeight(.semibold).foregroundColor(sender.hue.name)
-                        + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
-                        .phoneFont(.time)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.leading, Theme.Space.lg)
+                (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
+                    + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
+                    .phoneFont(.time)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
             }
             }
             .frame(minHeight: Theme.touchTarget)

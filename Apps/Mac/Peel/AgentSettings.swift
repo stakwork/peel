@@ -255,17 +255,17 @@ private struct AgentNameRow: View {
     }
 }
 
-/// Account › Peel Home: where Peel Home is, this Mac or a home server
+/// Account › Always on: where Peel Home is, this Mac or a home server
 /// (docs/always-on.md), with its move out and back; a link waiting for a
 /// yes, and a move's progress and result, above it.
 struct BrainSection: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?
-    /// Peel Home's step waiting on the person: the box's link to open, or
-    /// "Turn off Peel Home" to confirm.
+    /// What waits on the person: the steps on the box that end in its link
+    /// (Set up…, Turn off…), or Restore to confirm.
     @State private var homeAsk: HomeAsk?
 
-    private enum HomeAsk { case link, copy }
+    private enum HomeAsk { case steps, restore }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -286,23 +286,24 @@ struct BrainSection: View {
     @ViewBuilder private var rows: some View {
         switch model.brain {
         case .thisMac?:
-            Fact("Peel Home") {
+            Fact("Always on") {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("This Mac")
-                    Text(model.homeMoveBlocker ?? "Your assistant runs here. Move it to a home server to keep it answering while this Mac sleeps.")
+                    Text("Off")
+                    Text(model.homeMoveBlocker
+                         ?? "Your assistant only answers while this Mac is awake. Run it on a home server to keep it answering around the clock.")
                         .muted()
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } trailing: {
-                Button("Move to a home server…") { homeAsk = .link }
+                Button("Set up…") { homeAsk = .steps }
                     .buttonStyle(.peel(.outline))
                     .disabled(model.homeMoveBlocker != nil || homeAsk != nil)
             }
         case .moved(let home)?:
             movedRows(home)
         case nil:
-            Fact("Peel Home") {
-                Text("Peel couldn't read where Peel Home is, so it starts nothing for now.").muted()
+            Fact("Always on") {
+                Text("Peel couldn't tell where your assistant runs, so it starts nothing for now.").muted()
             } trailing: {
                 Button("Use this Mac") { attempt(couldNot: "use this Mac") { try model.useThisMac() } }
                     .buttonStyle(.peel(.outline))
@@ -310,18 +311,19 @@ struct BrainSection: View {
         }
     }
 
-    /// Peel Home moved: where, since when, and the way back; until the
-    /// agent has answered from there, Ping again beside it.
+    /// Peel Home moved: where, since when, and Turn off, the way back; until
+    /// the agent has answered from there, Ping again beside it. Under it,
+    /// Restore: the lossy way back, for a box that is gone.
     @ViewBuilder private func movedRows(_ home: MovedHome) -> some View {
         let busy = model.homeMove?.isRunning == true || homeAsk != nil
-        Fact("Peel Home") {
+        Fact("Always on") {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Your home server")
+                Text(home.answered ? "On, from your home server" : "Sent to your home server")
                 Text(home.host)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(Theme.code(12))
                     .foregroundStyle(Theme.secondaryText)
                     .textSelection(.enabled)
-                Text(home.answered ? "Moved \(Formatting.date(home.date)). Your assistant answers from there, even while this Mac sleeps."
+                Text(home.answered ? "Answering since \(Formatting.date(home.date)), even while this Mac sleeps."
                      : "Sent \(Formatting.date(home.date)), but your assistant hasn't answered from there yet. This Mac keeps its own stopped, so two never run at once.")
                     .foregroundStyle(home.answered ? Theme.secondaryText : Theme.attention)
                     .fixedSize(horizontal: false, vertical: true)
@@ -338,16 +340,16 @@ struct BrainSection: View {
                     Button("Ping again") { model.pingHomeAgain() }
                         .buttonStyle(.peel(.outline))
                 }
-                Button("Move back to this Mac…") { homeAsk = .link }
+                Button("Turn off…") { homeAsk = .steps }
                     .buttonStyle(.peel(.outline))
             }
             .disabled(busy)
         }
-        Fact("Turn off Peel Home") {
-            Text(home.strutCopy == nil ? "Back to this Mac as it was when Peel Home was sent, for a home server that is gone."
-                 : "Back to this Mac as it was on \(Formatting.date(home.date)), for a home server that is gone.").muted()
+        Fact("Server gone?") {
+            Text(home.strutCopy == nil ? "Restore your assistant on this Mac as it was when it was sent. Anything since then is lost."
+                 : "Restore your assistant on this Mac as it was on \(Formatting.date(home.date)). Anything since then is lost.").muted()
         } trailing: {
-            Button("Turn off Peel Home…") { homeAsk = .copy }
+            Button("Restore…") { homeAsk = .restore }
                 .buttonStyle(.peel(.outline))
                 .disabled(busy)
         }
@@ -361,7 +363,7 @@ struct BrainSection: View {
         switch status {
         case .noPeer: "Your home server gave this Mac no way to sync with it, so dictation uses what it knew at the move."
         case .expired(let date):
-            "This Mac's sync with your home server ran out \(Formatting.date(date)). Move Peel Home back and out again to renew it."
+            "This Mac's sync with your home server ran out \(Formatting.date(date)). Turn off Always on and set it up again to renew it."
         case .notYet: "Not synced with this Mac yet."
         case .synced(let date): "Last synced with this Mac \(Formatting.dateAndTime(date))."
         case .failed(let at):
@@ -370,7 +372,7 @@ struct BrainSection: View {
         }
     }
 
-    /// A Peel Home move under way or how it ended; the box's link waiting
+    /// A move under way or how it ended; the box's link waiting
     /// for a yes; or the person's next step, asked in place.
     @ViewBuilder private var homeCallouts: some View {
         if let move = model.homeMove {
@@ -381,17 +383,18 @@ struct BrainSection: View {
             let back = model.brain?.moved != nil
             let away = !back && !link.isHomeNetwork
             Callout(
-                away ? .attention : .neutral, back ? "Move Peel Home back to this Mac from \(link.host)?" : "Move Peel Home to your home server at \(link.host)?",
+                away ? .attention : .neutral,
+                back ? "Turn off Always on and bring your assistant back from \(link.host)?" : "Move your assistant to your home server at \(link.host)?",
                 detail: model.homeMoveBlocker ?? (away
-                    ? "\(link.host) isn't on your home network. Peel Home carries your assistant's own account and keys: "
+                    ? "\(link.host) isn't on your home network. Your assistant carries its own account and keys: "
                         + "only move it to a computer you run."
                     : back
                     ? "Your assistant, its memory and its automations come back and run on this Mac. It's offline for about a minute."
-                    : "Your assistant, its memory and its automations move there and keep answering while this Mac sleeps. "
+                    : "Its memory and automations go with it, and it keeps answering while this Mac sleeps. "
                         + "It's offline for about a minute. Your Sphinx words stay on this Mac.")
             ) {
                 HStack(spacing: 8) {
-                    Button(back ? "Move back" : "Move") {
+                    Button(back ? "Turn off" : "Move") {
                         homeAsk = nil
                         model.moveHome()
                     }
@@ -404,37 +407,66 @@ struct BrainSection: View {
             }
             .padding(.top, Theme.Space.md)
         } else if let ask = homeAsk {
-            switch ask {
-            case .link:
-                Callout(.neutral, "Open your home server's link", detail: model.brain?.moved == nil
-                        ? "Set up Peel Home on your home server, then open the link its page shows on this Mac."
-                        : "On your home server's page, choose Send Peel Home back, then open the link it shows on this Mac.") {
-                    Button("Cancel") { homeAsk = nil }
-                        .buttonStyle(.peel(.outline))
-                        .padding(.top, 6)
-                }
-                .padding(.top, Theme.Space.md)
-            case .copy:
-                let day = model.brain?.moved.map { Formatting.date($0.date) } ?? ""
-                Callout(.neutral, "Turn off Peel Home?",
-                        detail: "This Mac goes back to how it was on \(day), when Peel Home moved. What happened on your home server since then is lost. "
-                            + "Only do this if your home server is gone: two copies must never run at once.") {
-                    HStack(spacing: 8) {
-                        Button("Turn off Peel Home") {
-                            homeAsk = nil
-                            attempt(couldNot: "turn off Peel Home") { try model.useThisMacCopy() }
+            Group {
+                switch ask {
+                case .steps:
+                    stepsCallout
+                case .restore:
+                    let day = model.brain?.moved.map { Formatting.date($0.date) } ?? ""
+                    Callout(.neutral, "Restore your assistant on this Mac?",
+                            detail: "This Mac goes back to how it was on \(day), when your assistant moved. What happened on your home server since then is lost. "
+                                + "Only do this if your home server is gone: two copies must never run at once.") {
+                        HStack(spacing: 8) {
+                            Button("Restore") {
+                                homeAsk = nil
+                                attempt(couldNot: "restore your assistant") { try model.useThisMacCopy() }
+                            }
+                            .buttonStyle(.peel(.primary))
+                            Button("Cancel") { homeAsk = nil }
+                                .buttonStyle(.peel(.outline))
                         }
-                        .buttonStyle(.peel(.primary))
-                        Button("Cancel") { homeAsk = nil }
-                            .buttonStyle(.peel(.outline))
+                        .padding(.top, 6)
                     }
-                    .padding(.top, 6)
                 }
-                .padding(.top, Theme.Space.md)
             }
+            .padding(.top, Theme.Space.md)
         }
     }
 
+    /// Set up… or Turn off…: the steps on the box that end in the link this
+    /// Mac opens. The box serves no page while Peel Home runs there, so the
+    /// way back is its setup command.
+    private var stepsCallout: some View {
+        let home = model.brain?.moved
+        let steps: [HomeSteps.Step] = if let home {
+            [
+                .init(words: "On your home server, in the folder you started it from, run:",
+                      command: "docker compose exec setup sh /setup.sh send-back \(home.host)"),
+                .init(words: "Open the link it prints, on this Mac."),
+            ]
+        } else {
+            [
+                .init(words: "On that computer, copy Peel's [home folder](\(Self.homeGuide)) over and, inside it, run:",
+                      command: "docker compose up -d"),
+                .init(words: "On this Mac, open its setup page at http://<its address>:8090."),
+                .init(words: "Click the link on that page. Peel asks before anything moves."),
+            ]
+        }
+        return Callout(.neutral, home == nil ? "Run your assistant on a home server" : "Turn off Always on",
+                       detail: home == nil
+                           ? "Any computer on your home network that stays on and runs Docker: a Raspberry Pi, a NAS, a spare Mac or PC."
+                           : "Your assistant comes back to this Mac with everything it did on your home server.") {
+            VStack(alignment: .leading, spacing: 8) {
+                HomeSteps(steps: steps)
+                Button("Cancel") { homeAsk = nil }
+                    .buttonStyle(.peel(.outline))
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    /// How to set up the box, until there's a download of its own.
+    private static let homeGuide = "https://github.com/stakwork/peel/blob/main/home/README.md"
 
     private func attempt(couldNot action: String, _ change: () throws -> Void) {
         do {
@@ -461,11 +493,11 @@ private struct HomeMoveCallout: View {
                     .buttonStyle(.peel(.outline))
             }
         case .ended(.movedOut):
-            Callout(.neutral, detail: "Peel Home is on your home server, and your assistant answered from there.",
+            Callout(.neutral, detail: "Always on. Your assistant answered from your home server.",
                     icon: .symbol("checkmark.circle", Theme.confirmed), dismiss: dismiss)
         case .ended(.movedBack(let answered)):
-            Callout(.neutral, detail: answered ? "Peel Home is back on this Mac, and your assistant answered."
-                        : "Peel Home is back on this Mac. Your assistant hasn't answered yet; it may still be starting.",
+            Callout(.neutral, detail: answered ? "Your assistant is back on this Mac, and it answered."
+                        : "Your assistant is back on this Mac. It hasn't answered yet; it may still be starting.",
                     icon: .symbol("checkmark.circle", Theme.confirmed), dismiss: dismiss)
         case .ended(.unchanged(let why)), .ended(.unanswered(_, let why)), .ended(.stillAway(let why)):
             Callout(.attention, detail: why, dismiss: dismiss)
@@ -475,10 +507,50 @@ private struct HomeMoveCallout: View {
     static func words(_ direction: HomeMoveState.Direction, _ step: PeelHomeMove.Step) -> String {
         switch (direction, step) {
         case (_, .checking): "Checking your home server…"
-        case (.out, .sending): "Stopping your assistant here and sending Peel Home to your home server…"
-        case (.back, .sending): "Bringing Peel Home back to this Mac…"
+        case (.out, .sending): "Stopping your assistant here and moving it to your home server…"
+        case (.back, .sending): "Bringing your assistant back to this Mac…"
         case (.out, .waiting): "Waiting for your assistant to answer from your home server…"
         case (.back, .waiting): "Starting your assistant here and waiting for it to answer…"
+        }
+    }
+}
+
+/// Numbered steps done on the home server, each with the command to run
+/// and a Copy beside it. A step's words may hold a `[text](https://…)` link,
+/// shown with its host as in messages.
+private struct HomeSteps: View {
+    struct Step {
+        let words: String
+        var command: String? = nil
+    }
+
+    let steps: [Step]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(index + 1).")
+                        .monospacedDigit()
+                        .muted()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(LinkText.attributed(step.words, myAliases: [], size: 12))
+                            .muted()
+                        if let command = step.command {
+                            HStack(spacing: 8) {
+                                Text(command)
+                                    .font(Theme.code(12))
+                                    .textSelection(.enabled)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Theme.codeFill, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                                CopyButton("Copy", text: command)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

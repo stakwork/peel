@@ -94,8 +94,8 @@ struct AccountView: View {
             ForgetAccountControl(
                 trigger: "Forget this account on this Mac…",
                 explanation: model.brain?.moved != nil
-                    ? "Removes the account and its messages from this Mac. Your assistant still runs in Peel Home on your home server: "
-                        + "move it back first, or wipe that box, before you sign in with your twelve words anywhere."
+                    ? "Removes the account and its messages from this Mac. Your assistant still runs on your home server: "
+                        + "turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere."
                     : "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
                 section: true
             )
@@ -111,7 +111,7 @@ extension AccountPage {
         case .profile: "Profile"
         case .payments: "Payments"
         case .assistant: "Assistant"
-        case .brain: "Peel Home"
+        case .brain: "Always on"
         case .connections: "Connections"
         case .dictation: "Dictation"
         case .notifications: "Notifications"
@@ -148,7 +148,7 @@ extension AccountPage {
         case .payments: ["balance", "sats", "confirm payments", "boost amount"]
         case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
                           "revoke", "old assistant chats"]
-        case .brain: ["brain", "home server", "this Mac", "move", "sync"]
+        case .brain: ["Peel Home", "brain", "home server", "this Mac", "move", "turn off", "restore", "sync"]
         case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
         case .notifications: ["message text", "alerts"]

@@ -119,21 +119,18 @@ struct ThreadSummaryLine: View {
     }
 }
 
-/// The newest reply's words under a thread's line: smaller than the
-/// original and indented, with its sender's name and photo.
+/// The newest reply's words under a thread's line, "Name: text", smaller
+/// than the original. Its sender's photo is already in the avatars above.
 struct LastReplyPreview: View {
     @Environment(AppModel.self) private var model
     let message: Message
 
     var body: some View {
         let sender = model.sender(of: message)
-        HStack(alignment: .top, spacing: 6) {
-            Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.xs, hue: sender.hue)
-            (Text(sender.label + " ").font(Theme.font(12, .semibold)).foregroundColor(sender.hue.name)
-                + Text(message.threadReplyPreview).font(Theme.font(12)).foregroundColor(Theme.secondaryText))
-                .lineLimit(2)
-        }
-        .padding(.leading, Theme.Space.lg)
+        (Text(sender.label + ": ").font(Theme.font(12, .semibold)).foregroundColor(sender.hue.name)
+            + Text(message.threadReplyPreview).font(Theme.font(12)).foregroundColor(Theme.secondaryText))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
     }
 }
 

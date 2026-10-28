@@ -520,15 +520,11 @@ struct ThreadSummaryButton: View {
             }
             if let latest = summary.latest {
                 let sender = model.sender(of: latest)
-                HStack(alignment: .top, spacing: 6) {
-                    Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.xs, hue: sender.hue)
-                    (Text(sender.label + " ").fontWeight(.semibold).foregroundColor(sender.hue.name)
-                        + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
-                        .phoneFont(.time)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.leading, Theme.Space.lg)
+                (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
+                    + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
+                    .phoneFont(.time)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
             }
             .frame(minHeight: Theme.touchTarget)

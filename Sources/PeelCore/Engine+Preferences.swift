@@ -14,6 +14,12 @@ struct PreferencesWork {
     /// The last background failure reported, so the same one is said once,
     /// not on every try; cleared by a sync that works.
     var reported: String?
+    /// The keys this device adds to the account's (`Engine.configurePreferences`).
+    var capabilities = PreferenceCapabilities()
+    /// Whether the file holds an agent key that differs from the one
+    /// connected here and was not taken: the app offers it
+    /// (`adoptSyncedAgentCredential`). A flag only; it holds no key.
+    var adoptable = false
 }
 
 extension Engine {
@@ -39,6 +45,80 @@ extension Engine {
         let changed = try storage.setPreference(preference, value, for: identifier)
         if changed, preference.scope == .account { schedulePreferencesSync(after: Self.preferencesDebounce) }
         return changed
+    }
+
+    /// What this device adds to the account's synced preferences: Face ID on
+    /// iOS, the agent's credential where there is an agent. Set when the
+    /// account opens, before it connects; the default adds nothing, and
+    /// those keys then stay in the file as they are.
+    public func configurePreferences(_ capabilities: PreferenceCapabilities) {
+        preferencesWork.capabilities = capabilities
+    }
+
+    /// Every colour another device gave, by colour key, as `#rrggbb`
+    /// (`chat_color`, import-only).
+    public func syncedColours() throws -> [String: String] {
+        try storage.syncedColours()
+    }
+
+    /// Whether the person turned Face ID on, as last chosen or synced; nil
+    /// for no choice, and always nil where Face ID does not sync (the Mac).
+    public func biometricWish() throws -> Bool? {
+        guard preferencesWork.capabilities.biometrics else { return nil }
+        return try storage.preference(.biometricEnabled)
+    }
+
+    /// The person turned Face ID on or off here: written and synced, where
+    /// it syncs. Never called for what a sync applied (decision 10).
+    public func setBiometricEnabled(_ on: Bool) throws {
+        guard preferencesWork.capabilities.biometrics else { return }
+        try set(.biometricEnabled, on)
+    }
+
+    /// The person connected or changed the agent's credential here: the
+    /// date is recorded and a sync goes up shortly, its value read from the
+    /// Keychain then. Never for a disconnect (the file keeps its item, as
+    /// in the official apps) nor for a credential a sync applied.
+    public func agentCredentialConnected() throws {
+        guard preferencesWork.capabilities.agentCredential != nil else { return }
+        try storage.setSecretDate(Preferences.agentConfigKey)
+        preferencesWork.adoptable = false
+        schedulePreferencesSync(after: Self.preferencesDebounce)
+    }
+
+    /// Whether the file holds an agent key different from the one
+    /// connected here, for the app to offer (`adoptSyncedAgentCredential`).
+    public var agentCredentialAdoptable: Bool { preferencesWork.adoptable }
+
+    /// The person confirmed taking the agent key the file holds in place of
+    /// the one connected here: the file is fetched again, and its key kept
+    /// in the Keychain as a first import would. False when the file has
+    /// none (or none this build reads).
+    @discardableResult
+    public func adoptSyncedAgentCredential() async throws -> Bool {
+        guard let credential = preferencesWork.capabilities.agentCredential else { return false }
+        _ = try? await preferencesWork.current?.value
+        guard let file = try await fetchFile(memesServer(), secret: preferencesKey()),
+              let item = file.items.last(where: {
+                  $0["key"]?.string == Preferences.agentConfigKey && $0["identifier"]?.string == Preferences.accountWide
+              }),
+              let config = item["value"].flatMap({ Preference<AgentConfig>.agentConfig.read($0) }) else { return false }
+        guard !closed else { throw CancellationError() }
+        try keep(config, in: credential)
+        let date = min(PreferencesFile.date(of: item), (Date.now.timeIntervalSince1970 + 86_400).rounded(.down))
+        try storage.takeSecretDate(Preferences.agentConfigKey, date: date)
+        preferencesWork.adoptable = false
+        emit.yield(.preferencesChanged)
+        return true
+    }
+
+    /// Hands a key to the Keychain; a failure says nothing of the key.
+    private func keep(_ config: AgentConfig, in credential: any SyncedAgentCredential) throws {
+        do {
+            try credential.keep(config)
+        } catch {
+            throw PeelError("could not keep the agent's key from your other device in the Keychain")
+        }
     }
 
     /// Syncs soon unless one fetched within `preferencesRefresh`: for an
@@ -106,10 +186,12 @@ extension Engine {
         _ = try? await preferencesWork.current?.value
         let (merge, found) = try await fetchAndMerge(memesServer(), secret: preferencesKey())
         // A new date alone (a refused value, `merged`) is not applying anything.
-        let applied = merge.apply.filter { $0.row.value != $0.expected?.value }
-        return PreferencesPreview(
-            found: found, applied: applied.map { .init(key: $0.row.key, identifier: $0.row.identifier) }, uploaded: merge.uploads
-        )
+        let changed = merge.apply.filter { $0.row.value != $0.expected?.value }.map {
+            PreferenceID(key: $0.row.key, identifier: $0.row.identifier)
+        }
+        // A secret taken from the file counts too, though its row is a placeholder.
+        let applied = changed + merge.secrets.map(\.pair).filter { !changed.contains($0) }
+        return PreferencesPreview(found: found, applied: applied, uploaded: merge.uploads)
     }
 
     public struct PreferencesPreview: Sendable {
@@ -126,15 +208,42 @@ extension Engine {
     /// says; anywhere else it is the server failing.
     private func fetchAndMerge(_ memes: MemesServer, secret: String) async throws -> (PreferencesFile.Merge, found: Bool) {
         let rows = try storage.preferenceRows()
-        guard let body = try await withMemes(memes, { try await memes.preferences(token: $0) }) else {
+        let (keys, secrets) = syncInputs()
+        guard let file = try await fetchFile(memes, secret: secret) else {
             guard try storage.mayStartPreferencesFile(on: memes.seenName) else { throw Failure.preferencesMissing }
             let since = try storage.preference(.preferencesSince).map(Double.init) ?? .greatestFiniteMagnitude
-            return (PreferencesFile().merged(with: rows, bootstrapping: since), false)
+            return (PreferencesFile().merged(with: rows, bootstrapping: since, keys: keys, secrets: secrets), false)
         }
+        return (file.merged(with: rows, keys: keys, secrets: secrets), true)
+    }
+
+    /// The file as fetched, decrypted and read; nil on the server's "not found".
+    private func fetchFile(_ memes: MemesServer, secret: String) async throws -> PreferencesFile? {
+        guard let body = try await withMemes(memes, { try await memes.preferences(token: $0) }) else { return nil }
         guard let sealed = Data(base64Encoded: body.trimmingCharacters(in: .whitespacesAndNewlines)),
               let plain = try? MediaCrypto.decrypt(sealed, key: secret),
               let text = String(data: plain, encoding: .utf8) else { throw Failure.unreadablePreferences }
-        return (try PreferencesFile(text: text).merged(with: rows), true)
+        return try PreferencesFile(text: text)
+    }
+
+    /// The keys this sync merges, and the real value of each secret among
+    /// them, read from the Keychain now and held for this sync only. A
+    /// credential that cannot be read (the Keychain locked) leaves its key
+    /// out of this sync, so nothing is taken over what may be there.
+    private func syncInputs() -> (keys: Set<String>, secrets: [String: JSONValue]) {
+        let capabilities = preferencesWork.capabilities
+        var enabled = capabilities.keys
+        var secrets: [String: JSONValue] = [:]
+        if let credential = capabilities.agentCredential {
+            do {
+                if let config = try credential.read(), let item = try? Preference<AgentConfig>.agentConfig.write(config) {
+                    secrets[Preferences.agentConfigKey] = item
+                }
+            } catch {
+                enabled.remove(Preferences.agentConfigKey)
+            }
+        }
+        return (Preferences.syncedKeys(enabling: enabled), secrets)
     }
 
     private func runPreferencesSync() async throws -> PreferencesSync {
@@ -145,8 +254,24 @@ extension Engine {
         guard !closed else { throw CancellationError() }
         preferencesWork.lastFetched = .now
         if found { try set(.preferencesFileSeen, memes.seenName) }
-        let applied = try storage.applyPreferences(merge.apply)
-        if applied > 0 { emit.yield(.preferencesChanged) }
+        // A key from the file goes into the Keychain only where none is
+        // connected now (one may have been while the file was fetched).
+        if let credential = preferencesWork.capabilities.agentCredential {
+            for change in merge.secrets {
+                guard let config = Preference<AgentConfig>.agentConfig.read(change.value) else { continue }
+                do {
+                    guard try credential.read() == nil else { continue }
+                } catch {
+                    continue
+                }
+                try keep(config, in: credential)
+            }
+        }
+        let stored = try storage.applyPreferences(merge.apply)
+        let applied = max(stored, merge.secrets.count)
+        let adoptable = merge.differing.contains { $0.key == Preferences.agentConfigKey }
+        if applied > 0 || adoptable != preferencesWork.adoptable { emit.yield(.preferencesChanged) }
+        preferencesWork.adoptable = adoptable
         guard merge.changed else { return PreferencesSync(applied: applied, uploaded: false) }
         let sealed = try MediaCrypto.encrypt(Data(try merge.file.text.utf8), key: secret).base64EncodedString()
         guard sealed.utf8.count <= MemesServer.preferencesLimit else { throw TooLarge(limit: MemesServer.preferencesLimit) }

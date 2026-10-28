@@ -22,11 +22,15 @@ public struct Platform {
     /// Whether the first chat opens while nothing is open: the Mac's detail
     /// pane is never empty; the iPhone's Chats list is a screen of its own.
     public var opensFirstChat: Bool
+    /// Whether Face ID's on/off syncs with the account's other devices
+    /// (`biometric_enabled`): the iPhone's does; the Mac app, as the
+    /// official one, neither writes nor applies it.
+    public var syncsBiometrics: Bool
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
-        opensFirstChat: Bool = true
+        opensFirstChat: Bool = true, syncsBiometrics: Bool = false
     ) {
         self.presence = presence
         self.files = files
@@ -36,6 +40,7 @@ public struct Platform {
         self.calls = calls
         self.agent = agent
         self.opensFirstChat = opensFirstChat
+        self.syncsBiometrics = syncsBiometrics
     }
 }
 

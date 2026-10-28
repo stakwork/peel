@@ -3,7 +3,10 @@ import PeelCore
 
 /// Face ID in place of typing the PIN (`BiometricUnlock`): the iPhone's lock
 /// screen, the twelve words and You's switch. Face ID releases the PIN
-/// itself, so everything after it is the typed PIN's path.
+/// itself, so everything after it is the typed PIN's path. Whether it is on
+/// follows the account on the iPhone (`biometric_enabled`), but only as a
+/// wish: another device's "on" is offered here (`biometricsOffered`), never
+/// enrolled without the PIN; its "off" turns it off here.
 extension AppModel {
     /// "Face ID" when this device can unlock with a face (or "Touch ID"),
     /// and the account has a PIN to stand in for; nil otherwise.
@@ -24,11 +27,17 @@ extension AppModel {
     public func turnOnBiometrics(pin: String) async throws {
         guard let biometrics = profile?.biometrics else { throw PeelError("Face ID needs a PIN.") }
         try await Task.detached { try biometrics.turnOn(pin: pin) }.value
+        biometricsOffered = false
+        // The person's choice, after the PIN step: it follows the account (iOS
+        // only; `Engine.setBiometricEnabled` does nothing elsewhere). A sync
+        // never comes through here: it never turns Face ID on (decision 10).
+        try? await engine?.setBiometricEnabled(true)
     }
 
     public func turnOffBiometrics() async throws {
         guard let biometrics = profile?.biometrics else { return }
         try await Task.detached { try biometrics.turnOff() }.value
+        try? await engine?.setBiometricEnabled(false)
     }
 
     /// Unlocks with a face, as the PIN would. Returns false when no PIN was

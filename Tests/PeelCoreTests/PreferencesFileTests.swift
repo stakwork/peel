@@ -142,10 +142,14 @@ struct PreferencesFileTests {
             #expect(merge.file.items[index] == item)
         }
         #expect(merge.file.items[6]["value"] == .string("250") && merge.file.items[7]["value"] == .string("250"))
-        // Peel stores only its own keys (the API key never reaches the
-        // database), and takes the last copy.
+        // Peel stores only the keys it syncs (the API key never reaches the
+        // database; `pin_timeout` is not Peel's, decision 4), and takes the
+        // last copy. With no Face ID or agent here, theirs stay pass-through.
         let pulled = server.merged(with: [])
-        #expect(pulled.apply.map(\.row) == [row("tip_amount", #""7""#, at: 1)])
+        #expect(pulled.apply.map(\.row) == [
+            row("chat_color", ##""#ff00aa""##, at: 9, for: "Ann-color"), row("tip_amount", #""7""#, at: 1),
+        ])
+        #expect(pulled.secrets.isEmpty && pulled.differing.isEmpty)
     }
 
     /// A device that has never seen the file starts one only with what was

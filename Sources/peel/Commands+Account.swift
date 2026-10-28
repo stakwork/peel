@@ -65,7 +65,7 @@ extension Invocation {
                 let chat = row.identifier == Preferences.accountWide ? "" : "  \(row.identifier.prefix(12))"
                 let when = row.updatedAt > 0
                     ? Date(timeIntervalSince1970: row.updatedAt).formatted(.iso8601) : "from before sync"
-                print("\(row.key)\(chat)  \(row.value)  \(when)  \(row.followsAccount ? "account" : "this device")")
+                print("\(row.key)\(chat)  \(row.displayValue)  \(when)  \(row.followsAccount ? "account" : "this device")")
             }
 
         case "prefs-sync":

@@ -16,7 +16,9 @@ extension Platform {
             presence: PhonePresence(), files: PhoneFiles(), pasteboard: ClipboardPasteboard(),
             playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: LiveKitCalls(), agent: nil,
             // Chats is a list to come back to, not a pane to fill.
-            opensFirstChat: false
+            opensFirstChat: false,
+            // Face ID's on/off follows the account, as in the official iOS app.
+            syncsBiometrics: true
         )
     }
 }

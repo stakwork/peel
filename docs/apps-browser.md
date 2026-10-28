@@ -103,6 +103,12 @@ own authoring UI. Your chat with Peel is the way in:
 - The sidebar's top rows A–Z: Apps, Automations, Mentions, Payments,
   Threads; the arrow keys move through them in that order, Automations
   now among them (it had been left out).
+- The iPhone's Chats top area matches it (Payments is a tab there): Apps
+  with the pinned apps nested under it, Automations, Mentions, Threads.
+  The Apps row is always there, Stadeum connected or not (`AppsScreen`
+  has the empty state). When any app is pinned, a trailing chevron beside
+  the row (not inside its link) folds the pinned apps, as the Mac's
+  `AppsFoldButton` does (`sidebarLayout.appsOpen`).
 - Pinned apps under Apps, A–Z, with no icon so their titles sit under
   Apps'. While the sidebar search has text, every app matching it shows
   there instead. The open app shows there too while it is open, pinned
@@ -225,8 +231,9 @@ plans/app-releases.md, `GET /apps/:name/versions` and `PUT
 5. **Manage.** The ⋯ menu: versions and delete for yours, hide and "Open in
    Stadeum" for a workspace's.
 
-The iPhone stays out (no strut of its own). `PhoneRouter` gets the Apps row
-once a phone can reach a strut.
+The iPhone has no strut of its own, so it stays out of the strut side. It does
+pin the workspaces' apps under Chats' Apps row, sharing the Mac's sidebar
+layout (`ChatSections.Layout.pinnedApps`).
 
 ## Questions for Tom
 

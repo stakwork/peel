@@ -75,20 +75,37 @@ struct ChatList: View {
         List {
             if !sections.searching {
                 Section {
-                    // The workspaces' apps, once Stadeum is connected here.
-                    if !model.stadeum.live.isEmpty {
-                        NavigationLink(value: ChatsRoute.apps) {
-                            NavRow(title: "Apps", systemImage: WorkspaceApp.symbol)
+                    // The Mac sidebar's order, A–Z (Tom, 2026-10-26); Payments is a tab.
+                    NavigationLink(value: ChatsRoute.apps) {
+                        NavRow(title: "Apps", systemImage: WorkspaceApp.symbol)
+                    }
+                    .overlay(alignment: .trailing) {
+                        // Beside the link, not in it: the row still opens Apps.
+                        if model.stadeum.apps.contains(where: model.isPinned) {
+                            Button {
+                                model.sidebarLayout.appsOpen.toggle()
+                            } label: {
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .rotationEffect(.degrees(model.sidebarLayout.appsOpen ? 0 : -90))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Pinned apps")
+                            .accessibilityValue(model.sidebarLayout.appsOpen ? "Expanded" : "Collapsed")
                         }
                     }
+                    PinnedAppRows()
                     NavigationLink(value: ChatsRoute.automations) {
                         NavRow(title: "Automations", systemImage: "clock.arrow.circlepath")
                     }
-                    NavigationLink(value: ChatsRoute.threads) {
-                        NavRow(title: "Threads", systemImage: "bubble.left", count: model.unreadThreads)
-                    }
                     NavigationLink(value: ChatsRoute.mentions) {
                         NavRow(title: "Mentions", systemImage: "at", count: model.unreadMentions)
+                    }
+                    NavigationLink(value: ChatsRoute.threads) {
+                        NavRow(title: "Threads", systemImage: "bubble.left", count: model.unreadThreads)
                     }
                 }
                 .phoneRows()
@@ -281,5 +298,44 @@ private struct ShowAll: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(all ? "Show fewer \(fewer)" : "Show all \(what)")
+    }
+}
+
+/// The apps the person pinned, under the Apps row as the Mac's sidebar
+/// nests them (kept in the same layout): a tap opens one in the org page
+/// sheet, a swipe unpins it. Only workspaces still in use.
+private struct PinnedAppRows: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+
+    var body: some View {
+        let stadeum = model.stadeum
+        let live = Set(stadeum.live.map(\.id))
+        let pinned = WorkspaceApp.byTitle(stadeum.apps.filter { app in
+            model.isPinned(app) && (app.peer.map(live.contains) ?? false)
+        })
+        if model.sidebarLayout.appsOpen {
+            ForEach(pinned) { app in
+                Button {
+                    if case .page(let page) = stadeum.opening(app) { router.orgPage = page }
+                } label: {
+                    RowLayout {
+                        Image(systemName: app.iconSymbol)
+                            .font(.system(size: 15))
+                            .frame(width: 30)
+                            .accessibilityHidden(true)
+                    } title: {
+                        Text(app.title).phoneFont(.row).lineLimit(1)
+                    } trailing: {
+                        EmptyView()
+                    }
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.leading, Theme.Space.lg)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens it")
+                .swipeActions(edge: .trailing) { PinAppButton(app: app) }
+            }
+        }
     }
 }

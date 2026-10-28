@@ -135,9 +135,10 @@ extension AccountPage {
     /// The agent's own: listed only while there is one.
     private var needsAgent: Bool { [.assistant, .brain, .connections].contains(self) }
 
-    /// The categories this account has, in the order listed.
+    /// The categories this account has, by title as listed.
     @MainActor static func listed(in model: AppModel) -> [AccountPage] {
         allCases.filter { model.agent != nil || !$0.needsAgent }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     /// What each category holds, for the search: the labels of its rows.

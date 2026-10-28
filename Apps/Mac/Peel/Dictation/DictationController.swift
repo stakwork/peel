@@ -468,6 +468,14 @@ final class DictationController {
             hud.show(.message("The recording could not be saved"))
             return
         }
+        // Too short to hold a word, or no audio at all: strut is not asked
+        // (an empty file once crashed its decoder), and it ends as silence does.
+        guard recorded.duration >= DictationDefaults.minRecording else {
+            try? FileManager.default.removeItem(at: recorded.url)
+            // Another dictation still transcribing keeps the working pill.
+            if inserting == 0 { hud.show(.message("Nothing was heard")) }
+            return
+        }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
         // Where and when, as of now: the account and the clock may move on
         // while the strut transcribes.

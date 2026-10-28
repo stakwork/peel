@@ -44,6 +44,8 @@ on this Mac, turns it into text: nothing leaves it.
 - **Hand-off:** `DictationSession { id, audioURL, duration, mode }` to a
   `Transcriber`: `StrutTranscriber` (`DictationSpeech`, the app; the HTTP
   calls are `StrutSpeech`, PeelAgent). `StubTranscriber` stays for tests.
+  A recording under `DictationDefaults.minRecording` (0.2 s), empty
+  included, is deleted unsent and the HUD says "Nothing was heard".
 - **Speech-to-text** (strut's `plans/native-dictation-client.md` §3, §6).
   Peel's bundled strut (the open account's, started with its agent; never
   a home server's) is staged with its speech engine, sherpa-onnx, in

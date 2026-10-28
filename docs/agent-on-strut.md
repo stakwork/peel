@@ -201,15 +201,16 @@ empty folder of its own.
 strut ships it and seeds it at boot, as it seeds `job`
 (`src/job-seed.ts`): one version per content hash, so strut's UI shows it
 and its runs, and a changed template publishes the next version. It knows
-nothing about Peel. Its own tools are strut's: `memory/*`, `job/start`,
-`job/continue` and the `job/*` reads. A host adds the rest and a section
+nothing about Peel. Its own tools are strut's: `job/start`,
+`job/continue` and the `job/*` reads (memory came off strut's default; Peel
+grants it, below). A host adds the rest and a section
 of the prompt, as `createStrut({ job: { tools, system } })` does for
 `job` today (the lab adds `pod/*`). Peel adds the device steps
 (`sphinx/*`, `calendar/*`), the automation steps and its prompt section.
 
 Most turns are not jobs. Like the Swift agent in the Agent chat today, the
 orchestrator calls its tools inside the turn: "when is Kate's birthday?"
-is one `memory/recall`, "what did I miss?" one `sphinx/unseen` to the
+is one `graph/graph-search` over memory, "what did I miss?" one `sphinx/unseen` to the
 Mac. It starts a job only for work that needs files, the web or many
 steps, and can have several going at once.
 
@@ -264,9 +265,15 @@ steps:
   say you are waiting for it and stop".
 - **Memory steps.** The memory tools already call strut steps
   (`MemoryTools` names the verbs; `MemoryServer` posts to `/steps/memory/<verb>/run`). In the workflow
-  they are `agentTools` directly: `memory/remember`, `recall`, `get`,
-  `ontology`, `forget`, `merge`. The tool names change from Peel's
-  (`read_memory` is `memory/get`); the prompt names them.
+  they are `agentTools` directly: `memory/remember`, `forget`, `merge`,
+  which Peel's delta grants. Memory is read with strut's graph reads
+  (`graph/graph-search`, `graph-get`, `graph-get-batched`,
+  `graph-neighbors`, `get-ontology`, `get-ontology-type`): the host
+  config's `memoryGraph.workflows` names the orchestrator and
+  `peel-automation-run`, so their agent tool calls read the person's
+  memory rather than the workspace graph (`Orchestrator.graphReads`).
+  `recall`, `get` and `ontology` are no longer granted; the prompt names
+  the tools.
 - **Sessions.** One agent DM is one session, compacted in place. See
   Sessions below. Automations run without a session, as today's headless run
   has no history: a second workflow, `peel-automation-run`, the same step
@@ -322,7 +329,7 @@ resets:
 | `search_messages` | read | Device request `chats.search` (`sphinx/search`) |
 | `send_sphinx_message` | send | Device request `send` (`sphinx/send`), the card on the Mac |
 | `remember`, `forget_memory`, `merge_memory` | write | strut's `memory/*` steps |
-| `recall`, `read_memory`, `memory_ontology` | read | strut's `memory/*` steps |
+| `recall`, `read_memory`, `memory_ontology` | read | strut's `graph/*` reads over memory (`memoryGraph`) |
 | `list_automations`, `preview_schedule` | read | strut steps over strut's automation store |
 | `create_automation`, `update_automation`, `delete_automation`, `run_automation_now` | send (asks) | strut steps that first send an `approve` device request; they act only on "allow" |
 | Calendar (none today; jobs-architecture P4 planned it) | read, send | Device requests `calendar.*` (`calendar/*`), new in Phase 1 |

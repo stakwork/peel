@@ -235,6 +235,9 @@ Mac answers its agent with over a real account, as the device requests
 call them: a read's plan is its answer, a send's plan its card, and only
 running it sends. The agent itself, strut's orchestrator through the
 bridge, is in `OrchestratorJourneys.swift`, on a stand-in model endpoint.
+There, too, memory is read through strut's graph tools on the orchestrator's
+turn and an automation's run (`memoryGraph`): the user found, their facts
+reached by its links.
 Run them alone with
 `PEEL_INTEGRATION=1 SPHINX_BIN_DIR=~/sphinx-target/debug swift test --filter Journeys/Agent`.
 

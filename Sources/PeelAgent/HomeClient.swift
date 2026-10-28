@@ -96,7 +96,7 @@ public struct HomePeer: Sendable, Equatable, Codable, CustomStringConvertible, C
 /// folder of its own (`Strut.client` beside Peel Home's), scheduler off,
 /// with no bridge and no agent, for dictation and the Vocabulary window.
 /// Never the folder set aside at the move, which holds the agent's secrets
-/// and is what "Turn off Peel Home" puts back.
+/// and is what Server gone? › Restore puts back.
 public enum HomeClient {
     /// strut's `home-sync { peer }` (strut's AGENTS.md, "Home sync"), one
     /// `home/sync` step: pushes what dictation changed here, then pulls the

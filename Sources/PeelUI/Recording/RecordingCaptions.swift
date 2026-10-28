@@ -65,6 +65,44 @@ public enum RecordingCaptions {
         }
     }
 
+    /// `text`'s words, timed by `heard`'s: strut applies the user's
+    /// vocabulary (and its fixer) to the transcript's text only, while each
+    /// word's time is as heard ("stack work" at 4.2 s, written "Stakwork").
+    /// A word in both keeps its time; one that replaced others takes the
+    /// first of theirs; one only added takes the time of the word before it.
+    public static func retimed(_ heard: [TimedWord], as text: String) -> [TimedWord] {
+        let written = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !written.isEmpty, !heard.isEmpty else { return heard }
+        func key(_ word: String) -> String { word.lowercased().filter { $0.isLetter || $0.isNumber } }
+        let changes = written.map(key).difference(from: heard.map { key($0.text) })
+        var removed = Set<Int>(), inserted = Set<Int>()
+        for change in changes {
+            switch change {
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): inserted.insert(offset)
+            }
+        }
+        var timed: [TimedWord] = []
+        var at = 0
+        // The time of heard words dropped since the last word kept.
+        var replaced: TimeInterval?
+        for (index, word) in written.enumerated() {
+            while at < heard.count, removed.contains(at) {
+                replaced = replaced ?? heard[at].start
+                at += 1
+            }
+            if inserted.contains(index) {
+                let start = replaced ?? timed.last?.start ?? heard[min(at, heard.count - 1)].start
+                timed.append(TimedWord(text: word, start: start))
+            } else {
+                timed.append(TimedWord(text: word, start: heard[at].start))
+                at += 1
+                replaced = nil
+            }
+        }
+        return timed
+    }
+
     /// "Peel Recording 2026-10-28 at 14.03.07": a name Finder sorts by time,
     /// and by which Peel finds its own among the other downloads.
     public static func fileName(at date: Date, calendar: Calendar = .current) -> String {
@@ -75,8 +113,8 @@ public enum RecordingCaptions {
         )
     }
 
-    /// Whether a file name is one `fileName` made.
+    /// Whether a file name is one `fileName` made, numbered or not ("… 2.mp4").
     public static func isRecordingName(_ name: String) -> Bool {
-        name.wholeMatch(of: /Peel Recording \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}\.mp4/) != nil
+        name.wholeMatch(of: /Peel Recording \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}( \d{1,2})?\.mp4/) != nil
     }
 }

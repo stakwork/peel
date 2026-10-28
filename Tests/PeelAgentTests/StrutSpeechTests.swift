@@ -43,10 +43,11 @@ struct StrutSpeechTests {
         defer { stub.stop() }
         let file = try wav("RIFF-wav-bytes")
         defer { try? FileManager.default.removeItem(at: file) }
-        let words = try await speech(stub).words(wavAt: file)
+        let reply = try await speech(stub).words(wavAt: file)
+        #expect(reply.text == "Hello there. Next")
         // A word without its text is left out.
-        #expect(words.map(\.text) == ["Hello", "there.", "Next"])
-        #expect(words.map(\.start) == [0.42, 0.8, 4])
+        #expect(reply.heard.map(\.text) == ["Hello", "there.", "Next"])
+        #expect(reply.heard.map(\.start) == [0.42, 0.8, 4])
         #expect(try #require(stub.requests.first).hasPrefix("POST /audio/transcribe "))
     }
 

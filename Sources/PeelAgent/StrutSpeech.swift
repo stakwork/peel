@@ -75,18 +75,23 @@ public struct StrutSpeech: Sendable {
         return (text.trimmingCharacters(in: .whitespacesAndNewlines), heard)
     }
 
-    /// Each word of the WAV at `file` with when it starts, in seconds, for a
-    /// screen recording's captions (docs/recording.md); empty when nothing
+    /// The WAV at `file` for a screen recording's captions
+    /// (docs/recording.md): its text, with the user's vocabulary applied, and
+    /// each word as heard with when it starts, in seconds. Strut leaves the
+    /// words as heard, so they can differ from the text. Empty when nothing
     /// was heard.
-    public func words(wavAt file: URL) async throws -> [(text: String, start: Double)] {
+    public func words(wavAt file: URL) async throws -> (text: String, heard: [(text: String, start: Double)]) {
         let reply = try await transcription(of: file)
-        guard let segments = reply["segments"]?.array else { throw Failure.refused("its reply had no segments") }
-        return segments.flatMap { segment in
+        guard let text = reply["text"]?.string, let segments = reply["segments"]?.array else {
+            throw Failure.refused("its reply had no text")
+        }
+        let heard: [(text: String, start: Double)] = segments.flatMap { segment in
             (segment["words"]?.array ?? []).compactMap { word in
                 guard let text = word["text"]?.string, case .number(let start)? = word["start"] else { return nil }
                 return (text, start)
             }
         }
+        return (text.trimmingCharacters(in: .whitespacesAndNewlines), heard)
     }
 
     private func transcription(of file: URL) async throws -> AgentKit.JSONValue {

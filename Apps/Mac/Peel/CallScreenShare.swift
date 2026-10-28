@@ -182,7 +182,12 @@ private final class PickerObserver: NSObject, SCContentSharingPickerObserver, Se
     @MainActor
     func pick(present: () -> Void) async -> SCContentFilter? {
         await withCheckedContinuation { continuation in
-            waiting.withLock { $0 = continuation }
+            // One picker at a time: a pick still open (a call's share,
+            // a recording's) gets nothing, rather than waiting for ever.
+            waiting.withLock {
+                $0?.resume(returning: Picked(filter: nil))
+                $0 = continuation
+            }
             present()
         }.filter
     }

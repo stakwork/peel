@@ -6,8 +6,9 @@ import Synchronization
 /// A display, its cursor and the microphone, written to an MP4 by
 /// ScreenCaptureKit's own recording output (docs/recording.md). The display
 /// comes from macOS's picker (`ScreenShare.pick`), so Peel holds no standing
-/// Screen Recording permission. Peel's windows are hidden from it, all but
-/// the camera bubble (`WindowCloak`).
+/// Screen Recording permission. Peel's own windows are in it, as anything
+/// else on the display is (a recording of Peel itself); only the recording's
+/// bar never is.
 @MainActor
 final class ScreenRecorder {
     private let stream: SCStream
@@ -28,7 +29,7 @@ final class ScreenRecorder {
     /// with the file and the failure if there was one, when the file is
     /// finished or the recording failed: after `stop()`, or when macOS ended
     /// the capture (the menu bar's Stop, the display going away). It can come
-    /// before this returns. Peel's windows are hidden from the start until then.
+    /// before this returns.
     static func start(_ filter: SCContentFilter, ended: @escaping @MainActor (URL, (any Error)?) -> Void) async throws -> ScreenRecorder {
         let configuration = SCStreamConfiguration.fitting(filter, maxSide: maxSide, fps: fps)
         configuration.captureMicrophone = true
@@ -42,12 +43,8 @@ final class ScreenRecorder {
         recording.outputFileType = .mp4
         recording.videoCodecType = .h264
 
-        let cloak = WindowCloak.hold()
         let delegate = RecorderDelegate { error in
-            Task { @MainActor in
-                cloak.release()
-                ended(url, error)
-            }
+            Task { @MainActor in ended(url, error) }
         }
         let output = SCRecordingOutput(configuration: recording, delegate: delegate)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: delegate)
@@ -60,7 +57,7 @@ final class ScreenRecorder {
             try await stream.startCapture()
         } catch {
             // Nothing for `ended` to report: this throws instead.
-            if delegate.claim() { cloak.release() }
+            _ = delegate.claim()
             try? FileManager.default.removeItem(at: url)
             throw error
         }
@@ -71,12 +68,15 @@ final class ScreenRecorder {
     var bytes: Int { output.recordedFileSize }
     var duration: TimeInterval { output.recordedDuration.seconds.isFinite ? output.recordedDuration.seconds : 0 }
 
-    /// Ends the recording; `ended` follows once the file is finished.
+    /// Ends the recording; `ended` follows once the file is finished, or,
+    /// if the recording output never says so, after `finishing`.
     func stop() async {
         do {
             try await stream.stopCapture()
+            delegate.finishLater(nil)
         } catch {
-            delegate.finish(error)
+            // Already stopped (macOS's Stop came first): its file may still be closing.
+            delegate.finishLater(error)
         }
     }
 }
@@ -111,10 +111,17 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {}
 
+    /// The end, unless the recording output reports it first, within `finishing`.
+    func finishLater(_ error: (any Error)?) {
+        queue.asyncAfter(deadline: .now() + Self.finishing) { [self] in
+            finish(error ?? CocoaError(.fileWriteUnknown))
+        }
+    }
+
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
         // macOS ended the capture (the menu bar's Stop): the recording output
         // finishes its file and says so; if it never does, this error stands.
-        queue.asyncAfter(deadline: .now() + Self.finishing) { [self] in finish(error) }
+        finishLater(error)
     }
 
     func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {

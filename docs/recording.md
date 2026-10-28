@@ -16,8 +16,7 @@ until you send it.
 2. **Local capture, not LiveKit.** LiveKit records on the call server
    (Egress), which is the hosting v1 leaves out. ScreenCaptureKit writes the
    file here. What it shares with calls is the system picker
-   (`ScreenShare.pick`) and keeping Peel's windows out of the picture
-   (`WindowCloak`).
+   (`ScreenShare.pick`) and the stream setup.
 3. **Started from Account › Recording** for v1: the camera switch, New
    recording, and the recordings made.
 4. **Camera bubble, on by default**, off with one switch before recording.
@@ -25,13 +24,14 @@ until you send it.
    Downloads; the message text stays the sender's.
 6. **Recording starts on Record.** Picking a screen puts up the camera
    bubble and the bar; nothing is recorded until Record on the bar.
+7. **Peel is in the recording** like any other app on the screen, chats
+   and all: a recording is often of Peel itself. Only the bar is left out.
 
 ## How it works
 
 - **What is recorded.** One display, chosen in macOS's sharing picker, so
   Peel needs no standing Screen Recording permission. The picker is asked
-  to keep Peel in the picture (`includePeel`), so the bubble is in it; the
-  cloak hides every other window of Peel's. A window alone is
+  to keep Peel in the picture (`includePeel`). A window alone is
   v2: the bubble is a window on the display, so it is only in a display's
   picture (a window recording would need it composited afterwards).
 - **Capture** (`ScreenRecorder`). An `SCStream` on the picked filter with
@@ -42,13 +42,11 @@ until you send it.
   default input, as dictation learned to). No system audio in v1. The
   attachment limit is 100 MB: the recording stops itself at 95 MB and says
   why.
-- **Peel's windows** are hidden from the capture as for a shared screen
-  (`WindowCloak`), all but the camera bubble (`ShownInCaptures`). Each
-  capture takes a `WindowCloak.Hold`, so a recording made while a call
-  shares the screen ends without showing your chats in the call. The
-  control bar is never captured (`sharingType = .none` from its first
-  frame). The bubble's exemption is the window's, so it is in a call's
-  shared screen too while both run.
+- **Peel's windows** are recorded as they are. The control bar is never
+  captured (`sharingType = .none`). A call's screen share still hides
+  Peel's windows (`WindowCloak`, a `Hold` per share) from every capture
+  while it runs, a recording's too, all but the camera bubble
+  (`ShownInCaptures`).
 - **Camera bubble** (`CameraBubblePanel`). A round, floating panel with the
   camera's preview, mirrored, 200 pt, bottom left of the recorded display,
   dragged anywhere. ScreenCaptureKit records it as part of the display.
@@ -58,10 +56,16 @@ until you send it.
   dot and the time, Discard (X) and Stop (tick). macOS's own menu bar Stop ends it too, and keeps
   the file.
 - **After Stop** (`RecordingController`). The file moves to
-  `~/Downloads/Peel Recording <date> at <time>.mp4`. Its audio is read out as
+  `~/Downloads/Peel Recording <date> at <time>.mp4`, numbered if that is
+  taken; if Downloads can't have it, a save panel asks where, and it is
+  never deleted for that. What a quit or crash leaves in the temp folder
+  is swept at launch. Its audio is read out as
   16 kHz mono WAV (`RecordingMedia.extractAudio`), sent to Peel's strut
   (`POST /audio/transcribe`, the dictation engine and the user's vocabulary)
-  and comes back with each word's start time. The words become caption
+  and comes back as text with the vocabulary applied, and each word as
+  heard with its start time: strut leaves the timed words as heard. The
+  text's words take the heard words' times (`RecordingCaptions.retimed`:
+  "Stakwork" at the time "stack work" was heard) and become caption
   cues (`RecordingCaptions`, at most 42 characters and 6 s each), written
   into the file as a `tx3g` subtitle track (`RecordingMedia.addCaptions`, a
   passthrough remux, nothing re-encoded). With no
@@ -69,7 +73,7 @@ until you send it.
   row says why.
 - **Account › Recording** lists Peel's recordings in Downloads (plain
   files by their name, never a link planted under one), newest first:
-  the name, length and size, each row draggable into a chat, with Show in
+  the name, date and size, each row draggable into a chat, with Show in
   Finder. A row being transcribed says so.
 
 ## Not in v1
@@ -112,3 +116,16 @@ and anything but a plain file under a recording's name are not listed.
 
 Risk: high (`Sources/PeelCore/Engine.swift`, `attachmentLimit` made public;
 1575 lines). Needs an independent review, and Tom's sign-off.
+
+Independent review (high tier, an agent that did not write it): fixed a
+recording deleted when Downloads refused it; the camera and bar left up when
+the capture failed as Record started; Stop with no answer from the recording
+output stuck for ever, or an early error deleting a file still closing (now
+the same 60 s grace as macOS's Stop); two pickers at once leaving one
+waiting for ever; the clock stopping while the bubble is dragged; temp files
+left by a quit. Peel's notification banners are macOS's own windows and can
+be in a recording: not changed, as Peel itself now is.
+
+Tom's test, 2026-10-28: Peel should be in its own recordings (decision 7,
+the recording's `WindowCloak` hold removed), and the captions lacked his
+vocabulary (strut applies it to the text only; `RecordingCaptions.retimed`).

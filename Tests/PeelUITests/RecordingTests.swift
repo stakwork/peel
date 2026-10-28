@@ -38,12 +38,27 @@ struct RecordingCaptionsTests {
         #expect(RecordingCaptions.cues(from: [], duration: 5).isEmpty)
     }
 
+    @Test func theVocabularysWordsTakeTheHeardTimes() {
+        let heard = words([("ask", 1), ("the", 1.2), ("stack", 1.4), ("work", 1.7), ("team", 2)])
+        let timed = RecordingCaptions.retimed(heard, as: "Ask the Stakwork team.")
+        #expect(timed == words([("Ask", 1), ("the", 1.2), ("Stakwork", 1.4), ("team.", 2)]))
+    }
+
+    @Test func wordsTheFixerAddsTakeTheTimeBeforeThem() {
+        let heard = words([("send", 0.5), ("it", 0.9), ("now", 1.3)])
+        #expect(RecordingCaptions.retimed(heard, as: "Send it over now.") ==
+                words([("Send", 0.5), ("it", 0.9), ("over", 0.9), ("now.", 1.3)]))
+        #expect(RecordingCaptions.retimed(heard, as: "") == heard)
+        #expect(RecordingCaptions.retimed([], as: "Hello") == [])
+    }
+
     @Test func fileName() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 14, minute: 3, second: 7)))
         #expect(RecordingCaptions.fileName(at: date, calendar: calendar) == "Peel Recording 2026-10-28 at 14.03.07")
         #expect(RecordingCaptions.isRecordingName("Peel Recording 2026-10-28 at 14.03.07.mp4"))
+        #expect(RecordingCaptions.isRecordingName("Peel Recording 2026-10-28 at 14.03.07 2.mp4"))
         #expect(!RecordingCaptions.isRecordingName("Peel Recording 2026-10-28 at 14.03.07.mov"))
         #expect(!RecordingCaptions.isRecordingName("holiday.mp4"))
     }

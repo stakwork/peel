@@ -561,8 +561,8 @@ is a short plan. Update the status and the journal when you finish something.
   `DictationPermissions`, and the Account section (with the Speech model
   and Fixer pickers), offer and menu item in `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
   `Recording/` (screen recording, `docs/recording.md`: `RecordingController`
-  the glue, `ScreenRecorder` (ScreenCaptureKit's recording output, holding
-  `WindowCloak` until the file is done), `CameraBubblePanel`,
+  the glue, `ScreenRecorder` (ScreenCaptureKit's recording output, Peel's
+  own windows in the picture), `CameraBubblePanel`,
   `RecordingBarPanel`, and Account › Recording in `RecordingSettingsView`;
   its pure parts, the captions, the transcript and the file's audio and
   caption track, are in `Sources/PeelUI/Recording/`);

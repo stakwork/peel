@@ -88,9 +88,8 @@ final class RecordingController {
             }
             let camera = cameraOn ? await Self.allowed(.video, settings: "Privacy_Camera") : false
             if cameraOn, !camera { problem = "Recording without the camera: turn it on for Peel in System Settings." }
-            // Peel's own windows stay in the picture the picker hands back,
-            // so the bubble is; every other one is hidden while recording
-            // (`WindowCloak`).
+            // Peel's own windows stay in the picture the picker hands back:
+            // the bubble, and Peel itself when it is what you are showing.
             guard let filter = await ScreenShare.pick(.display, includePeel: true) else {
                 phase = .idle
                 return
@@ -107,6 +106,7 @@ final class RecordingController {
     func record() {
         guard phase == .ready, let picked else { return }
         phase = .starting
+        elapsed = 0
         Task {
             do {
                 let started = try await ScreenRecorder.start(picked.filter) { url, error in self.ended(url, error) }
@@ -119,11 +119,13 @@ final class RecordingController {
                 return fail("The recording couldn't start.")
             }
             phase = .recording
-            elapsed = 0
             bar.show(on: picked.screen)
-            ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            let ticker = Timer(timeInterval: 1, repeats: true) { _ in
                 MainActor.assumeIsolated { self.tick() }
             }
+            // Common modes: it keeps time while the bubble is dragged or a menu is open.
+            RunLoop.main.add(ticker, forMode: .common)
+            self.ticker = ticker
         }
     }
 
@@ -171,8 +173,8 @@ final class RecordingController {
     /// The file at `url` is finished, or the recording failed (after `stop`,
     /// or macOS ending the capture, or as it started).
     private func ended(_ url: URL, _ error: (any Error)?) {
-        // macOS ended it: nothing to stop.
-        if phase == .recording { putAway() }
+        // macOS ended it, or it failed as Record started: nothing to stop.
+        if phase != .idle { putAway() }
         recorder = nil
         phase = .idle
         let discarded = discarding
@@ -192,23 +194,46 @@ final class RecordingController {
                     return
                 }
             }
+            let name = RecordingCaptions.fileName(at: .now)
             do {
-                let kept = try keep(url)
+                let kept = try keep(url, as: name)
                 refresh()
                 await addCaptions(to: kept)
             } catch {
-                try? FileManager.default.removeItem(at: url)
-                problem = "The recording couldn't be saved in Downloads."
+                // Never lost for want of Downloads: saved where the person picks.
+                log.error("recording not kept in Downloads: \(String(describing: error), privacy: .public)")
+                guard let target = FilePanels().saveLocation(named: name + ".mp4"), (try? FileManager.default.moveItem(at: url, to: target)) != nil else {
+                    try? FileManager.default.removeItem(at: url)
+                    problem = "The recording couldn't be saved."
+                    return
+                }
+                problem = "Saved where you chose, not in Downloads, so it isn't listed here."
+                await addCaptions(to: target)
             }
         }
     }
 
-    /// Moves the finished file into the folder under its time.
-    private func keep(_ url: URL) throws -> URL {
+    /// Moves the finished file into the folder under `name`, numbered if
+    /// that is taken (the hour a clock goes back).
+    private func keep(_ url: URL, as name: String) throws -> URL {
         guard let folder = Self.folder else { throw CocoaError(.fileNoSuchFile) }
-        let target = folder.appendingPathComponent(RecordingCaptions.fileName(at: .now)).appendingPathExtension("mp4")
-        try FileManager.default.moveItem(at: url, to: target)
-        return target
+        for number in 1...99 {
+            let target = folder.appendingPathComponent(number == 1 ? name : "\(name) \(number)").appendingPathExtension("mp4")
+            guard !FileManager.default.fileExists(atPath: target.path) else { continue }
+            try FileManager.default.moveItem(at: url, to: target)
+            return target
+        }
+        throw CocoaError(.fileWriteFileExists)
+    }
+
+    /// What a quit or crash mid-recording or mid-captions left in the temp
+    /// folder: the screen and the microphone, never to be used. At launch.
+    static func sweepLeftovers() {
+        let temp = FileManager.default.temporaryDirectory
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: temp.path)) ?? []
+        for name in names where name.hasPrefix("peel-recording-") {
+            try? FileManager.default.removeItem(at: temp.appendingPathComponent(name))
+        }
     }
 
     // MARK: Captions

@@ -17,6 +17,8 @@ struct ConversationScreen: View {
 
     /// A contact's local time, when they shared one and it is not yours.
     @State private var localTime: LocalTime?
+    /// A call waiting for "Leave and start", while on another.
+    @State private var pendingCall: PendingCall?
 
     private var conversation: Conversation? {
         model.conversations.first { $0.chat == chat }
@@ -53,8 +55,10 @@ struct ConversationScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .floatingBar(.bottom) { footer(tribe: tribe) }
+        .onCallBannerInset()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { header(tribe: tribe) }
+        .callSwitchConfirmation($pendingCall, model: model, router: router)
         .sheet(item: threadHere, onDismiss: router.threadDismissed) { thread in
             ThreadSheet(thread: thread, conversation: conversation)
         }
@@ -108,13 +112,37 @@ struct ConversationScreen: View {
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
             if !isAgent, tribe?.canPost != false {
-                // Through the model, which says calls aren't on the phone yet
-                // (`CallProvider.unavailable`) before posting anything.
-                Button("Call", systemImage: "phone") {
-                    Task { _ = await model.calls.start(in: chat, audioOnly: true) }
+                // An account with no call server has no calls to start, as on the Mac.
+                if model.calls.server != nil {
+                    Menu("Call", systemImage: "phone") {
+                        Button("Audio call", systemImage: "phone") {
+                            PendingCall.start(chat: chat, audioOnly: true).ask(model, router, pending: $pendingCall)
+                        }
+                        Button("Video call", systemImage: "video") {
+                            PendingCall.start(chat: chat, audioOnly: false).ask(model, router, pending: $pendingCall)
+                        }
+                        jamiePicker
+                    }
+                    .disabled(model.calls.startingIn != nil || model.calls.joiningRoom != nil)
                 }
             }
             Menu("More", systemImage: "ellipsis") { moreMenu(tribe: tribe) }
+        }
+    }
+
+    /// Who a call here brings Jamie from, with Stadeum connected: one of
+    /// the person's workspaces, or none (docs/hive-calls.md).
+    @ViewBuilder private var jamiePicker: some View {
+        let workspaces = model.stadeum.live
+        if !workspaces.isEmpty {
+            Picker("Jamie", selection: Binding(
+                get: { model.callJamie(in: chat)?.id ?? "" },
+                set: { id in model.calls.pickJamie(workspaces.first { $0.id == id }, in: chat) }
+            )) {
+                ForEach(workspaces, id: \.id) { Text($0.name).tag($0.id) }
+                Text("No Jamie").tag("")
+            }
+            .pickerStyle(.inline)
         }
     }
 
@@ -166,7 +194,7 @@ struct ConversationScreen: View {
     }
 }
 
-/// The chat's notice (a send refused, calls not on the phone yet), over
+/// The chat's notice (a send refused, a call that could not start), over
 /// the composer, dismissed with its ✕.
 struct NoticeBar: View {
     let text: String

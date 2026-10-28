@@ -59,6 +59,9 @@ Two things, and only these:
   `crashed`; `running` and in front means `killedForeground`; `running` and
   in the background means `killedBackground`, the system's doing, not
   announced.
+  On iOS most runs end this way, so `killedBackground` there is normal
+  (suspension or jetsam; willTerminate is rarely delivered). A launch the
+  system makes in the background is marked background from the start.
 - **The event ring** (`events.ring`, JSON lines, about 256 KiB or 2000
   events, rotated to the newest half, identical consecutive events counted):
   every error that becomes a notice, through `PeelError.noted` and

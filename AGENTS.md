@@ -151,7 +151,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `PersonHue.swift` — a person's colour (direction D): the official apps'
     colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the
-    account's call server, and makes new rooms (phase 6); `WatchedCall`,
+    account's call server, and makes new rooms (phase 6), or takes Hive's
+    for a call with Jamie in it (`CallLink.hive`, docs/hive-calls.md); `WatchedCall`,
     the recent calls across chats whose presence the app keeps, and their
     live query (`Storage.recentCallMessages`, beside them as
     `PaymentHistory.swift` keeps its own)
@@ -163,6 +164,12 @@ is a short plan. Update the status and the journal when you finish something.
     `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`,
     `MediaInfo` (a cached video's or recording's duration, picture size and
     poster frame, read in place with the container type from its bytes)
+  - `VoiceMessage.swift` — voice messages, the platform-independent part: audio/wav
+    (16 kHz mono PCM, `audio.wav`) sent as an ordinary attachment, release
+    rules (minimum length, slide to cancel), the recorder's state and clock,
+    the player's progress and seek maths, `Engine.sendVoiceMessage` (tested in
+    `VoiceMessageTests`); the shared `Apps/Shared/Voice` (`VoiceRecorder`, `VoicePlayer`,
+    `VoiceControls`) use it on the phone and the Mac
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,
@@ -232,9 +239,12 @@ is a short plan. Update the status and the journal when you finish something.
     reader of strut's and Hive's dates
   - `Hive.swift` — Hive's device flow (the person knows it as Stadeum),
     for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
-    (polled until the person answers), renew), what is kept of a pairing
+    (polled until the person answers; a poll that reaches no one or gets a
+    5xx is tried again until the code runs out), renew, `startCall`: a call with
+    Jamie in it for one workspace, docs/hive-calls.md), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
-    one org's strut and the person's token for it), and the Hive a profile
+    one org's strut and the person's token for it, and `HivePeer.jamie`,
+    who a call in a chat brings Jamie from), and the Hive a profile
     pairs with (`HiveClient(for:)`: a development profile's `-hiveURL`)
   - `WorkspaceApps.swift` — `WorkspaceApp`, an app a Stadeum workspace
     pinned as a tab or one of the person's own: read from strut's `GET
@@ -306,20 +316,23 @@ is a short plan. Update the status and the journal when you finish something.
   matches, stepping through them with `focus(on:inThread:)`);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
-  the iPhone), Connect (Hive's device flow), renew hourly and when due,
+  the iPhone), Connect (Hive's device flow; `cameToFront`, from
+  `becameActive`, polls at once after the browser), renew hourly and when due,
   the revoke rule (orgs kept and listed, none `live`, kept with the link
   as `HiveLink.revokedAt` so an unlock or a restart does not use them
   again, no renewal tried), close, Disconnect; the apps listed,
   `readApps` (the Mac through its strut, the iPhone on each org's own;
   `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
-  app's words for the person; `opening`, how a deliverable or a workspace's
+  app's words for the person; `callLink(on:)`, a call with Jamie in it
+  for a live workspace (docs/hive-calls.md); `opening`, how a deliverable or a workspace's
   app opens on its org's own strut; `StadeumHost`, what a device does
   beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
   with its token: its origin and folder, the token's hand-over script and
   the first request, never described with the token);
   `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
   the recent calls across chats watched while unlocked and the open chat's,
-  the call you are on, join, start, leave; the view passes the call
+  the call you are on, join, start (with Jamie from a Stadeum workspace:
+  `jamiePicks`, `pickJamie`, `hiveCall`), leave; the view passes the call
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
@@ -455,11 +468,12 @@ is a short plan. Update the status and the journal when you finish something.
   the "Always allowed" rules and Revoke, and the send grants ("May post
   as you") and Revoke; Account › Peel Home, `BrainSection`:
   where Peel Home is, its move out and back, and a link waiting for a yes);
-  `CallViews` (the call card, the header's call button and presence
+  `CallViews` (the call card, the header's call button with its Jamie
+  section, and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
   and devices), `CallWindow` (the grid, the focus layout with its strip,
-  keep on top and the control bar) and `CallScreenShare` (the system picker,
+  keep on top, the recording indicator and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
   `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
@@ -546,7 +560,8 @@ is a short plan. Update the status and the journal when you finish something.
   compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
   flat logo for docs and pages. `Shared/` holds the files both apps
   compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
-  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and
+  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
+  `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
   `WorkspaceAppIcon` (an app's lucide icon as an SF Symbol);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
@@ -554,7 +569,11 @@ is a short plan. Update the status and the journal when you finish something.
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the
   `peel:` link). `Apps/iOS/Peel/` is the iPhone app (phase 7, I2; iOS 26, iPhone
   only), a synchronized folder (every file in it is in the target):
-  `PeelPhoneApp` (the app, `RootView` by phase),
+  `PeelPhoneApp` (the app, `RootView` by phase, the call screen as a
+  full-screen cover), `IOSCallSession` (I6: the call you are on over
+  LiveKit, the audio session, microphone and camera; the phone's
+  `LiveKitCalls` in `PhonePlatform`) and `IOSCallViews` (the call screen with its tiles and
+  controls, the on-a-call bar, the leave-and-join question, `PendingCall`),
   `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:

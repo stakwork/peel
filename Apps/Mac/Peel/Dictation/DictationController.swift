@@ -33,6 +33,8 @@ final class DictationController {
     private(set) var isListening = false
     /// The tap cannot swallow keys (Accessibility is off): the locking Space types a space.
     private(set) var canSwallow = true
+    /// The tap was refused although Input Monitoring reads as granted: only a relaunch fixes it.
+    private(set) var needsRestart = false
     private var stored: Bool?
     private var offerDismissed: Bool
 
@@ -68,6 +70,10 @@ final class DictationController {
     @ObservationIgnored private var inserting = 0
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var poll: Timer?
+    /// Re-reads the permissions while dictation waits on them, so granting needs no relaunch.
+    @ObservationIgnored private var permissionWatch: Timer?
+    @ObservationIgnored private var requesting: Task<Void, Never>?
+    @ObservationIgnored private var askedRestart = false
     @ObservationIgnored private var choosingTimeout: Timer?
     /// Which choosing an outcome belongs to: one from an earlier round is dropped.
     @ObservationIgnored private var choosingRound = 0
@@ -114,6 +120,54 @@ final class DictationController {
         if isEnabled && permissions.requiredGranted { startListening() } else { stopListening() }
         // The model is fetched while dictation is on, before the first recording needs it.
         if isEnabled { speech.prepare() }
+        updatePermissionWatch()
+    }
+
+    /// Polls while dictation is on and waiting for permissions; stops once they are in or it is off.
+    private func updatePermissionWatch() {
+        guard isEnabled && !(permissions.requiredGranted && permissions.accessibility == .granted) else {
+            permissionWatch?.invalidate()
+            permissionWatch = nil
+            return
+        }
+        guard permissionWatch == nil else { return }
+        permissionWatch = repeating(every: 1.5) { me in
+            me.permissions.refresh()
+            // Granted: the full refresh starts the tap, fresh (or remakes one that
+            // cannot swallow once Accessibility is in). Not yet: keep waiting.
+            let tapNeeded = me.permissions.requiredGranted && !me.isListening
+            if tapNeeded || me.permissions.accessibility == .granted || !me.isEnabled { me.refresh() }
+        }
+    }
+
+    /// Asks for the microphone; the other permissions have their own Allow buttons.
+    private func requestPermissions() {
+        guard requesting == nil else { return }
+        requesting = Task {
+            await permissions.requestAll()
+            requesting = nil
+            refresh()
+        }
+    }
+
+    /// Only a relaunch lets the tap in: said once, with Restart.
+    private func offerRestart() {
+        guard !askedRestart else { return }
+        askedRestart = true
+        Task {
+            let alert = NSAlert()
+            alert.messageText = "Restart Peel to enable Dictation"
+            alert.informativeText = "macOS only lets Peel see the dictation key after it restarts."
+            alert.addButton(withTitle: "Restart")
+            alert.addButton(withTitle: "Later")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let relaunch = Process()
+            relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+            // After Peel has quit, so `-n` opens a new instance rather than none.
+            relaunch.arguments = ["-c", "sleep 1; /usr/bin/open -n \"$0\"", Bundle.main.bundlePath]
+            try? relaunch.run()
+            NSApp.terminate(nil)
+        }
     }
 
     /// Peel's strut started, stopped or changed (`AppModel.strutChanged`).
@@ -145,6 +199,7 @@ final class DictationController {
         stored = on
         settings.storedEnabled = on
         refresh()
+        if on && !permissions.requiredGranted { requestPermissions() }
     }
 
     func setHistoryOn(_ on: Bool) {
@@ -243,7 +298,13 @@ final class DictationController {
             }
         )
         tap.start()
-        guard tap.isRunning else { return }
+        guard tap.isRunning else {
+            // Granted, yet refused: tried again on each refresh, and a relaunch is the way out.
+            needsRestart = true
+            offerRestart()
+            return
+        }
+        needsRestart = false
         self.tap = tap
         canSwallow = tap.swallows
         isListening = true
@@ -405,6 +466,14 @@ final class DictationController {
         target = nil
         guard let recorded = capture.finishRecording() else {
             hud.show(.message("The recording could not be saved"))
+            return
+        }
+        // Too short to hold a word, or no audio at all: strut is not asked
+        // (an empty file once crashed its decoder), and it ends as silence does.
+        guard recorded.duration >= DictationDefaults.minRecording else {
+            try? FileManager.default.removeItem(at: recorded.url)
+            // Another dictation still transcribing keeps the working pill.
+            if inserting == 0 { hud.show(.message("Nothing was heard")) }
             return
         }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)

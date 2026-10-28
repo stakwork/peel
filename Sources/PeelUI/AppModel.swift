@@ -424,6 +424,10 @@ public final class AppModel {
         }
         notifier.model = self
         calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
+        calls.hiveCall = { [weak self] peer in
+            guard let self else { throw PeelError("Peel is closing.") }
+            return try await stadeum.callLink(on: peer)
+        }
         calls.chatNotice = { [weak self] chat, change in
             guard let self else { return }
             let notice = change(conversationNotices[chat])
@@ -717,6 +721,10 @@ public final class AppModel {
     public func becameActive() {
         Diagnostics.setForeground(true)
         lockIfDue()
+        // A pairing under way polls now (the person may have just approved
+        // it in the browser); the workspaces are renewed if due, which the
+        // hourly look may have slept through.
+        if phase == .ready { stadeum.cameToFront() }
         // Asked first, so the open chat's `read` goes after the ask and its
         // answer is not applied over it.
         Task {
@@ -828,6 +836,16 @@ public final class AppModel {
     public func setNotificationShowsText(_ shows: Bool) async throws {
         try await signedIn().setNotificationShowsText(shows)
         notifier.showsText = shows
+    }
+
+    public func setNotificationStyle(_ style: NotificationPolicy.Style) async throws {
+        try await signedIn().setNotificationStyle(style)
+        notifier.style = style
+    }
+
+    public func setNotificationSound(_ name: String) async throws {
+        try await signedIn().setNotificationSound(name)
+        notifier.sound = name
     }
 
     /// A click on a notification: Peel to the front with that chat open,
@@ -1345,7 +1363,7 @@ public final class AppModel {
         echoedAliases = settings.echoedAliases
         refreshMentionAliases()
         myServer = settings.server
-        calls.attach(engine, server: settings.callServer)
+        calls.attach(engine, server: settings.callServer, jamiePicks: settings.callJamie ?? [:])
         pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = settings.balanceMsat
         wordsConfirmed = settings.wordsConfirmed ?? false
@@ -1362,6 +1380,8 @@ public final class AppModel {
         // chat: the agent is this account's own, from the same words.
         if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
         if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
+        notifier.style = settings.notificationStyle ?? .default
+        notifier.sound = settings.notificationSound ?? ""
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }

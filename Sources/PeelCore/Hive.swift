@@ -26,6 +26,25 @@ public struct HivePeer: Codable, Sendable, Equatable {
         let label = label.map { TextLine.clean($0, max: TextLine.maxName) } ?? ""
         return label.isEmpty ? TextLine.clean(id, max: TextLine.maxName) : label
     }
+
+    /// The org a call in a chat brings Jamie from (docs/hive-calls.md):
+    /// `picked`, the peer id chosen there ("" for No Jamie), while it is
+    /// among `peers`; with nothing picked, the org whose swarm a tribe's
+    /// `app_url` or `second_brain_url` is on, as the official apps choose;
+    /// else none.
+    public static func jamie(picked: String?, pages: [String?], in peers: [HivePeer]) -> HivePeer? {
+        if let picked { return peers.first { $0.id == picked } }
+        let swarms = pages.compactMap { $0.flatMap { Self.swarm(of: $0) } }
+        return swarms.lazy.compactMap { name in peers.first { Self.swarm(of: $0.baseUrl) == name } }.first
+    }
+
+    /// A swarm's name: the first label of an address's host
+    /// (`swarm38.sphinx.chat` → `swarm38`); nil for a host of one label.
+    static func swarm(of address: String) -> String? {
+        guard let host = URL(string: address)?.host?.lowercased() else { return nil }
+        let labels = host.split(separator: ".")
+        return labels.count > 1 ? String(labels[0]) : nil
+    }
 }
 
 /// An org Hive gave no record for this time, and why, in Hive's words.
@@ -130,7 +149,8 @@ public struct HiveClient: Sendable {
         for page in [pairing.verificationUri, pairing.verificationUriComplete] where !isHive(page) {
             throw PeelError("Stadeum gave a pairing page on another site (\(page.host ?? "none")); nothing was opened.")
         }
-        guard (1...600).contains(pairing.interval), !pairing.userCode.isEmpty, pairing.userCode.count <= 32 else {
+        guard (1...600).contains(pairing.interval), (1...3600).contains(pairing.expiresIn),
+              !pairing.userCode.isEmpty, pairing.userCode.count <= 32 else {
             throw PeelError("Stadeum's pairing code could not be read.")
         }
         return pairing
@@ -147,7 +167,11 @@ public struct HiveClient: Sendable {
             default: throw Self.failure(status, data, couldNot: "pair")
             }
         }
-        guard status == 200 else { throw Self.failure(status, data, couldNot: "pair") }
+        guard status == 200 else {
+            // Busy or failing, as `Web.retryLater` judges it: `answer(to:)` asks again.
+            let failure = Self.failure(status, data, couldNot: "pair")
+            throw status == 429 || status >= 500 ? Unanswered(failure: failure) : failure
+        }
         let paired = try JSONDecoder.hive.decode(Paired.self, from: data)
         guard paired.credential.hasPrefix("hivedev_") else { throw PeelError("Stadeum's device credential could not be read.") }
         let (peers, refused) = reachable(paired.peers)
@@ -157,13 +181,40 @@ public struct HiveClient: Sendable {
     }
 
     /// Polls `pairing` every `interval` until the person answers in Hive or
-    /// the code runs out: never `.pending`. Cancelling the task stops it.
-    public func answer(to pairing: Pairing, name: String) async throws -> Poll {
+    /// the code runs out: never `.pending`. A poll that gets no answer (the
+    /// network, or Hive failing for a moment) is tried again until
+    /// `deadline`, when the code runs out: on the iPhone the person approves
+    /// in Safari, and the first poll back in Peel often goes out on a
+    /// connection the system dropped while Peel was away. `wait` is how it
+    /// waits between polls. Cancelling the task stops it.
+    public func answer(
+        to pairing: Pairing, name: String, until deadline: Date,
+        wait: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) async throws -> Poll {
         while true {
-            try await Task.sleep(for: .seconds(pairing.interval))
-            let poll = try await poll(pairing, name: name)
-            if poll != .pending { return poll }
+            await wait(.seconds(pairing.interval))
+            try Task.checkCancellation()
+            do {
+                let poll = try await poll(pairing, name: name)
+                if poll != .pending { return poll }
+            } catch where error is Unanswered || (error as? URLError).map({ Self.unreached.contains($0.code) }) == true {
+                guard Date() < deadline else { throw (error as? Unanswered)?.failure ?? error }
+            }
         }
+    }
+
+    /// A poll that reached no one, which may reach Hive next time: never a
+    /// certificate Peel will not trust, which fails at once.
+    static let unreached: Set<URLError.Code> = [
+        .networkConnectionLost, .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+        .cannotFindHost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff, .callIsActive,
+    ]
+
+    /// A poll Hive could not answer this time (429, 5xx): `answer(to:)` polls
+    /// again. Said in Hive's words, as `failure`.
+    struct Unanswered: Error, CustomStringConvertible {
+        let failure: PeelError
+        var description: String { failure.description }
     }
 
     /// `link` with Hive's peers as they are now; nil once Hive no longer
@@ -181,6 +232,26 @@ public struct HiveClient: Sendable {
         link.expiresAt = renewed.expiresAt
         link.renewedAt = now
         return link
+    }
+
+    /// A call with Jamie in it, for `workspace` (a peer's id: the org's
+    /// central workspace), as the person `link` pairs: Hive dispatches Jamie
+    /// into a new room and answers its link (docs/hive-calls.md). The link
+    /// as Hive wrote it; the caller checks it against the call server.
+    public func startCall(_ link: HiveLink, workspace: String) async throws -> String {
+        let (status, data) = try await request("POST", "api/strut-devices/calls", ["workspace": workspace], bearer: link.credential)
+        let answer = try? JSONDecoder.hive.decode([String: String].self, from: data)
+        switch status {
+        case 200:
+            guard let url = answer?["url"] else { throw PeelError("Stadeum's call link could not be read.") }
+            return url
+        // A revoked device, and a Hive from before the route alike: its
+        // middleware turns away the device credential on any path it does not know.
+        case 401:
+            throw PeelError("Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again.")
+        default:
+            throw Self.failure(status, data, couldNot: "start a call with Jamie")
+        }
     }
 
     // MARK: - Hive's answers

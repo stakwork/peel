@@ -73,9 +73,9 @@ let package = Package(
         // The app's model, shared by the Mac and the iPhone: `AppModel` and
         // what it holds, with the platform's services behind protocols
         // (`Platform`). No AppKit, UIKit, LiveKit or PeelAgent. The apps
-        // themselves are in Apps/, in Apps/Peel.xcodeproj; the Mac app is
-        // the only one that links LiveKit and WebRTC (its package reference
-        // is the project's, not this package's).
+        // themselves are in Apps/, in Apps/Peel.xcodeproj; the Mac and
+        // iPhone apps are the only ones that link LiveKit and WebRTC (its
+        // package reference is the project's, not this package's).
         .target(name: "PeelUI", dependencies: ["PeelCore", "AgentKit", "PeelDiagnostics"]),
         // The storage and engine fixtures the test targets below share; a
         // test target cannot depend on another, so they live in a library.

@@ -36,6 +36,12 @@ decided (Tom, 2026-10-08; see "Decided" below).
   recent call (at most eight across chats), so the sidebar's green phone
   shows on any tribe or DM with people on its call and a card shows its
   count at once after switching chats; see its journal.
+- Built (floating call bar): a small always-on-top control bar shows while
+  the call window is not key; see its journal.
+- Built (Hive calls, 2026-10-27, waiting for Hive's route): with Stadeum
+  connected, the call menu can bring Jamie into a call from one of the
+  person's workspaces; see the journal below and `../hive-calls.md`. It
+  reopens decision 5 (Tom's call).
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), PR 8 (the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
@@ -311,7 +317,16 @@ built for them yet:
 - **Joining a second call** turns the Join button into an in-place confirm
   next to it: "Leave the call in #design and join?". It never leaves
   silently.
-- **Out of v1**: recording, removing participants, in-call chat, E2EE (the
+- **Recording indicator only**: tribe calls are recorded by the call
+  server (egress), and everyone on the call must be told. The room's
+  `isRecording` (from its metadata) shows a pulsing red "Recording" in the
+  title bar and on the sidebar's bar, and a 5-second toast when it starts
+  ("Recording in progress. Please be aware this call is being recorded.")
+  and when it ends. Peel has no control to start or stop a recording. The
+  words are `RecordingNotice` (`Sources/PeelUI`); the views are
+  `RecordingIndicator` and `RecordingToast` in `Apps/Shared/UI/`, with no
+  LiveKit, so the iPhone gets them once it can join calls.
+- **Out of v1**: recording controls, removing participants, in-call chat, E2EE (the
   official apps would not be able to join), reactions, and background blur.
 
 ### On a call (the main window)
@@ -1478,6 +1493,61 @@ kind's `allowedPickerModes`; a window or an app may still be several. No
 new permission. While sharing, the button is
 still the one filled Stop sharing.
 
+## Floating call bar
+
+A non-activating `NSPanel` (`Apps/Mac/Peel/CallFloatingBar.swift`) with
+Mute, Camera, Share / Stop sharing, Return to call and Leave, shown
+bottom-centre (dragged position remembered) whenever the call window is open
+but not key during a connected or reconnecting call, so you can control the
+call from another window or while sharing. `CallRoomView` owns it: attached
+through its `WindowReader` window, updated on key, miniaturize and close
+notifications and on the call's state, detached on disappear. The buttons
+call the same `CallSession` / `model.calls` actions as the control bar. It is
+out of captures with `sharingType = .none`; the picker's filter is not
+built by Peel, so there is nothing else to exclude it from. Ported in shape
+from the Sphinx Mac app's draggable panel. Not built or run in this session:
+manual testing of focus, drag, Spaces, full screen and display share is open.
+
+Reference: sphinx-mac-v2. Sphinx (`WindowsManager.createControlsPanel`,
+`showControlsPanel`, `presentCallControlWindowWith`) keeps one lazily created
+`DraggablePanel` (an `NSPanel`, style `[.nonactivatingPanel, .borderless]`,
+transparent, level `.mainMenu`, `canJoinAllSpaces` + `fullScreenAuxiliary`,
+392x100, bottom-centre, position remembered, manual `mouseDragged`) hosting
+`CallControlView` bound to the `RoomContext`. `RoomContext` is the call
+window's `NSWindowDelegate`: `windowDidResignKey` (when connected) shows the
+panel, `windowDidBecomeKey` hides it (alpha 0), and `windowWillClose` or the
+call ending closes it. `getWindowsToExclude()` feeds the panel's
+`windowNumber` and the call window's into LiveKit
+`ScreenShareCaptureOptions.excludeWindowIDs`.
+
+Open questions:
+
+- `sharingType = .none` against ScreenCaptureKit on current macOS: the system
+  picker's filter may still capture the bar. Verify in a real share.
+- Full-screen and Spaces behaviour.
+- Interaction with Keep on top.
+- Multiple Peel windows.
+
+## Hive calls with Jamie (2026-10-27)
+
+The design is `../hive-calls.md`. A call can bring Jamie from a workspace
+Peel is paired with (Stadeum), so a tribe needs no `app_url` and the person
+no Sphinx key linked in Hive. Peel asks Hive's new
+`POST /api/strut-devices/calls` with the device credential and the org's
+peer id. Hive dispatches Jamie into a new room and answers the link, which
+Peel checks against its call server (`CallLink.hive`), posts and joins.
+
+- `HiveClient.startCall`, `Stadeum.callLink(on:)`, `CallStore.start(in:audioOnly:jamie:)`,
+  `Engine.startCall(in:audioOnly:hiveLink:)`.
+- The pick per chat is `Setting.callJamie`. With none, the tribe's swarm
+  decides, as in the official apps; else no Jamie (`HivePeer.jamie`).
+- The menu's Jamie section is on the Mac and, as an inline picker, on the
+  iPhone.
+- Nothing is posted when Hive cannot make the call.
+- Hive's side is stakwork/hive#5647. Not yet checked against a Hive with
+  the route; a Hive without it turns the device away with a 401, as for a
+  revoked device.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:
@@ -1489,7 +1559,7 @@ Tom approved the five defaults PR 1 used:
 4. **Pubkey in metadata** (question 5): left out; PR 2 sends only the
    photo URL.
 5. **Hive** (question 8): join only. Hive links are read and validated,
-   never made.
+   never made. Reopened 2026-10-27 (`../hive-calls.md`).
 
 ## Open questions for Tom
 

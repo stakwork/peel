@@ -14,6 +14,7 @@ struct ChatsTab: View {
         @Bindable var router = router
         NavigationStack(path: $router.chats) {
             ChatList()
+                .onCallBannerInset()
                 .navigationTitle("Chats")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }

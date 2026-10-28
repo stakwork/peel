@@ -260,10 +260,12 @@ struct QuoteBox: View {
     }
 }
 
-/// A call message: the call card's words, and Join through the model,
-/// which says calls are not on the phone yet (`CallProvider.unavailable`).
+/// A call message: the call card's words, and Join (or Open, on this call)
+/// through the model, asking first to leave a call you are on.
 private struct CallBlock: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+    @State private var pending: PendingCall?
     let link: CallLink
     let chat: String
 
@@ -277,13 +279,23 @@ private struct CallBlock: View {
                     .phoneFont(.row)
                     .foregroundStyle(Theme.text)
                 Spacer(minLength: Theme.Space.sm)
-                Button("Join") { Task { _ = await model.calls.join(link, in: chat, failureInChat: true) } }
+                if model.calls.isOnCall(link.room) {
+                    Button("Open") { router.callShown = true }
+                        .buttonStyle(.peel(.outline, size: .touch))
+                        .fixedSize()
+                } else {
+                    Button("Join") {
+                        PendingCall.join(link, chat: chat).ask(model, router, pending: $pending)
+                    }
                     .buttonStyle(.peel(.outline, size: .touch))
+                    .disabled(model.calls.joiningRoom != nil)
                     .fixedSize()
+                }
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, Theme.Space.sm)
         }
+        .callSwitchConfirmation($pending, model: model, router: router)
     }
 }
 

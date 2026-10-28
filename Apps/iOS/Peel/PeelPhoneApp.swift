@@ -42,11 +42,7 @@ struct PeelPhoneApp: App {
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
-                        model.becameActive()
-                        // Renewed when due: the hourly look may have slept through its turn.
-                        model.stadeum.renewIfDue()
-                    }
+                    if phase == .active { model.becameActive() }
                     if phase == .background { model.leftForeground() }
                 }
                 // The PIN timeout counts the time Peel is away: in front is
@@ -88,10 +84,16 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var router = router
         phase
             .sheet(item: $model.diagnosticsRecord) { record in
                 DiagnosticRecordSheet(record: record)
                     .environment(model)
+            }
+            .fullScreenCover(isPresented: $router.callShown) {
+                IOSCallScreen()
+                    .environment(model)
+                    .environment(router)
             }
             // Here, not in the tabs, so a chat opened while locked (a
             // notification) is the one shown after the PIN.

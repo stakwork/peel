@@ -79,6 +79,8 @@ struct AccountView: View {
             SettingsSection {
                 NotificationsRow()
                 NotificationTextRow()
+                NotificationStyleRow()
+                NotificationSoundRow()
             }
         case .security:
             SettingsSection {
@@ -829,6 +831,53 @@ private struct NotificationTextRow: View {
                 options: [(true, "Show"), (false, "Hide")]
             ) { try await model.setNotificationShowsText($0) }
         }
+    }
+}
+
+private struct NotificationStyleRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Fact("Notification Type") {
+            SettingDropdown(
+                selection: model.notifier.style,
+                options: [(.banner, "Banner only"), (.bannerAndSound, "Banner + Sound"),
+                          (.soundOnly, "Sound only"), (.none, "None")]
+            ) { try await model.setNotificationStyle($0) }
+        }
+    }
+}
+
+/// The sound a notification plays: the system's and the user's own, by name.
+/// Chosen with a preview; off where the type plays none.
+private struct NotificationSoundRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let sounds = Self.available()
+        let chosen = sounds.contains(model.notifier.sound) ? model.notifier.sound : ""
+        Fact("Notification Sound") {
+            SettingDropdown(
+                selection: chosen,
+                options: [("", "Default")] + sounds.map { ($0, $0) }
+            ) {
+                try await model.setNotificationSound($0)
+                if !$0.isEmpty { NSSound(named: $0)?.play() } else { NSSound.beep() }
+            }
+            .disabled(!model.notifier.style.playsSound)
+        }
+    }
+
+    /// The names of the sounds in /System/Library/Sounds and ~/Library/Sounds.
+    private static func available() -> [String] {
+        let folders = [URL(filePath: "/System/Library/Sounds"),
+                       FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Sounds")]
+        let names = folders.flatMap { folder in
+            ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+                .filter { !$0.hasPrefix(".") }
+                .map { ($0 as NSString).deletingPathExtension }
+        }
+        return Array(Set(names)).sorted()
     }
 }
 

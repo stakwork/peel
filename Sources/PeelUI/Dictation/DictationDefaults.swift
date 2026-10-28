@@ -9,6 +9,8 @@ public enum DictationDefaults {
     public static let holdThreshold: TimeInterval = 0.2
     /// A recording ends and is submitted at this length.
     public static let maxRecording: TimeInterval = 5 * 60
+    /// A recording shorter than this holds no word, so it is not sent to strut.
+    public static let minRecording: TimeInterval = 0.2
     /// What a recording is stored as: 16 kHz mono PCM16.
     public static let sampleRate: Double = 16_000
     /// How far the HUD sits above the bottom edge of the screen's visible

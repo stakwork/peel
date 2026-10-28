@@ -52,13 +52,16 @@ final class ScreenShare {
     let track: LocalVideoTrack
     private let stream: SCStream
     private let output: ShareOutput
+    /// Peel's windows hidden for this share, until it ends.
+    private let cloak: WindowCloak.Hold?
 
-    private init(content: Content, includesPeel: Bool, track: LocalVideoTrack, stream: SCStream, output: ShareOutput) {
+    private init(content: Content, includesPeel: Bool, track: LocalVideoTrack, stream: SCStream, output: ShareOutput, cloak: WindowCloak.Hold?) {
         self.content = content
         self.includesPeel = includesPeel
         self.track = track
         self.stream = stream
         self.output = output
+        self.cloak = cloak
     }
 
     // MARK: The picker
@@ -105,6 +108,55 @@ final class ScreenShare {
         case .application: .application
         default: .display
         }
+        let configuration = SCStreamConfiguration.fitting(filter, maxSide: maxSide, fps: fps)
+        configuration.queueDepth = 5
+
+        let track = LocalVideoTrack.createBufferTrack(
+            options: BufferCaptureOptions(dimensions: Dimensions(width: Int32(configuration.width), height: Int32(configuration.height)), fps: Int(fps))
+        )
+        guard let capturer = track.capturer as? BufferCapturer else { throw ShareError.noCapturer }
+        let output = ShareOutput(capturer: capturer) { Task { @MainActor in stopped() } }
+        let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
+        try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: output.queue)
+        // Only a display can show Peel: the picker never offers its windows.
+        let cloak = content == .display && !includePeel ? WindowCloak.hold() : nil
+        do {
+            try await stream.startCapture()
+        } catch {
+            cloak?.release()
+            throw error
+        }
+        output.startResending()
+        return ScreenShare(content: content, includesPeel: includePeel, track: track, stream: stream, output: output, cloak: cloak)
+    }
+
+    /// macOS ended the capture on its own.
+    var ended: Bool { output.ended }
+
+    /// Stops the capture and lets Peel's windows be captured again.
+    func stop() async {
+        output.stop()
+        try? await stream.stopCapture()
+        cloak?.release()
+    }
+
+    /// The screen a display's filter shows, for what goes on it while it
+    /// is captured (a recording's bar and camera bubble).
+    static func screen(of filter: SCContentFilter) -> NSScreen? {
+        guard let display = filter.includedDisplays.first?.displayID else { return nil }
+        return NSScreen.screens.first {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display
+        }
+    }
+
+    enum ShareError: Error { case noCapturer }
+}
+
+extension SCStreamConfiguration {
+    /// `filter`'s content at up to `maxSide` pixels on its longer side and
+    /// `fps`, in the encoder's own pixel format, with the cursor and no
+    /// system audio: what a share and a recording both start from.
+    static func fitting(_ filter: SCContentFilter, maxSide: CGFloat, fps: Int32) -> SCStreamConfiguration {
         let size = filter.contentRect.size
         let scale = CGFloat(filter.pointPixelScale)
         let fit = min(1, maxSide / max(1, max(size.width, size.height) * scale))
@@ -115,40 +167,10 @@ final class ScreenShare {
         configuration.scalesToFit = true
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: fps)
         configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        configuration.queueDepth = 5
         configuration.showsCursor = true
         configuration.capturesAudio = false
-
-        let track = LocalVideoTrack.createBufferTrack(
-            options: BufferCaptureOptions(dimensions: Dimensions(width: Int32(configuration.width), height: Int32(configuration.height)), fps: Int(fps))
-        )
-        guard let capturer = track.capturer as? BufferCapturer else { throw ShareError.noCapturer }
-        let output = ShareOutput(capturer: capturer) { Task { @MainActor in stopped() } }
-        let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
-        try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: output.queue)
-        // Only a display can show Peel: the picker never offers its windows.
-        if content == .display, !includePeel { WindowCloak.hide() }
-        do {
-            try await stream.startCapture()
-        } catch {
-            WindowCloak.show()
-            throw error
-        }
-        output.startResending()
-        return ScreenShare(content: content, includesPeel: includePeel, track: track, stream: stream, output: output)
+        return configuration
     }
-
-    /// macOS ended the capture on its own.
-    var ended: Bool { output.ended }
-
-    /// Stops the capture and lets Peel's windows be captured again.
-    func stop() async {
-        output.stop()
-        try? await stream.stopCapture()
-        WindowCloak.show()
-    }
-
-    enum ShareError: Error { case noCapturer }
 }
 
 /// Waits for one answer from the system picker.
@@ -242,18 +264,46 @@ private final class ShareOutput: NSObject, SCStreamOutput, SCStreamDelegate, Sen
     }
 }
 
-/// Leaves Peel's windows out of every screen capture while a share runs:
-/// `sharingType = .none`, which ScreenCaptureKit honours for display
-/// captures (checked on macOS 26.6), applied again after each event so a
-/// window opened mid-share is covered too.
-/// Only windows it hid are shown again, so one hidden for its own reasons
-/// stays hidden.
+/// A window of Peel's meant to be in the picture: a screen recording's
+/// camera bubble. `sharingType` is the window's, not a capture's, so it is
+/// in every capture under way, a call's shared screen as well.
+protocol ShownInCaptures: NSWindow {}
+
+/// Leaves Peel's windows out of every screen capture while a share or a
+/// recording runs: `sharingType = .none`, which ScreenCaptureKit honours for
+/// display captures (checked on macOS 26.6), applied again after each event
+/// so a window opened mid-share is covered too. A `ShownInCaptures` window
+/// stays in. Only windows it hid are shown again, so one hidden for its own
+/// reasons stays hidden. Each capture takes a `Hold`, and the windows come
+/// back once every hold is released (a recording made while a call shares
+/// the screen).
 @MainActor
-private enum WindowCloak {
+enum WindowCloak {
     private static var observer: (any NSObjectProtocol)?
     private static let hidden = NSHashTable<NSWindow>.weakObjects()
+    private static var holders = 0
 
-    static func hide() {
+    /// One capture's hiding of Peel's windows, released once.
+    @MainActor final class Hold {
+        private var held = true
+
+        fileprivate init() {}
+
+        func release() {
+            guard held else { return }
+            held = false
+            WindowCloak.show()
+        }
+    }
+
+    /// Hides Peel's windows until the hold is released.
+    static func hold() -> Hold {
+        hide()
+        return Hold()
+    }
+
+    private static func hide() {
+        holders += 1
         hideAll()
         guard observer == nil else { return }
         observer = NotificationCenter.default.addObserver(forName: NSApplication.didUpdateNotification, object: nil, queue: .main) { _ in
@@ -261,7 +311,9 @@ private enum WindowCloak {
         }
     }
 
-    static func show() {
+    private static func show() {
+        holders -= 1
+        guard holders == 0 else { return }
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
         for window in hidden.allObjects { window.sharingType = .readOnly }
@@ -269,7 +321,7 @@ private enum WindowCloak {
     }
 
     private static func hideAll() {
-        for window in NSApp.windows where window.sharingType == .readOnly {
+        for window in NSApp.windows where window.sharingType == .readOnly && !(window is any ShownInCaptures) {
             window.sharingType = .none
             hidden.add(window)
         }

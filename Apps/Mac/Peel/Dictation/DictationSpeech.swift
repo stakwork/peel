@@ -75,13 +75,23 @@ final class DictationSpeech {
 
     /// The recording's text.
     func transcribe(_ wav: URL) async throws -> DictationTranscript {
+        let reply = try await ready().transcribe(wavAt: wav)
+        return DictationTranscript(text: reply.text, heard: reply.heard)
+    }
+
+    /// A screen recording's words, with when each starts.
+    func words(_ wav: URL) async throws -> [TimedWord] {
+        try await ready().words(wavAt: wav).map { TimedWord(text: $0.text, start: $0.start) }
+    }
+
+    /// Speech on Peel's strut once it is up and has the model.
+    private func ready() async throws -> StrutSpeech {
         let server = try await strut()
         waiting += 1
         defer { waiting -= 1 }
         if model == .downloading { onDownloadWait() }
         try await ensureModel()
-        let reply = try await StrutSpeech(server: server).transcribe(wavAt: wav)
-        return DictationTranscript(text: reply.text, heard: reply.heard)
+        return StrutSpeech(server: server)
     }
 
     /// Peel's strut, waiting a little if it is still starting.

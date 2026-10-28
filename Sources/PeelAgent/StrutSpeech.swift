@@ -69,13 +69,32 @@ public struct StrutSpeech: Sendable {
     /// recogniser wrote, only when the vocabulary changed it. Empty text
     /// when nothing was heard. Read here, off the main thread.
     public func transcribe(wavAt file: URL) async throws -> (text: String, heard: String?) {
-        let wav = try Data(contentsOf: file)
-        // No `model`: strut uses the user's pick (`dictation/use`) once it is
-        // installed, its default until then; a model named here would win.
-        let reply = try await call("POST", "audio/transcribe", body: (wav, "audio/wav"))
+        let reply = try await transcription(of: file)
         guard let text = reply["text"]?.string else { throw Failure.refused("its reply had no text") }
         let heard = reply["heard"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (text.trimmingCharacters(in: .whitespacesAndNewlines), heard)
+    }
+
+    /// Each word of the WAV at `file` with when it starts, in seconds, for a
+    /// screen recording's captions (docs/recording.md); empty when nothing
+    /// was heard.
+    public func words(wavAt file: URL) async throws -> [(text: String, start: Double)] {
+        let reply = try await transcription(of: file)
+        guard let segments = reply["segments"]?.array else { throw Failure.refused("its reply had no segments") }
+        return segments.flatMap { segment in
+            (segment["words"]?.array ?? []).compactMap { word in
+                guard let text = word["text"]?.string, case .number(let start)? = word["start"] else { return nil }
+                return (text, start)
+            }
+        }
+    }
+
+    private func transcription(of file: URL) async throws -> AgentKit.JSONValue {
+        // Mapped, not read in: a screen recording's sound is tens of MB.
+        let wav = try Data(contentsOf: file, options: .alwaysMapped)
+        // No `model`: strut uses the user's pick (`dictation/use`) once it is
+        // installed, its default until then; a model named here would win.
+        return try await call("POST", "audio/transcribe", body: (wav, "audio/wav"))
     }
 
     // MARK: HTTP

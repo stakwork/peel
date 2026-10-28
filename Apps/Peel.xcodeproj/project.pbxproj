@@ -414,8 +414,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, and to record voice messages you hold the microphone button for.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, and for the camera bubble in a screen recording.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and for your voice in a screen recording.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -449,8 +449,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Peel;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, and to record voice messages you hold the microphone button for.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, and for the camera bubble in a screen recording.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and for your voice in a screen recording.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

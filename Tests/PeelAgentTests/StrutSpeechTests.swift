@@ -36,6 +36,20 @@ struct StrutSpeechTests {
         #expect(request.hasSuffix("RIFF-wav-bytes"))
     }
 
+    @Test func aScreenRecordingsWordsComeBackWithTheirTimes() async throws {
+        let stub = try await HTTPStub { _ in
+            #"{"text":"Hello there. Next","segments":[{"text":"Hello there.","words":[{"text":"Hello","start":0.42},{"text":"there.","start":0.8}]},{"text":"Next","words":[{"text":"Next","start":4},{"start":5}]}]}"#
+        }
+        defer { stub.stop() }
+        let file = try wav("RIFF-wav-bytes")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let words = try await speech(stub).words(wavAt: file)
+        // A word without its text is left out.
+        #expect(words.map(\.text) == ["Hello", "there.", "Next"])
+        #expect(words.map(\.start) == [0.42, 0.8, 4])
+        #expect(try #require(stub.requests.first).hasPrefix("POST /audio/transcribe "))
+    }
+
     @Test(arguments: [
         // A strut built without the speech engine.
         (501, #"{"error":"stt not available"}"#, StrutSpeech.Failure.noEngine),

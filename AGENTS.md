@@ -494,7 +494,9 @@ is a short plan. Update the status and the journal when you finish something.
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
   `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
-  "Component library"): `PeelButton`, shadcn's button (variants primary,
+  "Component library"): `HUDPanel` (the overlay over every app that
+  dictation's pill and a screen recording's bar and camera bubble are, with
+  `hudCapsule` and `HUDButton`); `PeelButton`, shadcn's button (variants primary,
   secondary, outline, ghost, destructive, link; sizes sm, md, lg, and
   `touch`, the iPhone's 44 pt one that grows with Dynamic Type;
   `.buttonStyle(.peel(...))`; every text button but the small ones inside
@@ -558,6 +560,12 @@ is a short plan. Update the status and the journal when you finish something.
   each dictation by day, with Copy and Clear History),
   `DictationPermissions`, and the Account section (with the Speech model
   and Fixer pickers), offer and menu item in `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
+  `Recording/` (screen recording, `docs/recording.md`: `RecordingController`
+  the glue, `ScreenRecorder` (ScreenCaptureKit's recording output, holding
+  `WindowCloak` until the file is done), `CameraBubblePanel`,
+  `RecordingBarPanel`, and Account › Recording in `RecordingSettingsView`;
+  its pure parts, the captions, the transcript and the file's audio and
+  caption track, are in `Sources/PeelUI/Recording/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit

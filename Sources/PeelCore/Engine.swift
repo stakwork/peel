@@ -181,7 +181,7 @@ public actor Engine {
     /// The call server's ticket endpoint and presence feed; see `callConnection`.
     var calls: CallServer?
     /// Largest attachment sent or downloaded, and the most the cache keeps.
-    static let attachmentLimit = 100_000_000
+    public static let attachmentLimit = 100_000_000
     static let mediaCacheLimit = 500_000_000
     /// Videos and recordings up to this size download as they show; larger
     /// ones wait to be asked for (images have no such rule: they are small).

@@ -3,11 +3,11 @@ import PeelUI
 import SwiftUI
 
 // Pictures, video and files in a conversation on the phone: images (alone
-// or a run's grid) and GIFs drawn, voice messages played, video in place
-// (`VideoTile`), PDFs and other files as a card that previews and shares
+// or a run's grid) and GIFs drawn, voice messages played, video as a poster
+// that opens full screen (`VideoTile`, `VideoViewer`), PDFs and other files as a card that previews and shares
 // (`FileCard`), all downloaded through the model as on the Mac
 // (`AppModel.autoDownload`, `ImageCache`). A tapped image opens full screen
-// (`ImageViewer`); buying is the Mac's for now.
+// (`ImageViewer`), as does a video; buying is the Mac's for now.
 
 /// A message's attachment: a run of images as a grid, one image, or a file.
 struct AttachmentBlock: View {

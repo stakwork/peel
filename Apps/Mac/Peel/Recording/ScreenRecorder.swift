@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import CoreMedia
 @preconcurrency import ScreenCaptureKit
 import Synchronization
@@ -9,20 +10,50 @@ import Synchronization
 /// Screen Recording permission. Peel's own windows are in it, as anything
 /// else on the display is (a recording of Peel itself); only the recording's
 /// bar never is.
+///
+/// The mic stays on the input it was given, so like dictation it follows
+/// macOS's default input when that changes, and is opened again when it
+/// goes deaf: a Bluetooth headset can drop its mic mid-recording, and
+/// ScreenCaptureKit then writes silence to the end.
 @MainActor
 final class ScreenRecorder {
     private let stream: SCStream
+    private let configuration: SCStreamConfiguration
     private let output: SCRecordingOutput
     private let delegate: RecorderDelegate
+    /// Told the mic's name when the recording moves to another one.
+    private let micChanged: @MainActor (String) -> Void
+    private var mic: String?
+    private var inputListener: AudioObjectPropertyListenerBlock?
+    private var pendingSwitch: Task<Void, Never>?
+    private var lastReopen: ContinuousClock.Instant?
 
     /// The longest side recorded: sharp text, a file that fits an attachment.
     private static let maxSide: CGFloat = 1920
     private static let fps: Int32 = 30
 
-    private init(stream: SCStream, output: SCRecordingOutput, delegate: RecorderDelegate) {
+    /// Device changes come in bursts (a headset switching profile): one switch for the burst.
+    private static let settle: Duration = .milliseconds(250)
+    /// The least time between two reopenings of a deaf mic.
+    private static let reopenEvery: Duration = .seconds(5)
+
+    private static var defaultInput: AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+    }
+
+    private init(
+        stream: SCStream, configuration: SCStreamConfiguration, output: SCRecordingOutput, delegate: RecorderDelegate,
+        mic: String?, micChanged: @escaping @MainActor (String) -> Void
+    ) {
         self.stream = stream
+        self.configuration = configuration
         self.output = output
         self.delegate = delegate
+        self.mic = mic
+        self.micChanged = micChanged
     }
 
     /// Starts recording `filter` into a temporary MP4. `ended` runs once,
@@ -30,12 +61,16 @@ final class ScreenRecorder {
     /// finished or the recording failed: after `stop()`, or when macOS ended
     /// the capture (the menu bar's Stop, the display going away). It can come
     /// before this returns.
-    static func start(_ filter: SCContentFilter, ended: @escaping @MainActor (URL, (any Error)?) -> Void) async throws -> ScreenRecorder {
+    static func start(
+        _ filter: SCContentFilter, micChanged: @escaping @MainActor (String) -> Void,
+        ended: @escaping @MainActor (URL, (any Error)?) -> Void
+    ) async throws -> ScreenRecorder {
         let configuration = SCStreamConfiguration.fitting(filter, maxSide: maxSide, fps: fps)
         configuration.captureMicrophone = true
         // The input itself, as dictation learned: one following the default
         // can be left deaf by a call's voice processing.
-        configuration.microphoneCaptureDeviceID = AVCaptureDevice.default(for: .audio)?.uniqueID
+        let input = AVCaptureDevice.default(for: .audio)
+        configuration.microphoneCaptureDeviceID = input?.uniqueID
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("peel-recording-\(UUID().uuidString).mp4")
         let recording = SCRecordingOutputConfiguration()
@@ -61,16 +96,72 @@ final class ScreenRecorder {
             try? FileManager.default.removeItem(at: url)
             throw error
         }
-        return ScreenRecorder(stream: stream, output: output, delegate: delegate)
+        let recorder = ScreenRecorder(
+            stream: stream, configuration: configuration, output: output, delegate: delegate,
+            mic: input?.uniqueID, micChanged: micChanged
+        )
+        recorder.followDefaultInput()
+        return recorder
     }
 
     /// How much has been written, for the attachment limit.
     var bytes: Int { output.recordedFileSize }
     var duration: TimeInterval { output.recordedDuration.seconds.isFinite ? output.recordedDuration.seconds : 0 }
 
+    /// How long the mic has sent nothing but zeros: a live mic always
+    /// hears something, so this is a mic gone, not a quiet room.
+    var micSilence: TimeInterval { delegate.micSilence }
+
+    /// The default input, opened again, at most every `reopenEvery`: for a
+    /// mic gone deaf.
+    func reopenMic() {
+        if let lastReopen, lastReopen.duration(to: .now) < Self.reopenEvery { return }
+        lastReopen = .now
+        Task { await use(AVCaptureDevice.default(for: .audio), reopening: true) }
+    }
+
+    private func followDefaultInput() {
+        var address = Self.defaultInput
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.defaultInputChanged() }
+        }
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        inputListener = listener
+    }
+
+    private func defaultInputChanged() {
+        pendingSwitch?.cancel()
+        pendingSwitch = Task {
+            try? await Task.sleep(for: Self.settle)
+            guard !Task.isCancelled else { return }
+            await use(AVCaptureDevice.default(for: .audio), reopening: false)
+        }
+    }
+
+    /// Records `device` from now on; said if it is another mic than before.
+    /// The same one again (`reopening`) opens it afresh.
+    private func use(_ device: AVCaptureDevice?, reopening: Bool) async {
+        guard let device, reopening || device.uniqueID != mic else { return }
+        configuration.microphoneCaptureDeviceID = device.uniqueID
+        do {
+            try await stream.updateConfiguration(configuration)
+        } catch {
+            return
+        }
+        guard device.uniqueID != mic else { return }
+        mic = device.uniqueID
+        micChanged(device.localizedName)
+    }
+
     /// Ends the recording; `ended` follows once the file is finished, or,
     /// if the recording output never says so, after `finishing`.
     func stop() async {
+        pendingSwitch?.cancel()
+        if let inputListener {
+            var address = Self.defaultInput
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, inputListener)
+        }
+        inputListener = nil
         do {
             try await stream.stopCapture()
             delegate.finishLater(nil)
@@ -86,6 +177,8 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
     let queue = DispatchQueue(label: "peel.screen-recording")
     private let ended: @Sendable ((any Error)?) -> Void
     private let done = Mutex(false)
+    /// When the mic last sent anything but zeros.
+    private let lastSound = Mutex(ContinuousClock.now)
 
     /// How long the recording output has to finish its file after macOS
     /// ends the capture, before the stop's error stands: a long recording's
@@ -109,7 +202,23 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
         if claim() { ended(error) }
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {}
+    var micSilence: TimeInterval {
+        let quiet = lastSound.withLock { $0 }.duration(to: .now).components
+        return Double(quiet.seconds) + Double(quiet.attoseconds) / 1e18
+    }
+
+    /// Frames are dropped; the mic's sound is read for whether it is there at all.
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .microphone, let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
+        var length = 0
+        var bytes: UnsafeMutablePointer<CChar>?
+        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: &length, totalLengthOut: nil, dataPointerOut: &bytes) == noErr,
+              let bytes else { return }
+        // Zero is zero in every sample format.
+        if UnsafeRawBufferPointer(start: bytes, count: length).contains(where: { $0 != 0 }) {
+            lastSound.withLock { $0 = .now }
+        }
+    }
 
     /// The end, unless the recording output reports it first, within `finishing`.
     func finishLater(_ error: (any Error)?) {

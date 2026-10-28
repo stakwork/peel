@@ -5,7 +5,9 @@ import PeelUI
 
 /// The control bar of a screen recording, the dictation HUD's pill: before
 /// it starts, Cancel and Record; while it runs, a red dot and the time
-/// between Discard and Stop. Never in the recording.
+/// between Discard and Stop; in its last minute how long is left before it
+/// is too large to send, and what became of a mic that went quiet. Never in
+/// the recording.
 struct RecordingBarView: View {
     let controller: RecordingController
 
@@ -46,6 +48,20 @@ struct RecordingBarView: View {
                 // Room for "10:00", so the bar keeps its size.
                 .frame(minWidth: 36, alignment: .leading)
                 .accessibilityLabel("Recording, \(time)")
+            if let left = controller.timeLeft {
+                let shown = MediaInfo.format(duration: left.rounded(.up))
+                Text("\(shown) left")
+                    .font(Theme.font(12, .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.hudWarning)
+                    .frame(minWidth: 52, alignment: .leading)
+                    .accessibilityLabel("\(shown) left before it is too large to send")
+            }
+            if let mic = controller.micNote {
+                Text(mic)
+                    .font(Theme.font(12, .semibold))
+                    .foregroundStyle(Theme.hudWarning)
+            }
             HUDButton(.symbol("checkmark"), label: "Stop and keep the recording", filled: true, action: controller.stop)
         }
         .padding(.horizontal, Theme.Space.xs)
@@ -77,5 +93,13 @@ final class RecordingBarPanel: HUDPanel {
             setFrameOrigin(NSPoint(x: area.midX - frame.width / 2, y: area.minY + DictationDefaults.hudBottomInset))
         }
         orderFrontRegardless()
+    }
+
+    /// Sized again to what it shows, where it was put or dragged: the same
+    /// centre and bottom.
+    func refit() {
+        host.layoutSubtreeIfNeeded()
+        let size = host.fittingSize
+        setFrame(NSRect(x: frame.midX - size.width / 2, y: frame.minY, width: size.width, height: size.height), display: true)
     }
 }

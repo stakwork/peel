@@ -40,8 +40,17 @@ until you send it.
   fps, in the encoder's pixel format (`SCStreamConfiguration.fitting`,
   shared with a call's share), the cursor, and the microphone (`captureMicrophone`, bound to the
   default input, as dictation learned to). No system audio in v1. The
-  attachment limit is 100 MB: the recording stops itself at 95 MB and says
-  why.
+  attachment limit is 100 MB: the recording stops itself at 95 MB (about
+  3½ minutes of a busy screen). In its last minute the bar counts down the
+  time left, at the rate so far, and at the limit the dictation HUD says
+  "Stopped at the size limit. Saved to Downloads" (board: option A, Tom,
+  2026-10-28).
+- **The mic** follows macOS's default input, as dictation's does: when it
+  changes, the stream is moved to it (`updateConfiguration`) and the bar
+  says "Now using …" for 5 s. A mic that sends only zeros for 2 s is deaf
+  (a Bluetooth headset dropped its voice link, Tom's recording of
+  2026-10-28: silence from 0:03 to the end); it is opened again every 5 s,
+  and the bar says "No sound from your mic" until it is back.
 - **Peel's windows** are recorded as they are. The control bar is never
   captured (`sharingType = .none`). A call's screen share still hides
   Peel's windows (`WindowCloak`, a `Hold` per share) from every capture

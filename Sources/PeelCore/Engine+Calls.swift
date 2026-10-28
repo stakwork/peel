@@ -45,7 +45,10 @@ extension Engine {
     /// key. Memory only; never store or log it.
     public func callTicket(for link: CallLink, in chat: String?) async throws -> CallTicket {
         let tribe = chat.flatMap { tribes[$0] }
-        let name = tribe?.sentAlias(account: alias) ?? (alias.isEmpty ? tribeAlias(alias) : alias)
+        // A blank account name joins as "Peel user", not the tribes' "Unknown",
+        // which the call chat and Jamie would take for the speaker.
+        let name = tribe?.sentAlias(account: alias)
+            ?? (alias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Peel user" : alias)
         let photo = (tribe?.sentPhoto(account: photoURL) ?? photoURL).httpsOnly
         return try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: photo)
     }

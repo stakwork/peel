@@ -11,15 +11,18 @@ public struct CallTicket: Sendable, CustomStringConvertible, CustomReflectable {
     public let room: String
     /// The participant identity the call server chose (the token's `sub`).
     public let identity: String
+    /// The name this side joined with (the tribe alias in a tribe), which
+    /// the call chat sends as its sender. Not a secret.
+    public let participantName: String
     public let expires: Date
     /// Whether the token grants room admin, which Peel never asks for.
     public let roomAdmin: Bool
 
     public var description: String {
-        "CallTicket(\(serverURL.absoluteString), room \(room), identity \(identity), token not shown)"
+        "CallTicket(\(serverURL.absoluteString), room \(room), identity \(identity), name \(participantName), token not shown)"
     }
     public var customMirror: Mirror {
-        Mirror(self, children: ["serverURL": serverURL, "room": room, "identity": identity, "expires": expires])
+        Mirror(self, children: ["serverURL": serverURL, "room": room, "identity": identity, "participantName": participantName, "expires": expires])
     }
 }
 
@@ -142,7 +145,7 @@ actor CallServer {
         }
         struct Reply: Decodable { let serverUrl: String; let participantToken: String }
         guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else { throw Failure.unreadableReply }
-        return try Self.ticket(serverURL: reply.serverUrl, token: reply.participantToken, room: link.room, callServer: base)
+        return try Self.ticket(serverURL: reply.serverUrl, token: reply.participantToken, room: link.room, callServer: base, participantName: participantName)
     }
 
     /// `GET /api/connection-details` with every value percent-encoded to
@@ -172,7 +175,7 @@ actor CallServer {
     /// (`ws://` only when the call server is this machine), and the token
     /// must be for `room` and not yet expired. Its signature is the media
     /// server's to check.
-    static func ticket(serverURL text: String, token: String, room: String, callServer: URL, now: Date = .now) throws -> CallTicket {
+    static func ticket(serverURL text: String, token: String, room: String, callServer: URL, participantName: String = "Peel user", now: Date = .now) throws -> CallTicket {
         let serverURL = try mediaURL(text, callServer: callServer)
         let claims = try claims(of: token)
         guard claims.video?.room == room else { throw Failure.tokenForAnotherRoom }
@@ -180,7 +183,8 @@ actor CallServer {
         let expires = Date(timeIntervalSince1970: exp)
         guard expires > now else { throw Failure.tokenExpired }
         return CallTicket(
-            serverURL: serverURL, token: token, room: room, identity: identity, expires: expires,
+            serverURL: serverURL, token: token, room: room, identity: identity, participantName: participantName,
+            expires: expires,
             roomAdmin: claims.video?.roomAdmin == true
         )
     }

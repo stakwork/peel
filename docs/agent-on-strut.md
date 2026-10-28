@@ -210,7 +210,7 @@ automation steps and its prompt section.
 
 Most turns are not jobs. Like the Swift agent in the Agent chat today, the
 orchestrator calls its tools inside the turn: "when is Kate's birthday?"
-is one `memory/recall`, "what did I miss?" one `sphinx/unseen` to the
+is one `graph/graph-search` over memory, "what did I miss?" one `sphinx/unseen` to the
 Mac. It starts a job only for work that needs files, the web or many
 steps, and can have several going at once.
 
@@ -265,9 +265,13 @@ steps:
   say you are waiting for it and stop".
 - **Memory steps.** The memory tools already call strut steps
   (`MemoryTools` names the verbs; `MemoryServer` posts to `/steps/memory/<verb>/run`). In the workflow
-  they are `agentTools` directly: `memory/remember`, `recall`, `get`,
-  `ontology`, `forget`, `merge`. The tool names change from Peel's
-  (`read_memory` is `memory/get`); the prompt names them.
+  they are `agentTools` directly: `memory/remember`, `forget` and
+  `merge` write it. Memory lives in the workspace graph (strut's
+  `plans/memory-in-workspace-graph.md`), so strut's graph reads
+  (`graph/graph-search`, `graph-get`, `graph-get-batched`,
+  `graph-neighbors`, `get-ontology`, `get-ontology-type`) read it, on the
+  workflows the host config's `memoryReaders` names: `orchestrator` and
+  `peel-automation-run`. The prompt names them.
 - **Sessions.** One agent DM is one session, compacted in place. See
   Sessions below. Automations run without a session, as today's headless run
   has no history: a second workflow, `peel-automation-run`, the same step

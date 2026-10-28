@@ -65,6 +65,7 @@ struct RecordingCaptionsTests {
 }
 
 /// The file's audio read out, and captions written in, on a made-up video.
+@Suite(.timeLimit(.minutes(1)))
 struct RecordingMediaTests {
     private func temp(_ name: String) -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("peel-recording-test-\(UUID().uuidString)-\(name)")
@@ -150,7 +151,7 @@ private enum SyntheticVideo {
                                        magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &description)
         var sampleAt = 0
         for frame in 0..<(seconds * fps) {
-            while !video.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
+            try await ready(video, of: writer)
             var buffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, try #require(pixels.pixelBufferPool), &buffer)
             let pixel = try #require(buffer)
@@ -160,7 +161,7 @@ private enum SyntheticVideo {
             pixels.append(pixel, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)))
             guard sound else { continue }
             while sampleAt < (frame + 1) * rate / fps {
-                while !audio.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
+                try await ready(audio, of: writer)
                 let start = sampleAt
                 var samples = (0..<chunk).map { Float(sin(Double(start + $0) * 2 * .pi * 440 / Double(rate))) * 0.3 }
                 var block: CMBlockBuffer?
@@ -183,5 +184,16 @@ private enum SyntheticVideo {
         await writer.finishWriting()
         #expect(writer.status == .completed)
         return url
+    }
+
+    /// Waits for `input` to take more, or throws once `writer` has failed or
+    /// stalled: a failed writer is never ready again, and would wait for ever.
+    private static func ready(_ input: AVAssetWriterInput, of writer: AVAssetWriter) async throws {
+        let until = ContinuousClock.now + .seconds(10)
+        while !input.isReadyForMoreMediaData {
+            if writer.status == .failed { throw writer.error ?? CocoaError(.fileWriteUnknown) }
+            guard ContinuousClock.now < until else { throw CocoaError(.fileWriteUnknown) }
+            try await Task.sleep(for: .milliseconds(5))
+        }
     }
 }

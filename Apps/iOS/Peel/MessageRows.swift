@@ -62,10 +62,26 @@ struct ConversationRow: View, Equatable {
 
 // MARK: - A message
 
+/// Tap a row that has a thread (a summary, 3+ messages) to open the thread.
+private struct OpensThread: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let summary: ThreadSummary?
+
+    func body(content: Content) -> some View {
+        if let summary {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }
+        } else {
+            content
+        }
+    }
+}
+
 /// A message as a flat row: on a run's first row the photo, the name in
 /// the sender's colour and the time; the rest of the run under it. Yours
-/// on a faint accent tint. Long press for its menu, swipe right to reply in
-/// its thread; for VoiceOver, one element with the menu as its actions.
+/// on a faint accent tint. Long press for its menu, swipe right to reply; a
+/// row with a thread summary opens the thread on tap; for VoiceOver, one element with the menu as its actions.
 struct MessageRowView: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
@@ -111,6 +127,7 @@ struct MessageRowView: View {
             }
         }
         .messageActions(actions, spoken: spoken)
+        .modifier(OpensThread(summary: row.summary))
     }
 
     /// One VoiceOver element: who, when, what, then boosts and replies.

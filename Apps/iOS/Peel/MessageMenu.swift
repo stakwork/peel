@@ -5,7 +5,7 @@ import UIKit
 
 /// What a row offers on the phone (docs/design/iphone.md, "iOS patterns"),
 /// by the Mac's rules (`MessageMenu`): undelivered, Retry and Discard;
-/// otherwise Reply in thread, Boost <your amount> (someone else's message
+/// otherwise Reply, Boost <your amount> (someone else's message
 /// not yet boosted, `ChatRow.canBoost`), Copy, Copy link, and Delete for
 /// one you may delete. The long-press menu, the swipe and VoiceOver's
 /// custom actions all read it.
@@ -21,7 +21,7 @@ struct MessageActions {
 
     var isRetryable: Bool { model != nil && message.isRetryable(now: now) }
 
-    /// Reply in thread: a message that can carry a reply, not undelivered.
+    /// Reply: a message that can carry a reply, not undelivered.
     var canReply: Bool { model != nil && !isRetryable && !message.deleted && message.isLinkable(inTribe: row.inTribe) }
 
     var canBoost: Bool { model != nil && !isRetryable && row.canBoost }
@@ -40,15 +40,11 @@ struct MessageActions {
         return MessageMarkup.firstLink(in: text)
     }
 
-    /// Reply in thread: the thread sheet. Inside the sheet, a reply to one
-    /// of its messages quotes it there (the Mac's `startReply`).
+    /// Reply: the "replying to" bar above the composer, here or inside a
+    /// thread sheet (the Mac's `startReply`).
     func reply() {
         guard let model else { return }
-        if composer.thread != nil {
-            model.reply(to: message, in: composer)
-        } else {
-            model.openThread(of: message)
-        }
+        model.reply(to: message, in: composer)
     }
 
     func boost() {
@@ -89,7 +85,7 @@ private struct DeleteItem: View {
 }
 
 extension View {
-    /// The row's long-press menu, its swipe right to reply in the thread,
+    /// The row's long-press menu, its swipe right to reply,
     /// and for VoiceOver one element, `spoken`, with the menu as actions
     /// (a payment's or a request's: its own words and buttons combined).
     func messageActions(_ actions: MessageActions, spoken: String = "") -> some View {
@@ -138,8 +134,7 @@ private struct MenuItems: View {
             }
         }
         if actions.canReply {
-            Button(actions.composer.thread == nil ? "Reply in thread" : "Reply",
-                   systemImage: "arrowshape.turn.up.left", action: actions.reply)
+            Button("Reply", systemImage: "arrowshape.turn.up.left", action: actions.reply)
         }
         if forVoiceOver, let summary = actions.row.summary {
             Button("Open thread") { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }

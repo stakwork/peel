@@ -85,7 +85,8 @@ on this Mac, turns it into text: nothing leaves it.
   while the account is locked (`AppModel.unlockedStorage` is nil: locking
   leaves the engine open, so the engine alone is not the test) or with History off (Account › Dictation › History). The
   window (app menu › Dictation History…, or Open in Settings) lists the
-  newest 500 by day with Copy and Clear History; opening it also drops what
+  newest 500 by day with Copy and Clear History; a row clean-up changed
+  says "Cleaned up", and shows what was heard once opened. Opening it also drops what
   is past 30 days. Clear overwrites the text in the file (`secure_delete`)
   and folds in the log. A "Copied: press ⌘V" note adds "(also in History)"
   only when it was kept. Time and account are taken when the key is let go.
@@ -129,8 +130,14 @@ on this Mac, turns it into text: nothing leaves it.
     the vocabulary read for Settings and the window), in Peel's own fields
     too (its text view read directly, not through Accessibility, which
     would wait on Peel's own main thread), and elsewhere only where
-    Accessibility can read the field (not most Electron apps; the rewrite
-    still works there). Why a watch ended, or never started, is logged
+    Accessibility can read the field. Chromium and the Electron apps built
+    on it (Claude, Slack, Notion) show Accessibility no text until asked,
+    so at key-down, with a fixer in use, Peel asks an app with a Chromium
+    framework once per process: `AXManualAccessibility` (Electron), else
+    `AXEnhancedUserInterface` (Chrome's browsers), asked again while the
+    app does not answer; other apps, and code editors on Electron (VS Code,
+    Cursor, Windsurf: asked, they offer their screen-reader mode), are never
+    touched. Why a watch ended, or never started, is logged
     (`log show --predicate 'subsystem == "dev.peel.mac"'`), never the text.
   - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
     word with how it is misheard (`memory/lexicon`), Remove

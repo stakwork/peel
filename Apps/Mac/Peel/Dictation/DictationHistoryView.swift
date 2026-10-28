@@ -123,7 +123,8 @@ struct DictationHistoryView: View {
 }
 
 /// One dictation: its time in a column, the app, the text (three lines, all
-/// on a click), where it went when it was not typed, and Copy.
+/// on a click, with what was heard when clean-up changed it), where it went
+/// when it was not typed, and Copy.
 private struct DictationHistoryRow: View {
     let record: DictationRecord
     @State private var expanded = false
@@ -158,9 +159,11 @@ private struct DictationHistoryRow: View {
         .padding(.vertical, Theme.Space.sm)
     }
 
-    /// The app, then where the text went when it was not typed.
+    /// The app, then what was heard when clean-up changed it (in full when
+    /// the row is open), then where the text went when it was not typed.
     private var detail: String {
-        let app = (record.appName ?? "Unknown app") + (record.heard.map { " · heard “\($0)”" } ?? "")
+        let heard = record.heard.map { expanded ? " · heard “\($0)”" : " · Cleaned up" } ?? ""
+        let app = (record.appName ?? "Unknown app") + heard
         switch record.outcome {
         case .typed: return app
         case .copied: return "\(app) · Copied, not typed" + (record.note.map { ": \($0)" } ?? "")

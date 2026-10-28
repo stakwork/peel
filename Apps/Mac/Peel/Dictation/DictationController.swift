@@ -409,6 +409,8 @@ final class DictationController {
         // A password field: not a word is recorded. Said once the hold is
         // past the threshold, so typing an Option character there stays quiet.
         guard !focus.isSecure else { return }
+        // Only when an edit could be learned from: the watch reads the field.
+        if canLearn { DictationEditWatch.exposeText(pid: focus.pid) }
         do {
             try capture.start()
             try capture.beginRecording()
@@ -554,11 +556,10 @@ extension DictationController {
         watch = nil
         // A pick that was downloading when last read may be in use by now: read again for next time.
         if models.downloading { Task { await models.load() } }
-        guard models.hasActiveFixer, let server = lingo.server, let storage = history() else {
+        guard let (server, account) = learnTarget else {
             log.notice("edit watch not started: \(self.models.hasActiveFixer ? "Peel is locked or its strut is not running" : "no clean-up model in use", privacy: .public)")
             return
         }
-        let account = ObjectIdentifier(storage)
         watch = DictationEditWatch.watch(typed: typed) { [weak self] edited in
             guard let self, let edited, edited != typed, isCurrent(server, account) else { return }
             Task { await self.learn(typed: typed, edited: edited, on: server, account: account) }
@@ -569,6 +570,15 @@ extension DictationController {
     private func isCurrent(_ server: MemoryServer, _ account: ObjectIdentifier) -> Bool {
         lingo.server == server && history().map(ObjectIdentifier.init) == account
     }
+
+    /// Where an edit would be learned now: Peel's strut and the unlocked
+    /// account, with a fixer in use (without one strut learns nothing).
+    private var learnTarget: (server: MemoryServer, account: ObjectIdentifier)? {
+        guard models.hasActiveFixer, let server = lingo.server, let storage = history() else { return nil }
+        return (server, ObjectIdentifier(storage))
+    }
+
+    private var canLearn: Bool { learnTarget != nil }
 
     private func learn(typed: String, edited: String, on server: MemoryServer, account: ObjectIdentifier) async {
         let learned: [LingoLearned]

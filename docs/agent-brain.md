@@ -119,7 +119,7 @@ The current Sphinx tools and approval gate stay. Added:
 
 | Tool | Does |
 |---|---|
-| `remember` / `recall` | Write or search the graph (direct strut graph calls, not jobs) |
+| `remember` / `recall` | Write or search the graph (direct strut graph calls, not jobs); today the agent writes with `memory/remember`, `forget`, `merge` and reads with strut's `graph/*` read steps bound to memory (strut#366) |
 | `list_jobs(status?)` | What is running or waiting on you now |
 | `search_jobs(q)` | Jobs by meaning, by linked people and topics, by recency |
 | `get_job(id)` | Status, summary, last question, artifacts |

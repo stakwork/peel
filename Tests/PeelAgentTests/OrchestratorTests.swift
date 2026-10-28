@@ -17,7 +17,18 @@ struct OrchestratorTests {
         let tools = config["orchestrator"]?["tools"]?.array?.compactMap(\.string) ?? []
         #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/diagnostics",
                           "sphinx/send", "automation/list", "automation/preview", "automation/create", "automation/update",
-                          "automation/delete", "automation/run-now"])
+                          "automation/delete", "automation/run-now"] + Orchestrator.memoryTools + Orchestrator.graphReadTools)
+        #expect(Orchestrator.memoryTools == ["memory/remember", "memory/forget", "memory/merge"])
+        #expect(Orchestrator.graphReadTools == ["graph/graph-search", "graph/graph-get", "graph/graph-get-batched", "graph/graph-neighbors",
+                                                "graph/get-ontology", "graph/get-ontology-type", "graph/walk"])
+        for retired in ["memory/recall", "memory/get", "memory/ontology"] { #expect(!tools.contains(retired), "\(retired)") }
+        // The job and builder keep strut's own graph grants: none of memory's.
+        let memory = Orchestrator.memoryTools + Orchestrator.graphReadTools
+        let jobTools = config["job"]?["tools"]?.array?.compactMap(\.string) ?? []
+        #expect(memory.allSatisfy { !jobTools.contains($0) } && config["builder"]?["tools"] == nil)
+        // The graph steps read memory in the orchestrator and automation runs only.
+        #expect(config["memoryGraph"] == ["workflows": ["orchestrator", "peel-automation-run"]])
+        #expect(Orchestrator.graphReadTools.allSatisfy(Orchestrator.automationRunTools.contains))
         // Only the automation steps ask for a card: the model never words one itself.
         #expect(!tools.contains("sphinx/approve"))
         #expect(config["orchestrator"]?["model"] == .null, "the connected model runs it")
@@ -37,10 +48,11 @@ struct OrchestratorTests {
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
         let section = Orchestrator.section
         for words in ["sphinx/unseen with no chat", "on their Mac, by asking it", "waiting for their Mac", "sphinx/send sends",
-                      "memory/remember", "memory/get with user true", "from the time the message starts with",
+                      "memory/remember", "graph/graph-search first", "graph/get-ontology", "from the time the message starts with",
                       "automation/list before changing it", ChatData.begin, AgentMessageLink.instruction] {
             #expect(section.contains(words), "\(words)")
         }
+        for retired in ["memory/recall", "memory/get", "memory/ontology"] { #expect(!section.contains(retired), "\(retired)") }
         for swift in ["read_unseen_messages", "current_time", "read_memory", "list_automations", "send_sphinx_message", "this device"] {
             #expect(!section.contains(swift), "\(swift)")
         }
@@ -50,7 +62,7 @@ struct OrchestratorTests {
         #expect(!Orchestrator.automationRunTools.contains(DeviceStep.diagnostics.type), "an automation never reads Peel's record")
         #expect(section.contains("give it a grant"))
         // The prompts name the steps by hand: each one granted is named.
-        for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + Orchestrator.memoryTools + ["automation/list"] {
+        for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + Orchestrator.memoryTools + Orchestrator.graphReadTools + ["automation/list"] {
             #expect(section.contains(step), "\(step)")
         }
         for step in Orchestrator.automationRunTools { #expect(unattended.contains(step), "\(step)") }

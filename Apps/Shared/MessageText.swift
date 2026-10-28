@@ -76,7 +76,6 @@ struct MessageText: View {
                         .font(Theme.code(size - 1))
                         .lineSpacing(2)
                         .foregroundStyle(Theme.text)
-                        .selectableOnMac()
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 10)
                         .padding(.vertical, Theme.Space.sm)
@@ -85,6 +84,7 @@ struct MessageText: View {
                 }
             }
         }
+        .selectableOnMac()
     }
 
     /// A line of text, with what the chat's search `found` lit.
@@ -93,7 +93,6 @@ struct MessageText: View {
             .font(font ?? Theme.font(size))
             .lineSpacing(3)
             .foregroundStyle(Theme.text)
-            .selectableOnMac()
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -155,7 +154,8 @@ enum LinkText {
 }
 
 private extension View {
-    /// Selectable on the Mac. On the iPhone a long press opens the
+    /// Selectable on the Mac. Applied once to the whole message, so a
+    /// selection can span its blocks. On the iPhone a long press opens the
     /// message's menu, which has Copy (docs/design/iphone.md, "iOS patterns").
     @ViewBuilder func selectableOnMac() -> some View {
         #if os(macOS)

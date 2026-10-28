@@ -128,6 +128,42 @@ old one holds, then parks before its store is exported.
 
 ## Step 1: always on
 
+**Status, 2026-10-26.** Replaced by [always-on.md](always-on.md): Peel
+Home moves by copying its stopped folders
+through strut's `strut move`. Built (A4, A4b): Account › Brain moves Peel
+Home out on a `peel://home-setup` link and back from the box's send-back
+link (`PeelHome.swift`, `AppModel+Home`). The mark that it moved
+(`Brain.moved`) is kept before anything stops, so this Mac's bridge never
+runs beside the box's. `PeelHomeTests` covers each point a move can fail.
+The same PR removes the old home server by address and key (A6:
+`Brain.homeServer`, `peel://brain` links, `MemoryMove`, `MemoryBackup`,
+the `brain/` bundle), and `stage-strut.sh` stamps strut's commit in
+`desktop.json`, which `strut move check` compares exactly.
+- **Checked end to end** on Docker on this Mac, with a development profile,
+  stand-in models and the local stack: the agent answered and remembered
+  from the box with Peel's own strut and bridge stopped; a move back
+  answered in the same conversation; nothing was answered twice. That run
+  found three of Peel's bugs, fixed here (the ping matched the sent
+  message's tag, not its uuid; a move back strut can't start left no way
+  back; a move back after an unanswered move out kept no copy of this Mac's
+  folders), and strut's (a graph replayed the other host's extension
+  path, fixed in stakwork/strut#335).
+- **Checked on Tom's Umbrel** (a Raspberry Pi kernel), once strut#338
+  (64 GiB reserved per graph, for Pi kernels) and #335's WAL fix were in;
+  both merged, pinned at 9512381: out, remember and recall on the box with
+  Peel's own strut and bridge stopped, back, and out again, with memory
+  written on both sides kept and nothing answered twice. The box's bridge
+  waited for strut's `/health` and answered with no restart.
+- **Not handled yet: dictation after a move.** The Mac runs no strut once
+  Peel Home has moved, so dictation has none to use. A follow-up, designed
+  in always-on.md, "Dictation with Peel Home moved".
+- **Use this Mac's copy** starts a bridge store older than the box's,
+  which re-answers what the box handled, until runner can start from now.
+  It is in, pending Tom's call.
+- **Learned:** a move is only safe to undo while the box still waits for
+  it, so Peel asks the box again after a failed send. And `sendText`
+  returns a message's tag, not its uuid.
+
 ### The bundle
 
 `brain/` today runs strut behind Tailscale (peel-brain.md, "Packaging").

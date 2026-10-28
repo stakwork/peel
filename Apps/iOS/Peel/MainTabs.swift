@@ -36,6 +36,14 @@ struct MainTabs: View {
                 SearchTab()
             }
         }
+        .sheet(item: $router.orgPage) { page in
+            OrgPageSheet(page: page)
+        }
+        // Its workspace no longer in use (revoked, disconnected, renewed
+        // without it): the page and its token go.
+        .onChange(of: model.stadeum.live) { _, live in
+            if let page = router.orgPage, !live.contains(where: { $0.id == page.peer }) { router.orgPage = nil }
+        }
     }
 }
 
@@ -116,6 +124,7 @@ private struct SearchTab: View {
                     ChatList()
                 }
             }
+            .onCallBannerInset()
             .navigationTitle("Search")
             .searchable(text: $model.searchQuery, prompt: "Search chats")
             .chatsDestinations()

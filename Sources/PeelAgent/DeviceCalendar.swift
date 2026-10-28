@@ -97,7 +97,7 @@ struct DeviceCalendar: Sendable {
         if let list { found = found.filter { $0.list == list } }
         found.sort { ($0.due ?? .distantFuture, $0.title) < ($1.due ?? .distantFuture, $1.title) }
         let limit = SphinxTools.limit(args, (default: 50, max: Self.maxItems))
-        let which = list.map { " in the list \u{201C}\(ChatData.clean($0, max: ChatData.maxName))\u{201D}" } ?? ""
+        let which = list.map { " in the list \u{201C}\(TextLine.clean($0, max: ChatData.maxName))\u{201D}" } ?? ""
         var data = ChatData("The user's \(includeDone ? "" : "open ")reminders\(which), due soonest first:")
         for reminder in found.prefix(limit) { data.add(Self.line(reminder)) }
         if found.isEmpty { data.notes.append("[no reminders]") }
@@ -123,7 +123,7 @@ struct DeviceCalendar: Sendable {
         // Made already for this request (Peel stopped before it answered): not made twice.
         let around = try await store.events(from: event.start.addingTimeInterval(-86400), to: event.end.addingTimeInterval(86400))
         if let made = around.first(where: { $0.url == marker }) { return .answer(.done(Self.said("Added", made))) }
-        var details = [Self.when(event), "Calendar: \(calendar.isEmpty ? "your default calendar" : ChatData.clean(calendar, max: ChatData.maxName))"]
+        var details = [Self.when(event), "Calendar: \(calendar.isEmpty ? "your default calendar" : TextLine.clean(calendar, max: ChatData.maxName))"]
         if let location = event.location { details.append("At \(location)") }
         let intent = ToolIntent(action: "Add \u{201C}\(title)\u{201D} to your calendar", content: event.notes, details: details)
         return .change(intent) { [store] in Self.said("Added", try await store.save(event)) }
@@ -157,7 +157,7 @@ struct DeviceCalendar: Sendable {
         if args["notes"] != nil { new.notes = try Self.text("notes", in: args, max: Self.maxNotes) }
         // Already so (asked again after a stop, or nothing asked): nothing to do.
         guard new != old else { return .answer(.done("Nothing to change: \(Self.said("It is", old))")) }
-        let name = ChatData.clean(old.title, max: Self.maxTitle)
+        let name = TextLine.clean(old.title, max: Self.maxTitle)
         var details: [String] = []
         if new.title != old.title { details.append("Title: \u{201C}\(name)\u{201D} becomes \u{201C}\(new.title)\u{201D}") }
         if (new.start, new.end, new.allDay) != (old.start, old.end, old.allDay) {
@@ -178,9 +178,9 @@ struct DeviceCalendar: Sendable {
     /// `id`.
     private func deleteEvent(_ args: AgentKit.JSONValue) async throws -> Plan {
         let old = try await event(args)
-        let name = ChatData.clean(old.title, max: Self.maxTitle)
+        let name = TextLine.clean(old.title, max: Self.maxTitle)
         let intent = ToolIntent(action: "Delete \u{201C}\(name)\u{201D} from your calendar",
-                                details: [Self.when(old), "Calendar: \(ChatData.clean(old.calendar, max: ChatData.maxName))"])
+                                details: [Self.when(old), "Calendar: \(TextLine.clean(old.calendar, max: ChatData.maxName))"])
         return .change(intent) { [store] in
             try await Self.unchanged(old, in: store)
             try await store.deleteEvent(id: old.id)
@@ -197,7 +197,7 @@ struct DeviceCalendar: Sendable {
         if let made = try await store.reminders(includingDone: true).first(where: { $0.url == marker }) {
             return .answer(.done(Self.said("Added", made)))
         }
-        let list = reminder.list.isEmpty ? "your default list" : ChatData.clean(reminder.list, max: ChatData.maxName)
+        let list = reminder.list.isEmpty ? "your default list" : TextLine.clean(reminder.list, max: ChatData.maxName)
         let details = [reminder.due.map { "Due \(Self.when($0, day: reminder.dueIsDay))" } ?? "No due time", "List: \(list)"]
         let intent = ToolIntent(action: "Add the reminder \u{201C}\(reminder.title)\u{201D}", content: reminder.notes, details: details)
         return .change(intent) { [store] in Self.said("Added", try await store.add(reminder)) }
@@ -208,8 +208,8 @@ struct DeviceCalendar: Sendable {
         let id = try Self.id(args)
         guard let reminder = try await store.reminder(id: id) else { throw ToolFailure.noItem("reminder") }
         guard !reminder.done else { return .answer(.done(Self.said("Already done:", reminder))) }
-        let name = ChatData.clean(reminder.title, max: Self.maxTitle)
-        var details = ["List: \(ChatData.clean(reminder.list, max: ChatData.maxName))"]
+        let name = TextLine.clean(reminder.title, max: Self.maxTitle)
+        var details = ["List: \(TextLine.clean(reminder.list, max: ChatData.maxName))"]
         if let due = reminder.due { details.insert("Due \(Self.when(due, day: reminder.dueIsDay))", at: 0) }
         let intent = ToolIntent(action: "Mark \u{201C}\(name)\u{201D} done", details: details)
         return .change(intent) { [store] in Self.said("Marked done", try await store.complete(id: id)) }
@@ -233,9 +233,9 @@ struct DeviceCalendar: Sendable {
         guard let name = SphinxTools.optional(key, in: args) else { return "" }
         let names = await store.calendars(entity)
         guard names.contains(name) else {
-            let known = names.map { "\u{201C}\(ChatData.clean($0, max: ChatData.maxName))\u{201D}" }.joined(separator: ", ")
+            let known = names.map { "\u{201C}\(TextLine.clean($0, max: ChatData.maxName))\u{201D}" }.joined(separator: ", ")
             throw ToolFailure(errorDescription: "There is no \(entity == .events ? "calendar" : "list") called "
-                + "\u{201C}\(ChatData.clean(name, max: ChatData.maxName))\u{201D} that Peel can add to. There are: \(known).")
+                + "\u{201C}\(TextLine.clean(name, max: ChatData.maxName))\u{201D} that Peel can add to. There are: \(known).")
         }
         return name
     }
@@ -252,16 +252,16 @@ struct DeviceCalendar: Sendable {
     /// What the model reads of one event: its times (the Mac's local time), id, calendar, title and place.
     static func describe(_ event: CalendarEvent) -> String {
         let when = event.allDay ? "\(stamp(event.start, day: true)) all day" : "\(stamp(event.start)) to \(stamp(event.end))"
-        var line = "\(when) (id=\(ChatData.clean(event.id, max: maxID))) [\(ChatData.clean(event.calendar, max: ChatData.maxName))]: "
-            + ChatData.clean(event.title, max: ChatData.maxText)
-        if let location = event.location, !location.isEmpty { line += " · at \(ChatData.clean(location, max: ChatData.maxText))" }
+        var line = "\(when) (id=\(TextLine.clean(event.id, max: maxID))) [\(TextLine.clean(event.calendar, max: ChatData.maxName))]: "
+            + TextLine.clean(event.title, max: ChatData.maxText)
+        if let location = event.location, !location.isEmpty { line += " · at \(TextLine.clean(location, max: ChatData.maxText))" }
         return line
     }
 
     static func describe(_ reminder: CalendarReminder) -> String {
         let due = reminder.due.map { "due \(stamp($0, day: reminder.dueIsDay))" } ?? "no due time"
-        return "\(reminder.done ? "[done] " : "")\(due) (id=\(ChatData.clean(reminder.id, max: maxID))) "
-            + "[\(ChatData.clean(reminder.list, max: ChatData.maxName))]: \(ChatData.clean(reminder.title, max: ChatData.maxText))"
+        return "\(reminder.done ? "[done] " : "")\(due) (id=\(TextLine.clean(reminder.id, max: maxID))) "
+            + "[\(TextLine.clean(reminder.list, max: ChatData.maxName))]: \(TextLine.clean(reminder.title, max: ChatData.maxText))"
     }
 
     static func line(_ event: CalendarEvent) -> String { "- " + describe(event) }

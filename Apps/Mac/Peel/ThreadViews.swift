@@ -76,6 +76,7 @@ struct ThreadSummaryLine: View {
         Button {
             ThreadPanel.opening { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }
         } label: {
+            VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: Theme.Space.sm) {
                 ParticipantAvatars(participants: summary.participants, chat: summary.chat, inTribe: inTribe)
                 Text(Formatting.replies(summary.count))
@@ -86,16 +87,20 @@ struct ThreadSummaryLine: View {
                         .font(Theme.font(12, .bold))
                         .foregroundStyle(Theme.text)
                 }
+                // Just the time: the preview below already names who replied.
                 if let latest = summary.latest {
-                    let who = model.sender(of: latest).label
                     TimelineView(.everyMinute) { context in
-                        Text("\(who) replied \(Formatting.relative(latest.date, now: context.date))")
+                        Text(Formatting.relative(latest.date, now: context.date))
                             .font(Theme.font(12))
                             .monospacedDigit()
                             .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                     }
                 }
+            }
+            if let latest = summary.latest {
+                LastReplyPreview(message: latest)
+            }
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
@@ -111,6 +116,22 @@ struct ThreadSummaryLine: View {
             }]
         }
         .help("Open thread")
+    }
+}
+
+/// The newest reply's words under a thread's line, "Name: text" on one
+/// line, smaller than the original. Its sender's photo is already in the
+/// avatars above.
+struct LastReplyPreview: View {
+    @Environment(AppModel.self) private var model
+    let message: Message
+
+    var body: some View {
+        let sender = model.sender(of: message)
+        (Text(sender.label + ": ").font(Theme.font(12, .semibold)).foregroundColor(sender.hue.name)
+            + Text(message.threadReplyPreview).font(Theme.font(12)).foregroundColor(Theme.secondaryText))
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 }
 

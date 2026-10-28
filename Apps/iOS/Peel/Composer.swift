@@ -24,6 +24,8 @@ struct PhoneComposer: View {
     @State private var mention: String?
     @State private var mentionable: [TribeMember] = []
     @State private var insertion: MentionInsertion?
+    @State private var recorder = VoiceRecorder()
+    @Environment(\.scenePhase) private var scenePhase
 
     private var files: [URL] { model.pendingFiles[composer] ?? [] }
 
@@ -74,29 +76,62 @@ struct PhoneComposer: View {
                 FilesTray(files: files) { model.removeFile($0, from: composer) }
             }
             HStack(alignment: .bottom, spacing: 0) {
-                ComposerTextField(
-                    text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0,
-                    mention: $mention, insertion: insertion
-                )
-                .padding(.leading, 16)
+                if recorder.state.isRecording {
+                    VoiceRecordingIndicator(state: recorder.state)
+                } else {
+                    ComposerTextField(
+                        text: draft, placeholder: placeholder, focusRequest: model.composerFocus[composer] ?? 0,
+                        mention: $mention, insertion: insertion
+                    )
+                    .padding(.leading, 16)
+                }
                 if let paysTo, composer.chat != nil, composer.thread == nil {
                     ComingButton(systemImage: "bolt", label: "Send sats",
                                  note: "Sending sats to \(paysTo) from here is coming. Send from the Mac for now.")
+                        // Hidden while the mic is held, keeping its space so
+                        // the mic does not move under the finger.
+                        .opacity(recorder.state.isRecording ? 0 : 1)
+                        .allowsHitTesting(!recorder.state.isRecording)
+                        .accessibilityHidden(recorder.state.isRecording)
                 }
                 if canSend {
-                    SendButton { Task { await model.sendDraft(from: composer) } }
+                    // A restore that settled with no name to recover leaves
+                    // this empty until it is set (onboarding asks for one
+                    // then; this is the backstop).
+                    let hasName = model.myAlias?.nilIfEmpty != nil
+                    SendButton(enabled: hasName) { Task { await model.sendDraft(from: composer) } }
                 } else {
-                    ComingButton(systemImage: "mic", label: "Record a voice message",
-                                 note: "Voice messages are coming.")
+                    HoldToRecordButton(recorder: recorder) { file in sendVoice(file) }
                 }
             }
+            if recorder.denied {
+                Text("Allow the microphone in Settings to record voice messages.")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, Theme.Space.sm)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { recorder.cancel() }
         }
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.touchTarget / 2, style: .continuous))
     }
 }
 
-/// Send: a 32 pt filled circle with an arrow, in a 44 pt target.
+extension PhoneComposer {
+    /// A recording goes as one voice message (an audio attachment) through
+    /// the model's send path, to a contact or a tribe alike.
+    fileprivate func sendVoice(_ file: URL) {
+        model.addFiles([file], to: composer)
+        Task { await model.sendDraft(from: composer) }
+    }
+}
+
+/// Send: a 32 pt filled circle with an arrow, in a 44 pt target. Dimmed and
+/// inert without a name to send under (`enabled`).
 private struct SendButton: View {
+    var enabled = true
     let action: () -> Void
 
     var body: some View {
@@ -105,12 +140,14 @@ private struct SendButton: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Theme.buttonText)
                 .frame(width: 32, height: 32)
-                .background(Theme.button, in: Circle())
+                .background(Theme.button.opacity(enabled ? 1 : 0.4), in: Circle())
                 .frame(width: Theme.touchTarget, height: Theme.touchTarget)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .accessibilityLabel("Send")
+        .accessibilityHint(enabled ? "" : "Set your name first, in You")
     }
 }
 

@@ -458,6 +458,19 @@ Three things Tom saw on his own account, each checked before the fix:
   server answered without an image is not asked for again, a network
   failure is). The CLI gained `--photo <https url>` (`Engine.setPhotoURL`),
   so development accounts can send a photo; before, Peel always sent none.
+  A second cause was the URL's form. The official apps build the photo
+  link from the memes-server setting (Profile), which the user can edit,
+  so it may lack a scheme, be `http://`, or carry a doubled scheme, and
+  they render it through `removeDuplicatedProtocol().trim()`; Peel's strict
+  `httpsOnly` dropped all of those. `String.recoverablePhotoURL` now trims,
+  collapses repeated schemes, accepts `//host/p` and `host.tld/p`, upgrades
+  http to https and percent-encodes; `SenderInfo` applies it on decoding
+  (and reads `photo_url`, then `photoUrl`, `sender_pic`, `senderPic`;
+  an oddly typed optional field no longer discards the sender), so message
+  rows, thread participants, tribe members and the own-photo recovery all
+  get the normalised link. `httpsOnly` stays strict for tribe images and
+  settings. The exact payload from the user's official Mac app still has
+  to be confirmed on a Mac.
 - **A tribe opened a second time was blank until scrolled.** The message
   list is now a fresh view per chat (`.id`, from `fix/blank-conversation`)
   and is made again once the chat's messages have loaded, so
@@ -1302,9 +1315,11 @@ Engine and storage (PeelCore):
   0.5 (at most 1024 px) posted in the clear to the memes server's `/public`
   route; `https://<memes host>/public/<muid>` becomes the photo. The muid is
   checked (ASCII letters, digits, `-_=`) before it goes into a URL.
-- Own photo recovery also runs once on start, for accounts restored before
-  the restore learned it: only when no photo was ever set on this Mac, from
-  the newest own direct message (tribe copies skipped).
+- Own profile recovery (`recoverOwnProfile`) also runs on start, for accounts
+  restored before the restore learned it, and after every history sync until
+  settled: the name when none is stored, the photo when none was ever set on
+  this Mac (stored, even empty, wins), from the newest own messages to
+  contacts (tribe copies skipped).
 - `ImageDecoding.thumbnail`: one set of ImageIO options for attachments,
   avatars and the profile photo.
 - `PeelError.readable`: system network and file errors in a short sentence
@@ -3294,3 +3309,31 @@ Xcode's debug dylib, which the signing left unsigned. On a stack running
 for over an hour the tribes server refused the peer's posts ("Upstream
 node set CLTV to less than the CLTV set by the sender"); restarting its
 mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.
+
+## The last reply on a thread's row (2026-10-26)
+
+A collapsed thread's row (Mac `ThreadSummaryLine`, iPhone `ThreadSummaryButton`) now also shows the newest reply's words under its reply count and "replied …" label: smaller, as "Name: text" on one line level with the reply count (the sender's photo is already in the avatars beside it); the label beside the count is just the time, since the preview names who replied. `ThreadSummary.latest` already carried the message from `threadsSQL`'s `latestID` (one query for all rows), so no storage change. `Message.threadReplyPreview` (PeelCore) is the one string: text cut at 120 characters, else "Photo", "Video", "Voice message", "File", "Payment", "Payment request", "Call". Tested in `MessageTests`; the Apple UI was not built on this Linux pod.
+
+## Voice messages on the iPhone (2026-10-27)
+
+Built: hold the mic in the composer to record, release to send, slide left or
+up to cancel (under a second is dropped). Recording is 16 kHz mono 16-bit WAV
+(`audio.wav`, `audio/wav`): what the Mac app's `getFileAndMime` names a
+recording and what the Sphinx apps play, so it goes as an ordinary type 6
+attachment (same memes-server sign-in, media key and send path, contacts and
+tribes). Rows with an audio attachment show play/pause, a seekable bar and
+"current / total" (`VoiceBubble`). The rules are in `VoiceMessage.swift`
+(tested); `NSMicrophoneUsageDescription` is set on both targets, and the
+Mac's entitlements already carry `device.audio-input`. The Mac has it too:
+hold the mic in the composer (it stands where Send does while there is
+nothing to send), release to send, drag away past the cancel distance or press
+Escape to cancel; its permission is `AVCaptureDevice`'s, and a refusal says so
+with a button to System Settings. The recorder, the player, the seek bar and
+the recording indicator are shared (`Apps/Shared/Voice`: `VoiceRecorder`,
+`VoicePlayer`, `VoiceControls`), with `#if os(iOS)` only for the audio session,
+permission and haptic (`UIImpactFeedbackGenerator` / `NSHapticFeedbackManager`);
+each app's `VoiceStyle` gives its type and sizes. On the Mac an audio message's
+card shows `VoiceControls` once the file is there, and its old Load / failed
+states before. Open: a voice message and the Mac's video player (`MediaPlayback`)
+do not pause each other; not built or run here (no Swift toolchain on the
+dev server), so the phone and Mac builds are still to be run.

@@ -8,13 +8,17 @@ import PeelUI
 /// swallowing the Space that locks needs it; every event but that Space (and
 /// the Escape that cancels, and the Return that finishes) goes on untouched. Without the permission an
 /// active tap needs it falls back to a listen-only one, where nothing can
-/// be swallowed. Never started before Input Monitoring is granted.
+/// be swallowed. Never started before Input Monitoring is granted. While
+/// Settings waits for a new key the tap records it instead (`record`),
+/// swallowing each press (an active tap only); releases go on.
 final class DictationHotkeyTap: @unchecked Sendable {
     /// What the tap says about an event: the machine's answer is made here, on
     /// the tap's thread, since swallowing must be decided before it returns.
     typealias Handler = @Sendable (DictationStateMachine.Input) -> Bool
     /// The key is down according to the system, for the watchdog's stuck-key check.
     typealias IsActive = @Sendable () -> Bool
+    /// What was pressed while choosing a key, told from the tap's thread.
+    typealias Recorder = @Sendable (HotkeyRecording.Outcome) -> Void
 
     private static let spaceKey = Int64(kVK_Space)
     private static let escapeKey = Int64(kVK_Escape)
@@ -24,7 +28,9 @@ final class DictationHotkeyTap: @unchecked Sendable {
     private let handler: Handler
     private let isActive: IsActive
     private let lock = NSLock()
-    private let hotkey: HotkeyConfig
+    private var hotkey: HotkeyConfig
+    private var recorder: Recorder?
+    private var recording = HotkeyRecording()
     private var thread: Thread?
     private var runLoop: CFRunLoop?
     private var tap: CFMachPort?
@@ -42,6 +48,16 @@ final class DictationHotkeyTap: @unchecked Sendable {
 
     var isRunning: Bool { lock.withLock { thread != nil } }
 
+    func setHotkey(_ new: HotkeyConfig) { lock.withLock { hotkey = new } }
+
+    /// Until a key is chosen or Escape is pressed, or `record(nil)`: each
+    /// key press goes to `recorder` and is swallowed, never to the machine.
+    func record(_ recorder: Recorder?) {
+        lock.withLock {
+            self.recorder = recorder
+            recording = HotkeyRecording()
+        }
+    }
 
     func start() {
         guard !isRunning else { return }
@@ -122,7 +138,7 @@ final class DictationHotkeyTap: @unchecked Sendable {
     /// the system's flags say it is not down, so end it.
     private func releaseIfStuck() {
         guard isActive() else { return }
-        let key = hotkey
+        let key = lock.withLock { hotkey }
         let down = key.isDown(flags: CGEventSource.flagsState(.combinedSessionState).rawValue)
             ?? CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(key.keyCode))
         if !down { _ = handler(.hotkeyUp) }
@@ -134,13 +150,18 @@ final class DictationHotkeyTap: @unchecked Sendable {
     private func receive(type: CGEventType, event: CGEvent) -> Bool {
         // Peel's own ⌘V, typing dictated text: not the user's key.
         if event.getIntegerValueField(.eventSourceUserData) == DictationTextInserter.eventMarker { return false }
-        switch type {
-        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = lock.withLock({ self.tap }) { CGEvent.tapEnable(tap: tap, enable: true) }
             releaseIfStuck()
             return false
+        }
+        // One read per event: this runs for every key on the Mac.
+        let (key, recorder) = lock.withLock { (hotkey, self.recorder) }
+        // A dictation under way keeps its key until it ends, so its release
+        // is never taken for a choice.
+        if let recorder, !isActive() { return record(type: type, event: event, to: recorder) }
+        switch type {
         case .flagsChanged:
-            let key = hotkey
             guard key.isModifier, Int64(key.keyCode) == event.getIntegerValueField(.keyboardEventKeycode),
                   let down = key.isDown(flags: event.flags.rawValue) else { return false }
             return handler(down ? .hotkeyDown(isRepeat: false) : .hotkeyUp)
@@ -150,18 +171,51 @@ final class DictationHotkeyTap: @unchecked Sendable {
             if code == Self.spaceKey { return handler(.spaceDown(isRepeat: isRepeat)) }
             if code == Self.escapeKey { return handler(.escapeDown) }
             if Self.returnKeys.contains(code) { return isRepeat ? false : handler(.returnDown) }
-            let key = hotkey
             if !key.isModifier, code == Int64(key.keyCode) { return handler(.hotkeyDown(isRepeat: isRepeat)) }
             return isRepeat ? false : handler(.otherKeyDown)
         case .keyUp:
             let code = event.getIntegerValueField(.keyboardEventKeycode)
             if code == Self.spaceKey { return handler(.spaceUp) }
-            let key = hotkey
             if !key.isModifier, code == Int64(key.keyCode) { return handler(.hotkeyUp) }
             return false
         default:
             return false
         }
+    }
+
+    /// Choosing a key: presses are swallowed, and what they mean is told;
+    /// a choice or Escape ends it.
+    private func record(type: CGEventType, event: CGEvent, to recorder: Recorder) -> Bool {
+        let code = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+        let character = type == .keyDown ? Self.character(of: event) : nil
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        let outcome: HotkeyRecording.Outcome = lock.withLock {
+            let outcome: HotkeyRecording.Outcome = switch type {
+            case .flagsChanged: recording.flagsChanged(code: code, flags: event.flags.rawValue)
+            case .keyDown: recording.keyDown(code: code, character: character, isRepeat: isRepeat)
+            default: .pass
+            }
+            switch outcome {
+            case .chosen, .cancel: self.recorder = nil
+            default: break
+            }
+            return outcome
+        }
+        switch outcome {
+        case .pass: return false
+        case .swallow: return true
+        case .refused, .chosen, .cancel:
+            recorder(outcome)
+            return true
+        }
+    }
+
+    /// What a key types, to name it.
+    private static func character(of event: CGEvent) -> String? {
+        var length = 0
+        var chars = [UniChar](repeating: 0, count: 4)
+        event.keyboardGetUnicodeString(maxStringLength: chars.count, actualStringLength: &length, unicodeString: &chars)
+        return length > 0 ? String(utf16CodeUnits: chars, count: length) : nil
     }
 }
 

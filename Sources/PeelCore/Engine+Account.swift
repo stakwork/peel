@@ -243,6 +243,24 @@ extension Engine {
         try set(.notificationText, shows)
     }
 
+    /// What an app's notification does; banner and sound unless chosen.
+    public func notificationStyle() throws -> NotificationPolicy.Style {
+        try storage.preference(.notificationStyle) ?? .default
+    }
+
+    public func setNotificationStyle(_ style: NotificationPolicy.Style) throws {
+        try set(.notificationStyle, style)
+    }
+
+    /// The name of the sound a notification plays; "" is the default.
+    public func notificationSound() throws -> String {
+        try storage.preference(.notificationSound) ?? ""
+    }
+
+    public func setNotificationSound(_ name: String) throws {
+        try set(.notificationSound, name)
+    }
+
     /// Which sidebar sections are open and shown in full; the defaults
     /// until one is saved, and for a field the saved one lacks.
     public func sidebarLayout() throws -> ChatSections.Layout {
@@ -263,6 +281,17 @@ extension Engine {
         try storage.set(String(decoding: try JSONEncoder().encode(workflows.sorted()), as: UTF8.self), for: .systemAutomationsOn)
     }
 
+    /// The Jamie picked for calls in each chat (`Setting.callJamie`).
+    public func callJamie() throws -> [String: String] {
+        JSON.decode([String: String].self, from: try storage.value(for: .callJamie)) ?? [:]
+    }
+
+    public func setCallJamie(_ picks: [String: String]) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        try storage.set(String(decoding: try encoder.encode(picks), as: UTF8.self), for: .callJamie)
+    }
+
     /// What an app shows of the account when it opens, read in one call off
     /// its actor. A setting that cannot be read is nil, as each getter's
     /// failure would be.
@@ -279,7 +308,10 @@ extension Engine {
         public let paymentConfirmationMsat: UInt64?
         public let boostAmountMsat: UInt64?
         public let notificationShowsText: Bool?
+        public let notificationStyle: NotificationPolicy.Style?
+        public let notificationSound: String?
         public let sidebarLayout: ChatSections.Layout?
+        public let callJamie: [String: String]?
         public let wordsConfirmed: Bool?
         public let connection: ConnectionState
         /// A restore from the words has not finished (`Setting.needsRestore`).
@@ -293,8 +325,9 @@ extension Engine {
             callServer: try? callServer(), pinTimeoutHours: try? pinTimeoutHours(),
             balanceMsat: try? storage.balanceMsat(),
             paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
-            notificationShowsText: try? notificationShowsText(), sidebarLayout: try? sidebarLayout(),
-            wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
+            notificationShowsText: try? notificationShowsText(),
+            notificationStyle: try? notificationStyle(), notificationSound: try? notificationSound(), sidebarLayout: try? sidebarLayout(),
+            callJamie: try? callJamie(), wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
         )
     }
 

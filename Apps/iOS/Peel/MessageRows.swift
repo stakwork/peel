@@ -32,6 +32,7 @@ struct ConversationRow: View, Equatable {
             VStack(spacing: 0) {
                 if !row.agentTools.isEmpty { AgentToolLines(tools: row.agentTools) }
                 MessageRowView(row: row, composer: composer, flashed: flashed)
+                if !row.agentArtifacts.isEmpty { AgentArtifactLines(artifacts: row.agentArtifacts) }
             }
         case .payment:
             PaymentRowView(row: row, composer: composer, flashed: flashed)
@@ -61,10 +62,26 @@ struct ConversationRow: View, Equatable {
 
 // MARK: - A message
 
+/// Tap a row that has a thread (a summary, 3+ messages) to open the thread.
+private struct OpensThread: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let summary: ThreadSummary?
+
+    func body(content: Content) -> some View {
+        if let summary {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }
+        } else {
+            content
+        }
+    }
+}
+
 /// A message as a flat row: on a run's first row the photo, the name in
 /// the sender's colour and the time; the rest of the run under it. Yours
-/// on a faint accent tint. Long press for its menu, swipe right to reply in
-/// its thread; for VoiceOver, one element with the menu as its actions.
+/// on a faint accent tint. Long press for its menu, swipe right to reply; a
+/// row with a thread summary opens the thread on tap; for VoiceOver, one element with the menu as its actions.
 struct MessageRowView: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
@@ -110,6 +127,7 @@ struct MessageRowView: View {
             }
         }
         .messageActions(actions, spoken: spoken)
+        .modifier(OpensThread(summary: row.summary))
     }
 
     /// One VoiceOver element: who, when, what, then boosts and replies.
@@ -259,10 +277,12 @@ struct QuoteBox: View {
     }
 }
 
-/// A call message: the call card's words, and Join through the model,
-/// which says calls are not on the phone yet (`CallProvider.unavailable`).
+/// A call message: the call card's words, and Join (or Open, on this call)
+/// through the model, asking first to leave a call you are on.
 private struct CallBlock: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+    @State private var pending: PendingCall?
     let link: CallLink
     let chat: String
 
@@ -276,13 +296,23 @@ private struct CallBlock: View {
                     .phoneFont(.row)
                     .foregroundStyle(Theme.text)
                 Spacer(minLength: Theme.Space.sm)
-                Button("Join") { Task { _ = await model.calls.join(link, in: chat, failureInChat: true) } }
+                if model.calls.isOnCall(link.room) {
+                    Button("Open") { router.callShown = true }
+                        .buttonStyle(.peel(.outline, size: .touch))
+                        .fixedSize()
+                } else {
+                    Button("Join") {
+                        PendingCall.join(link, chat: chat).ask(model, router, pending: $pending)
+                    }
                     .buttonStyle(.peel(.outline, size: .touch))
+                    .disabled(model.calls.joiningRoom != nil)
                     .fixedSize()
+                }
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, Theme.Space.sm)
         }
+        .callSwitchConfirmation($pending, model: model, router: router)
     }
 }
 
@@ -479,6 +509,7 @@ struct ThreadSummaryButton: View {
         Button {
             model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid))
         } label: {
+            VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: Theme.Space.sm) {
                 HStack(spacing: -5) {
                     ForEach(Array(summary.participants.prefix(3).enumerated()), id: \.offset) { _, person in
@@ -497,12 +528,21 @@ struct ThreadSummaryButton: View {
                         .foregroundStyle(Theme.text)
                 }
                 if let last = summary.lastDate {
-                    Text("Last reply \(Formatting.time(last))")
+                    Text(Formatting.time(last))
                         .phoneFont(.time)
                         .monospacedDigit()
                         .foregroundStyle(Theme.quietText(on: surface))
                         .lineLimit(1)
                 }
+            }
+            if let latest = summary.latest {
+                let sender = model.sender(of: latest)
+                (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
+                    + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
+                    .phoneFont(.time)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
+            }
             }
             .frame(minHeight: Theme.touchTarget)
             .contentShape(Rectangle())
@@ -646,6 +686,86 @@ struct AgentToolLines: View {
             }
         }
         .agentLine()
+    }
+}
+
+/// What an agent's reply points to, one quiet line each as on the Mac: its
+/// label and title, and where it opens. An org's file or app opens on that
+/// org's own strut in a sheet (`Stadeum.opening`, `OrgPageSheet`), else its
+/// https link in the system's browser; with neither, the line says why (one
+/// on the Mac's own strut, which only the Mac reaches).
+struct AgentArtifactLines: View {
+    let artifacts: [AgentArtifact]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // By position: a reply may name one thing twice.
+            ForEach(Array(artifacts.enumerated()), id: \.offset) { _, artifact in
+                AgentArtifactLine(artifact: artifact)
+            }
+        }
+        .agentLine()
+    }
+}
+
+private struct AgentArtifactLine: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+    @Environment(\.openURL) private var openURL
+    let artifact: AgentArtifact
+
+    var body: some View {
+        if let open {
+            Button(action: open) { line(where: whereTo, opens: true) }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens it")
+        } else {
+            line(where: whereTo, opens: false)
+        }
+    }
+
+    private func line(where place: String?, opens: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 11))
+                .accessibilityHidden(true)
+            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+                .foregroundStyle(Theme.text)
+                .layoutPriority(1)
+            if let place {
+                Text("· " + place)
+                    .truncationMode(.tail)
+            }
+            if opens {
+                Text("Open")
+                    .foregroundStyle(Theme.link)
+                    .fixedSize()
+            }
+        }
+        .lineLimit(1)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    /// How it opens here, if it does: on its org's strut, else its link.
+    /// Made again on the tap: the tokens may have been renewed since.
+    private var open: (() -> Void)? {
+        if let handle = artifact.handle, case .page = model.stadeum.opening(handle, title: artifact.title) {
+            return { if case .page(let page) = model.stadeum.opening(handle, title: artifact.title) { router.orgPage = page } }
+        }
+        return artifact.url.map { url in { openURL(url) } }
+    }
+
+    /// Where it is: the workspace, the link's host, or why it does not open here.
+    private var whereTo: String? {
+        guard let handle = artifact.handle else { return artifact.url?.host() }
+        switch model.stadeum.opening(handle) {
+        case .page(let page): return page.workspace
+        case _ where artifact.url != nil: return artifact.url?.host()
+        case .connectFirst: return "Connect Stadeum in You to open"
+        case .notPaired(let peer): return "@\(peer) isn't connected here"
+        case .onMac: return "On your Mac"
+        }
     }
 }
 

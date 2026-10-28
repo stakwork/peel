@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #324, after #323 (Ladybug's vector + fts extensions pinned by sha256 and downloaded from strut's own release, so a package can no longer get ones its core cannot load — build 3's workspace that would not open), #315 (the package loads them into its addon before naming them) and #319 (dictation learns respelled and re-split names, and a name fixed twice).
-b0533d6698a3c06fe635022d718bca72b0c2712e
+# stakwork/strut main at the merge of #368 (the default orchestrator ships no memory/* steps; Peel grants them), after #350–#363 (package apps, app uploads, package updates and subscriptions).
+8b56eb7bd38eb10b3935e91438ddc68351e64b67

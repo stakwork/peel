@@ -1,8 +1,9 @@
 # Phase 7 — iPhone
 
-Last updated 2026-10-14. **A proposal for Tom's review.** Built so far: I1
-(`PeelUI`, on `ios/peelui`) and I2 (the first iPhone app, on `ios/app`;
-status under "I2: the first iPhone app" below).
+Last updated 2026-10-26. **A proposal for Tom's review.** Built so far: I1
+(`PeelUI`, on `ios/peelui`), I2 (the first iPhone app, on `ios/app`;
+status under "I2: the first iPhone app" below) and I6 (calls; see "I6:
+calls" below).
 Resumed 2026-10-13 (paused since 2026-10-08). It builds on
 [../agent-brain.md](../agent-brain.md) (the Mac is the brain, the phone is a
 remote), [../jobs-architecture.md](../jobs-architecture.md) (jobs run in
@@ -112,6 +113,13 @@ never sleeps. Later the same code runs headless on Linux.
 > not the brain's Peel, runs the agent; strut stays on loopback on the Mac,
 > and a direct path is optional (foundation.md, decision 4). See
 > [../agent-architecture.md](../agent-architecture.md).
+
+> **Amended (2026-10-26):** the phone still never talks to the brain's
+> strut, but it does talk to its **orgs'** struts: paired with Stadeum as a
+> device of its own, it opens a deliverable or an app the agent's DM names
+> on that org's own strut, with its own person token for the org. See
+> "Org pages on the iPhone" below and strut's specs/DESKTOP.md, "A device
+> with no strut of its own".
 
 ## The shape
 
@@ -401,11 +409,18 @@ Threads list's rows were not drawn (`ThreadSummary` has no public init).
 - **Calls** ask `CallProvider.unavailable` first, so the phone says calls
   aren't here yet before posting a call message.
 
+**Later (video and files):** received video plays in its row
+(`VideoTile`, `VideoPlayback`: auto-download up to `Engine.autoDownloadLimit`,
+a tap loads a larger one), PDFs and other files are a `FileCard` that
+previews in Quick Look and shares through the share sheet (`FileCopy` names
+the cached file). `AttachmentFormat` moved to PeelUI for both apps. Not
+built: paid attachments still say "Buy it on the Mac"; Photos does not
+offer video; not built or run on a device yet.
+
 **Not built, and why:** voice messages (the mic says they are coming);
 the send-sats bolt in a DM says sending from a chat is coming (no phone
 send sheet yet, F2c); link cards (the Mac's are AppKit forms; the link
-stays in the text); members and details under More; playing video and
-audio, saving and buying attachments, the full-size viewer; GIFs do not
+stays in the text); members and details under More; buying attachments, the full-size viewer (video and files: see Later above); GIFs do not
 animate; the agent DM has `isAgent` (AGENT, "Ask Peel", no bolt) but
 nothing passes it until the model knows the agent's chat.
 
@@ -608,6 +623,196 @@ messages", without the jump.
 - Anchors live while Peel runs. Older pages are dropped when a chat is
   left, so a place in them is not restored. Not checked: a jump from a
   notification.
+
+### Org pages on the iPhone (2026-10-26, `feature/phone-org-pages`)
+
+**Built.** A deliverable the agent's DM names now opens on the phone. The
+Mac opens one through its own strut's read-through (`/peers/<org>/…`), on
+loopback, which the phone cannot reach; the org's strut faces the internet
+behind its own gate, so the phone reads it directly, as strut's
+specs/DESKTOP.md ("A device with no strut of its own", stakwork/strut#339)
+describes:
+
+- **Pairing.** Hive's device flow moved from PeelAgent to PeelCore
+  (`Hive.swift`: `HiveClient`, `HiveLink`, `HivePeer`, and `answer(to:)`,
+  the poll loop the Mac and the phone now share), with the two helpers it
+  needed (`TextLine.clean`, ChatData's cleaner; `Date(iso8601:)`). The
+  phone pairs as a device of its own (`PhoneStadeum`): You › Stadeum,
+  Connect Stadeum, the code, Open Stadeum to approve it in Safari; the
+  credential and each org's token in `Profile.hive`; renewed when Peel
+  comes to the front and the link is due; a revoke clears it and says to
+  connect again; Disconnect. Locking or forgetting the account lets all of
+  it go (`close`, on `phase` leaving `.ready`; the phone's profile is always
+  `default`, so a pairing or renewal from before is told apart by a
+  generation count and keeps nothing). A development profile pairs with
+  `-hiveURL`, as on the Mac (`HiveClient(for:)`).
+- **The cards.** An agent reply's `metadata.peel.artifacts` are lines under
+  it (`AgentArtifactLines`), as on the Mac: label and title, then the
+  workspace and Open; "On your Mac" for one on the brain's own strut;
+  "Connect Stadeum in You to open" before pairing; else its https link, if
+  it has one, opens in Safari.
+- **The page.** `AgentArtifact.Handle.onOrg` takes the brain's
+  `/peers/<org>` hop off (a second hop stays, for the org's own
+  read-through) and `StrutUI.page` builds the org's UI address alone
+  (`/lab/?artifact=…&solo=1`, `?app=<name>&solo=1`), the address
+  `MemoryServer.page` now builds through too. `OrgPageSheet` shows it in a
+  `WKWebView` whose store keeps nothing: the token as the first request's
+  bearer (a swarm's gate wants a credential for the page itself) and set
+  as `sessionStorage["strut/apiKey"]` by a script before the page's own,
+  in strut's UI's folder on the org's origin only (a swarm's `/lab/`
+  shares its host), never in an address. Navigation keeps to that folder,
+  its `srcdoc` and blob frames; strut's "open in a new tab" loads in place,
+  Back returning; a link elsewhere goes to Safari only from strut's own
+  page (never a frame, which holds the org's or an agent's content) and on
+  the person's own tap (`TouchWebView`); nothing downloads.
+
+**Checked.** `swift test`: all pass but `BundledBridgeTests.theStagedRunnerExitsWhenPeelsPipeCloses`,
+which needs a bridge staged after the runner pin moved to sphinx#396
+(10-25; this Mac's stage is from 10-23). `OrgPageTests` cover the mapping
+and the address. The iPhone app builds for the simulator (an arm64
+simulator slice of the core built from v0.8.39 for it) and the Mac app
+builds. `OrgPageSheet` itself, compiled into a throwaway simulator app
+against a local strut with only a person token: an app's page rendered
+and its `step_run` call went through, a job's markdown file rendered with
+its image, and its "Open in new tab" loaded the file in place (WebKit shows no
+markdown page, so the viewer stays). Not seen on screen: You › Stadeum
+and the cards in the real app (no account on the simulator), and a real
+Stadeum pairing.
+
+**Review.** An independent review (an agent that did not write it) found
+no way for the token to reach an address, a log, another origin or
+Safari. Applied from it: Stadeum let go with the account (the sheet with
+the previous person's token could have come back after Forget, and a
+pairing in flight could have written the next account's item); links out
+only from strut's own page; "open in a new tab" loads in place; the https
+fallback; renewal races (a cancelled or superseded renewal keeps and says
+nothing); a failed Keychain read clears the link; the folder scoping; the
+revoke said once. Not applied: the iPhone's `PhoneStadeum` and the Mac's
+`HiveState` are two copies of one pairing machine (status, connect,
+cancel, renew, revoke), against "one owner". The Mac's is tied to its
+strut and runner (peers synced, rooms' tokens handed to the bridge, a
+revoked link kept to show), and folding them needs a Mac check run; it
+goes with the Apps list PR, which needs the shared state anyway (done
+there: "Apps on the iPhone, one Stadeum" below). Shared
+now: the client and the poll loop (`answer(to:)`), and the choice of Hive
+(`HiveClient(for:)`).
+
+**Not done.** The Apps list (each workspace's pinned apps on the phone)
+is the next PR. A deliverable on the brain's own strut stays words on the
+phone.
+
+### Apps on the iPhone, one Stadeum (2026-10-26, `feature/phone-apps-list`)
+
+**Built.** The review's open finding above, and the Apps list.
+
+- **One Stadeum.** The iPhone's `PhoneStadeum` and the Mac's `HiveState`
+  are now one model in PeelUI, `Stadeum` (`AppModel.stadeum`): open with
+  the account, Connect (`answer(to:)`), renew hourly (and on the iPhone
+  when it comes to the front, `renewIfDue`), the revoke rule (the Mac's:
+  orgs kept and listed, none `live`, Connect again), close, Disconnect,
+  and a generation count so nothing begun before a close or a Disconnect
+  keeps or says anything. What only the Mac does around it is its
+  `StadeumHost` (`MacStadeumHost`): the "Always allow" rules per workspace
+  before a link is kept, strut started again for another person or the
+  peers synced and the bridge handed the tokens when the orgs change, the
+  same on a revoke, and on Disconnect runner told to let go and strut
+  started again. The Mac's behaviour is unchanged.
+- **The apps.** `WorkspaceApp` moved to PeelCore with its listing
+  (`listing`, one reader for strut's `GET /apps`), A–Z, search and
+  source; its icon table to `Apps/Shared` (`WorkspaceAppIcon`). One read
+  for both, `Stadeum.readApps`: the Mac's own and the workspaces' through
+  its strut, the iPhone's workspaces' each on its own strut with the
+  person's token (`WorkspaceApp.pinned(on:)`). On the phone, Chats gets an
+  Apps row once Stadeum is connected (`AppsScreen`): the pinned apps, A–Z,
+  with their icon, what they are for, where they come from when there are
+  several workspaces, and their version; a tap opens one in the org page
+  sheet (`Stadeum.opening(_ app:)`, `?app=<name>&solo=1` on the org);
+  pulling reads them again.
+- **The page.** `OrgPageRequest` (PeelUI) is the page and its token for
+  both openings, with its origin, folder, first request and hand-over
+  script, now unit tested; `PhoneRouter.orgPage` is the sheet, closed when
+  its workspace stops being live and when the account locks.
+
+**Checked.** `StadeumTests` (pairing against a stand-in Hive, the host
+told, kept with the account; a revoke keeping the orgs but using none,
+still revoked when opened again, Hive not asked again; close; openings;
+the apps read and an unreadable workspace; the page's folder and
+hand-over), `WorkspaceAppTests` (a workspace's pinned apps read on its
+own strut with the bearer), with `HiveTests` and `OrgPageTests`; both
+apps build; a person token's `GET /apps` on a local strut gives the
+fields the reader takes. Not seen on screen: the Apps screen in the real
+app (no account on the simulator).
+
+**Review.** An independent review found the Mac step for step the same
+and no token leak. Applied from it: the revoke kept with the link
+(`HiveLink.revokedAt`): the iPhone opens Stadeum at every unlock, which
+had forgotten it and used the revoked tokens until the next renewal's
+401 (and for up to a week offline); no renewal is tried while revoked; a
+revoke found mid-pairing leaves the code on the screen (coming back from
+Safari had replaced it); `readingApps` observed (the screen showed "No
+apps yet" while reading, and could stay on the spinner); unreadable
+workspaces said (`unreadApps`) instead of "No apps yet"; only workspaces
+still live listed; the iPhone renews when due, not at every unlock; the
+Mac's Connect opens Stadeum itself when its agent did not open (it had
+done nothing); the router follows `.apps` to Chats' Apps; an app's words
+for the person moved from PeelCore to PeelUI. Two Mac differences kept,
+both harmless: on a revoke the strut and bridge sync runs in its own
+task, and Disconnect revokes the "Always allow" rules even when the
+Keychain delete fails.
+
+### Pairing that survives the trip to Safari (2026-10-27, `fix/iphone-stadeum-pairing`)
+
+**Found.** A developer paired an iPhone: Stadeum said "Approved, it
+finishes pairing on its own", and the iPhone never did. On the Mac the
+browser sits beside Peel, which keeps polling; on the iPhone, approving
+takes Peel off the screen, and three things could end the pairing after
+Hive's yes. The first poll back in Peel often went out on a connection
+the system dropped while Peel was away, and one error ended the pairing
+(`answer(to:)` threw it). Hive's 500 for a moment did the same. And a
+code approved but collected after its 10 minutes (signing in to Hive
+counts) said "The code ran out before it was approved", which Stadeum had
+just contradicted.
+
+**Built.** `answer(to:until:wait:)` polls again after a poll that reached
+no one (a dropped or refused connection, a timeout, no network:
+`unreached`; a certificate Peel will not trust still fails at once) or a
+5xx (`Unanswered`), until
+the code's end by this device's clock (`deadline`: `expiresIn` from when
+the code was asked for, never later than Hive's); past it, the last error
+is said. A refusal still ends it at once. `Stadeum.cameToFront` (from
+`AppModel.becameActive`, both apps, while unlocked) cuts the wait before
+the next poll short, so coming back from Safari collects at once; it also
+renews when due, which the iPhone's scene did itself before. A code Hive
+no longer has is said for what it is: past the deadline, "ran out before
+pairing finished", with the minutes to come back in; sooner, "Stadeum no
+longer has this code".
+
+**Checked.** `HiveTests` (a 5xx tried again and then said; a refusal not
+tried again; a port no one listens on tried again until the deadline) and
+`StadeumTests` (coming to the front polls a 600-second interval at once;
+the two expired messages), each failing with its fix taken out; the full
+`swift test`; the iPhone app built for the simulator. `scripts/risk.sh`:
+medium. Not seen: a real iPhone paired against Hive, nor You › Stadeum on
+screen (no account on the simulator).
+
+**Review.** `/code-review`, `/simplify` and `/security-review` (no
+findings). Applied: a certificate Peel will not trust fails at once
+rather than being retried for ten minutes (`unreached`); the wait holds
+`self` strongly (a released model would have polled with no wait); the
+front's shortcut is one flag only while a poll is in flight, so it never
+leaks into the next pairing; 429 counts as busy, as `Web.retryLater`
+judges it; `expiresIn` is range-checked like `interval`; `renewIfDue`
+internal; the tests share the stand-in Hive and no longer sleep. Not
+applied: an `AsyncStream` as the wake signal (cancelling the race with
+the sleep ends the stream, so a later wake would be lost); one shared
+transient-error helper (`PeelError.diagnosticKind` counts any unlisted
+code as network, `.badURL` included, which would be retried for ten
+minutes); the Mac now renews on coming to the front when due, and a
+renewal already in flight then runs beside a second (seconds' window,
+as the iPhone already had); a lost reply leaves a device in Stadeum's
+list that nothing holds (Hive's to say; it answers `expired_token` for
+expired, unknown and collected alike); a persistent 5xx re-mints the
+orgs' tokens each poll (Hive mints before it spends the code).
 
 ### The project
 
@@ -930,6 +1135,35 @@ What that means for Peel:
   `BGAppRefreshTask` catch-up. Never call `setPushToken` from Peel on a real
   account before then, since it would take the official app's pushes away.
 
+### I6: calls
+
+Status (built, not yet run: written without an Xcode build): the phone joins
+and starts LiveKit calls with the Mac's scope, through the same seam. Shared
+unchanged: `CallLink`, `CallServer`, `Engine+Calls`, `CallStore` and
+`AppModel.avatar(of:)`; `PhoneCalls`, which refused, is now `LiveKitCalls`
+making an `IOSCallSession` (Apps/iOS/Peel). The target links the `LiveKit`
+package product the Mac target uses (the same remote package reference).
+
+- **Built:** join and start (audio from the chat's Call menu, or video, the
+  camera on for the one who starts it), Join or Open on the call card,
+  mute, camera and flip camera, Leave, a tile per person with speaking and
+  muted marks, the focus layout (a tap; a screen someone shares takes it),
+  the running time and connection state, Rejoin, microphone and camera
+  permission asked on first use with Open Settings when refused, and a bar
+  over the tabs while the call screen is down. The audio session is
+  `playAndRecord` / `voiceChat` on joining and released on leaving.
+  `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` and
+  `UIBackgroundModes` = audio are `INFOPLIST_KEY_` build settings of the
+  iOS target (the project generates its Info.plist).
+- **Not built, as on the Mac or by choice:** screen sharing from the phone
+  (the Mac shares; the phone needs a broadcast extension; viewing another's
+  share works), the device menus (the system routes audio; flip replaces
+  the camera menu), keep on top, the header's live-call pill, CallKit and
+  VoIP push (the Mac has neither).
+- **To check by hand:** a call between the phone and a Mac, with video;
+  audio carrying on with the phone locked; permissions refused; leave and
+  rejoin; a Bluetooth headset.
+
 ## 6. The app (Liquid Glass)
 
 The design is [../design/iphone.md](../design/iphone.md), agreed by Tom on
@@ -939,8 +1173,8 @@ Payments and You, plus search (Tom, 2026-10-14); the agent is a DM in
 Chats, not a tab, and Automations is a screen pushed from Chats; glass only
 on floating chrome; the Mac's colours and their meanings.
 
-- **Calls** use LiveKit's iOS SDK behind `CallProvider`. CallKit and the
-  official app's VoIP push are later.
+- **Calls** use LiveKit's iOS SDK behind `CallProvider` (built, I6; see
+  "I6: calls"). CallKit and the official app's VoIP push are later.
 - **Quick capture** (the Mac's planned ⌃⌥Space) is an App Intent on the
   phone: "Ask Peel" from the Action button, Siri, a Control Center control
   and the share sheet, each sending a Talk message to the agent.
@@ -979,7 +1213,7 @@ client track is held up by S1.
 | **F2b** | C | Conversation, the Thread sheet and the composer | F1 |
 | **F2c** | C | Payments, You and Lock | F1 |
 | **I5** | C | Push: the extension, the shared Keychain group, `setPushToken` once the hub agrees | F2b, S4 |
-| **I6** | C | Calls | F2b |
+| **I6** | C | Calls (built; see "I6: calls") | F2b |
 | **B1** | R | The agent as a real contact: the `Agent` record (ready for more than one), its identity as a second engine on the brain, setup in Account › Agent, its contact row opening the Agent chat on the Mac | S2 |
 | **B2** | R | `RemoteInbox`, the envelope, ack, expiry and order; Talk turns from the DM into `AgentSession` | B1 |
 | **B3** | R | Commands for automations and status; deliveries to the DM | B2 |

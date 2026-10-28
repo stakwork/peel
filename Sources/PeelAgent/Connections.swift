@@ -120,10 +120,10 @@ extension AutomationsClient {
         try Self.mcpName(name)
         let probe = try await call("POST", "mcp-servers/\(name)/test", what: name)
         guard probe["ok"] == .bool(true) else {
-            return MCPProbe(tools: [], error: Self.masked(ChatData.clean(probe["error"]?.string ?? "It did not answer.", max: 300)))
+            return MCPProbe(tools: [], error: Self.masked(TextLine.clean(probe["error"]?.string ?? "It did not answer.", max: 300)))
         }
         let tools = probe["tools"]?.array?.compactMap { tool -> MCPProbe.Tool? in
-            tool["name"]?.string.map { MCPProbe.Tool(name: ChatData.clean($0, max: 80), gated: tool["gated"] != .bool(false)) }
+            tool["name"]?.string.map { MCPProbe.Tool(name: TextLine.clean($0, max: 80), gated: tool["gated"] != .bool(false)) }
         } ?? []
         return MCPProbe(tools: tools, error: nil)
     }

@@ -15,6 +15,10 @@ than one Mac and later an iPhone, and the personal agent's settings
 (budgets, permissions, connections) will be preferences too: designed for
 here, not built.
 
+Extended 2026-10-21: `chat_color` (import-only), `biometric_enabled` (iOS
+only, never enrolling) and `ai_agent_config` (a secret, Keychain only) now
+sync too (decisions 9 to 12); `pin_timeout` stays device-only.
+
 Three PRs: (a) this file, (b) the layer and the migration onto it, (c) the
 sync. Earlier notes: `05-parity.md`, "Settings sync" (2026-10-08), and
 `../design/README.md`, "Time zones" (the per-chat switch, already stored in
@@ -150,6 +154,9 @@ The keys (`DataSyncModels.swift:13-23`; iOS has the first six only):
 | The account's time zone (`timeZone`) | `setting`, IANA or "" | none (official zones are per chat or the device's) | **Synced**, Peel-only: `peel.time_zone` |
 | PIN timeout (`pinTimeoutHours`) | `setting`, hours, 0 = only at launch | `pin_timeout` | **This device only**; see decision 4 |
 | Notification text (`notificationText`) | `setting`, "0"/"1" | none | **This device only**; see decision 5 |
+| Colours others gave a person or chat | `preference` (`chat_color`, identifier the colour key) | `chat_color` | **Synced, import-only** (decision 9): shown as the nearest of the eight hues, never uploaded |
+| Face ID on/off (`BiometricUnlock`, Keychain) | `biometric_enabled` row = the person's wish; the PIN stays in the biometric Keychain item | `biometric_enabled` | **Synced on iOS only**, never silently enrolling (decision 10) |
+| The agent's model and key (`Profile.agentCredential`, Keychain) | the key only in the Keychain; a placeholder row holds the date | `ai_agent_config` | **Synced where there is an agent** (the Mac), the key only through the Keychain (decision 11) |
 | Mute levels | `chatState`, from the server | none (the server keeps them) | Unchanged: already account-wide |
 | Theme | none (Peel is always dark) | none | Nothing to sync |
 | Tribes, memes and call servers | `setting` | none | Account configuration, not preferences: stay in `setting` |
@@ -158,10 +165,13 @@ The keys (`DataSyncModels.swift:13-23`; iOS has the first six only):
 | Name and photo | `setting` | none (travel on messages; restore recovers the photo) | Not preferences: unchanged |
 
 Official keys Peel does not use (`private_photo`, `feed_status`,
-`feed_item_status`, `chat_color`, `pin_timeout`, `biometric_enabled`,
-`ai_agent_config`) and every key Peel does not know are kept exactly as the
-file has them. Later, `chat_color` could give a contact the colour the
-person sees on their phone (`PersonHue.swift` notes it); not in this phase.
+`feed_item_status`, `pin_timeout`) and every key Peel does not know are
+kept exactly as the file has them. `chat_color`, `biometric_enabled` and
+`ai_agent_config` are used since 2026-10-21 (decisions 9 to 11); on a
+device that does not sync `biometric_enabled` (the Mac, as the official
+Mac app) or `ai_agent_config` (no agent: the iPhone) they are kept as the
+file has them too. `chat_color` gives a person the colour the other
+device shows (`PersonHue.swift`).
 
 ## Architecture
 
@@ -297,8 +307,11 @@ it. CLI: `prefs-sync`. After applying anything, the engine emits
 
 **Limits:** the downloaded body is capped at 5 MB, and a file over that is
 neither read nor written. The file's contents are never logged and never
-stored by Peel; only registry keys reach the database, so `ai_agent_config`
-and its API key stay in memory for the length of one sync.
+stored by Peel; only registry keys reach the database. `ai_agent_config`
+is a registered secret now (decision 11): its API key is never in the
+database, a log, an error, the CLI or a preview; it lives in the Keychain
+and in memory for the length of one sync, and the `preference` row under
+its key holds a placeholder and the item's date.
 
 ### Migration (v24) and Tom's real data
 
@@ -359,6 +372,50 @@ and copying the real words into a development profile's plain file would
 break the rule that those hold throwaway accounts only. If Tom wants the
 check before his first sync, the way is an app-side dry run behind the
 PIN (not built; small, the engine's `previewPreferences` does the work).
+
+### The three official keys added 2026-10-21
+
+How the official apps do it (`DataSyncManager.swift`, `DataSyncModels.swift`,
+iOS and Mac): they apply every item of the file on each sync; a strictly
+newer local pending edit wins, ties go to the file.
+
+- **`chat_color`**: identifier the colour key (`<pubkey>-color` for a
+  contact, `chat-<ownerPubkey>-color` for a chat, `<senderAlias>-color` for
+  tribe members, and junk keys with local Core Data ids), value `#rrggbb`
+  (iOS writes `"#%06x"`, reads with or without `#`). The official apps write
+  each colour once (first one wins) and have no picker.
+- **`biometric_enabled`**: identifier `"0"`, `"true"`/`"false"`. iOS writes
+  it when the Face ID switch changes and applies it by setting a flag; the
+  Mac app ignores it.
+- **`ai_agent_config`**: identifier `"0"`, **not JSON** but
+  `"<provider>|<apiKey>|<agentName>"` (Anthropic or OpenAI, capitalised).
+  Parsed by splitting on "|": with three or more parts the name is the last
+  and the key everything between; with two there is no name; an empty key
+  is ignored. The official apps never write an empty key and never delete.
+  Every such string has a "|", so the official retyping (bool, int, double)
+  never changes it: always a fixed point.
+
+In Peel:
+
+- The registry knows import-only keys (`Entry.uploads`, false for
+  `chat_color`: `merged` never uploads or bootstraps a row of one, of any
+  date), opt-in keys (`Entry.optIn`: `biometric_enabled`, `ai_agent_config`
+  are in the merge only where `PreferenceCapabilities` names them, so
+  `Preferences.syncedKeys(enabling:)` and `merged(keys:)` take the active set)
+  and a **secret scope** (`PreferenceScope.secret`).
+- The app names the capabilities when an account opens
+  (`Engine.configurePreferences`, from `AppModel.attach`): `biometrics` where
+  `Platform.syncsBiometrics` (the iPhone) and the account has a PIN; the
+  agent credential where the platform has an agent (the Mac), an
+  `AgentCredentialSync` over `Profile.agentCredential`. A device without
+  them keeps those items in the file untouched.
+- A secret's value is never a `Change` or a `PreferenceRow`. `merged` is
+  given the credential as the Keychain holds it now (`secrets:`, for that
+  call) and returns `Merge.secrets` for the engine to hand to the
+  credential (`SyncedAgentCredential.keep`), `Merge.differing` for the app
+  to offer, and a placeholder row (`"redacted-secret"`) whose `updatedAt`
+  orders it like any item. An upload takes its value from `secrets`, never
+  from the row; none connected means none uploaded.
 
 ### The agent's settings, later
 
@@ -422,6 +479,58 @@ change to storage or sync:
    a restore row: an account signed up in Peel before sync and restored
    on a phone since, or restored by a build that wrote no such row, has
    none either. Changed after the second independent review (F2).
+
+9. **`chat_color` is import-only** (2026-10-21). Peel takes the file's
+   colours (stored lower case `#rrggbb`; a value that is not a colour is
+   refused like any, the local value kept and the file's date taken) and
+   never writes one: the official apps write each once from a random pick,
+   Peel has no picker, and replicating `syncChatColors` would only publish
+   the hash. A person shows in the nearest of the eight hues by hue angle
+   (`PersonHue(nearestTo:)`), looked up by `<alias>-color` for a tribe
+   member, then `<pubkey>-color`, then `chat-<pubkey>-color`, else the hash;
+   a named tribe member is not coloured by the tribe's own `chat-` key, and
+   keys with local numeric ids never match. Peel never stores a bare
+   all-digit hex (the official retyping would make it a number).
+10. **`biometric_enabled` syncs on iOS only and never silently enrols**
+    (2026-10-21). The Mac app neither writes nor applies it, so a Mac keeps
+    it as a pass-through. On iOS it is written only when the person turns
+    Face ID on (after the PIN step) or off, never because of a sync. A
+    value from the file is stored as the person's wish and enrols nothing:
+    Face ID needs the PIN typed (`BiometricUnlock.turnOn(pin:)`). "On" on
+    another device with Face ID off and available here shows an offer in
+    You ("Face ID is on on your other device", Turn on, through the PIN
+    step); "off" with Face ID on here turns it off, the safe direction, and
+    writes nothing back. Peel's biometric Keychain design is unchanged.
+11. **`ai_agent_config` is a secret kind** (2026-10-21), on devices with an
+    agent. Format exactly as official; `.anthropic` is "Anthropic",
+    `.openAI` "OpenAI", `.openRouter` "OpenRouter". **Known risk:** the
+    official apps may not know "OpenRouter" and read an unknown provider as
+    Anthropic (the person accepted this); on read a provider Peel does not
+    know (matched without case first) is not applied. The agent's name from
+    the file is kept next to the key in the Keychain item (an optional
+    `agentName`, backward compatible) and uploaded unchanged; "Sphinx
+    Agent" when there is none. The key is never in a database or log: the
+    row holds a placeholder and the date. Upload happens when the person
+    connects a key in the connect panel (`Engine.agentCredentialConnected`),
+    its value read from the Keychain then; disconnecting never deletes the
+    file's item and an empty key is never uploaded. A credential connected
+    before this existed has no date, so it is not uploaded until the person
+    connects again. **Import policy:** an item newer than the row (or new)
+    with no credential connected here goes into the Keychain (the
+    provider's recommended model, the name kept) and the running agent
+    reconnects as a manual connect does (`AgentSession.reloadConnection`,
+    then strut's `setModel`); the same item is not given back after a
+    disconnect. A different credential already connected is never
+    overwritten (spend and secret safety): it stays, the file's date is
+    taken, and the app offers it ("A different agent key from your other
+    device is available", in the connect panel) with an explicit "Use that
+    key instead" that fetches the file again and applies it
+    (`adoptSyncedAgentCredential`). An unreadable Keychain leaves the key
+    out of that sync. Open: the offer does not say which provider or name
+    the file's key is; no confirmation dialog beyond the button.
+12. **`pin_timeout` stays device-only** (2026-10-21): decision 4 holds.
+    Nothing reads or writes the official item; it passes through the file
+    byte for byte.
 
 ## Verification plan
 
@@ -528,3 +637,18 @@ change to storage or sync:
   a "not found" where no file was ever seen is not reported (it is the
   normal state of an account from before sync until a file exists); v24
   also dates the boost amount a "v22" build kept as confirmed.
+- 2026-10-21, `chat_color`, `biometric_enabled` and `ai_agent_config`
+  (decisions 9 to 12): `PreferenceSecrets.swift` (`AgentConfig`,
+  `SyncedAgentCredential`, `PreferenceCapabilities`), import-only, opt-in
+  and secret entries in the registry, the merge honouring them, the
+  engine's `configurePreferences`, `agentCredentialConnected`,
+  `adoptSyncedAgentCredential`, `setBiometricEnabled`, `syncedColours`,
+  `PersonHue(nearestTo:)`, the app's colour cache, Face ID offer and the
+  connect panel's offer, `prefs` printing `<redacted>` for the secret.
+  Tests: `SyncedPreferencesTests`, `PersonHueTests`, and the journeys in
+  `PreferencesJourneys` (the database and every profile file scanned for
+  the key). Not run: nothing was built or run when this was written
+  (no toolchain in that checkout); the official apps against a file Peel
+  wrote with the new keys, and the iOS and Mac UI, are unverified. The CLI
+  has no test target, so its redaction is tested through
+  `PreferenceRow.displayValue`.

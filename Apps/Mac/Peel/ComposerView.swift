@@ -29,6 +29,7 @@ struct Composer: View {
     @State private var highlighted = 0
     @State private var insertion: MentionInsertion?
     @State private var dismissedMention: String?
+    @State private var recorder = VoiceRecorder()
 
     private var files: [URL] { model.pendingFiles[composer] ?? [] }
 
@@ -36,8 +37,12 @@ struct Composer: View {
         Binding(get: { model.drafts[composer] ?? "" }, set: { model.drafts[composer] = $0 })
     }
 
+    /// A restore that settled with no name to recover leaves this empty
+    /// until it is set (onboarding asks for one then; this is the backstop).
+    private var hasName: Bool { model.myAlias?.nilIfEmpty != nil }
+
     private var canSend: Bool {
-        stop == nil && (!(model.drafts[composer] ?? "").trimmed.isEmpty || !files.isEmpty)
+        stop == nil && hasName && (!(model.drafts[composer] ?? "").trimmed.isEmpty || !files.isEmpty)
     }
 
     private func send() {
@@ -54,7 +59,7 @@ struct Composer: View {
         let typed = String(mention.dropFirst())
         let agent = model.isAgentChat(composer)
         if trigger == "/" { return agent ? MentionQuery.suggestions(ComposerSuggestion.commands, names: \.names, typed: typed) : [] }
-        if agent { return MentionQuery.suggestions(model.hive.live.map(ComposerSuggestion.init(workspace:)), names: \.names, typed: typed) }
+        if agent { return MentionQuery.suggestions(model.stadeum.live.map(ComposerSuggestion.init(workspace:)), names: \.names, typed: typed) }
         return MentionQuery.suggestions(mentionable, typed: typed).map(ComposerSuggestion.init(member:))
     }
 
@@ -135,13 +140,24 @@ struct Composer: View {
             HStack(alignment: .bottom, spacing: 2) {
                 leadingButtons
                 field
+                    // Kept (its draft and focus) but hidden while recording.
+                    .opacity(recorder.state.isRecording ? 0 : 1)
+                    .allowsHitTesting(!recorder.state.isRecording)
+                    .overlay {
+                        if recorder.state.isRecording { VoiceRecordingIndicator(state: recorder.state) }
+                    }
                     // As tall as the buttons on one line, its text level with them.
                     .frame(minHeight: PeelButton.Size.sm.height)
                     .padding(.leading, hasLeadingButtons ? 2 : 4)
                 trailingButton
             }
             .padding(Self.buttonsInset)
+            if recorder.denied {
+                MicrophoneDenied(openSettings: recorder.openSettings)
+            }
         }
+        .onChange(of: composer) { recorder.cancel() }
+        .onDisappear { recorder.cancel() }
         .background {
             // A click anywhere in the field that no button or the text takes
             // puts the cursor in the text.
@@ -212,9 +228,34 @@ struct Composer: View {
             .buttonStyle(.peel(.outline, size: .sm))
             .help("Stop the reply (Escape)")
             .accessibilityLabel("Stop")
+        } else if showsMic {
+            micButton
         } else {
             sendButton
         }
+    }
+
+    /// The mic stands where Send does while there is nothing to send, as on
+    /// the phone: files go in the chat's own composers, never the agent's.
+    private var showsMic: Bool {
+        acceptsFiles && (model.drafts[composer] ?? "").trimmed.isEmpty && files.isEmpty
+    }
+
+    /// Hold to record, release to send; move away or Escape cancels.
+    private var micButton: some View {
+        Image(systemName: "mic")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(recorder.state.isRecording ? Theme.destructive : Theme.secondaryText)
+            .frame(width: PeelButton.Size.sm.height, height: PeelButton.Size.sm.height)
+            .contentShape(Rectangle())
+            .holdToRecord(recorder) { file in
+                model.addFiles([file], to: composer)
+                Task { await model.sendDraft(from: composer) }
+            }
+            .help("Hold to record a voice message, release to send")
+            .accessibilityLabel("Record a voice message")
+            .accessibilityHint("Hold to record, release to send")
+            .accessibilityAddTraits(.isButton)
     }
 
     private var sendButton: some View {
@@ -230,8 +271,26 @@ struct Composer: View {
         .disabled(!canSend)
         // No Cmd-Return here: with a thread open two composers share the
         // window, and Return in the field already sends from the right one.
-        .help("Send (Return). Shift-Return for a new line.")
+        .help(hasName ? "Send (Return). Shift-Return for a new line." : "Set your name in Profile first")
         .accessibilityLabel("Send")
+    }
+}
+
+/// Said when the microphone is refused, with the way to allow it.
+private struct MicrophoneDenied: View {
+    let openSettings: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.Space.sm) {
+            Text("Peel can't use the microphone.")
+                .voiceNote()
+                .foregroundStyle(Theme.secondaryText)
+            Button("Open System Settings", action: openSettings)
+                .buttonStyle(.peel(.outline, size: .sm))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, Theme.Space.sm)
     }
 }
 

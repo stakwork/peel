@@ -27,10 +27,10 @@ extension Sender {
     /// A tribe member as their message names them (decoded from it), for
     /// whatever names someone else in a tribe: the rows, notes, mentions,
     /// notifications. Never you: `People` names you.
-    public init(member message: Message) {
+    public init(member message: Message, colours: [String: String] = [:]) {
         let details = message.senderDetails
         self.init(alias: details.alias, photoURL: details.photoURL,
-                  hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
+                  hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true, synced: colours))
     }
 }
 
@@ -146,12 +146,15 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     public struct People: Sendable {
         public var me: Sender
         public var contact: Sender
+        /// The colours other devices gave (`AppModel.syncedColours`), for a
+        /// tribe member's hue.
+        public var colours: [String: String] = [:]
 
         /// The one way a message's sender is named: you, in a tribe the
         /// member (decoded from the message), else the contact.
         public func sender(of message: Message, inTribe: Bool) -> Sender {
             if message.fromMe { return me }
-            return inTribe ? Sender(member: message) : contact
+            return inTribe ? Sender(member: message, colours: colours) : contact
         }
     }
 

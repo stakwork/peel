@@ -38,6 +38,10 @@ public final class BundledStrut {
     /// Whether an MCP server on this Mac may be registered
     /// (`STRUT_MCP_LOCAL`): a development profile's test server only.
     public var allowsLocalMCP = false
+    /// The Mac's strut while Peel Home is on the box (`HomeClient`): its
+    /// scheduler off (`STRUT_SCHEDULER=0`) and its `home-sync` workflow seeded
+    /// (`STRUT_HOME_SYNC=copy`). The box's CA is in its peer record.
+    public var isHomeClient = false
     /// The person's actor on their Hive orgs, once paired: the orchestrator
     /// is then told its peers are those orgs (strut's
     /// `personalOrchestratorSystem`), from the next start.
@@ -45,7 +49,7 @@ public final class BundledStrut {
     /// The section last rendered, by person: Node runs once per person, not per start.
     private var personal: (person: String, text: String)?
 
-    private let folder: URL
+    let folder: URL
     private let data: URL
     private let secretKey: any SecretItem
     private var process: Process?
@@ -87,13 +91,6 @@ public final class BundledStrut {
         }
     }
 
-    /// Where strut keeps the memory graph for `data`: `graph.lbug` in its
-    /// workspace's `memory` folder (`STRUT_WORKSPACE`, strut's data folder;
-    /// Peel never sets `STRUT_MEMORY_DB`).
-    public nonisolated static func memoryFolder(data: URL) -> URL {
-        data.appending(path: "workspace/memory")
-    }
-
     /// The strut `scripts/stage-strut.sh` staged once for this Mac, which
     /// every checkout's `bundle-app.sh` copies into `Contents/Strut`.
     public nonisolated static let staged = ProcessInfo.processInfo.environment["PEEL_STRUT_STAGE"].map { URL(filePath: $0) }
@@ -131,7 +128,7 @@ public final class BundledStrut {
         self.process = nil
         try? stdin?.fileHandleForWriting.close()
         stdin = nil
-        // Gone before it returns, so nothing writes its graph once its files are moved (`MemoryBackup`).
+        // Gone before it returns, so nothing writes its graph once its folder is moved (`PeelHomeMove`).
         endProcess(process.processIdentifier, isRunning: { process.isRunning })
         if server != nil {
             server = nil
@@ -191,7 +188,7 @@ public final class BundledStrut {
         process.arguments = [folder.appending(path: "desktop.js").path]
         process.currentDirectoryURL = folder
         process.environment = Self.environment(ProcessInfo.processInfo.environment, key: key, secretKey: secrets, data: data,
-                                               hostConfig: hostConfig, allowsLocalMCP: allowsLocalMCP)
+                                               hostConfig: hostConfig, allowsLocalMCP: allowsLocalMCP, homeClient: isHomeClient)
         let input = Pipe(), output = Pipe(), errors = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -298,8 +295,11 @@ public final class BundledStrut {
     /// configuration and loads no engine or provider: it was built for
     /// Homebrew's folders, which another user may own. `hostConfig`: the
     /// file of Peel's delta for the workflows strut ships (`STRUT_HOST_CONFIG`).
+    /// `homeClient`: the Mac's strut while Peel Home is on the box, which
+    /// runs no automations and syncs with the box (`STRUT_HOME_SYNC=copy`).
     nonisolated static func environment(
-        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL, allowsLocalMCP: Bool = false
+        _ inherited: [String: String], key: String, secretKey: String, data: URL, hostConfig: URL, allowsLocalMCP: Bool = false,
+        homeClient: Bool = false
     ) -> [String: String] {
         var environment = inherited.filter { name, _ in
             // A company's extra certificates, which Node otherwise lacks behind a proxy that inspects TLS.
@@ -323,6 +323,10 @@ public final class BundledStrut {
             "OPENSSL_MODULES": "/var/empty",
             "OPENSSL_ENGINES": "/var/empty",
         ]) { _, new in new }
+        if homeClient {
+            environment["STRUT_SCHEDULER"] = "0"
+            environment["STRUT_HOME_SYNC"] = "copy"
+        }
         // strut clears its environment at boot (strut's env.ts); a stand-in model on this Mac (the
         // tests') is kept for the model library, which reads it from there. Any other is ignored.
         let loopback: Set = ["127.0.0.1", "localhost", "::1"]

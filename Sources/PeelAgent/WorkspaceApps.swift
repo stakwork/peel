@@ -2,62 +2,58 @@ import AgentKit
 import Foundation
 import PeelCore
 
-// A Stadeum workspace's apps (strut's plans/apps.md §7.4; stakwork/strut#307
-// and #308). An app lives on its workspace's strut, with its grants, runs and
-// data. Peel's own strut is a window onto it: its read-through lists the apps
-// a workspace pinned as tabs (`GET /peers/<id>/apps`), and its UI shows one
+// A Stadeum workspace's apps on the Mac (PeelCore's `WorkspaceApp`): Peel's
+// own strut is a window onto them. Its read-through lists the apps a
+// workspace pinned as tabs (`GET /peers/<id>/apps`), and its UI shows one
 // app's page alone (`/?app=@<id>/<name>&solo=1`), framing the page and
 // relaying its calls to the workspace with the person's token. The token
 // never leaves strut's peers file, and the page never talks to the workspace
-// itself.
-
-/// An app a Stadeum workspace pinned as a tab.
-public struct WorkspaceApp: Sendable, Hashable, Identifiable {
-    /// The workspace: its peer id on Peel's strut, which the person reads as `@<peer>`.
-    public let peer: String
-    /// The app's name on the workspace's strut; a package prefix keeps its `/`.
-    public let name: String
-    /// What the person reads: its title, or its name.
-    public let title: String
-    /// What the app is for, in its own words.
-    public let about: String?
-
-    /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`.
-    public var id: String { "@\(peer)/\(name)" }
-}
-
-extension WorkspaceApp {
-    /// One entry of strut's `GET /apps`; nil for one not pinned, or with a
-    /// name strut would not have given it.
-    init?(peer: String, json: AgentKit.JSONValue) {
-        guard json["pinned"] == .bool(true), let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name) else { return nil }
-        self.peer = peer
-        self.name = name
-        let title = ChatData.clean(json["title"]?.string ?? "", max: ChatData.maxName)
-        self.title = title.isEmpty ? name : title
-        let about = ChatData.clean(json["description"]?.string ?? "", max: ChatData.maxText)
-        self.about = about.isEmpty ? nil : about
-    }
-}
+// itself. Apps on Peel's own strut, the person's (the agent's builder
+// publishes them there), are listed and shown the same way, without a peer
+// (`GET /apps`, `?app=<name>`).
 
 extension AutomationsClient {
     /// The apps `peer` pinned as tabs, in the order its strut lists them,
     /// read through Peel's strut.
     public func pinnedApps(of peer: String) async throws -> [WorkspaceApp] {
         let id = try Self.peerID(peer)
-        let apps = try await call("GET", "peers/\(id)/apps", what: "the workspace's apps")["apps"]?.array ?? []
-        return apps.compactMap { WorkspaceApp(peer: id, json: $0) }
+        let answer = try await call("GET", "peers/\(id)/apps", what: "the workspace's apps")
+        return try WorkspaceApp.listing(Data(answer.jsonString.utf8), peer: id)
+    }
+
+    /// The person's own apps, every one on this strut, in the order it
+    /// lists them.
+    public func ownApps() async throws -> [WorkspaceApp] {
+        let answer = try await call("GET", "apps", what: "your apps")
+        return try WorkspaceApp.listing(Data(answer.jsonString.utf8), peer: nil)
+    }
+
+    /// One of the person's own apps' versions and releases
+    /// (`GET /apps/:name/versions`). A workspace's are its own to change.
+    public func versions(of name: String) async throws -> AppVersions {
+        let answer = try await call("GET", "apps/\(Self.escaped(path: name))/versions", what: "the app's versions")
+        guard let versions = AppVersions(reply: Data(answer.jsonString.utf8)) else {
+            throw PeelError("strut's reply named no live version.")
+        }
+        return versions
+    }
+
+    /// Changes what everyone who opens the person's own app `name` gets
+    /// (`PUT /apps/:name/active`): strut takes the release and its lock.
+    public func makeLive(_ name: String, _ target: AppLiveTarget) async throws {
+        let body = AgentKit.JSONValue.object(target.body.mapValues { .string($0) })
+        _ = try await call("PUT", "apps/\(Self.escaped(path: name))/active", body, what: "the app's live version")
     }
 }
 
 extension MemoryServer {
     /// strut's UI showing `app`'s page and nothing else, with this strut's
     /// key handed over as `?key=` (its UI keeps it for the tab and takes it
-    /// out of the address). Peel's own strut only: a home server holds no
-    /// workspaces of this Mac's. The address carries the key, so it is
+    /// out of the address). Peel's own strut only. The address carries the key, so it is
     /// handed to the web view and never shown, logged or kept.
-    public func page(of app: WorkspaceApp) -> URL? {
-        page("app", app.id)
+    public func page(of app: WorkspaceApp, version: String? = nil) -> URL? {
+        // `name@vN`: that version rather than the one everyone opens.
+        page("app", version.map { "\(app.id)@\($0)" } ?? app.id)
     }
 
     /// strut's UI showing a deliverable from the agent's DM alone, as for an
@@ -72,13 +68,7 @@ extension MemoryServer {
     }
 
     private func page(_ name: String, _ value: String) -> URL? {
-        guard !isHomeServer, var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
-        // Only unreserved characters left as they are: `+` would read as a space.
-        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-        func encoded(_ value: String) -> String { value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? "" }
-        parts.path = "/"
-        parts.percentEncodedQuery = "key=\(encoded(key))&\(name)=\(encoded(value))&solo=1"
-        return parts.url
+        StrutUI.page(on: base, key: key, name, value)
     }
 
     /// Whether `url` is on this strut: same scheme, host and port.

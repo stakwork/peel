@@ -69,18 +69,13 @@ public struct Automation: Sendable, Equatable, Identifiable {
         input = json["input"] ?? .object([:])
         prompt = AutomationsClient.unescaped(input["prompt"]?.string ?? "")
         summary = json["summary"]?.string ?? ""
-        nextRun = json["nextRunAt"]?.string.flatMap(Self.date)
+        nextRun = json["nextRunAt"]?.string.flatMap(Date.init(iso8601:))
         lastRun = json["lastRun"].flatMap { last in
             last["runId"]?.string.map {
-                LastRun(runId: $0, status: last["status"]?.string ?? "", startedAt: last["startedAt"]?.string.flatMap(Self.date))
+                LastRun(runId: $0, status: last["status"]?.string ?? "", startedAt: last["startedAt"]?.string.flatMap(Date.init(iso8601:)))
             }
         }
         running = json["running"] == .bool(true)
-    }
-
-    static func date(_ text: String) -> Date? {
-        (try? Date(text, strategy: .iso8601.year().month().day().time(includingFractionalSeconds: true)))
-            ?? (try? Date(text, strategy: .iso8601))
     }
 }
 
@@ -113,7 +108,7 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         guard let id = json["runId"]?.string else { return nil }
         self.id = id
         status = json["status"]?.string ?? "running"
-        startedAt = json["startedAt"]?.string.flatMap(Automation.date)
+        startedAt = json["startedAt"]?.string.flatMap(Date.init(iso8601:))
         reply = json["output"]?["body"].flatMap { try? $0.decoded(as: AutomationReply.self) }
         // An empty one says nothing: "Finished".
         let said = json["output"]?["text"]?.string
@@ -466,7 +461,7 @@ public struct AutomationsClient: Sendable {
         let value = try? AgentKit.JSONValue(parsing: String(decoding: data, as: UTF8.self))
         guard (200..<300).contains(status) else {
             let words = value?["error"]?.string ?? value?["error"]?["message"]?.string ?? "HTTP \(status)"
-            throw PeelError("strut refused: " + ChatData.clean(words, max: ChatData.maxText))
+            throw PeelError("strut refused: " + TextLine.clean(words, max: ChatData.maxText))
         }
         guard let value else { throw PeelError("strut's reply was unreadable.") }
         return value

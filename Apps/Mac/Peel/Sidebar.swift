@@ -29,20 +29,34 @@ struct Sidebar: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                        // A–Z (Tom, 2026-10-26).
                         VStack(spacing: 1) {
-                            AutomationsLink()
-                            let unreadThreads = model.unreadThreads
-                            SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
-                                Image(systemName: "bubble.left").font(.system(size: 13))
-                            } accessory: {
-                                if unreadThreads > 0 { Badge(count: unreadThreads) }
+                            SidebarLink("Apps", to: .apps) {
+                                Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
                             }
+                            .overlay(alignment: .trailing) {
+                                // Searching shows every match: no chevron, as for a section.
+                                if !sections.searching && model.stadeum.apps.contains(where: model.isPinned) {
+                                    AppsFoldButton(open: $model.sidebarLayout.appsOpen)
+                                }
+                            }
+                            let apps = shownApps(searching: sections.searching)
+                            if !apps.isEmpty {
+                                AppsUnderRow(apps: apps)
+                            }
+                            AutomationsLink()
                             SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
                                 Image(systemName: "at").font(.system(size: 13))
                             } accessory: {
                                 if unreadMentions > 0 { Badge(count: unreadMentions) }
                             }
                             PaymentsLink(money: model.money)
+                            let unreadThreads = model.unreadThreads
+                            SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
+                                Image(systemName: "bubble.left").font(.system(size: 13))
+                            } accessory: {
+                                if unreadThreads > 0 { Badge(count: unreadThreads) }
+                            }
                         }
                         if !sections.unread.isEmpty {
                             SidebarSection("Unread") {
@@ -79,14 +93,6 @@ struct Sidebar: View {
                                                    all: $model.sidebarLayout.allDirect)
                                 }
                                 ContactsSidebarRows()
-                            }
-                        }
-                        let apps = shownApps
-                        if !apps.isEmpty {
-                            // The workspace beside each only when there are several.
-                            let several = Set(apps.map(\.peer)).count > 1
-                            SidebarSection("Apps") {
-                                ForEach(apps) { WorkspaceAppLink(app: $0, showsWorkspace: several) }
                             }
                         }
                     }
@@ -131,11 +137,11 @@ struct Sidebar: View {
             }
             #endif
         }
-        // A workspace's newly pinned app shows within minutes; the workspaces
-        // changing, or strut starting (`syncHive`), reads them at once.
-        .task(id: model.hive.live.map(\.id)) {
+        // A newly published app shows within minutes (or as Apps opens); the
+        // workspaces or Peel's strut changing reads them at once.
+        .task(id: AppsSource(peers: model.stadeum.live.map(\.id), server: model.memoryServer)) {
             while !Task.isCancelled {
-                model.refreshWorkspaceApps()
+                model.refreshApps()
                 try? await Task.sleep(for: .seconds(300))
             }
         }
@@ -154,16 +160,21 @@ struct Sidebar: View {
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
         let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
-        return [(.threads, "Threads"), (.mentions, "Mentions"), (.payments, "Payments")]
+        return [(.apps, "Apps")]
+            + shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
+            + [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads")]
             + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
             + agent
             + sections.direct.map { (.chat($0.chat), $0.name) }
-            + shownApps.map { (.app(peer: $0.peer, name: $0.name), $0.title) }
     }
 
-    /// The workspaces' pinned apps matching the search.
-    private var shownApps: [WorkspaceApp] {
-        model.hive.apps.filter { ChatSections.matches($0.title, query: model.searchQuery) }
+    /// The apps under the Apps row, A–Z: those in the sidebar while it is
+    /// open, and the one open always, as a closed section keeps the open
+    /// chat; while searching, every app that matches.
+    private func shownApps(searching: Bool) -> [WorkspaceApp] {
+        if searching { return model.stadeum.apps.filter { $0.matches(model.searchQuery) } }
+        let open = model.destination, pinned = model.sidebarLayout.appsOpen
+        return model.stadeum.apps.filter { (pinned && model.isPinned($0)) || open == .app(peer: $0.peer, name: $0.name) }
     }
 
     /// The agent's row, first in Direct messages: while the section is open
@@ -422,12 +433,7 @@ struct SidebarSection<Content: View>: View {
 
     private func header(open: Bool?) -> some View {
         HStack(spacing: 6) {
-            if let open {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .rotationEffect(.degrees(open ? 0 : -90))
-                    .accessibilityHidden(true)
-            }
+            if let open { FoldChevron(open: open) }
             Text(title)
                 .font(Theme.font(13, .medium))
         }
@@ -775,24 +781,77 @@ private struct AutomationsLink: View {
     }
 }
 
-/// An app a Stadeum workspace pinned (`WorkspaceAppView`), with its
-/// workspace beside it when the apps come from several.
+/// What the apps are read from: a change reads them again.
+private struct AppsSource: Hashable {
+    let peers: [String]
+    let server: MemoryServer?
+}
+
+/// The apps under the Apps row, nested as shadcn's sidebar sub-menu is
+/// (Tom, 2026-10-28): indented, behind a hairline that drops from under the
+/// row's icon (its row's 10 pt padding and half its 20 pt icon).
+private struct AppsUnderRow: View {
+    let apps: [WorkspaceApp]
+
+    var body: some View {
+        VStack(spacing: 1) {
+            ForEach(apps) { WorkspaceAppLink(app: $0) }
+        }
+        .padding(.leading, 6)
+        .overlay(alignment: .leading) { Theme.divider.frame(width: 1) }
+        .padding(.leading, 20)
+        .padding(.vertical, 2)
+    }
+}
+
+/// An app under the Apps row (`WorkspaceAppView`): its own icon, small and
+/// muted, and its title; where it comes from is its card's and header's to
+/// say (Tom, 2026-10-28).
 private struct WorkspaceAppLink: View {
     let app: WorkspaceApp
-    let showsWorkspace: Bool
 
     var body: some View {
         SidebarLink(app.title, to: .app(peer: app.peer, name: app.name)) {
-            Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
-        } accessory: {
-            if showsWorkspace {
-                Text("@\(app.peer)")
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
-            }
+            Image(systemName: app.iconSymbol)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.secondaryText)
         }
         .help(app.about ?? app.title)
+    }
+}
+
+/// The chevron at the end of the Apps row: shows or hides the pinned apps
+/// under it, kept with the sidebar's layout.
+private struct AppsFoldButton: View {
+    @Binding var open: Bool
+
+    var body: some View {
+        Button {
+            open.toggle()
+        } label: {
+            FoldChevron(open: open)
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, Theme.Space.xs)
+        .help(open ? "Hide pinned apps" : "Show pinned apps")
+        .accessibilityLabel("Pinned apps")
+        .accessibilityValue(open ? "Expanded" : "Collapsed")
+    }
+}
+
+/// The sidebar's fold: down while open, right while closed (a section's
+/// header, the Apps row).
+private struct FoldChevron: View {
+    let open: Bool
+
+    var body: some View {
+        Image(systemName: "chevron.down")
+            .font(.system(size: 9, weight: .bold))
+            .rotationEffect(.degrees(open ? 0 : -90))
+            .accessibilityHidden(true)
     }
 }
 

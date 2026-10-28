@@ -18,7 +18,9 @@ struct OrchestratorTests {
         #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/diagnostics",
                           "sphinx/send", "calendar/events", "reminders/list", "calendar/create", "calendar/update", "calendar/delete",
                           "reminders/create", "reminders/complete", "automation/list", "automation/preview", "automation/create", "automation/update",
-                          "automation/delete", "automation/run-now"])
+                          "automation/delete", "automation/run-now",
+                          // Memory is Peel's to grant: strut's default orchestrator has none.
+                          "memory/remember", "memory/recall", "memory/get", "memory/ontology", "memory/forget", "memory/merge"])
         // Only the automation steps ask for a card: the model never words one itself.
         #expect(!tools.contains("sphinx/approve"))
         #expect(config["orchestrator"]?["model"] == .null, "the connected model runs it")

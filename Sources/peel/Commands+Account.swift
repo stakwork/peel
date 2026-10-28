@@ -30,7 +30,7 @@ extension Invocation {
         case "restore":
             print("twelve words:")
             let engine = try await Account.restore(
-                profile, mnemonic: readLine() ?? "", alias: alias, pin: "", network: network, server: server,
+                profile, mnemonic: readLine() ?? "", pin: "", network: network, server: server,
                 tribeHost: tribeHost, memesHost: memesHost
             )
             let session = try await Session(withPhoto(engine)).connect(insecure: insecure)
@@ -65,7 +65,7 @@ extension Invocation {
                 let chat = row.identifier == Preferences.accountWide ? "" : "  \(row.identifier.prefix(12))"
                 let when = row.updatedAt > 0
                     ? Date(timeIntervalSince1970: row.updatedAt).formatted(.iso8601) : "from before sync"
-                print("\(row.key)\(chat)  \(row.value)  \(when)  \(row.followsAccount ? "account" : "this device")")
+                print("\(row.key)\(chat)  \(row.displayValue)  \(when)  \(row.followsAccount ? "account" : "this device")")
             }
 
         case "prefs-sync":

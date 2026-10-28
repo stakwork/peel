@@ -24,9 +24,9 @@ struct ConnectionsSection: View {
                         MCPServerRow(server: server)
                     }
                     Fact("Add a service") {
-                        Text(model.grantsConnections
-                             ? "Your assistant uses it with your own key, kept in its memory. A tool the service marks read-only runs as asked; any other asks you first."
-                             : "Kept on your home server, whose own settings decide which of its agents use it.")
+                        Text(model.brain?.moved != nil
+                             ? "Your assistant runs on your home server, with the services it had. Turn off Always on to change them."
+                             : "Your assistant uses it with your own key, kept in its memory. A tool the service marks read-only runs as asked; any other asks you first.")
                             .muted()
                             .fixedSize(horizontal: false, vertical: true)
                     } trailing: {

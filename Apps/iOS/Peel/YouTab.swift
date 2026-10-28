@@ -3,7 +3,7 @@ import PeelUI
 import SwiftUI
 
 /// You (docs/design/iphone.md, screen 7): your photo, name and balance; the
-/// agent; the account's words, PIN, Face ID, boost amount and server; then
+/// agent; Stadeum (`StadeumSection`); the account's words, PIN, Face ID, boost amount and server; then
 /// Forget, the only red. Every change is an `AppModel` operation, as on the
 /// Mac's `AccountView`.
 struct YouTab: View {
@@ -26,6 +26,7 @@ struct YouTab: View {
                     PhoneSectionHeader("Agent")
                 }
                 .phoneRows(.grouped)
+                StadeumSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
                         LabeledContent("Twelve words", value: model.wordsConfirmed ? "" : "Not checked yet")
@@ -76,6 +77,7 @@ struct YouTab: View {
             .phoneList(.grouped)
             .phoneFont(.row)
             .task { biometryName = model.biometryName }
+            .onCallBannerInset()
             .navigationTitle("You")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $editingName) { NameEditor() }
@@ -168,17 +170,31 @@ private struct BiometricsRow: View {
     @State private var asking = false
 
     var body: some View {
-        Toggle(name, isOn: Binding(get: { on }, set: { wanted in
-            if wanted {
-                asking = true
-            } else {
-                Task {
-                    try? await model.turnOffBiometrics()
-                    on = await model.biometricsOn()
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(name, isOn: Binding(get: { on }, set: { wanted in
+                if wanted {
+                    asking = true
+                } else {
+                    Task {
+                        try? await model.turnOffBiometrics()
+                        on = await model.biometricsOn()
+                    }
+                }
+            }))
+            .tint(Theme.accent)
+            // Turned on on another device: never enrolled from there, only
+            // offered, through the same PIN step.
+            if model.biometricsOffered, !on {
+                HStack {
+                    Text("\(name) is on on your other device")
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.quietText(on: .raised))
+                    Spacer()
+                    Button("Turn on") { asking = true }
+                        .buttonStyle(.borderless)
                 }
             }
-        }))
-        .tint(Theme.accent)
+        }
         .sheet(isPresented: $asking) {
             Task { on = await model.biometricsOn() }
         } content: {

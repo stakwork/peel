@@ -201,11 +201,12 @@ empty folder of its own.
 strut ships it and seeds it at boot, as it seeds `job`
 (`src/job-seed.ts`): one version per content hash, so strut's UI shows it
 and its runs, and a changed template publishes the next version. It knows
-nothing about Peel. Its own tools are strut's: `memory/*`, `job/start`,
+nothing about Peel. Its own tools are strut's: `job/start`,
 `job/continue` and the `job/*` reads. A host adds the rest and a section
 of the prompt, as `createStrut({ job: { tools, system } })` does for
-`job` today (the lab adds `pod/*`). Peel adds the device steps
-(`sphinx/*`, `calendar/*`), the automation steps and its prompt section.
+`job` today (the lab adds `pod/*`). Peel adds strut's `memory/*` steps,
+which a host opts into, the device steps (`sphinx/*`, `calendar/*`), the
+automation steps and its prompt section.
 
 Most turns are not jobs. Like the Swift agent in the Agent chat today, the
 orchestrator calls its tools inside the turn: "when is Kate's birthday?"
@@ -557,8 +558,11 @@ so it needs the same chunking both ways (open question 4).
   Sphinx attachments through the memes server, which the bridge never
   built: the file stays on the strut that made it, an org's read through to it, a later turn's newer version is
   what opens, and nothing but the handle crosses Sphinx. A device with no
-  strut of its own shows the words; fetching the file for it, on request,
-  through the memes server, is for later.
+  strut of its own (the iPhone) opens an org's on that org's own strut,
+  with a person token of its own from its Stadeum pairing
+  (phases/07-iphone.md, "Org pages on the iPhone", 2026-10-26); one on
+  the brain's own strut is words there, and fetching it for such a device,
+  on request, through the memes server, is for later.
 - **A job's progress.** A job's result or question arrives as an agent
   message naming the job (`metadata.peel.job`). Your next message goes to
   the orchestrator, which continues the job when that is what you meant.
@@ -1641,7 +1645,8 @@ proposals), P3's Connections screen, and runner #389 (proposal cards) and
 ### Built: a workspace's apps (2026-10-23)
 
 An app a Stadeum workspace pinned as a tab opens in Peel, alone in the
-detail column, from a new Apps section at the foot of the sidebar. The
+detail column, from a new Apps section at the foot of the sidebar
+(since replaced by the Apps row and its browser, `docs/apps-browser.md`). The
 app lives on the workspace's strut (its grants, runs and data); Peel's
 own strut is the window onto it (strut's plans/apps.md §7.4, strut#307
 and #308).
@@ -1654,7 +1659,8 @@ and #308).
 - **The list.** `AutomationsClient.pinnedApps(of:)` reads `GET
   /peers/<id>/apps` on Peel's own strut for each live workspace and keeps
   those marked `pinned` (what strut says a host showing tabs takes), under
-  names strut gives. `refreshWorkspaceApps` runs after each `syncHive`
+  names strut gives (and, since 2026-10-26, the person's own on Peel's
+  strut, `docs/apps-browser.md`). `refreshApps` runs after each `syncHive`
   (the bridge starting, a pairing, a renewal or revoke; never waited for,
   so a slow workspace cannot hold up the bridge) and every five minutes
   while the sidebar shows, reading the workspaces at once, a newer read
@@ -1689,7 +1695,7 @@ and #308).
   agent's DM) and in-place `ui/open-link`, which strut leaves unwired when
   the page shows alone; a workspace's apps that are not pinned; the
   iPhone (no strut of its own).
-- **Checked.** `HiveTests.aWorkspacesPinnedAppsOpenAloneOnPeelsOwnStrut`
+- **Checked.** `HiveTests.aWorkspacesPinnedAppsAreListedAndOpenAloneOnPeelsOwnStrut`
   (the read-through's path and key, pinned only, names strut gives, the
   page's `key`, `app` and `solo` read back exactly, none on a home
   server). By hand, two struts from the stage at the new pin, one standing

@@ -22,11 +22,15 @@ public struct Platform {
     /// Whether the first chat opens while nothing is open: the Mac's detail
     /// pane is never empty; the iPhone's Chats list is a screen of its own.
     public var opensFirstChat: Bool
+    /// Whether Face ID's on/off syncs with the account's other devices
+    /// (`biometric_enabled`): the iPhone's does; the Mac app, as the
+    /// official one, neither writes nor applies it.
+    public var syncsBiometrics: Bool
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
-        opensFirstChat: Bool = true
+        opensFirstChat: Bool = true, syncsBiometrics: Bool = false
     ) {
         self.presence = presence
         self.files = files
@@ -36,6 +40,7 @@ public struct Platform {
         self.calls = calls
         self.agent = agent
         self.opensFirstChat = opensFirstChat
+        self.syncsBiometrics = syncsBiometrics
     }
 }
 
@@ -54,6 +59,9 @@ public protocol AppPresence {
     func showBadge(_ count: Int)
     /// Peel's page in the system's notification settings.
     func openNotificationSettings()
+    /// Plays a system sound by name ("" for the default alert sound), for a
+    /// notification that shows no banner.
+    func playSound(named name: String)
 }
 
 /// The main window's menus and panels, as `AppModel.takesCommands` asks
@@ -110,11 +118,11 @@ public protocol WebPresenting: AnyObject {
 /// imports both it and PeelCore inherits the `RustBuffer` header clash.
 @MainActor
 public protocol CallProvider {
-    /// Why this device cannot join calls at all (the iPhone, until I6);
-    /// nil where it can. Asked before a call is started or joined, so
+    /// Why this device cannot join calls at all; nil where it can (the Mac
+    /// and the iPhone both can). Asked before a call is started or joined, so
     /// nothing is posted or fetched for a call that cannot happen.
     var unavailable: String? { get }
-    /// Throws where this device cannot join calls (the iPhone, until I6).
+    /// Throws where this device cannot join calls (see `unavailable`).
     func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) throws -> any OngoingCall
 }
 
@@ -137,6 +145,9 @@ public protocol OngoingCall: AnyObject {
     var wantsCamera: Bool { get }
     /// Everyone on the call, for the sidebar's count.
     var people: [CallParticipant] { get }
+    /// Whether the call server is recording the call: only an indicator, Peel
+    /// neither starts nor stops it.
+    var isRecording: Bool { get }
     /// Leaves the room, saying goodbye.
     func leave() async
 }

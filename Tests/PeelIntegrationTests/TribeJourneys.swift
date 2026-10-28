@@ -175,9 +175,11 @@ extension Journeys {
                 try second.storage.tribes().contains { $0.pubkey == club.pubkey && $0.left }
             }
             // The second Mac sent nothing, so paid nothing: every row it holds
-            // there came from the network (a send of its own has a status).
+            // there came from the network (a send of its own is pending until
+            // the server takes it); a copy of ours the server indexed twice may
+            // be marked COMPLETE, never PENDING or FAILED.
             try await Task.sleep(for: .seconds(2))
-            #expect(try second.messages(in: club.pubkey).allSatisfy { $0.status == nil })
+            #expect(try second.messages(in: club.pubkey).allSatisfy { $0.status == nil || $0.delivery == .delivered })
 
             for person in [alice, second, carol] { await person.close() }
         }

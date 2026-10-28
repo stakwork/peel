@@ -54,6 +54,17 @@ struct PeelPhoneApp: App {
                         model.noteActivity()
                     }
                 }
+                // Stadeum opens with the account; locked or forgotten, its
+                // tokens and an open org page go, read again when it opens.
+                .onChange(of: model.phase) { _, phase in
+                    if phase == .ready, let profile = model.profile {
+                        // Renewed when due, not at every unlock.
+                        model.stadeum.open(profile, renewNow: false)
+                    } else {
+                        model.stadeum.close()
+                        router.orgPage = nil
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Diagnostics.memoryWarning()
                 }
@@ -70,16 +81,28 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var router = router
         phase
             .sheet(item: $model.diagnosticsRecord) { record in
                 DiagnosticRecordSheet(record: record)
                     .environment(model)
+            }
+            .fullScreenCover(isPresented: $router.callShown) {
+                IOSCallScreen()
+                    .environment(model)
+                    .environment(router)
             }
             // Here, not in the tabs, so a chat opened while locked (a
             // notification) is the one shown after the PIN.
             .onChange(of: model.destination) { _, destination in
                 router.follow(destination)
             }
+            // Onboarding starts from Chats: the tab left selected by a
+            // forgotten account (You, Profile) must not outlive it.
+            .onChange(of: model.phase) { _, phase in
+                if phase == .onboarding { router.reset() }
+            }
+            .onAppear { if model.phase == .onboarding { router.reset() } }
     }
 
     @ViewBuilder private var phase: some View {

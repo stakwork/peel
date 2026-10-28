@@ -20,13 +20,21 @@ final class DictationController {
     var isEnabled: Bool {
         DictationSettings.isEnabled(stored: stored, permissionsGranted: permissions.requiredGranted)
     }
-    /// Right Option for now; choosing another key comes back once its recorder works.
-    let hotkey = DictationDefaults.hotkey
+    /// The key held to dictate, kept in step with the settings.
+    private(set) var hotkey: HotkeyConfig
+    /// Settings is waiting for a key press to make the key (`chooseKey`).
+    private(set) var choosingKey = false
+    /// The key last pressed while choosing could not be the key, and why.
+    private(set) var keyProblem: String?
+    /// System Settings › Keyboard › Press 🌐 key, read on each `refresh`.
+    private var fnKeyUsage: Int?
     private(set) var secureInput = false
     /// The tap is running.
     private(set) var isListening = false
     /// The tap cannot swallow keys (Accessibility is off): the locking Space types a space.
     private(set) var canSwallow = true
+    /// The tap was refused although Input Monitoring reads as granted: only a relaunch fixes it.
+    private(set) var needsRestart = false
     private var stored: Bool?
     private var offerDismissed: Bool
 
@@ -62,12 +70,20 @@ final class DictationController {
     @ObservationIgnored private var inserting = 0
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var poll: Timer?
+    /// Re-reads the permissions while dictation waits on them, so granting needs no relaunch.
+    @ObservationIgnored private var permissionWatch: Timer?
+    @ObservationIgnored private var requesting: Task<Void, Never>?
+    @ObservationIgnored private var askedRestart = false
+    @ObservationIgnored private var choosingTimeout: Timer?
+    /// Which choosing an outcome belongs to: one from an earlier round is dropped.
+    @ObservationIgnored private var choosingRound = 0
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
 
     private init() {
         // @Observable makes `settings` computed, so read a local copy before init completes.
         let settings = DictationSettings()
         self.settings = settings
+        hotkey = settings.hotkey
         stored = settings.storedEnabled
         offerDismissed = settings.offerDismissed
         historyOn = settings.historyOn
@@ -97,12 +113,61 @@ final class DictationController {
     /// Re-reads the permissions and starts or stops what depends on them.
     func refresh() {
         permissions.refresh()
+        fnKeyUsage = UserDefaults(suiteName: "com.apple.HIToolbox")?.object(forKey: "AppleFnUsageType") as? Int
         checkSecureInput()
         // A tap made before Accessibility was granted cannot swallow; make it again.
         if isListening && !canSwallow && permissions.accessibility == .granted { stopListening() }
         if isEnabled && permissions.requiredGranted { startListening() } else { stopListening() }
         // The model is fetched while dictation is on, before the first recording needs it.
         if isEnabled { speech.prepare() }
+        updatePermissionWatch()
+    }
+
+    /// Polls while dictation is on and waiting for permissions; stops once they are in or it is off.
+    private func updatePermissionWatch() {
+        guard isEnabled && !(permissions.requiredGranted && permissions.accessibility == .granted) else {
+            permissionWatch?.invalidate()
+            permissionWatch = nil
+            return
+        }
+        guard permissionWatch == nil else { return }
+        permissionWatch = repeating(every: 1.5) { me in
+            me.permissions.refresh()
+            // Granted: the full refresh starts the tap, fresh (or remakes one that
+            // cannot swallow once Accessibility is in). Not yet: keep waiting.
+            let tapNeeded = me.permissions.requiredGranted && !me.isListening
+            if tapNeeded || me.permissions.accessibility == .granted || !me.isEnabled { me.refresh() }
+        }
+    }
+
+    /// Asks for the microphone; the other permissions have their own Allow buttons.
+    private func requestPermissions() {
+        guard requesting == nil else { return }
+        requesting = Task {
+            await permissions.requestAll()
+            requesting = nil
+            refresh()
+        }
+    }
+
+    /// Only a relaunch lets the tap in: said once, with Restart.
+    private func offerRestart() {
+        guard !askedRestart else { return }
+        askedRestart = true
+        Task {
+            let alert = NSAlert()
+            alert.messageText = "Restart Peel to enable Dictation"
+            alert.informativeText = "macOS only lets Peel see the dictation key after it restarts."
+            alert.addButton(withTitle: "Restart")
+            alert.addButton(withTitle: "Later")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let relaunch = Process()
+            relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+            // After Peel has quit, so `-n` opens a new instance rather than none.
+            relaunch.arguments = ["-c", "sleep 1; /usr/bin/open -n \"$0\"", Bundle.main.bundlePath]
+            try? relaunch.run()
+            NSApp.terminate(nil)
+        }
     }
 
     /// Peel's strut started, stopped or changed (`AppModel.strutChanged`).
@@ -134,6 +199,7 @@ final class DictationController {
         stored = on
         settings.storedEnabled = on
         refresh()
+        if on && !permissions.requiredGranted { requestPermissions() }
     }
 
     func setHistoryOn(_ on: Bool) {
@@ -144,6 +210,68 @@ final class DictationController {
     func dismissOffer() {
         offerDismissed = true
         settings.offerDismissed = true
+    }
+
+    /// What else on the Mac the key does, when that is known.
+    var keyConflict: String? { hotkey.conflict(fnKeyUsage: fnKeyUsage) }
+
+    /// The next key pressed anywhere becomes the key, through the tap, which
+    /// sees modifiers on their own and every app's keys; Escape, or a timeout, stops.
+    /// Not while a dictation is under way: its key's release would go to the
+    /// recorder and never end it.
+    func chooseKey() {
+        guard let tap, !choosingKey, machine.isIdle else { return }
+        choosingKey = true
+        keyProblem = nil
+        choosingRound += 1
+        let round = choosingRound
+        log.info("choosing a key (tap swallows: \(tap.swallows))")
+        tap.record { [weak self] outcome in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.recorded(outcome, round: round) } }
+        }
+        // In the common modes, so an open menu doesn't keep every key swallowed.
+        let timeout = Timer(timeInterval: DictationDefaults.choosingKeyTimeout, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopChoosingKey() }
+        }
+        RunLoop.main.add(timeout, forMode: .common)
+        choosingTimeout = timeout
+    }
+
+    func stopChoosingKey() {
+        guard choosingKey else { return }
+        tap?.record(nil)
+        choosingKey = false
+        choosingTimeout?.invalidate()
+        choosingTimeout = nil
+    }
+
+    /// A choice stands even if the round was stopped meanwhile (the timeout,
+    /// leaving Settings): the tap had already swallowed the key.
+    private func recorded(_ outcome: HotkeyRecording.Outcome, round: Int) {
+        guard round == choosingRound else { return }
+        switch outcome {
+        case .pass, .swallow: break
+        case .cancel:
+            log.info("choosing a key: cancelled")
+            stopChoosingKey()
+        case .refused(let reason):
+            guard choosingKey else { return }
+            // Not which key: someone typing elsewhere meanwhile would be logged.
+            log.info("choosing a key: refused one")
+            keyProblem = reason
+        case .chosen(let key):
+            log.info("choosing a key: \(key.label, privacy: .public)")
+            stopChoosingKey()
+            setHotkey(key)
+        }
+    }
+
+    func setHotkey(_ new: HotkeyConfig) {
+        guard new.canBeHotkey else { return }
+        keyProblem = nil
+        hotkey = new
+        settings.hotkey = new
+        tap?.setHotkey(new)
     }
 
     private func checkSecureInput() {
@@ -170,7 +298,13 @@ final class DictationController {
             }
         )
         tap.start()
-        guard tap.isRunning else { return }
+        guard tap.isRunning else {
+            // Granted, yet refused: tried again on each refresh, and a relaunch is the way out.
+            needsRestart = true
+            offerRestart()
+            return
+        }
+        needsRestart = false
         self.tap = tap
         canSwallow = tap.swallows
         isListening = true
@@ -179,6 +313,7 @@ final class DictationController {
 
     private func stopListening() {
         guard isListening else { return }
+        stopChoosingKey()
         tap?.stop()
         tap = nil
         isListening = false
@@ -274,6 +409,8 @@ final class DictationController {
         // A password field: not a word is recorded. Said once the hold is
         // past the threshold, so typing an Option character there stays quiet.
         guard !focus.isSecure else { return }
+        // Only when an edit could be learned from: the watch reads the field.
+        if canLearn { DictationEditWatch.exposeText(pid: focus.pid) }
         do {
             try capture.start()
             try capture.beginRecording()
@@ -319,16 +456,26 @@ final class DictationController {
     }
 
     private func submit(_ mode: DictationMode) {
-        hud.hide()
         // The mic is off once the key is up, whatever became of the recording.
         defer { capture.stop() }
         guard let start = target, !start.isSecure else {
+            hud.hide()
             capture.discardRecording()
             return
         }
+        // Transcribing: the pill stays, working, until the text is typed.
+        hud.show(.working)
         target = nil
         guard let recorded = capture.finishRecording() else {
             hud.show(.message("The recording could not be saved"))
+            return
+        }
+        // Too short to hold a word, or no audio at all: strut is not asked
+        // (an empty file once crashed its decoder), and it ends as silence does.
+        guard recorded.duration >= DictationDefaults.minRecording else {
+            try? FileManager.default.removeItem(at: recorded.url)
+            // Another dictation still transcribing keeps the working pill.
+            if inserting == 0 { hud.show(.message("Nothing was heard")) }
             return
         }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
@@ -348,6 +495,8 @@ final class DictationController {
             defer {
                 try? FileManager.default.removeItem(at: session.audioURL)
                 inserting -= 1
+                // Typed with nothing to say, and nothing else being transcribed: the working pill goes.
+                if inserting == 0, hud.model.mode == .working { hud.hide() }
                 showLearned()
             }
             let transcript: DictationTranscript
@@ -407,11 +556,10 @@ extension DictationController {
         watch = nil
         // A pick that was downloading when last read may be in use by now: read again for next time.
         if models.downloading { Task { await models.load() } }
-        guard models.hasActiveFixer, let server = lingo.server, let storage = history() else {
+        guard let (server, account) = learnTarget else {
             log.notice("edit watch not started: \(self.models.hasActiveFixer ? "Peel is locked or its strut is not running" : "no clean-up model in use", privacy: .public)")
             return
         }
-        let account = ObjectIdentifier(storage)
         watch = DictationEditWatch.watch(typed: typed) { [weak self] edited in
             guard let self, let edited, edited != typed, isCurrent(server, account) else { return }
             Task { await self.learn(typed: typed, edited: edited, on: server, account: account) }
@@ -422,6 +570,15 @@ extension DictationController {
     private func isCurrent(_ server: MemoryServer, _ account: ObjectIdentifier) -> Bool {
         lingo.server == server && history().map(ObjectIdentifier.init) == account
     }
+
+    /// Where an edit would be learned now: Peel's strut and the unlocked
+    /// account, with a fixer in use (without one strut learns nothing).
+    private var learnTarget: (server: MemoryServer, account: ObjectIdentifier)? {
+        guard models.hasActiveFixer, let server = lingo.server, let storage = history() else { return nil }
+        return (server, ObjectIdentifier(storage))
+    }
+
+    private var canLearn: Bool { learnTarget != nil }
 
     private func learn(typed: String, edited: String, on server: MemoryServer, account: ObjectIdentifier) async {
         let learned: [LingoLearned]

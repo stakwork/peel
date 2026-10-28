@@ -149,8 +149,8 @@ final class OffscreenDriver {
                 line += 1
                 let text = text.trimmingCharacters(in: .whitespaces)
                 guard !text.isEmpty, !text.hasPrefix("//") else { continue }
-                // A pairing link's key never reaches the log or a probe.
-                let redacted = text.replacing(/key=[^&"\s]*/, with: "key=[redacted]")
+                // A link's key or a Peel Home link's code never reaches the log or a probe.
+                let redacted = text.replacing(/(key|code)=[^&"\s]*/) { "\($0.output.1)=[redacted]" }
                 Offscreen.log("drive: \(line): " + redacted)
                 let step = try JSONDecoder().decode(Step.self, from: Data(text.utf8))
                 if let probe {
@@ -278,6 +278,23 @@ final class OffscreenDriver {
         }
     }
 
+    /// `apps-seed`'s apps, as strut's `GET /apps` lists them: one of the
+    /// person's own and two workspaces', so Apps shows its choice.
+    private static let sampleApps: [(peer: String?, entry: [String: AgentKit.JSONValue])] = [
+        (nil, ["name": "meal-planner", "title": "Meal planner", "icon": "utensils", "activeVersion": "v3",
+               "description": "This week's dinners and the shopping list they need."]),
+        ("stakwork", ["name": "benchmarks", "title": "Benchmark board", "icon": "flask-conical", "activeVersion": "v14",
+                      "live": "r3", "description": "Scores for every agent run against the eval suites, by attempt."]),
+        ("stakwork", ["name": "openhealth", "title": "OpenHealth", "icon": "heart", "activeVersion": "v9",
+                      "description": "Lab results, wearables and visits on one timeline."]),
+        ("stakwork", ["name": "tweets", "title": "Tweet drafts", "icon": "layout-dashboard", "activeVersion": "v2",
+                      "description": "Drafts from the week's merged PRs, ready to review and post."]),
+        ("acme", ["name": "invoices", "title": "Invoices for every customer visit this quarter", "icon": "receipt",
+                  "activeVersion": "v6", "warnings": 2,
+                  "description": "Customers, visits and invoices for an HVAC business, with reminders for the ones still unpaid after thirty days."]),
+        ("acme", ["name": "visits", "title": "Field visits", "activeVersion": "v1"]),
+    ]
+
     /// The selection a click on the chat's sidebar row makes.
     private func select(_ name: String) throws {
         if let model = model(), name == model.agent?.name {
@@ -286,8 +303,8 @@ final class OffscreenDriver {
             Offscreen.log("drive: selected the agent chat")
             return
         }
-        if let model = model(), let app = model.hive.apps.first(where: { $0.id == name }) {
-            // A workspace's app in Apps, by `@<workspace>/<name>`.
+        if let model = model(), let app = model.stadeum.apps.first(where: { $0.id == name }) {
+            // An app in Apps: a workspace's by `@<workspace>/<name>`, one of yours by its name.
             model.destination = .app(peer: app.peer, name: app.name)
             Offscreen.log("drive: selected the app \(app.id)")
             return
@@ -365,13 +382,15 @@ final class OffscreenDriver {
     /// Stadeum and its Unpair once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
-    /// Resume on the sidebar's paused restore; `brain-form`, Account ›
-    /// Brain's "Connect a home server…" (or Change); `brain-use`, Connect on
-    /// a pairing link's callout there; `brain-leave`, its Use this Mac
-    /// (asking first); `brain-this-mac`, Use this Mac once confirmed;
-    /// `brain-check`, Check; `account-<category>`, that row in Account's
+    /// Resume on the sidebar's paused restore; `brain-this-mac`, Account ›
+    /// Brain's Use this Mac when where Peel Home is could not be read;
+    /// `home-move`, `home-ping`, `home-copy`, its Peel Home moves; `account-<category>`, that row in Account's
     /// categories (`account-dictation`); `connection`, the sidebar bolt’s status panel;
-    /// `connection-check`, its check/reconnect action.
+    /// `connection-check`, its check/reconnect action; `apps`, the sidebar's
+    /// Apps; `apps-seed`, sample workspace apps in memory; `apps-fold`, the
+    /// Apps row's chevron; `app-pin`, the open app's pin; `app-versions`, the
+    /// open app's version chip (its menu); `app-make-live`, Make live for the
+    /// newest version waiting, as its panel's button.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -400,6 +419,45 @@ final class OffscreenDriver {
         case "automations":
             // What the sidebar's Automations row sets.
             model.destination = .automations
+        case "apps":
+            // What the sidebar's Apps row sets.
+            model.destination = .apps
+        case "apps-seed":
+            // Workspaces' apps in memory, read as a listing through strut is;
+            // strut and Stadeum untouched.
+            model.stadeum.apps = WorkspaceApp.byTitle(Self.sampleApps.compactMap { app in
+                WorkspaceApp(peer: app.peer, entry: Data(AgentKit.JSONValue.object(app.entry.merging(["pinned": .bool(true)]) { $1 }).jsonString.utf8))
+            })
+        case "apps-fold":
+            // The Apps row's chevron.
+            model.sidebarLayout.appsOpen.toggle()
+        case "app-versions", "app-make-live":
+            // The open app's version chip: its menu, read from strut as the header reads it;
+            // or the Make live panel's button, for the newest version waiting.
+            guard case .app(nil, let appName) = model.destination, let app = model.app(peer: nil, name: appName),
+                  let server = model.memoryServer, let presenter = model.mainPresenter as? MenuPresenter, let window = main
+            else { throw Failure(description: "none of your apps open on a running strut") }
+            let opens = name == "app-versions"
+            Task {
+                guard let versions = try? await AutomationsClient(server: server).versions(of: appName) else {
+                    return Offscreen.log("drive: the app's versions could not be read")
+                }
+                if opens {
+                    let entries = AppVersionsControl.menu(versions, shown: versions.active, preview: { _ in }) { target, done in
+                        Task { await model.makeLive(app, target, done: done) }
+                    }
+                    presenter.show(entries, at: CGPoint(x: window.frame.maxX - 200, y: window.frame.maxY - 70), in: window,
+                                   source: AppVersionsControl.source)
+                } else if let waiting = versions.newestWaiting {
+                    await model.makeLive(app, .version(waiting), done: "\(waiting) is live")
+                }
+            }
+        case "app-pin":
+            // The open app's pin, in its header.
+            guard case .app(let peer, let name) = model.destination,
+                  let app = model.app(peer: peer, name: name)
+            else { throw Failure(description: "no app open") }
+            model.setPinned(app, !model.isPinned(app))
         case "automations-setup":
             // The Automations page's Set up, while no model is connected.
             model.agentConnectFrom = .automations
@@ -473,16 +531,18 @@ final class OffscreenDriver {
             // The agent chat's Set up (or Try again): its own account.
             guard model.agentSetUp.action != nil else { throw Failure(description: "nothing to set up: \(model.agentSetUp.line)") }
             model.setUpAgent()
-        case "brain-form", "brain-leave":
-            model.brainAsk = name == "brain-form" ? .form : .leave
-            model.openAccount(.brain)
-        case "brain-use":
-            guard let pairing = model.pairing else { throw Failure(description: "no pairing link waiting") }
-            try model.setBrain(.homeServer(pairing))
         case "brain-this-mac":
-            try model.setBrain(.thisMac)
-        case "brain-check":
-            model.checkBrain()
+            // Account › Peel Home's Use this Mac, when where Peel Home is could not be read.
+            try model.useThisMac()
+        case "home-move":
+            // Account › Peel Home: Move (or Move back) on the Peel Home link waiting.
+            guard model.homeLink != nil else { throw Failure(description: "no Peel Home link waiting") }
+            model.moveHome()
+        case "home-ping":
+            model.pingHomeAgain()
+        case "home-copy":
+            // Account › Peel Home: Turn off Peel Home, then its confirm.
+            try model.useThisMacCopy()
         case "agent-rows":
             // A click on every tool row's chevron.
             if let agent = model.agent { model.agentOpenRows.openTools(of: agent) }

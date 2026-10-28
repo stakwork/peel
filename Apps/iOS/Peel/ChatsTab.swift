@@ -14,6 +14,7 @@ struct ChatsTab: View {
         @Bindable var router = router
         NavigationStack(path: $router.chats) {
             ChatList()
+                .onCallBannerInset()
                 .navigationTitle("Chats")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }
@@ -44,6 +45,8 @@ extension View {
                 MentionsScreen()
             case .automations:
                 AutomationsScreen()
+            case .apps:
+                AppsScreen()
             }
         }
     }
@@ -72,6 +75,12 @@ struct ChatList: View {
         List {
             if !sections.searching {
                 Section {
+                    // The workspaces' apps, once Stadeum is connected here.
+                    if !model.stadeum.live.isEmpty {
+                        NavigationLink(value: ChatsRoute.apps) {
+                            NavRow(title: "Apps", systemImage: WorkspaceApp.symbol)
+                        }
+                    }
                     NavigationLink(value: ChatsRoute.automations) {
                         NavRow(title: "Automations", systemImage: "clock.arrow.circlepath")
                     }

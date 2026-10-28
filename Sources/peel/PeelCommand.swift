@@ -16,7 +16,8 @@ struct PeelCommand {
           rename <name>               the name others see on messages sent from now on
           upload-photo <picture>      upload a picture to the memes server and make it this account's photo
           prefs                       every preference stored: its key, chat, value as the preferences file
-                                      holds it, when it was chosen, and whether it follows the account
+                                      holds it (<redacted> for the agent's key, which is only in the
+                                      Keychain), when it was chosen, and whether it follows the account
           prefs-sync                  sync the account's preferences with the encrypted file on its memes
                                       server now (the app also syncs on connect and after each change; a
                                       CLI change goes up with the next prefs-sync or connect); --dry-run
@@ -125,7 +126,7 @@ struct PeelCommand {
                               never the app's own profile)
           --server <host:port>  override the server (init, signup, restore; later runs reuse it)
           --network <bitcoin|regtest>   for init, signup and restore
-          --alias <name>      the name others see (default: the profile name)
+          --alias <name>      the name others see (init and signup; default: the profile name)
           --photo <https url> the photo others see beside this account's messages ("" for none)
           --wait <seconds>    how long to stay connected after a command (default: 5)
           --insecure          accept an untrusted TLS certificate

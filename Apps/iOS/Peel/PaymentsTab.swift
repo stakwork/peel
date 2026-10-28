@@ -42,6 +42,7 @@ struct PaymentsTab: View {
             .phoneList()
             .scrollEdges()
             .refreshable { await feed.refresh() }
+            .onCallBannerInset()
             .navigationTitle("Payments")
             .navigationDestination(for: PaymentsRoute.self) { route in
                 switch route {

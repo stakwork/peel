@@ -100,7 +100,8 @@ struct StorageTests {
         #expect(updated.content == "original")
         #expect(updated.body == #"{"content":"original"}"#)
         #expect(updated.tag == "tag-1")
-        #expect(updated.status == "PENDING")
+        // Our own copy coming back with an index: the server took it.
+        #expect(updated.status == "COMPLETE")
         #expect(try rows(profile, "SELECT * FROM message").count == 1)
         #expect(try storage.highestServerIndex() == 42)
     }
@@ -204,8 +205,10 @@ struct StorageTests {
         #expect(try contact("02aa") == nil)
     }
 
-    @Test(arguments: ["http://img/a.png", "javascript:alert(1)", "file:///etc/passwd", "not a url"])
-    func nonHTTPSPhotoIsDropped(photo: String) throws {
+    /// `http` is recovered (upgraded to `https`), not dropped; only a link
+    /// `recoverablePhotoURL` cannot make anything of.
+    @Test(arguments: ["javascript:alert(1)", "file:///etc/passwd", "not a url"])
+    func unrecoverablePhotoIsDropped(photo: String) throws {
         let storage = try profile.storage()
         let message = Message.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: photo))
         _ = try storage.apply(Storage.Commit(messages: [(message, true, nil)]))
@@ -220,7 +223,7 @@ struct StorageTests {
             (.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: "https://img/a.png")), true, nil),
         ]))
         _ = try storage.apply(Storage.Commit(messages: [
-            (.fixture(uuid: "u2", chat: "02aa", sender: sender("02aa", alias: "", photo: "http://img/b.png")), true, nil),
+            (.fixture(uuid: "u2", chat: "02aa", sender: sender("02aa", alias: "", photo: "")), true, nil),
         ]))
         try storage.upsertContact(pubkey: "02aa", alias: nil)
         let row = try #require(try contact("02aa"))
@@ -234,6 +237,7 @@ struct StorageTests {
     /// A payment or boost may go without the photo; a restore looks past it.
     @Test func ourPhotoIsNotTakenFromAPayment() throws {
         let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
         let me = sender("02bb", alias: "Me", photo: "https://img/me.png")
         let noPhoto = sender("02bb", alias: "Me", photo: "")
         _ = try storage.apply(Storage.Commit(messages: [
@@ -246,7 +250,163 @@ struct StorageTests {
         _ = try storage.apply(Storage.Commit(messages: [
             (.fixture(uuid: "u4", serverIndex: 4, chat: "02aa", fromMe: true, sender: noPhoto), false, nil),
         ]))
-        #expect(try storage.newestOwnPhotoURL() == nil)
+        // An empty photo is skipped: the older usable one still wins.
+        #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
+    }
+
+    @Test func recoveredPhotoLinkIsNormalised() {
+        #expect("  https://img/a.png \n".recoverablePhotoURL == "https://img/a.png")
+        #expect("http://img/a.png".recoverablePhotoURL == "https://img/a.png")
+        #expect("HTTP://img/a.png".recoverablePhotoURL == "https://img/a.png")
+        #expect("https://img/a b.png".recoverablePhotoURL?.hasPrefix("https://img/a") == true)
+        #expect("https://img/a%20b/é.png".recoverablePhotoURL?.contains("%2520") == false)
+        #expect("".recoverablePhotoURL == nil)
+        #expect("   ".recoverablePhotoURL == nil)
+        #expect("ftp://img/a.png".recoverablePhotoURL == nil)
+        #expect("http://img/a.png".httpsOnly == nil)
+    }
+
+    @Test(arguments: [
+        ("https://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("http://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("//memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("https://https://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("http://https://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("https://http://memes.sphinx.chat/public/a", "https://memes.sphinx.chat/public/a"),
+        ("  \nmemes.sphinx.chat/public/a\t ", "https://memes.sphinx.chat/public/a"),
+        ("https://img.example/a%20b.png", "https://img.example/a%20b.png"),
+    ])
+    func photoLinkFormsAreNormalised(raw: String, expected: String) {
+        #expect(raw.recoverablePhotoURL == expected)
+    }
+
+    @Test func photoLinkWithSpacesAndNonASCIIIsEncoded() throws {
+        let spaced = try #require("memes.sphinx.chat/public/a b.png".recoverablePhotoURL)
+        #expect(spaced == "https://memes.sphinx.chat/public/a%20b.png")
+        let accented = try #require("https://img.example/é.png".recoverablePhotoURL)
+        #expect(accented.hasPrefix("https://img.example/%C3%A9"))
+    }
+
+    @Test(arguments: ["", "  ", "garbage", "not a url", "ftp://memes.sphinx.chat/a", "//", "/public/a", ".x/a"])
+    func photoLinkThatIsNotAURLIsNil(raw: String) {
+        #expect(raw.recoverablePhotoURL == nil)
+    }
+
+    /// A tribe member list and a thread's participants show the normalised photo.
+    @Test func memberPhotosAreNormalised() throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "tribe", fromMe: false,
+                      sender: sender("02aa", alias: "Ann", photo: "memes.sphinx.chat/public/abc")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: "tribe", fromMe: false,
+                      sender: sender("02bb", alias: "Bob", photo: "http://memes.sphinx.chat/public/def")), false, nil),
+        ]))
+        let members = try storage.tribeSenders("tribe")
+        #expect(members.first { $0.alias == "Ann" }?.photoURL == "https://memes.sphinx.chat/public/abc")
+        #expect(members.first { $0.alias == "Bob" }?.photoURL == "https://memes.sphinx.chat/public/def")
+    }
+
+    @Test func ourPhotoIsRecoveredFromASchemeLessLink() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: "memes.sphinx.chat/public/me")), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://memes.sphinx.chat/public/me")
+    }
+
+    @Test func ourPhotoIsUpgradedFromHTTPAndTrimmed() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: " http://img/me.png ")), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
+    }
+
+    @Test func ourPhotoFallsBackToTribeMessages() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        let privateTribe = "02dd"
+        try storage.save([Tribe(pubkey: privateTribe)])
+        let tribe = sender("02bb", alias: "Tribe Me", photo: "https://img/tribe.png")
+        let noPhoto = sender("02bb", alias: "Me", photo: "")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: noPhoto), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: privateTribe, fromMe: true, sender: tribe), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/tribe.png")
+        // A direct message's photo wins over a newer tribe one.
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u3", serverIndex: 3, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: "https://img/direct.png")), false, nil),
+            (.fixture(uuid: "u4", serverIndex: 4, chat: privateTribe, fromMe: true, sender: tribe), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/direct.png")
+    }
+
+    /// While a restore runs, a tribe's rewritten copy of our message sits in a chat that is no contact yet.
+    @Test func ourPhotoIgnoresChatsThatAreNotContacts() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        let me = sender("02bb", alias: "Me", photo: "https://img/me.png")
+        let noPhoto = sender("02bb", alias: "Me", photo: "")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: me), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 10, chat: "02cc", fromMe: true, sender: noPhoto), false, nil),
+        ]))
+        #expect(try storage.newestOwnPhotoURL() == "https://img/me.png")
+    }
+
+    @Test func ourAliasIsFromTheNewestSentMessageThatNamesOne() throws {
+        let storage = try profile.storage()
+        #expect(try storage.newestOwnAlias() == nil)
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Old")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: "02aa", fromMe: true, sender: sender("02bb", alias: " Me ")), false, nil),
+            // Others' messages and ones without an index say nothing about us.
+            (.fixture(uuid: "u3", serverIndex: 3, chat: "02aa", fromMe: false, sender: sender("02aa", alias: "Ann")), false, nil),
+            (.fixture(uuid: "u4", chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Unindexed")), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
+    }
+
+    /// Payments and boosts keep the alias when they drop the photo.
+    @Test func ourAliasIsTakenFromAPayment() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Old")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, type: MessageType.directPayment, chat: "02aa", fromMe: true,
+                      sender: sender("02bb", alias: "Me", photo: "")), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
+    }
+
+    @Test func ourAliasSkipsEmptyAndMissingOnes() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Me")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 2, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "  ")), false, nil),
+            (.fixture(uuid: "u3", serverIndex: 3, chat: "02aa", fromMe: true, sender: sender("02bb", alias: nil)), false, nil),
+            (.fixture(uuid: "u4", serverIndex: 4, chat: "02aa", fromMe: true, sender: nil), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
+    }
+
+    @Test func ourAliasIgnoresChatsThatAreNotContacts() throws {
+        let storage = try profile.storage()
+        try storage.upsertContact(pubkey: "02aa", alias: "Ann")
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: "u1", serverIndex: 1, chat: "02aa", fromMe: true, sender: sender("02bb", alias: "Me")), false, nil),
+            (.fixture(uuid: "u2", serverIndex: 10, chat: "02cc", fromMe: true, sender: sender("02bb", alias: "Rewritten")), false, nil),
+        ]))
+        #expect(try storage.newestOwnAlias() == "Me")
     }
 
     @Test func contactReadinessUpdatesWithoutTouchingAlias() throws {

@@ -22,11 +22,11 @@ public struct Profile: Sendable {
     /// The key Peel's strut encrypts its secrets with (`STRUT_SECRET_KEY`),
     /// made when it first starts (`BundledStrut`).
     public let strutKey: any SecretItem
-    /// The account's home server, its address and `STRUT_API_KEY`
-    /// (`Brain`, `docs/peel-brain.md`); none kept is Peel's own strut.
+    /// Where Peel Home is (`Brain`): none kept is this Mac; the mark that it
+    /// moved to a home server (docs/always-on.md).
     public let brain: any SecretItem
-    /// The Hive device this Mac paired, its `hivedev_` credential and the
-    /// orgs' peer records (`HiveLink`, docs/connectors-and-authoring.md,
+    /// The Hive device this Mac or iPhone paired, its `hivedev_` credential
+    /// and the orgs' peer records (`HiveLink`, docs/connectors-and-authoring.md,
     /// "Peers"): in the Keychain for an app profile.
     public let hive: any SecretItem
     /// Face ID in place of the PIN, opt-in (`BiometricUnlock`); nil for a
@@ -77,14 +77,24 @@ public struct Profile: Sendable {
         biometrics = nil
     }
 
-    /// A development profile's words, agent key, strut's key, home server
-    /// and Hive device, in files beside its database.
+    /// A development profile's words, agent key, strut's key, where Peel Home
+    /// is and Hive device, in files beside its database.
     private static func files(in directory: URL) -> (any SecretStore, any SecretItem, any SecretItem, any SecretItem, any SecretItem) {
         (FileSecretStore(file: directory.appendingPathComponent("mnemonic")),
          FileItem(file: directory.appendingPathComponent("agent-credential")),
          FileItem(file: directory.appendingPathComponent("strut-key")),
          FileItem(file: directory.appendingPathComponent("brain")),
          FileItem(file: directory.appendingPathComponent("hive")))
+    }
+
+    /// The home server as a peer of the Mac's strut while Peel Home is there
+    /// (`HomePeer`, docs/always-on.md): its address, CA and a person token
+    /// that lives about a year. In the Keychain for an app profile.
+    public var homePeer: any SecretItem {
+        switch kind {
+        case .app: KeychainItem(service: "dev.peel.home-peer", account: name)
+        case .development: FileItem(file: directory.appendingPathComponent("home-peer"))
+        }
     }
 
     /// Where the agent's database lives, beside the account's.
@@ -126,7 +136,7 @@ public struct Profile: Sendable {
     }
 
     /// Removes the words and everything stored with them, the agent's key,
-    /// strut's key and the home server first. A failure to remove any is reported, and
+    /// strut's key and where Peel Home is first. A failure to remove any is reported, and
     /// the database is then kept with them.
     public func delete() throws {
         try agentCredential.delete()
@@ -136,6 +146,7 @@ public struct Profile: Sendable {
         try? KeychainItem(service: "dev.peel.automations", account: name).delete()
         try strutKey.delete()
         try brain.delete()
+        try homePeer.delete()
         try hive.delete()
         try biometrics?.turnOff()
         try secrets.deleteMnemonic()

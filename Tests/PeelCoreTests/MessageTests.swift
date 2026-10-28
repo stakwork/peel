@@ -27,6 +27,30 @@ struct MessageTests {
         #expect(info.photoURL == "https://x/p.png")
     }
 
+    @Test(arguments: ["photo_url", "photoUrl", "sender_pic", "senderPic"])
+    func senderInfoReadsThePhotoUnderItsAliases(key: String) throws {
+        let json = #"{"pubkey":"02ab","alias":"Ann","\#(key)":"memes.sphinx.chat/public/abc"}"#
+        let info = try #require(Message.fixture(sender: json).senderInfo)
+        #expect(info.photoURL == "https://memes.sphinx.chat/public/abc")
+    }
+
+    @Test func senderInfoSurvivesOddlyTypedFields() throws {
+        let json = #"{"pubkey":"02ab","alias":"Ann","role":"0","host":5,"photo_url":"http://x.io/p.png"}"#
+        let info = try #require(Message.fixture(sender: json).senderInfo)
+        #expect(info.alias == "Ann")
+        #expect(info.role == 0)
+        #expect(info.host == nil)
+        #expect(info.photoURL == "https://x.io/p.png")
+    }
+
+    @Test(arguments: ["memes.sphinx.chat/public/abc", "http://memes.sphinx.chat/public/abc"])
+    func tribeMessageSenderPhotoIsNormalised(photo: String) {
+        let message = Message.fixture(chat: "tribe", sender: sender("02ab", alias: "Ann", photo: photo))
+        #expect(message.senderPhotoURL == "https://memes.sphinx.chat/public/abc")
+        #expect(message.senderDetails.photoURL == "https://memes.sphinx.chat/public/abc")
+        #expect(message.senderDetails.alias == "Ann")
+    }
+
     @Test func senderInfoToleratesMissingOptionalFields() throws {
         let info = try #require(Message.fixture(sender: #"{"pubkey":"02ab"}"#).senderInfo)
         #expect(info.alias == nil)
@@ -100,5 +124,29 @@ struct MessageTests {
         #expect(date.millisecondsSince1970 == 1_700_000_000_123)
         #expect(Message.fixture(timestamp: nil).date == Date(timeIntervalSince1970: 0))
     }
-}
 
+    @Test func threadReplyPreviewShowsTextCutLong() {
+        #expect(Message.fixture(content: "hello **there**").threadReplyPreview == "hello there")
+        let long = Message.fixture(content: String(repeating: "a", count: 300)).threadReplyPreview
+        #expect(long == String(repeating: "a", count: Message.threadPreviewLimit) + "…")
+        #expect(Message.fixture(content: String(repeating: "a", count: 120)).threadReplyPreview.count == 120)
+    }
+
+    @Test func threadReplyPreviewNamesWhatHasNoWords() {
+        #expect(Message.fixture(type: MessageType.directPayment, content: nil).threadReplyPreview == "Payment")
+        #expect(Message.fixture(type: MessageType.boost, content: nil).threadReplyPreview == "Payment")
+        #expect(Message.fixture(type: MessageType.invoice, content: nil).threadReplyPreview == "Payment request")
+        var photo = Message.fixture(type: MessageType.attachment, content: nil)
+        photo.mediaType = "image/png"
+        #expect(photo.threadReplyPreview == "Photo")
+        photo.mediaType = "video/mp4"
+        #expect(photo.threadReplyPreview == "Video")
+        photo.mediaType = "audio/mpeg"
+        #expect(photo.threadReplyPreview == "Voice message")
+        photo.mediaType = "application/zip"
+        #expect(photo.threadReplyPreview == "File")
+        var gone = Message.fixture(content: "x")
+        gone.deleted = true
+        #expect(gone.threadReplyPreview == "Message deleted")
+    }
+}

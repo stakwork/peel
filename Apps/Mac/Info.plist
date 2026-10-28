@@ -3,10 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Peel reaches your home server on this network, to move Peel Home there and keep dictation's vocabulary in step with it.</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
-            <key>CFBundleURLName</key><string>Peel pairing link</string>
+            <key>CFBundleURLName</key><string>Peel link</string>
             <key>CFBundleURLSchemes</key><array><string>peel</string></array>
         </dict>
     </array>

@@ -6,7 +6,7 @@ import PeelUI
 /// Dictation's speech-to-text on Peel's own strut (`StrutSpeech`): its
 /// model, fetched once per account, and each recording turned into text.
 /// The strut is the open account's, told here whenever it starts or stops
-/// (`AppModel.strutChanged`); a home server's is never used.
+/// (`AppModel.strutChanged`).
 @MainActor @Observable
 final class DictationSpeech {
     enum ModelState: Equatable {

@@ -19,12 +19,39 @@ public struct Preference<Value: Sendable>: Sendable {
     /// the one this device holds (nil for none). Any, unless the setting
     /// guards money: then only one that asks for no less here.
     var takes: @Sendable (_ incoming: Value, _ current: Value?) -> Bool = { _, _ in true }
+    /// Whether a value chosen here goes up to the file. False for an
+    /// import-only setting (`chat_color`): the file's value is taken, and
+    /// no row of it is ever uploaded, of any date, so a writer added later
+    /// cannot leak it (decision 9 of phase 11).
+    var uploads = true
+    /// Whether a device syncs it only when it says so
+    /// (`PreferenceCapabilities`): a key another platform owns stays a
+    /// pass-through in the file here (decisions 10 and 11).
+    var optIn = false
+    /// Whether a value from the file is stored in its canonical form (what
+    /// `write` gives for what `read` took), not as the file has it.
+    var canonical = false
+    /// For a secret: whether two values are the same one, so a sync never
+    /// asks whether to replace what is already here.
+    var same: (@Sendable (Value, Value) -> Bool)?
 
     var entry: (String, Preferences.Entry) {
-        (key, Preferences.Entry(scope: scope, takes: { [read, takes] incoming, current in
-            guard let value = read(incoming) else { return false }
-            return takes(value, current.flatMap(read))
-        }))
+        (key, Preferences.Entry(
+            scope: scope,
+            takes: { [read, takes] incoming, current in
+                guard let value = read(incoming) else { return false }
+                return takes(value, current.flatMap(read))
+            },
+            uploads: uploads, optIn: optIn,
+            normalised: { [read, write, canonical] value in
+                guard canonical, let parsed = read(value), let written = try? write(parsed) else { return value }
+                return written
+            },
+            sameSecret: { [read, same] first, second in
+                guard let same, let one = read(first), let other = read(second) else { return false }
+                return same(one, other)
+            }
+        ))
     }
 }
 
@@ -33,6 +60,11 @@ public enum PreferenceScope: Sendable {
     case account
     /// Stays on this device; its key starts with `device.`.
     case device
+    /// Follows the account like `.account`, but its value is a secret: it
+    /// is never stored in the database, only handed to the Keychain
+    /// (`SyncedAgentCredential`); the `preference` row under its key holds
+    /// a fixed placeholder and the item's date, nothing else.
+    case secret
 }
 
 /// A setting that has no value of this type, or one the file cannot hold.
@@ -81,6 +113,22 @@ extension Preference where Value == UInt64 {
 }
 
 extension Preference where Value == String {
+    /// A colour another device gave a person or a chat: the official
+    /// `chat_color`, its identifier the colour key (`<pubkey>-color`,
+    /// `chat-<pubkey>-color`, `<alias>-color`). Import-only: the official
+    /// apps write each colour once from their own random pick, and Peel has
+    /// no picker, so it takes the file's and never uploads one. Read as
+    /// `#rrggbb` or `rrggbb`, any case, and stored as lower case `#rrggbb`
+    /// (never bare hex, which the official apps' string retyping can turn
+    /// into a number); anything else is refused.
+    public static var chatColor: Self {
+        Self(key: Preferences.chatColorKey, scope: .account, read: { $0.string.flatMap(ChatColour.normalised) },
+             write: { hex in
+                 guard let normal = ChatColour.normalised(hex) else { throw UnwritablePreference(key: Preferences.chatColorKey) }
+                 return .string(normal)
+             }, uploads: false, canonical: true)
+    }
+
     /// The zone this account's offset comes from, an IANA name or a fixed
     /// `GMT±H`; "" means each device's own. Peel only: the official apps
     /// set a zone per chat or use the device's.
@@ -105,6 +153,33 @@ extension Preference where Value == Bool {
     /// migration, so no existing database starts a file (decision 8).
     public static var mayStartPreferences: Self {
         Self(key: "device.may_start_preferences", scope: .device, read: \.flag, write: { .string($0 ? "true" : "false") })
+    }
+}
+
+extension Preference where Value == Bool {
+    /// Whether the person turned Face ID on: the official `biometric_enabled`
+    /// (iOS writes it and applies it; the Mac app ignores it). Synced only
+    /// by a device that has Face ID to offer (`PreferenceCapabilities`); a
+    /// value from the file is the person's wish and never enrols anything
+    /// (decision 10).
+    public static var biometricEnabled: Self {
+        Self(key: Preferences.biometricKey, scope: .account, read: \.flag, write: { .string($0 ? "true" : "false") },
+             optIn: true)
+    }
+}
+
+extension Preference where Value == AgentConfig {
+    /// The agent's model and key: the official `ai_agent_config`,
+    /// `"<Provider>|<apiKey>|<agentName>"`. A secret: the key lives only in
+    /// the Keychain (`SyncedAgentCredential`), the row under this key holds
+    /// the item's date and a placeholder. Synced only by a device with an
+    /// agent (decision 11).
+    public static var agentConfig: Self {
+        Self(key: Preferences.agentConfigKey, scope: .secret, read: { $0.string.flatMap(AgentConfig.init(item:)) },
+             write: { config in
+                 guard !config.apiKey.isEmpty else { throw UnwritablePreference(key: Preferences.agentConfigKey) }
+                 return .string(config.item)
+             }, optIn: true, same: { $0.provider == $1.provider && $0.apiKey == $1.apiKey })
     }
 }
 
@@ -135,6 +210,22 @@ extension Preference where Value == Bool {
     }
 }
 
+extension Preference where Value == NotificationPolicy.Style {
+    /// What a notification does: banner, sound, both or neither. This
+    /// device only: it is about this Mac's screen and speakers.
+    public static var notificationStyle: Self {
+        Self(key: "device.notification_style", scope: .device,
+             read: { $0.string.flatMap(NotificationPolicy.Style.init(rawValue:)) }, write: { .string($0.rawValue) })
+    }
+}
+
+extension Preference where Value == String {
+    /// The name of the sound a notification plays; "" is the default.
+    public static var notificationSound: Self {
+        Self(key: "device.notification_sound", scope: .device, read: \.string, write: { .string($0) })
+    }
+}
+
 /// Every registered key and whether it follows the account: what sync may
 /// read from the file and write to it, and nothing else.
 public enum Preferences {
@@ -143,6 +234,10 @@ public enum Preferences {
     /// Peel-only keys: the official apps keep and ignore them.
     static let peelPrefix = "peel."
     static let devicePrefix = "device."
+    /// The official keys Peel now reads (`pin_timeout` is not among them).
+    static let chatColorKey = "chat_color"
+    static let biometricKey = "biometric_enabled"
+    static let agentConfigKey = "ai_agent_config"
 
     /// A registered key: where it goes, and its apply policy
     /// (`Preference.takes`, false for a value that is not one of its) over
@@ -150,6 +245,17 @@ public enum Preferences {
     struct Entry: Sendable {
         let scope: PreferenceScope
         let takes: @Sendable (_ incoming: JSONValue, _ current: JSONValue?) -> Bool
+        /// False for an import-only key: `merged` never uploads or
+        /// bootstraps a row of it.
+        var uploads = true
+        /// Synced only where the engine enables it (`PreferenceCapabilities`).
+        var optIn = false
+        /// A value from the file as it is stored; as it came unless the key stores one form.
+        var normalised: @Sendable (JSONValue) -> JSONValue = { $0 }
+        /// For a secret: whether two values are the same one.
+        var sameSecret: @Sendable (JSONValue, JSONValue) -> Bool = { _, _ in false }
+
+        var followsAccount: Bool { scope != .device }
     }
 
     /// Every preference in the registry, by key: add a new one here.
@@ -159,15 +265,27 @@ public enum Preferences {
         Preference<UInt64>.boostConfirmedMsat.entry,
         Preference<UInt64>.preferencesSince.entry,
         Preference<String>.timeZone.entry,
+        Preference<String>.chatColor.entry,
+        Preference<Bool>.biometricEnabled.entry,
+        Preference<AgentConfig>.agentConfig.entry,
         Preference<TimeZoneSharing>.timeZoneSharing.entry,
         Preference<Int>.pinTimeoutHours.entry,
         Preference<Bool>.notificationText.entry,
+        Preference<NotificationPolicy.Style>.notificationStyle.entry,
+        Preference<String>.notificationSound.entry,
         Preference<String>.preferencesFileSeen.entry,
         Preference<Bool>.mayStartPreferences.entry,
     ])
 
-    /// Keys that follow the account.
-    static let synced = Set(registry.filter { $0.value.scope == .account }.keys)
+    /// The keys that follow the account on every device, plus the opt-in
+    /// ones `optIns` names: what sync may read from the file and write to it.
+    /// An opt-in key not named stays a pass-through in the file, byte for byte.
+    static func syncedKeys(enabling optIns: Set<String>) -> Set<String> {
+        Set(registry.filter { $0.value.followsAccount && (!$0.value.optIn || optIns.contains($0.key)) }.keys)
+    }
+
+    /// Keys that follow the account on every device.
+    static let synced = syncedKeys(enabling: [])
 
     /// What the official apps write back for a string they read, or nil
     /// where reading it crashes them: "true"/"false" in any case become a
@@ -334,14 +452,22 @@ public struct PreferenceRow: Codable, Sendable, Equatable, FetchableRecord, Pers
     public internal(set) var updatedAt: Double
 
     /// Whether it follows the account to its other devices.
-    public var followsAccount: Bool { Preferences.synced.contains(key) }
+    public var followsAccount: Bool { Preferences.registry[key]?.followsAccount ?? false }
+
+    /// The value as `prefs` prints it: a secret's is never shown.
+    public var displayValue: String { isSecret ? "<redacted>" : value }
+
+    /// Whether its value is a secret kept elsewhere: the row holds only a placeholder.
+    public var isSecret: Bool { Preferences.registry[key]?.scope == .secret }
 }
 
 extension Storage {
     /// The value set for `preference` (for a chat, by its pubkey); nil when
     /// none is, or what is stored is not one.
     public func preference<Value>(_ preference: Preference<Value>, for identifier: String = Preferences.accountWide) throws -> Value? {
-        try preferenceRow(preference.key, identifier).flatMap { JSONValue(text: $0.value) }.flatMap(preference.read)
+        // A secret's row holds a placeholder, never a value.
+        guard preference.scope != .secret else { return nil }
+        return try preferenceRow(preference.key, identifier).flatMap { JSONValue(text: $0.value) }.flatMap(preference.read)
     }
 
     func preferenceRow(_ key: String, _ identifier: String) throws -> PreferenceRow? {
@@ -364,6 +490,8 @@ extension Storage {
         _ preference: Preference<Value>, _ value: Value, for identifier: String = Preferences.accountWide,
         at now: Date = .now
     ) throws -> Bool {
+        // A secret's value goes to the Keychain, never through here.
+        guard preference.scope != .secret else { throw UnwritablePreference(key: preference.key) }
         let item = try preference.write(value)
         guard preference.scope == .device || Preferences.isOfficialFixedPoint(item) else {
             throw UnwritablePreference(key: preference.key)
@@ -376,5 +504,42 @@ extension Storage {
             try PreferenceRow(key: preference.key, identifier: identifier, value: text, updatedAt: date).upsert(db)
             return true
         }
+    }
+}
+
+extension Storage {
+    /// What a secret's row holds in place of its value.
+    static let secretPlaceholder = "\"redacted-secret\""
+
+    /// Dates a secret's item `date` (or now, but after the version it
+    /// replaces) under a placeholder: the date is all `merged` needs to
+    /// order it against the file, and no key material is kept.
+    func setSecretDate(_ key: String, for identifier: String = Preferences.accountWide, at date: Date = .now) throws {
+        guard Preferences.registry[key]?.scope == .secret else { throw UnwritablePreference(key: key) }
+        try pool.write { db in
+            let old = try PreferenceRow.fetchOne(db, key: ["key": key, "identifier": identifier])
+            let seconds = (max(date.timeIntervalSince1970, (old?.updatedAt ?? 0) + 1)).rounded(.down)
+            try PreferenceRow(key: key, identifier: identifier, value: Self.secretPlaceholder, updatedAt: seconds).upsert(db)
+        }
+    }
+
+    /// Records that a secret item from the file dated `date` is held here.
+    func takeSecretDate(_ key: String, for identifier: String = Preferences.accountWide, date: Double) throws {
+        guard Preferences.registry[key]?.scope == .secret else { throw UnwritablePreference(key: key) }
+        try pool.write { db in
+            try PreferenceRow(key: key, identifier: identifier, value: Self.secretPlaceholder, updatedAt: date).upsert(db)
+        }
+    }
+
+    /// Every colour another device gave, by colour key (`<pubkey>-color`,
+    /// `chat-<pubkey>-color`, `<alias>-color`), as `#rrggbb`. Keys that are
+    /// not colour keys are left out.
+    func syncedColours() throws -> [String: String] {
+        var colours: [String: String] = [:]
+        for row in try preferenceRows() where row.key == Preferences.chatColorKey && row.identifier.hasSuffix("-color") {
+            guard let hex = JSONValue(text: row.value)?.string.flatMap(ChatColour.normalised) else { continue }
+            colours[row.identifier] = hex
+        }
+        return colours
     }
 }

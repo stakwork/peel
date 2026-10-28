@@ -13,15 +13,23 @@ struct PreferencesTests {
     /// Official keys by their official names, Peel's under `peel.`, and
     /// what stays on this device under `device.`, never synced.
     @Test func keysAreNamespacedByWhereTheyGo() {
-        let official: Set = ["tip_amount", "timezone"]
+        let official: Set = ["tip_amount", "timezone", "chat_color", "biometric_enabled", "ai_agent_config"]
         for (key, entry) in Preferences.registry {
-            if entry.scope == .account {
+            if entry.scope != .device {
                 #expect(official.contains(key) || key.hasPrefix(Preferences.peelPrefix), "\(key)")
             } else {
                 #expect(key.hasPrefix(Preferences.devicePrefix), "\(key)")
             }
         }
-        #expect(Preferences.synced == official.union(["peel.payment_confirmation_msat", "peel.time_zone"]))
+        // `pin_timeout` stays a pass-through in the file (decision 4).
+        #expect(Preferences.registry["pin_timeout"] == nil)
+        // Face ID and the agent's key sync only where a device says it has them.
+        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.time_zone"])
+        #expect(Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("biometric_enabled"))
+        #expect(!Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("ai_agent_config"))
+        #expect(Preferences.syncedKeys(enabling: ["ai_agent_config"]).contains("ai_agent_config"))
+        // A key that is not opt-in cannot be "enabled" in or out; device keys never sync.
+        #expect(Preferences.syncedKeys(enabling: ["device.notification_text"]) == Preferences.synced)
     }
 
     /// What the official apps write back for a string they read
@@ -92,6 +100,21 @@ struct PreferencesTests {
         #expect(current.flatMap(sharing.read) == TimeZoneSharing(enabled: false, identifier: nil))
         #expect(sharing.read(.object(["timezone_identifier": .string("UTC")])) == nil)
         #expect(Preference<Bool>.notificationText.read(.string("FALSE")) == false)
+    }
+
+    /// Notification type and sound stay on this device; unset reads as the old behaviour.
+    @Test func notificationChoicesDefaultAndPersist() throws {
+        let storage = try profile.storage()
+        #expect(try storage.preference(.notificationStyle) == nil)
+        #expect(try storage.preference(.notificationSound) == nil)
+        try storage.setPreference(.notificationStyle, .soundOnly)
+        try storage.setPreference(.notificationSound, "Glass")
+        #expect(try storage.preference(.notificationStyle) == .soundOnly)
+        #expect(try storage.preference(.notificationSound) == "Glass")
+        #expect(Preference<NotificationPolicy.Style>.notificationStyle.read(.string("bogus")) == nil)
+        #expect(Preference<NotificationPolicy.Style>.notificationStyle.scope == .device)
+        #expect(Preference<String>.notificationSound.key.hasPrefix(Preferences.devicePrefix))
+        #expect(Preferences.registry["device.notification_style"] != nil)
     }
 
     // MARK: Storing

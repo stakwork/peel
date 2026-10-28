@@ -151,10 +151,15 @@ is a short plan. Update the status and the journal when you finish something.
   - `PersonHue.swift` — a person's colour (direction D): the official apps'
     colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the
-    account's call server, and makes new rooms (phase 6); `WatchedCall`,
+    account's call server, and makes new rooms (phase 6), or takes Hive's
+    for a call with Jamie in it (`CallLink.hive`, docs/hive-calls.md); `WatchedCall`,
     the recent calls across chats whose presence the app keeps, and their
     live query (`Storage.recentCallMessages`, beside them as
     `PaymentHistory.swift` keeps its own)
+  - `CallChat.swift` — the call's chat without LiveKit: `CallChatMessage`,
+    `CallChatWire` (the `lk-chat-topic` JSON: messages, Jamie's status rows,
+    `mentionsJamie`) and `CallChatLog` (rows capped at 500, deduped, Jamie
+    thinking); tested in `CallChatTests`
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
@@ -163,6 +168,12 @@ is a short plan. Update the status and the journal when you finish something.
     `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`,
     `MediaInfo` (a cached video's or recording's duration, picture size and
     poster frame, read in place with the container type from its bytes)
+  - `VoiceMessage.swift` — voice messages, the platform-independent part: audio/wav
+    (16 kHz mono PCM, `audio.wav`) sent as an ordinary attachment, release
+    rules (minimum length, slide to cancel), the recorder's state and clock,
+    the player's progress and seek maths, `Engine.sendVoiceMessage` (tested in
+    `VoiceMessageTests`); the shared `Apps/Shared/Voice` (`VoiceRecorder`, `VoicePlayer`,
+    `VoiceControls`) use it on the phone and the Mac
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,
@@ -228,7 +239,39 @@ is a short plan. Update the status and the journal when you finish something.
     (`paymentAmounts`)
   - `JSON.swift` — `JSON.decode`, the one way a JSON string (a body, a
     sender, a core reply) is read into a type; `JWT.payload` (a token's
-    claims, unchecked) and `.hex` for bytes
+    claims, unchecked), `.hex` for bytes and `Date(iso8601:)`, the one
+    reader of strut's and Hive's dates
+  - `Hive.swift` — Hive's device flow (the person knows it as Stadeum),
+    for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
+    (polled until the person answers; a poll that reaches no one or gets a
+    5xx is tried again until the code runs out), renew, `startCall`: a call with
+    Jamie in it for one workspace, docs/hive-calls.md), what is kept of a pairing
+    (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
+    one org's strut and the person's token for it, and `HivePeer.jamie`,
+    who a call in a chat brings Jamie from), and the Hive a profile
+    pairs with (`HiveClient(for:)`: a development profile's `-hiveURL`)
+  - `WorkspaceApps.swift` — `WorkspaceApp`, an app a Stadeum workspace
+    pinned as a tab or one of the person's own: read from strut's `GET
+    /apps` (`listing`, `init(peer:entry:)`), on a workspace's own strut
+    with the person's token for the iPhone (`pinned(on:)`), and A–Z
+    (`byTitle`), and the version a held app of the person's own has
+    waiting (`waiting`); its words for the person are PeelUI's
+  - `AppVersions.swift` — one of the person's own apps' versions and
+    releases as strut gives them (`GET /apps/:name/versions`, strut's
+    plans/app-releases.md): the live version, held or following latest,
+    which versions wait, what the live release locked that moved on; and
+    `AppLiveTarget`, what `PUT /apps/:name/active` is sent (tested in
+    `AppVersionsTests`)
+  - `OrgPage.swift` — a deliverable from the agent's DM on its org's own
+    strut, as the iPhone opens it (`AgentArtifact.Handle.onOrg`: the brain's
+    `/peers/<org>` hop taken off; none for the brain's own), and
+    `StrutUI.page`, the one address of strut's UI showing one thing alone
+    (`?artifact=` or `?app=`, `&solo=1`, the UI's folder with its `/`), with
+    strut's key in it only for Peel's own strut
+  - `TextLine.swift` — `TextLine.clean`, words someone else wrote as one
+    safe line (control and direction characters out, no `<<<` marker,
+    capped): the one cleaner the agent's chat data, Stadeum and strut's
+    listings share
   - `BiometricUnlock.swift` — Face ID in place of the PIN, opt-in: the
     PIN kept in a Keychain item behind `.biometryCurrentSet` (this device,
     a passcode set), released by a face and then used as a typed PIN;
@@ -247,7 +290,7 @@ is a short plan. Update the status and the journal when you finish something.
     profile's `agentCredential` (the agent's provider, model and API key),
     `strutKey` (its strut's `STRUT_SECRET_KEY`: Keychain `dev.peel.strut`,
     or `strut-key` on a development profile; gone with the profile),
-    `brain` (the home server's address and key, `Brain`: Keychain
+    `brain` (where Peel Home is, `Brain`: Keychain
     `dev.peel.brain`, or `brain` on a development profile) and
     `agentDatabase` (`agent.sqlite`)
   - `ServerConfig.swift` — the public config endpoint a restore reads
@@ -257,10 +300,9 @@ is a short plan. Update the status and the journal when you finish something.
     neutral `Failure`, `get`, the public-https host check (`isPublic`) and
     "public https, or http to this machine" (`isAllowed`, `isThisMac`);
     `postToStrut` and `requestStrut`, a request with an optional bearer
-    key to a strut only (`isStrut`: http to this Mac or a Tailscale
-    address, https anywhere), following no redirect, through the system's
-    proxy only over https (the agent's memory, Peel's strut or a home
-    server)
+    key to a strut only (`isStrut`: http to this Mac, https anywhere),
+    following no redirect, through the system's proxy only over https
+    (Peel's own strut, or a Stadeum workspace's)
   - `WebPage.swift` — what the app's web pane may open
     (`WebPage.address`), what an address typed into it opens
     (`WebPage.typed`: http or https, or a search), which attachments it
@@ -283,9 +325,25 @@ is a short plan. Update the status and the journal when you finish something.
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
+  `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
+  pairing: open with the account (renewed at once on the Mac, when due on
+  the iPhone), Connect (Hive's device flow; `cameToFront`, from
+  `becameActive`, polls at once after the browser), renew hourly and when due,
+  the revoke rule (orgs kept and listed, none `live`, kept with the link
+  as `HiveLink.revokedAt` so an unlock or a restart does not use them
+  again, no renewal tried), close, Disconnect; the apps listed,
+  `readApps` (the Mac through its strut, the iPhone on each org's own;
+  `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
+  app's words for the person; `callLink(on:)`, a call with Jamie in it
+  for a live workspace (docs/hive-calls.md); `opening`, how a deliverable or a workspace's
+  app opens on its org's own strut; `StadeumHost`, what a device does
+  beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
+  with its token: its origin and folder, the token's hand-over script and
+  the first request, never described with the token);
   `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
   the recent calls across chats watched while unlocked and the open chat's,
-  the call you are on, join, start, leave; the view passes the call
+  the call you are on, join, start (with Jamie from a Stadeum workspace:
+  `jamiePicks`, `pickJamie`, `hiveCall`), leave; the view passes the call
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
@@ -331,10 +389,9 @@ is a short plan. Update the status and the journal when you finish something.
   own (`BundledStrut`), started with the agent and started again by Set
   up or Try again if it stopped; a development profile's only with `-strut YES`,
   its data in the profile's folder (`BundledStrut.dataFolder(for:)`): an
-  experiment, `docs/agent-brain.md`; or, with a home server (`Brain`,
-  `setBrain`, `checkBrain`, `openPairingLink` for `peel://brain` links,
-  which `AppDelegate` hands it), that server's, Peel's own never started
-  and no model key for it),
+  experiment, `docs/agent-brain.md`; none while Peel Home has moved to a
+  home server (`Brain.moved`, `AppModel+Home`), whose `peel://home-setup`
+  links `openPeelLink` takes from `AppDelegate`),
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
   restart Peel's strut with the new grants; below them
@@ -345,16 +402,29 @@ is a short plan. Update the status and the journal when you finish something.
   and `setUpAgent`, the person's Set up or Try again, the only start that
   pays to pair it, `BundledBridge.setUp`; and the agent chat as its DM:
   `agentAnswering`, `agentWaiting`, Stop's `cancel` in `stopAgentTurn`),
-  `AppModel+Hive` (`HiveState`: Connect Stadeum's device flow against
-  Hive's API (the user-facing name is Stadeum), the credential in
-  `Profile.hive`, the orgs put on strut as peers when the bridge starts
-  and renewed daily, Pair again after a revoke, Unpair; `hiveURL` in a
-  development profile's defaults for a test Hive; and `apps`, the apps the
-  workspaces pinned, `refreshWorkspaceApps`), `WorkspaceAppView` (one of
-  those apps alone in the detail column, the sidebar's Apps: Peel's own
-  strut's UI showing its page, in a `WKWebView` whose store keeps nothing
-  and which goes nowhere but that strut; `docs/agent-on-strut.md`, "Built:
-  a workspace's apps"), `StrutPage` (a page of Peel's own strut's UI shown
+  `AppModel+Hive` (`MacStadeumHost`, the Mac's side of PeelUI's
+  `Stadeum` (the user-facing name of Hive): the orgs put on strut as
+  peers and their tokens handed to the bridge when they change, strut
+  started again for another person, the workspaces' "Always allow" rules,
+  Pair again after a revoke, Unpair; and the apps, the person's own on
+  Peel's strut and those the workspaces pinned read through it,
+  `refreshApps`, `appSources`; the person's pins under the
+  sidebar's Apps row, `isPinned`, `setPinned`: none until the person
+  pins one, `ChatSections.Layout.pinnedApps`, folded by the row's chevron,
+  `appsOpen`; `makeLive`, what everyone opens of one of the person's own
+  apps), `AppsView` (the sidebar's Apps row: every listed app
+  as a card, A–Z, its icon, version and status (`AppStatus`), with a
+  search and the source to show, Yours or a workspace;
+  `docs/apps-browser.md`), `WorkspaceAppView` (one of
+  those apps alone in the detail column, opened from Apps or its pinned
+  row: Peel's own strut's UI showing its page, in a `WKWebView` whose store
+  keeps nothing and which goes nowhere but that strut, and `AppPinButton`,
+  its pin in the header and on its card; `docs/agent-on-strut.md`, "Built:
+  a workspace's apps"), `AppVersionsViews` (the person's own app's version
+  chip in that header and its menu: the newest versions, one picked shown
+  in that window only under `AppPreviewBar`, History's releases to roll
+  back to, Follow latest; and Make vN live, asked once in its panel),
+  `StrutPage` (a page of Peel's own strut's UI shown
   alone with strut's key in its address, and the rules the app view and the
   web pane's deliverable both keep to: only that strut, its `srcdoc` and
   blob frames, a link out only on the person's own click, which
@@ -363,7 +433,7 @@ is a short plan. Update the status and the journal when you finish something.
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt (one status row and a check/reconnect action), arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
+  shell, `PaneDivider`, `Detail`), `Sidebar` (the rows at its top A–Z, Apps with the pinned apps under it, then the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt (one status row and a check/reconnect action), arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
   a contact by code or QR picture, invites with sats, the sidebar's pending
   invites and "New" contacts),
@@ -413,14 +483,14 @@ is a short plan. Update the status and the journal when you finish something.
   the chat; its state `MemoryPanel` in `AppModel+Agent`), `AgentConnectPanel` (provider, key
   and model, kept and handed to strut) and `AgentSettings` (Account › Assistant, with
   the "Always allowed" rules and Revoke, and the send grants ("May post
-  as you") and Revoke; Account › Brain, `BrainSection`:
-  This Mac or a home server's address and key, its status, and a pairing
-  link's server waiting for a yes);
-  `CallViews` (the call card, the header's call button and presence
+  as you") and Revoke; Account › Peel Home, `BrainSection`:
+  where Peel Home is, its move out and back, and a link waiting for a yes);
+  `CallViews` (the call card, the header's call button with its Jamie
+  section, and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
-  and devices), `CallWindow` (the grid, the focus layout with its strip,
-  keep on top and the control bar) and `CallScreenShare` (the system picker,
+  and devices, and the chat over the data channel), `CallChatView` (the chat panel beside the stage), `CallWindow` (the grid, the focus layout with its strip,
+  keep on top, the recording indicator and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
   `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
@@ -507,18 +577,25 @@ is a short plan. Update the status and the journal when you finish something.
   compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
   flat logo for docs and pages. `Shared/` holds the files both apps
   compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
-  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton` and
-  `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`);
+  `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
+  `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
+  `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
+  `WorkspaceAppIcon` (an app's lucide icon as an SF Symbol);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
   `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the
   `peel:` link). `Apps/iOS/Peel/` is the iPhone app (phase 7, I2; iOS 26, iPhone
   only), a synchronized folder (every file in it is in the target):
-  `PeelPhoneApp` (the app, `RootView` by phase),
+  `PeelPhoneApp` (the app, `RootView` by phase, the call screen as a
+  full-screen cover), `IOSCallSession` (I6: the call you are on over
+  LiveKit, the audio session, microphone and camera; the phone's
+  `LiveKitCalls` in `PhonePlatform`) and `IOSCallViews` (the call screen with its tiles and
+  controls, the on-a-call bar, the leave-and-join question, `PendingCall`),
   `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
-  the selected tab and each tab's path, `openChat`, `open(_ message:)`,
+  the selected tab and each tab's path, the org page over them (`orgPage`),
+  `openChat`, `open(_ message:)`,
   `openThread`, `openDetails` (a chat's details over it), `openMembers`,
   `openPayment`, `openFromNotification`, the thread sheet's
   binding; it writes `AppModel.destination` from what is on screen and
@@ -532,7 +609,17 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListRow`, `PhoneCard`), `PhonePlatform` (`Platform.phone()`:
   `UIApplication` presence and badge, `Clipboard`; files, playback and the
   web pane do nothing and are never offered; the web pane and calls throw
-  their words), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
+  their words), `Stadeum` (`StadeumSection`, You's Stadeum over
+  `AppModel.stadeum`: connect, the workspaces, Connect again, Disconnect;
+  `readWorkspaceApps`, each org's pinned apps on its own strut), `AppsScreen`
+  (Chats' Apps row: the workspaces' pinned apps, A–Z, opened in
+  `OrgPageSheet`, pulled to read again), `OrgPageSheet` (a
+  deliverable or an app on its org's own strut, strut's UI showing it alone in a
+  `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
+  request's bearer and handed to the page's storage before its script
+  runs, never in an address; only that strut's UI folder, its `srcdoc` and blob
+  frames, a link out only from strut's own page on the person's own tap, `TouchWebView`; strut's
+  specs/DESKTOP.md, "A device with no strut of its own"), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
@@ -541,7 +628,8 @@ is a short plan. Update the status and the journal when you finish something.
   `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `PayControls`
   (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
   `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
-  pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, then
+  pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, Apps among
+  them once Stadeum is connected, then
   Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
   the swipe actions and long-press menu, pull to refresh, the sections'
   actions (Join and Create a tribe, pending invites, Add contact, Invite
@@ -563,13 +651,15 @@ is a short plan. Update the status and the journal when you finish something.
   the newest at the bottom, the "N new messages" pill over `ListBottom`,
   older pages through `AppModel.loadOlder`), `MessageRows` (the flat rows:
   messages, payments, requests, notes, quotes, boosts, thread summaries,
-  Retry and Discard), `MessageMedia` (images, GIFs' first frame, files
+  Retry and Discard; an agent reply's tool lines and its deliverables,
+  `AgentArtifactLines`, each opening in `OrgPageSheet` or saying why it
+  does not), `MessageMedia` (images, GIFs' first frame, files
   named), `MessageMenu` (`MessageActions`: the long-press menu, swipe
   right to reply in the thread, VoiceOver's actions), `ThreadSheet`,
   `Composer` (`PhoneComposer`: the glass capsule over a `UITextView`,
   attach from Photos, the camera or Files, `@` mentions, the mic and the
   bolt saying what is coming) and `YouTab` (photo, name and balance;
-  Agent; the words, Change PIN, Face ID, the PIN timeout, boost amount,
+  Agent; Stadeum; the words, Change PIN, Face ID, the PIN timeout, boost amount,
   the confirmation threshold, server; Forget).
   `Peel/Assets.xcassets` holds `Logo`, a link to
   `Apps/Assets/peel.svg`, for the phone's own use
@@ -686,15 +776,18 @@ is a short plan. Update the status and the journal when you finish something.
     the tools and which ask first), remove (with its key); and `MCPGrants`,
     which agents (the assistant, its jobs) reach each server, written into
     the host delta as `mcp/<server>/*`
-  - `Hive.swift` — Hive's device flow for a strut desktop app
-    (`HiveClient`: start, poll, renew), what is kept of a pairing
-    (`HiveLink`, its peers and credential, never in a database), strut's
-    peers made Hive's (`syncPeers`), and the org call a `proposal:` card is
-    for, read from strut's record (`peerRequest`)
-  - `WorkspaceApps.swift` — the apps a workspace pinned as tabs, read
-    through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), and
-    the address of one shown alone (`MemoryServer.page(of:)`: strut's UI
-    with its key as `?key=`, `&app=@<id>/<name>&solo=1`; Peel's own strut
+  - `Hive.swift` — the Mac's side of a Hive pairing (PeelCore's
+    `HiveClient`, `HiveLink`): strut's peers made Hive's (`syncPeers`), and
+    the org call a `proposal:` card is for, read from strut's record
+    (`peerRequest`)
+  - `WorkspaceApps.swift` — the Mac's reads of PeelCore's `WorkspaceApp`:
+    the apps a workspace pinned as tabs, read
+    through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), the
+    person's own on it (`ownApps`, `GET /apps`, less what strut seeds), and
+    the address of one shown alone (`MemoryServer.page(of:)`, through
+    PeelCore's `StrutUI.page`: strut's UI
+    with its key as `?key=`, `&app=@<id>/<name>&solo=1`, or `&app=<name>` for
+    one of the person's own; Peel's own strut
     only), and of a deliverable from the agent's DM the same way
     (`page(showing:)`: `&artifact=<path>&solo=1` for a file, `&app=` for an app)
   - `BundledStrut.swift` — the strut Peel ships in `Contents/Strut` (or,
@@ -771,27 +864,24 @@ is a short plan. Update the status and the journal when you finish something.
     `peel-automation` step's token and port with any hand-over);
     `AppModel.modelChanged` calls it, one at a time, whenever strut starts
     or the model changes (a Keychain that cannot be read leaves the store alone)
-  - `Brain.swift` — where the agent's memory lives (`docs/peel-brain.md`):
-    this Mac or the account's home server, kept in `Profile.brain` (one
-    that cannot be read is never taken for this Mac), and the pairing link
-    `brain/setup.sh` prints (`peel://brain?url=…&key=…`)
-  - `MemoryBackup.swift` — this Mac's graph files renamed aside into
-    `memory/backups/graph-<time>.lbug…` before the home server's memory is
-    brought back in their place, put back on failure, the newest three kept
-  - `MemoryMove.swift` — moving the memory between Peel's own strut and a
-    home server ("Move, not sync"): `memory/export` on one (this Mac's by
-    a file in its own folder, read only from there and deleted after; a
-    home server's `inline`), `memory/import` as `data` on the other, which
-    takes only an empty graph (or, to a home server, `replace`s its graph,
-    which strut there backs up first: "Reconnecting" in
-    `docs/peel-brain.md`), the rows counted on both; strut's refusal codes
-    (`not_empty:`, `backup_failed:`, …) in plain words. `AppModel.setBrain` runs it with every switch, no
-    option, holding the memory from the agent until it ends
+  - `Brain.swift` — where Peel Home is: this Mac, or moved to a home
+    server (`MovedHome`), kept in `Profile.brain` (one that cannot be read
+    is never taken for this Mac; a home server kept the old way, by address
+    and key, is read as this Mac and said once)
+  - `PeelHome.swift` — Peel Home moving to a home server and back
+    (`docs/always-on.md`, A4): `HomeLink` (`peel://home-setup?host=…&code=…`,
+    read through `peelLink`, the code never printed), `HomeMover`, the one seam to strut's `move`
+    (`StrutMove`: `node desktop.js move check|send|fetch` on the bundled
+    strut, its env values in a 0600 file deleted after, the bridge's token by
+    env), and `PeelHomeMove`, the state machine: `Brain.moved` kept before
+    anything stops, this Mac's strut and bridge started again only when the
+    box still waits for a move, folders set aside as `<name>.moved-<date>`
+    once the agent answers from the box, back by `fetch`, and "Use this
+    Mac's copy". `AppModel+Home` is the app's side (`PeelHomeLocal`, the
+    ping in the agent's DM); Account › Peel Home shows it. Tested in `PeelHomeTests`
   - `MemoryServer.swift` — the agent's long-term memory, a Ladybug graph a
     strut owns (`docs/agent-brain.md`): its address and `STRUT_API_KEY`,
-    from a home server (`Brain`, `isHomeServer`; `health` reads its
-    `/health`: connected, offline, key not accepted) or from Peel's own
-    strut's ready line (`BundledStrut`;
+    from Peel's own strut's ready line, on this Mac only (`BundledStrut`;
     looked at again by `AppModel.lookForMemory` whenever strut starts or
     stops; the key never printed, dumped or reflected); one memory
     step run by
@@ -812,7 +902,7 @@ is a short plan. Update the status and the journal when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
-  `ReadMarkerTests`, `ChatSectionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
+  `ReadMarkerTests`, `ChatSectionsTests`, `AppVersionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
@@ -863,16 +953,15 @@ is a short plan. Update the status and the journal when you finish something.
   (Calendar and Reminders on a stand-in: reads with no card, a reminder
   made once and only when allowed, access off in words, a moved event
   keeping its length, refusals before the card),
-  `BrainTests` (the pairing link, what is kept, `/health` read),
-  `MemoryMoveTests` (both moves against stub struts: what goes where,
-  refusals in words, counts that differ, a home server gone mid-way, the
-  export file deleted and never read outside strut's folder; bringing
-  memory back in place of this Mac's: the graph kept as a backup, put back
-  on any failure, a linked graph left alone, the newest three kept),
+  `BrainTests` (what is kept, an old home server read as this Mac),
+  `PeelHomeTests` (every point a move out or back can fail leaves at most
+  one bridge able to run, and this Mac's runs only when nothing reached the
+  box; the link; `StrutMove` on a stand-in Node: arguments, the env file,
+  refusals),
   `AgentMessageLinkTests` (the agent's message links and a send row's
   link, only the one at the end) and
-  `MemoryServerTests` (where a strut may be, the POST included; a home
-  server offline or refusing the key; the key never
+  `MemoryServerTests` (only Peel's own strut on this Mac, the POST
+  included; the key never
   printed; strut's replies and refusals; the earlier chat's memory rows
   and the panel's nodes)
 - `Tests/PeelDiagnosticsTests/` — offline, pure logic, also on Linux: `RingTests`
@@ -900,6 +989,16 @@ is a short plan. Update the status and the journal when you finish something.
   mid-send; a calendar read and one reminder, also after a stop once it
   was made); `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
+- `home/` — Peel Home, the always-on box's Compose bundle (its README,
+  `docs/always-on.md`): `setup` runs strut's own `strut move serve` through
+  `setup.sh` (receive a move on an empty box, send it back on request);
+  `strut` and `bridge` run through `gate.sh`, which starts each only while
+  Peel Home is on the box, with its own allow-listed keys from
+  `data/env/<program>/` (read, never executed), and starts the bridge once
+  strut answers `/health`; `peer` is Caddy in strut's network, the peer
+  port where the Mac's strut calls `POST /home/pull` and `/home/push` and
+  nothing else (TLS from its own CA, an allowlist in `Caddyfile`). Replaces
+  `brain/` (A7)
 - `scripts/test-stack.sh` (with `test-stack-helpers.py`) — starts the local
   stack the integration journeys use, on random ports; `tap` takes the
   wire tap down, up, or freezes it (a dead connection that looks open),
@@ -1046,7 +1145,7 @@ quitting before any window opens.
   {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
   {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
-  {"link": "peel://brain?url=…&key=…"}    // a link macOS hands Peel, through its app delegate
+  {"link": "peel://home-setup?host=…&code=…"}  // a link macOS hands Peel, through its app delegate
   {"type": "green"}
   {"wait": 0.5}
   {"snapshot": "search"}                  // search.png; open menus and panels as search-1.png, …

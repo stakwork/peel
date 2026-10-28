@@ -87,6 +87,12 @@ struct PreferencesFile: Equatable {
         var file: PreferencesFile
         var uploads: [PreferenceID] = []
         var apply: [Change] = []
+        /// Secret values taken from the file, for the Keychain; the row
+        /// that dates each is in `apply`, a placeholder.
+        var secrets: [SecretChange] = []
+        /// Secrets the file holds that differ from what is connected here
+        /// and were not taken (no value, never the file's key).
+        var differing: [PreferenceID] = []
         var changed: Bool { !uploads.isEmpty }
     }
 
@@ -106,31 +112,70 @@ struct PreferencesFile: Equatable {
     ///    With `bootstrapping` (no file yet), only rows dated from it on go,
     ///    so a file started anew holds only what was chosen since.
     ///
-    /// A stored value the official apps would rewrite is never uploaded.
-    func merged(with rows: [PreferenceRow], bootstrapping since: Double? = nil, now: Date = .now) -> Merge {
+    /// A stored value the official apps would rewrite is never uploaded,
+    /// nor is any row of an import-only key (`Entry.uploads`).
+    ///
+    /// `keys` are the keys this device syncs (`Preferences.syncedKeys(enabling:)`):
+    /// any other stays in the file as it is. `secrets` holds the real value
+    /// of each secret key as this device has it now (from the Keychain, for
+    /// this call only; none for none connected). A secret's row holds a
+    /// placeholder and a date, and is ordered like any other: its value
+    /// goes up from `secrets`, never from the row. One from the file is
+    /// taken only where none is connected here and it is newer than the
+    /// row (or there is none); a different one is never taken over what is
+    /// connected: it is left, its date taken, and listed in `differing`.
+    func merged(
+        with rows: [PreferenceRow], bootstrapping since: Double? = nil, now: Date = .now,
+        keys: Set<String> = Preferences.synced, secrets: [String: JSONValue] = [:]
+    ) -> Merge {
         var merge = Merge(file: self)
         var copies: [PreferenceID: [Int]] = [:]
         for (index, item) in items.enumerated() {
             guard let key = item["key"]?.string, let identifier = item["identifier"]?.string,
-                  Preferences.synced.contains(key) else { continue }
+                  keys.contains(key) else { continue }
             copies[PreferenceID(key: key, identifier: identifier), default: []].append(index)
+        }
+        /// The file's date for a row that keeps its value, at most a day
+        /// ahead of this clock: a garbage date would otherwise carry every
+        /// later change here with it.
+        func raise(_ row: PreferenceRow?, to dated: Double?) {
+            if let row, let dated, case let date = min(dated, (now.timeIntervalSince1970 + 86_400).rounded(.down)),
+               date > row.updatedAt {
+                var raised = row
+                raised.updatedAt = date
+                merge.apply.append(Change(row: raised, expected: row))
+            }
+        }
+        func applySecret(_ item: [String: JSONValue], _ pair: PreferenceID, _ entry: Preferences.Entry, over row: PreferenceRow?) {
+            let dated = Self.readDate(of: item)
+            let date = dated ?? 0
+            guard let value = item["value"], entry.takes(value, nil) else { return raise(row, to: dated) }
+            if let local = secrets[pair.key] {
+                // The same key is already here; a different one is not taken over it.
+                if !entry.sameSecret(value, local) { merge.differing.append(pair) }
+                return raise(row, to: dated)
+            }
+            // None connected: the file's is taken once, when it is newer than
+            // what was last seen. A person who disconnected is not given it
+            // back by the same item on the next sync.
+            guard row == nil || date > row?.updatedAt ?? 0 else { return }
+            merge.secrets.append(SecretChange(pair: pair, value: value))
+            merge.apply.append(Change(
+                row: PreferenceRow(key: pair.key, identifier: pair.identifier, value: Storage.secretPlaceholder, updatedAt: date),
+                expected: row
+            ))
         }
         func apply(_ item: [String: JSONValue], _ pair: PreferenceID, over row: PreferenceRow?) {
             let dated = Self.readDate(of: item)
             let date = dated ?? 0
             guard let value = item["value"], let entry = Preferences.registry[pair.key] else { return }
-            guard entry.takes(value, row.flatMap { JSONValue(text: $0.value) }), let text = try? value.text else {
+            if entry.scope == .secret { return applySecret(item, pair, entry, over: row) }
+            let normal = entry.normalised(value)
+            guard entry.takes(normal, row.flatMap { JSONValue(text: $0.value) }), let text = try? normal.text else {
                 // Refused here (a looser threshold, or no value of the key's):
                 // this device keeps its value but takes the file's date, so
                 // a later change here is dated after the file's and replaces it.
-                // At most a day ahead of this clock: a garbage date would
-                // otherwise carry every later change here with it.
-                if let row, let dated, case let date = min(dated, (now.timeIntervalSince1970 + 86_400).rounded(.down)),
-                   date > row.updatedAt {
-                    var raised = row
-                    raised.updatedAt = date
-                    merge.apply.append(Change(row: raised, expected: row))
-                }
+                raise(row, to: dated)
                 return
             }
             // The same value takes the file's date only if it has one, or
@@ -140,16 +185,25 @@ struct PreferencesFile: Equatable {
                 row: PreferenceRow(key: pair.key, identifier: pair.identifier, value: text, updatedAt: date), expected: row
             ))
         }
-        for row in rows where Preferences.synced.contains(row.key) {
+        /// The row as the file's item: a secret's value comes from `secrets`,
+        /// never from the row, and none is made for an empty one; an
+        /// import-only key has none.
+        func uploadItem(_ row: PreferenceRow) -> [String: JSONValue]? {
+            guard let entry = Preferences.registry[row.key], entry.uploads else { return nil }
+            guard entry.scope == .secret else { return row.item }
+            guard let value = secrets[row.key], Preferences.isOfficialFixedPoint(value) else { return nil }
+            return row.item(carrying: value)
+        }
+        for row in rows where keys.contains(row.key) {
             let pair = PreferenceID(key: row.key, identifier: row.identifier)
             if let indexes = copies.removeValue(forKey: pair), let last = indexes.last {
-                if row.updatedAt > Self.date(of: items[last]), let mine = row.item {
+                if row.updatedAt > Self.date(of: items[last]), let mine = uploadItem(row) {
                     for index in indexes { merge.file.items[index] = mine }
                     merge.uploads.append(pair)
                 } else {
                     apply(items[last], pair, over: row)
                 }
-            } else if let mine = row.item, since.map({ row.updatedAt > 0 && row.updatedAt >= $0 })
+            } else if let mine = uploadItem(row), since.map({ row.updatedAt > 0 && row.updatedAt >= $0 })
                         ?? (row.updatedAt > 0 || row.key.hasPrefix(Preferences.peelPrefix)) {
                 merge.file.items.append(mine)
                 merge.uploads.append(pair)
@@ -188,8 +242,13 @@ extension PreferenceRow {
     /// The row as the file's item, or nil if the official apps would not
     /// write its value back unchanged.
     var item: [String: JSONValue]? {
-        guard let value = JSONValue(text: value), Preferences.isOfficialFixedPoint(value) else { return nil }
-        return [
+        guard !isSecret, let value = JSONValue(text: value), Preferences.isOfficialFixedPoint(value) else { return nil }
+        return item(carrying: value)
+    }
+
+    /// The row's key, identifier and date around `value`.
+    func item(carrying value: JSONValue) -> [String: JSONValue] {
+        [
             "key": .string(key), "identifier": .string(identifier),
             "date": .string(String(format: "%.0f", updatedAt)), "value": value,
         ]

@@ -40,7 +40,11 @@ act in Sphinx.
 - **Connect a model.** Either a pasted API key (Anthropic, OpenAI,
   OpenRouter) or a linked account. OpenRouter sign-in comes first. Claude
   and ChatGPT subscriptions come only after each vendor's terms are
-  checked. Keys are kept in the Keychain, per device.
+  checked. Keys are kept in the Keychain, per device. The one place a key
+  leaves the device is the account's encrypted preferences file, as the
+  official apps' `ai_agent_config` (phase 11, decision 11): written only
+  when the person connects a key, from the Keychain, never kept in a
+  database.
 - **The Agent chat.**
   - A "Peel" row in Direct messages, with the Peel logo. Until a model is
     connected the row shows "Set up" in link blue; after that, the AGENT

@@ -19,7 +19,7 @@ struct ChatData {
     /// The most characters of one message's text.
     static let maxText = 400
     /// The most characters of a name (a sender, a contact, a tribe).
-    static let maxName = 60
+    static let maxName = TextLine.maxName
     /// The most characters of a uuid as given (a real one is 64).
     static let maxID = 80
     /// Room kept for the note that says lines were cut.
@@ -74,12 +74,12 @@ struct ChatData {
 
     /// "Tribe 'Name' (chat=<id>)": a chat as a line names it.
     static func describe(_ chat: Conversation) -> String {
-        "\(chat.isTribe ? "Tribe" : "Contact") '\(clean(chat.name, max: maxName))' (chat=\(clean(chat.chat, max: maxID)))"
+        "\(chat.isTribe ? "Tribe" : "Contact") '\(TextLine.clean(chat.name, max: maxName))' (chat=\(TextLine.clean(chat.chat, max: maxID)))"
     }
 
     /// "'Name'": a chat's name in a sentence.
     static func quoted(_ chat: Conversation) -> String {
-        "'\(clean(chat.name, max: maxName))'"
+        "'\(TextLine.clean(chat.name, max: maxName))'"
     }
 
     /// One message: `[sender] date (uuid=… thread=… reply=… [marker]): text`.
@@ -88,13 +88,13 @@ struct ChatData {
         // Someone calling themself "Me" must not read as the user.
         // "]" ends the sender, so none is left in a name to fake another line's.
         let named = name.replacingOccurrences(of: "]", with: ")")
-        let sender = message.fromMe ? "Me" : clean(named, max: maxName).lowercased() == "me" ? "\(named) (not the user)" : named
-        var meta = "uuid=\(message.uuid.map { clean($0, max: maxID) } ?? "pending")"
-        if let thread = message.threadUUID { meta += " thread=\(clean(thread, max: maxID))" }
-        if let reply = message.replyUUID { meta += " reply=\(clean(reply, max: maxID))" }
+        let sender = message.fromMe ? "Me" : TextLine.clean(named, max: maxName).lowercased() == "me" ? "\(named) (not the user)" : named
+        var meta = "uuid=\(message.uuid.map { TextLine.clean($0, max: maxID) } ?? "pending")"
+        if let thread = message.threadUUID { meta += " thread=\(TextLine.clean(thread, max: maxID))" }
+        if let reply = message.replyUUID { meta += " reply=\(TextLine.clean(reply, max: maxID))" }
         if let marker { meta += " [\(marker)]" }
         let date = message.date.formatted(.iso8601)
-        return "[\(clean(sender, max: maxName))] \(date) (\(meta)): \(clean(text ?? words(of: message), max: maxText))"
+        return "[\(TextLine.clean(sender, max: maxName))] \(date) (\(meta)): \(TextLine.clean(text ?? words(of: message), max: maxText))"
     }
 
     /// What a message says, for a line: its preview (`Message.preview`),
@@ -118,31 +118,6 @@ struct ChatData {
         default: return preview
         }
     }
-
-    /// `text` as one line of at most `max` characters: line breaks and
-    /// other control characters as spaces, the direction controls that
-    /// could hide or reorder text dropped, and no run of three "<" (so no
-    /// marker) left.
-    static func clean(_ text: String, max: Int) -> String {
-        var scalars = String.UnicodeScalarView()
-        for scalar in text.unicodeScalars {
-            switch scalar.properties.generalCategory {
-            case .control, .lineSeparator, .paragraphSeparator: scalars.append(" ")
-            case _ where hiddenControls.contains(scalar.value): continue
-            default: scalars.append(scalar)
-            }
-        }
-        var line = String(scalars).split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        while line.contains("<<<") { line = line.replacingOccurrences(of: "<<<", with: "<< <") }
-        return line.count > max ? String(line.prefix(max - 1)) + "…" : line
-    }
-
-    /// The marks, embeddings, overrides and isolates of the bidirectional
-    /// algorithm, and the invisible characters that could split a marker
-    /// unseen (zero width space, word joiner, byte order mark, soft hyphen)
-    /// or hide text from the person while the model reads it (tags).
-    private static let hiddenControls = Set<UInt32>([0x200E, 0x200F, 0x061C, 0x200B, 0x2060, 0xFEFF, 0x00AD])
-        .union(0x202A...0x202E).union(0x2066...0x2069).union(0xE0000...0xE007F)
 
     /// The result, cut by whole lines to `maxCharacters`, the pinned lines always kept.
     var text: String {
@@ -188,7 +163,6 @@ public struct ChatDataReading: Equatable, Sendable {
     /// The first line, without chat ids: "The last 50 messages in Tribe 'journeys', most recent last".
     public let header: String
     public private(set) var chats: [Chat] = []
-
 
     public init(_ text: String) {
         let chatPattern = /(Tribe|Contact) '(.*)' \(chat=([^)]{1,80})\)/

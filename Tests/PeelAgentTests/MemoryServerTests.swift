@@ -5,13 +5,14 @@ import PeelCore
 @testable import PeelAgent
 @testable import PeelTestSupport
 
-/// The agent's memory over strut (`MemoryServer`): only where a strut may
-/// be (this Mac, a home server), strut's replies read back, and the rows
-/// and panel that show them (`MemoryResult`, `MemoryNode`).
+/// The agent's memory over strut (`MemoryServer`): only Peel's own strut on
+/// this Mac, strut's replies read back, and the rows and panel that show
+/// them (`MemoryResult`, `MemoryNode`).
 struct MemoryServerTests {
     /// The POST itself refuses anywhere a strut may not be, before anything is sent.
     @Test(arguments: ["http://10.0.0.5:3100/x", "http://example.com/x", "http://127.0.0.1@example.com/x",
-                      "https://u:p@example.com/x", "http://100.128.0.1/x", "ftp://127.0.0.1/x"])
+                      "https://u:p@example.com/x", "http://100.128.0.1/x", "ftp://127.0.0.1/x",
+                      "http://100.64.0.1:3000/x", "http://brain.tail1234.ts.net/x"])
     func aPostGoesOnlyWhereAStrutMayBe(string: String) async throws {
         let url = try #require(URL(string: string))
         await #expect(throws: PeelError.self) { try await Web.postToStrut(url, json: Data("{}".utf8), limit: 10, what: "the test") }
@@ -30,39 +31,17 @@ struct MemoryServerTests {
         #expect(MemoryServer(base: base, key: "abc\r\nX-Other: 1") == nil)
     }
 
-    /// Plain http only to this Mac or over Tailscale's own encryption;
-    /// https anywhere; never a user, password, query or fragment.
+    /// Peel's own strut only: plain http to this Mac, never a user,
+    /// password, query or fragment. A home server by address is gone.
     @Test(arguments: [
         ("http://127.0.0.1:3100", true), ("http://localhost:3100", true),
-        ("https://brain.example.com", true), ("https://brain.tail1234.ts.net", true), ("https://10.0.0.5:3000", true),
-        ("http://100.64.0.1:3000", true), ("http://100.127.255.255", true), ("http://brain.tail1234.ts.net", true),
-        ("http://10.0.0.5:3100", false), ("http://strut.example.com", false), ("http://100.63.255.255", false),
-        ("http://100.128.0.1", false), ("http://100.64.1", false), ("http://ts.net", false),
-        ("http://brain.ts.net.example.com", false), ("file:///tmp", false), ("http://u:p@127.0.0.1:3100", false),
-        ("https://u@brain.example.com", false), ("http://127.0.0.1:3100/?tok=x", false), ("https://brain.example.com/#x", false),
+        ("https://brain.example.com", false), ("https://127.0.0.1:3100", false), ("http://100.64.0.1:3000", false),
+        ("http://brain.tail1234.ts.net", false), ("http://10.0.0.5:3100", false), ("file:///tmp", false),
+        ("http://u:p@127.0.0.1:3100", false), ("http://127.0.0.1:3100/?tok=x", false), ("http://127.0.0.1:3100/#x", false),
     ])
-    func onlyWhereAStrutMayBe(address: String, accepted: Bool) throws {
+    func onlyPeelsOwnOnThisMac(address: String, accepted: Bool) throws {
         let url = try #require(URL(string: address))
-        #expect((MemoryServer(base: url, key: "k", home: true) != nil) == accepted)
-    }
-
-    /// Peel's own strut is only ever on this Mac: a server anywhere else is a home server.
-    @Test(arguments: ["https://brain.example.com", "http://100.64.0.1:3000", "https://127.0.0.1:3100"])
-    func peelsOwnOnlyOnThisMac(address: String) throws {
-        #expect(MemoryServer(base: try #require(URL(string: address)), key: "k") == nil)
-    }
-
-    /// A home server that does not answer is said to be offline, and one
-    /// that refuses the key says so, in words the memory panel shows.
-    @Test func aHomeServerOfflineOrRefusingTheKey() async throws {
-        await #expect { try await BrainTests.server("https://127.0.0.1:1").run("recall", ["q": "x"]) } throws: {
-            "\($0)".hasPrefix("The brain is offline.")
-        }
-        let stub = try await HTTPStub(status: 401) { _ in #"{"error":"unauthorized"}"# }
-        defer { stub.stop() }
-        await #expect { try await BrainTests.server("http://127.0.0.1:\(stub.port)").run("recall", ["q": "x"]) } throws: {
-            "\($0)".hasPrefix("The home server did not take Peel's key.")
-        }
+        #expect((MemoryServer(base: url, key: "k") != nil) == accepted)
     }
 
     @Test func aStepsOutputAndItsRefusals() throws {

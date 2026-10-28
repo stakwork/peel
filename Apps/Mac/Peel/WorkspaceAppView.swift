@@ -5,49 +5,128 @@ import PeelUI
 import SwiftUI
 import WebKit
 
-/// A Stadeum workspace's app in the detail column (strut's plans/apps.md
-/// §7.4): Peel's own strut's UI showing the app's page and nothing else
-/// (`MemoryServer.page(of:)`). strut frames the page in a sandboxed frame and
-/// relays its calls to the workspace with the person's token, which Peel
-/// never holds. strut's UI is the strut Peel ships; the page in its frame is
+/// An app in the detail column, a Stadeum workspace's or the person's own
+/// (strut's plans/apps.md §7.4): Peel's own strut's UI showing the app's
+/// page and nothing else (`MemoryServer.page(of:)`). strut frames the page in
+/// a sandboxed frame and, for a workspace's, relays its calls to the
+/// workspace with the person's token, which Peel never holds. strut's UI is the strut Peel ships; the page in its frame is
 /// the workspace's.
 struct WorkspaceAppView: View {
     @Environment(AppModel.self) private var model
     let app: WorkspaceApp
     /// Bumped by Reload: a new web view loads the page again.
     @State private var loads = 0
+    /// The person's own app's versions (`AppVersionsControl`); a
+    /// workspace's are its own to change, so none.
+    @State private var versions: AppVersions?
+    /// The version shown in this window instead of the live one.
+    @State private var previewing: String?
+    /// A change of what is live is under way: none other until strut answers.
+    @State private var changing = false
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: app.title, subtitle: "@\(app.peer)") {
-                Image(systemName: WorkspaceApp.symbol)
-                    .font(.system(size: 18))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: Theme.AvatarSize.lg, height: Theme.AvatarSize.lg)
+            DetailHeader(title: app.title, subtitle: subtitle) {
+                WorkspaceApp.headerIcon(app.iconSymbol)
             } trailing: {
+                // The chip says what the status would, but problems.
+                if versions == nil || app.problems > 0 { AppStatus(app: app) }
+                if let versions {
+                    AppVersionsControl(title: app.title, versions: versions, previewing: $previewing, busy: changing,
+                                       change: change)
+                }
+                AppPinButton(app: app)
                 IconButton("arrow.clockwise", help: "Reload") { loads += 1 }
             }
-            if let server = model.memoryServer, let page = server.page(of: app) {
+            if let previewing, let versions {
+                AppPreviewBar(shown: previewing, live: versions.active) { self.previewing = nil }
+            }
+            if let server = model.memoryServer, let page = server.page(of: app, version: previewing) {
                 AppPage(page: StrutPage(url: page, server: server, name: app.title))
-                    // Another app, strut started again (a new port and key), or Reload: a new
-                    // page; not the workspace renaming it, which would lose what the page holds.
-                    .id(PageID(app: app.id, server: server, loads: loads))
+                    // Another app, a preview, strut started again (a new port and key), Reload, or
+                    // a change of what is live made here: a new page; not a publish or the workspace
+                    // renaming it, which would lose what the page holds.
+                    .id(PageID(app: app.id, previewing: previewing, server: server, loads: loads))
             } else {
                 EmptyState("Apps open on Peel's own strut, which is not running.")
             }
+        }
+        // Read again when the listing says something moved (a new version, a new live one or
+        // release), and on Reload: what the live release locked moves on without the listing.
+        .task(id: VersionsID(app: app.id, live: app.version, newest: app.newest, release: app.release,
+                             server: model.memoryServer, loads: loads)) {
+            await readVersions()
+        }
+    }
+
+    /// The source when several are listed; the version is the chip's to show.
+    private var subtitle: String? {
+        versions == nil ? app.caption(showsSource: model.showsAppSources) : model.showsAppSources ? app.source : nil
+    }
+
+    private func readVersions() async {
+        guard app.peer == nil, let server = model.memoryServer else {
+            versions = nil
+            return
+        }
+        // A read that fails keeps what was read: the chip stays as it was.
+        guard let read = try? await AutomationsClient(server: server).versions(of: app.name), !Task.isCancelled else { return }
+        versions = read
+        // The version shown here went live elsewhere: it is everyone's page now.
+        if previewing == read.active { previewing = nil }
+    }
+
+    /// Asks strut to change what everyone opens; once it has, the live page
+    /// and its versions, read here rather than waiting for the listing.
+    private func change(_ target: AppLiveTarget, done: String) {
+        guard !changing else { return }
+        changing = true
+        Task {
+            if await model.makeLive(app, target, done: done) {
+                previewing = nil
+                loads += 1
+            }
+            changing = false
         }
     }
 
     private struct PageID: Hashable {
         let app: String
+        let previewing: String?
         let server: MemoryServer
+        let loads: Int
+    }
+
+    private struct VersionsID: Hashable {
+        let app: String
+        let live: String?
+        let newest: String?
+        let release: String?
+        let server: MemoryServer?
         let loads: Int
     }
 }
 
-extension WorkspaceApp {
-    /// The sidebar row's icon and the header's.
-    static let symbol = "square.grid.2x2"
+/// Pins an app under the sidebar's Apps row, or takes it off: in its header
+/// and on its card in Apps.
+struct AppPinButton: View {
+    @Environment(AppModel.self) private var model
+    let app: WorkspaceApp
+
+    var body: some View {
+        let pinned = model.isPinned(app)
+        IconButton(help: pinned ? "Unpin from the sidebar" : "Pin to the sidebar") {
+            model.setPinned(app, !pinned)
+        } label: {
+            // As the call window's keep-on-top pin.
+            if pinned {
+                Image(systemName: "pin.fill").foregroundStyle(Theme.accent)
+            } else {
+                Image(systemName: "pin")
+            }
+        }
+        .accessibilityValue(pinned ? "On" : "Off")
+    }
 }
 
 /// The web view under an app: strut's UI from Peel's own strut, on a store

@@ -35,7 +35,11 @@ on this Mac, turns it into text: nothing leaves it.
   another mic chosen): on macOS's notice that the default input changed, on
   the engine's that its configuration did (one new engine per burst, as a
   Bluetooth headset switches profile when its mic opens). A recording under
-  way carries on into the new engine.
+  way carries on into the new engine. The engine's input is set to the
+  default input device itself, not left to follow the default: an engine
+  that follows it opens the device macOS makes for the app's default
+  input and output, and that device goes deaf for the rest of the run once
+  a Peel call's voice processing has run beside another engine.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
   A small dark pill: 24 pt with a live waveform (the last eight levels) while
@@ -44,6 +48,8 @@ on this Mac, turns it into text: nothing leaves it.
 - **Hand-off:** `DictationSession { id, audioURL, duration, mode }` to a
   `Transcriber`: `StrutTranscriber` (`DictationSpeech`, the app; the HTTP
   calls are `StrutSpeech`, PeelAgent). `StubTranscriber` stays for tests.
+  A recording under `DictationDefaults.minRecording` (0.2 s), empty
+  included, is deleted unsent and the HUD says "Nothing was heard".
 - **Speech-to-text** (strut's `plans/native-dictation-client.md` §3, §6).
   Peel's bundled strut (the open account's, started with its agent; never
   a home server's) is staged with its speech engine, sherpa-onnx, in
@@ -79,7 +85,8 @@ on this Mac, turns it into text: nothing leaves it.
   while the account is locked (`AppModel.unlockedStorage` is nil: locking
   leaves the engine open, so the engine alone is not the test) or with History off (Account › Dictation › History). The
   window (app menu › Dictation History…, or Open in Settings) lists the
-  newest 500 by day with Copy and Clear History; opening it also drops what
+  newest 500 by day with Copy and Clear History; a row clean-up changed
+  says "Cleaned up", and shows what was heard once opened. Opening it also drops what
   is past 30 days. Clear overwrites the text in the file (`secure_delete`)
   and folds in the log. A "Copied: press ⌘V" note adds "(also in History)"
   only when it was kept. Time and account are taken when the key is let go.
@@ -123,8 +130,14 @@ on this Mac, turns it into text: nothing leaves it.
     the vocabulary read for Settings and the window), in Peel's own fields
     too (its text view read directly, not through Accessibility, which
     would wait on Peel's own main thread), and elsewhere only where
-    Accessibility can read the field (not most Electron apps; the rewrite
-    still works there). Why a watch ended, or never started, is logged
+    Accessibility can read the field. Chromium and the Electron apps built
+    on it (Claude, Slack, Notion) show Accessibility no text until asked,
+    so at key-down, with a fixer in use, Peel asks an app with a Chromium
+    framework once per process: `AXManualAccessibility` (Electron), else
+    `AXEnhancedUserInterface` (Chrome's browsers), asked again while the
+    app does not answer; other apps, and code editors on Electron (VS Code,
+    Cursor, Windsurf: asked, they offer their screen-reader mode), are never
+    touched. Why a watch ended, or never started, is logged
     (`log show --predicate 'subsystem == "dev.peel.mac"'`), never the text.
   - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
     word with how it is misheard (`memory/lexicon`), Remove
@@ -193,7 +206,7 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 
 | | |
 |---|---|
-| Key | Right Option (fixed for now) |
+| Key | Right Option, until another is chosen |
 | Hold threshold | 200 ms |
 | Longest recording | 5 min, then submitted |
 | Format | 16 kHz mono PCM16 WAV |
@@ -201,12 +214,44 @@ grant to stick. The Mac App Store build is sandboxed: the tap cannot start there
 | Hands-free tip | after 2 s of holding, until hands-free is used once (5 times at most) |
 | Microphone | on from the key going down to the recording's end, off otherwise |
 
-The key is Right Option for now. Choosing another (R3) is open: the
-Settings recorder, an `NSEvent` local monitor, never received a key when
-tried on a Mac, so it was taken out. `HotkeyConfig` keeps the rule for
-when it comes back: a modifier on its own or a function key, since any
-other key would type itself in every app; Fn needs System Settings ›
-Keyboard › Press 🌐 key › Do Nothing.
+## The key
+
+Account › Dictation › Key, Change, then press the key: two clicks and a
+press. It is recorded by the hotkey tap itself (`DictationHotkeyTap.record`,
+decided by `HotkeyRecording`, PeelUI), which sees every key system-wide,
+a modifier on its own included, whichever window has the keyboard. A
+modifier counts when it is let go with nothing else pressed meanwhile, so
+Fn held for F5 (a Mac keyboard's F-keys) chooses F5, and Command-Tab
+chooses nothing. While it waits, each press and repeat is swallowed (an
+active tap only: without Accessibility the keys also reach the app, and
+Settings says so); releases go on, so no key is left stuck in another app.
+Escape, Cancel, leaving Settings, Peel going to the background or 15 s
+stops it; a dictation under way keeps its key until it ends, and Change is
+off while secure input hides the keys. Only a modifier on its own (Right
+Option, Right ⌘, Fn …) or a function key (F1–F20) can be the key
+(`HotkeyConfig.canBeHotkey`): any other key would type itself in every
+app, Caps Lock sends no release, and Space, Return and keypad Enter steer
+a recording. Another key is refused with its name and why, and the wait
+goes on. The choice takes effect at once (the tap's key is changed under
+its lock) and is kept in `UserDefaults` (`dictation.hotkey`), read back at
+launch; one kept that can no longer be the key falls back to Right Option.
+Change needs dictation on (the tap running).
+
+What else the key does, when known, is said under it
+(`HotkeyConfig.conflict`): Fn, unless System Settings › Keyboard › Press 🌐
+key is Do Nothing (read from `com.apple.HIToolbox AppleFnUsageType`); ⌘ and
+⌃, which stay shortcuts with another key, and may be macOS Dictation's
+own shortcut; Shift, held for capitals; F1–F12, media keys on a Mac
+keyboard unless Fn is held or they are set as standard function keys.
+macOS has no setting of its own for another app's push-to-talk key: System
+Settings › Keyboard › Dictation's shortcut is only for Apple's dictation.
+
+The first recorder (#344) was an `NSEvent` local monitor in the Settings
+view; tried on a Mac it never received a key, Right ⌘ or a letter. Reading
+the code found no certain cause: no other monitor of Peel's takes
+flags-changed, and its handler looked right. A local monitor sees only
+events AppKit delivers to Peel, and only while its view is alive; the tap
+depends on neither, and was already working on that Mac.
 
 ## Open
 
@@ -220,6 +265,43 @@ macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
 
+- 2026-10-28: after a Peel call, every dictation in the same run said
+  "Nothing was heard": the engine started but its tap got no buffers.
+  Cause: LiveKit runs a voice-processing engine on the mic. If any other
+  AVAudioEngine input that follows the default is open while it runs, the
+  app's default-device aggregate (`CADefaultDeviceAggregate-<pid>-0`) is
+  left deaf when the call ends. The other engine can be dictation's last
+  engine, stopped but kept until the next press, or dictation during the
+  call. Every engine on that aggregate then gets nothing until relaunch.
+  Fixed by setting the input unit to the default input device
+  (`kAudioOutputUnitProperty_CurrentDevice`), which skips the aggregate.
+  The default-input listener already makes a new engine when the default
+  changes. Shown outside Peel with a harness on LiveKit 2.10.2
+  (`AudioManager.startLocalRecording()`, then stop, then a fresh engine
+  with a tap). Following the default: 0 buffers after, both with a
+  kept engine and with one opened during the call. That held in all but
+  one of about a dozen runs. Bound to the device: 19 buffers in two
+  seconds every time. Voice messages (`AVAudioRecorder`) still record
+  while the aggregate is deaf. No unit test, since the fault needs a
+  real mic and LiveKit's engine. Manual check: dictate once, join and
+  leave a call, dictate again, and the level moves and the text arrives.
+  Still open: dictating *during* a call, which was broken before this fix
+  as well. While voice processing runs, the input is 3 discrete channels.
+  They are near-silent with `say` playing (echo cancellation would remove
+  that anyway), and the 3→1 `AVAudioConverter` turns them into all
+  zeros. It needs its own fix and a person speaking to judge it.
+  Also open: voice processing in *another* process on the same mic
+  silences dictation while it runs. On 2026-10-28 between 11:17 and
+  11:25, the test harness's runs did this to Peel with no call in Peel,
+  and dictation came back on its own when they stopped. A Zoom or Meet
+  call likely does the same. It has not been checked whether binding to
+  the device helps, or whether this is macOS behaviour to document.
+  Checking it means running voice processing against the real mic, so
+  only do it with Tom's go-ahead or on a virtual input.
+
+- 2026-10-26: after the key is let go, the pill stays with a spinner while
+  strut transcribes, until the text is typed or a message takes its place;
+  before, it disappeared and a long dictation looked lost.
 - 2026-10-24: learning works in Peel's own fields: the watch reads Peel's
   focused text view directly. Dictating into Peel never learned before,
   since the watch skipped Peel to keep Accessibility off its own thread.
@@ -259,6 +341,13 @@ macOS 13+ is already the minimum (the project targets 15.6).
   something the user could mean) and Undo in the HUD; the Vocabulary
   window. Checked against a real staged strut: a learn, the read, Undo.
   Not yet: hotwords, the LLM clean-up, measuring corrections per 100 words.
+- 2026-10-26: choosing the key (R3) again, recorded through the hotkey tap
+  instead of a local monitor; kept across relaunch, effective at once,
+  known conflicts said. Tried on Tom's Mac: it works. Review fixes after
+  that: a modifier counts on its release when pressed alone (Fn+F5, ⌘-Tab),
+  repeats are swallowed, no choosing over a dictation under way, stopped
+  when Peel goes to the background. Unit tested: what each event means
+  while choosing, refusals, conflicts, persistence.
 - 2026-10-23: the mic goes on when the key goes down and off when the
   recording ends (or the press turns out to be a tap). It was kept warm with
   a 200 ms pre-roll, which left the mic indicator on and AirPods in call

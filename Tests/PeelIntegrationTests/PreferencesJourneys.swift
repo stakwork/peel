@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import PeelCore
+@testable import PeelTestSupport
+import GRDB
 
 extension Journeys {
     /// Preferences following one account between its devices, through the
@@ -103,6 +105,166 @@ extension Journeys {
             #expect(Array(after.items.prefix(before.items.count)) == before.items)
             #expect(after.items.dropFirst(before.items.count).map { $0["key"]?.string } == ["peel.payment_confirmation_msat"])
             #expect(try alice.storage.preferenceRows().allSatisfy { PeelCore.Preferences.registry[$0.key] != nil })
+            // The colour is taken (import-only); Face ID, the agent's key and
+            // `pin_timeout` are not this device's to store: they stay in the file.
+            #expect(try alice.storage.preferenceRow("chat_color", "Ann-color")?.value == ##""#ff00aa""##)
+            let unstored: Set = ["biometric_enabled", "ai_agent_config", "pin_timeout"]
+            #expect(try alice.storage.preferenceRows().allSatisfy { !unstored.contains($0.key) })
+            #expect(try await alice.engine.biometricWish() == nil)
+            await alice.close()
+        }
+
+        private static let everyKey = #"""
+            {"items":[
+            {"key":"pin_timeout","identifier":"0","date":"9","value":"0"},
+            {"key":"biometric_enabled","identifier":"0","date":"9","value":"true"},
+            {"key":"chat_color","identifier":"Ann-color","date":"9","value":"#FF00AA"},
+            {"key":"ai_agent_config","identifier":"0","date":"8","value":"openai|sk-test-not-real|Bot"},
+            {"key":"tip_amount","identifier":"0","date":"100","value":"500"}]}
+            """#
+        private static let testKey = "sk-test-not-real"
+
+        /// No row of the account's database, and no byte of its files, holds the key.
+        static func assertNoTrace(of key: String, in person: Person) throws {
+            for row in try person.storage.preferenceRows() { #expect(!row.value.contains(key)) }
+            let files = FileManager.default.enumerator(at: person.profile.directory, includingPropertiesForKeys: [.isRegularFileKey])
+            while let url = files?.nextObject() as? URL {
+                guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+                #expect(try Data(contentsOf: url).range(of: Data(key.utf8)) == nil, "\(url.lastPathComponent)")
+            }
+        }
+
+        static func value(_ key: String, of person: Person) async throws -> JSONValue? {
+            try await file(of: person).items.first { $0["key"]?.string == key }?["value"]
+        }
+
+        /// A phone with an agent credential to keep: a file with every
+        /// official key. The colour is taken as `#rrggbb`; Face ID's wish is
+        /// stored but nothing is enrolled; the agent's key goes to the
+        /// credential and nowhere else; `pin_timeout` is untouched. Then a key
+        /// connected here goes up, from the credential, and the rest of the file is as it was.
+        @Test func everyOfficialKeyOnADeviceThatSyncsThem() async throws {
+            let alice = try await Person.create("alice")
+            let credential = FakeAgentCredential()
+            await alice.engine.configurePreferences(PreferenceCapabilities(biometrics: true, agentCredential: credential))
+            try await Self.write(Self.everyKey, for: alice)
+            let pulled = try await alice.engine.syncPreferences()
+            #expect(!pulled.uploaded && pulled.applied >= 4)
+            #expect(try await alice.engine.syncedColours() == ["Ann-color": "#ff00aa"])
+            #expect(try await alice.engine.biometricWish() == true)
+            #expect(credential.current == AgentConfig(provider: .openai, apiKey: Self.testKey, name: "Bot") && credential.keeps == 1)
+            #expect(await !alice.engine.agentCredentialAdoptable)
+            #expect(try alice.storage.preferenceRows().allSatisfy { $0.key != "pin_timeout" })
+            #expect(try alice.storage.preferenceRow("ai_agent_config", "0")?.value == "\"redacted-secret\"")
+            try Self.assertNoTrace(of: Self.testKey, in: alice)
+            // The same file again changes nothing (no second keep, no upload).
+            #expect(try await alice.engine.syncPreferences().uploaded == false && credential.keeps == 1)
+
+            // A dry run says which, never what.
+            credential.connect(AgentConfig(provider: .anthropic, apiKey: "sk-test-other"))
+            try await alice.engine.agentCredentialConnected()
+            let preview = try await alice.engine.previewPreferences()
+            #expect(preview.uploaded.map(\.key) == ["ai_agent_config"])
+            #expect(!String(describing: preview).contains("sk-test"))
+
+            #expect(try await alice.engine.syncPreferences().uploaded)
+            let after = try await Self.file(of: alice)
+            func value(_ key: String) -> JSONValue? { after.items.first { $0["key"]?.string == key }?["value"] }
+            #expect(value("ai_agent_config") == .string("Anthropic|sk-test-other|Sphinx Agent"))
+            #expect(value("pin_timeout") == .string("0") && value("biometric_enabled") == .string("true"))
+            #expect(value("chat_color") == .string("#FF00AA"), "an imported colour goes back as it came")
+            #expect(value("tip_amount") == .string("500"))
+            await alice.close()
+        }
+
+        /// A colour is never uploaded, even one dated far in the future in the
+        /// database, and an upload of something else leaves the file's colour as it is.
+        @Test func aColourNeverGoesUp() async throws {
+            let alice = try await Person.create("alice")
+            try await Self.write(Self.everyKey, for: alice)
+            _ = try await alice.engine.syncPreferences()
+            try await alice.storage.pool.write { db in
+                try PreferenceRow(key: "chat_color", identifier: "Bob-color", value: ##""#000000""##, updatedAt: 9_999_999_999).upsert(db)
+                try PreferenceRow(key: "chat_color", identifier: "Ann-color", value: ##""#000000""##, updatedAt: 9_999_999_999).upsert(db)
+            }
+            try await alice.engine.setBoostAmount(msat: 21_000)
+            #expect(try await alice.engine.syncPreferences().uploaded)
+            let after = try await Self.file(of: alice)
+            let colours = after.items.filter { $0["key"]?.string == "chat_color" }
+            #expect(colours.count == 1 && colours[0]["value"] == .string("#FF00AA"))
+            await alice.close()
+        }
+
+        /// Face ID's choice goes up only from a device that syncs it, when the
+        /// person makes it; the other, as the Mac app, neither writes nor applies it.
+        @Test func faceIDIsWrittenOnlyFromAPhone() async throws {
+            let phone = try await Person.create("alice")
+            await phone.engine.configurePreferences(PreferenceCapabilities(biometrics: true))
+            let mac = try await Person.restore("alice", mnemonic: phone.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) { await !mac.engine.isSyncingHistory }
+
+            try await mac.engine.setBiometricEnabled(true)
+            #expect(try mac.storage.preferenceRows().allSatisfy { $0.key != "biometric_enabled" })
+            #expect(try await phone.engine.biometricWish() == nil)
+
+            try await phone.engine.setBiometricEnabled(true)
+            #expect(try await phone.engine.syncPreferences().uploaded)
+            let first = try await Self.value("biometric_enabled", of: phone)
+            #expect(first == .string("true"))
+            try await phone.engine.setBiometricEnabled(false)
+            #expect(try await phone.engine.syncPreferences().uploaded)
+            let second = try await Self.value("biometric_enabled", of: phone)
+            #expect(second == .string("false"))
+
+            // The Mac syncs and applies none of it.
+            _ = try await mac.engine.syncPreferences()
+            #expect(try mac.storage.preferenceRows().allSatisfy { $0.key != "biometric_enabled" })
+            #expect(try await mac.engine.biometricWish() == nil)
+            await mac.close()
+            await phone.close()
+        }
+
+        /// A different key connected here is not replaced by the file's: it is
+        /// offered, and taken only when asked for.
+        @Test func aDifferentKeyIsOfferedNotTaken() async throws {
+            let alice = try await Person.create("alice")
+            let credential = FakeAgentCredential(AgentConfig(provider: .anthropic, apiKey: "sk-test-local", name: nil))
+            await alice.engine.configurePreferences(PreferenceCapabilities(agentCredential: credential))
+            try await Self.write(Self.everyKey, for: alice)
+            let pulled = try await alice.engine.syncPreferences()
+            #expect(!pulled.uploaded)
+            #expect(credential.current?.apiKey == "sk-test-local" && credential.keeps == 0)
+            #expect(await alice.engine.agentCredentialAdoptable)
+            // Nothing is stored for it yet; a connect here is dated now and beats the file's item.
+            #expect(try alice.storage.preferenceRow("ai_agent_config", "0") == nil)
+            try Self.assertNoTrace(of: Self.testKey, in: alice)
+
+            #expect(try await alice.engine.adoptSyncedAgentCredential())
+            #expect(try alice.storage.preferenceRow("ai_agent_config", "0")?.updatedAt == 8)
+            #expect(credential.current == AgentConfig(provider: .openai, apiKey: Self.testKey, name: "Bot") && credential.keeps == 1)
+            #expect(await !alice.engine.agentCredentialAdoptable)
+            #expect(try await !alice.engine.syncPreferences().uploaded)
+            try Self.assertNoTrace(of: Self.testKey, in: alice)
+            await alice.close()
+        }
+
+        /// Disconnecting here never deletes the file's item nor uploads an
+        /// empty key, and the same item is not given back on the next sync.
+        @Test func disconnectingKeepsTheFilesItem() async throws {
+            let alice = try await Person.create("alice")
+            let credential = FakeAgentCredential()
+            await alice.engine.configurePreferences(PreferenceCapabilities(agentCredential: credential))
+            try await Self.write(Self.everyKey, for: alice)
+            _ = try await alice.engine.syncPreferences()
+            credential.connect(nil)
+            try await alice.engine.agentCredentialConnected()
+            #expect(try await !alice.engine.syncPreferences().uploaded)
+            #expect(credential.current == nil && credential.keeps == 1)
+            let kept = try await Self.value("ai_agent_config", of: alice)
+            #expect(kept == .string("openai|sk-test-not-real|Bot"))
+            // A Keychain that cannot be read leaves the agent's key out of the sync.
+            credential.failReads(true)
+            #expect(try await !alice.engine.syncPreferences().uploaded)
             await alice.close()
         }
 

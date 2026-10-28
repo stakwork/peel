@@ -268,6 +268,13 @@ extension AppModel {
     @discardableResult
     public func send(_ text: String, from composer: ComposerID) async -> Bool {
         guard let engine, let chat = composer.chat else { return false }
+        // A restore with no sent history to recover it from can settle with
+        // no name; nothing goes out under none (the composers also disable
+        // Send for the same reason, this is the backstop).
+        guard myAlias?.nilIfEmpty != nil else {
+            conversationNotices[chat] = "Set your name before sending messages"
+            return false
+        }
         Diagnostics.setAction(.send)
         defer { Diagnostics.setAction(.other) }
         let files = pendingFiles[composer] ?? []

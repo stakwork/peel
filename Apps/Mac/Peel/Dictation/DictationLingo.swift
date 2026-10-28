@@ -22,6 +22,9 @@ final class DictationLingo {
     /// Whether the account is unlocked: the vocabulary is neither read nor
     /// kept while it is locked (`DictationController` gives it).
     @ObservationIgnored var isUnlocked: () -> Bool = { false }
+    /// Called once the vocabulary was written: learned, undone, added,
+    /// removed or turned on or off (Peel Home's sync with the box).
+    @ObservationIgnored var changed: (() -> Void)?
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "dictation")
 
     /// Peel's strut, from `AppModel.strutChanged`.
@@ -62,13 +65,19 @@ final class DictationLingo {
     func correct(typed: String, edited: String, on server: MemoryServer) async throws -> [LingoLearned] {
         let output = try await server.run(step: "dictation/correction", ["typed": .string(typed), "edited": .string(edited)])
         let learned = LingoLearned.list(from: output)
-        if learned.contains(where: { !$0.undo.isEmpty }) { Task { await refresh() } }
+        if learned.contains(where: { !$0.undo.isEmpty }) {
+            changed?()
+            Task { await refresh() }
+        }
         return learned
     }
 
     /// Undo of a learn, on the strut that learned it: never learned again.
     func undo(_ ids: [String], on server: MemoryServer) async {
-        do { _ = try await server.run(step: "dictation/undo", ["undo": .array(ids.map(AgentKit.JSONValue.string))]) } catch {
+        do {
+            _ = try await server.run(step: "dictation/undo", ["undo": .array(ids.map(AgentKit.JSONValue.string))])
+            changed?()
+        } catch {
             log.error("lingo undo failed: \(String(describing: error))")
         }
         await refresh()
@@ -94,6 +103,8 @@ final class DictationLingo {
 
     private func call(_ step: String, _ input: AgentKit.JSONValue) async throws -> AgentKit.JSONValue {
         guard let server else { throw StrutSpeech.Failure.unreachable }
-        return try await server.run(step: step, input)
+        let output = try await server.run(step: step, input)
+        changed?()
+        return output
     }
 }

@@ -79,6 +79,8 @@ struct AccountView: View {
             SettingsSection {
                 NotificationsRow()
                 NotificationTextRow()
+                NotificationStyleRow()
+                NotificationSoundRow()
             }
         case .security:
             SettingsSection {
@@ -91,7 +93,10 @@ struct AccountView: View {
             }
             ForgetAccountControl(
                 trigger: "Forget this account on this Mac…",
-                explanation: "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
+                explanation: model.brain?.moved != nil
+                    ? "Removes the account and its messages from this Mac. Your assistant still runs on your home server: "
+                        + "turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere."
+                    : "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
                 section: true
             )
         }
@@ -106,7 +111,7 @@ extension AccountPage {
         case .profile: "Profile"
         case .payments: "Payments"
         case .assistant: "Assistant"
-        case .brain: "Brain"
+        case .brain: "Always on"
         case .connections: "Connections"
         case .dictation: "Dictation"
         case .notifications: "Notifications"
@@ -119,7 +124,7 @@ extension AccountPage {
         case .profile: "person.crop.circle"
         case .payments: "bolt"
         case .assistant: "sparkles"
-        case .brain: "brain"
+        case .brain: "house"
         case .connections: "powerplug"
         case .dictation: "mic"
         case .notifications: "bell"
@@ -130,9 +135,10 @@ extension AccountPage {
     /// The agent's own: listed only while there is one.
     private var needsAgent: Bool { [.assistant, .brain, .connections].contains(self) }
 
-    /// The categories this account has, in the order listed.
+    /// The categories this account has, by title as listed.
     @MainActor static func listed(in model: AppModel) -> [AccountPage] {
         allCases.filter { model.agent != nil || !$0.needsAgent }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     /// What each category holds, for the search: the labels of its rows.
@@ -142,7 +148,7 @@ extension AccountPage {
         case .payments: ["balance", "sats", "confirm payments", "boost amount"]
         case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
                           "revoke", "old assistant chats"]
-        case .brain: ["memory", "home server", "this Mac", "status"]
+        case .brain: ["Peel Home", "brain", "home server", "this Mac", "move", "turn off", "restore", "sync"]
         case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
         case .notifications: ["message text", "alerts"]
@@ -296,7 +302,10 @@ private struct NameRow: View {
             }
         } else {
             Fact("Name") {
-                Text(model.myAlias ?? "")
+                // A restore settled before this Mac asked for a name can
+                // still leave it unset; the Composer disables Send for it.
+                Text(model.myAlias?.nilIfEmpty ?? "Not set")
+                    .foregroundStyle(model.myAlias?.nilIfEmpty == nil ? Theme.secondaryText : Theme.text)
             } trailing: {
                 Button("Edit") {
                     draft = model.myAlias ?? ""
@@ -823,6 +832,53 @@ private struct NotificationTextRow: View {
                 options: [(true, "Show"), (false, "Hide")]
             ) { try await model.setNotificationShowsText($0) }
         }
+    }
+}
+
+private struct NotificationStyleRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Fact("Notification Type") {
+            SettingDropdown(
+                selection: model.notifier.style,
+                options: [(.banner, "Banner only"), (.bannerAndSound, "Banner + Sound"),
+                          (.soundOnly, "Sound only"), (.none, "None")]
+            ) { try await model.setNotificationStyle($0) }
+        }
+    }
+}
+
+/// The sound a notification plays: the system's and the user's own, by name.
+/// Chosen with a preview; off where the type plays none.
+private struct NotificationSoundRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let sounds = Self.available()
+        let chosen = sounds.contains(model.notifier.sound) ? model.notifier.sound : ""
+        Fact("Notification Sound") {
+            SettingDropdown(
+                selection: chosen,
+                options: [("", "Default")] + sounds.map { ($0, $0) }
+            ) {
+                try await model.setNotificationSound($0)
+                if !$0.isEmpty { NSSound(named: $0)?.play() } else { NSSound.beep() }
+            }
+            .disabled(!model.notifier.style.playsSound)
+        }
+    }
+
+    /// The names of the sounds in /System/Library/Sounds and ~/Library/Sounds.
+    private static func available() -> [String] {
+        let folders = [URL(filePath: "/System/Library/Sounds"),
+                       FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Sounds")]
+        let names = folders.flatMap { folder in
+            ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+                .filter { !$0.hasPrefix(".") }
+                .map { ($0 as NSString).deletingPathExtension }
+        }
+        return Array(Set(names)).sorted()
     }
 }
 

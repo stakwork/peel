@@ -79,9 +79,13 @@ public final class AppModel {
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
+        /// Every app listed: on the Mac the person's own and those the
+        /// workspaces pinned (`AppsView`), on the iPhone the workspaces'.
+        case apps
         /// An app a Stadeum workspace pinned, by the workspace's peer id and
-        /// the app's name there; the Mac's alone, shown by its own strut.
-        case app(peer: String, name: String)
+        /// the app's name there, or one of the person's own (no peer); the
+        /// Mac's alone, shown by its own strut.
+        case app(peer: String?, name: String)
     }
 
     /// Account's categories, listed where the sidebar was while it is open.
@@ -127,6 +131,7 @@ public final class AppModel {
                 newestLimit = Storage.pageSize
                 loadingOlder = false
                 observeMessages()
+                checkOwnMessageStatus()
                 if openThread?.chat != selectedChat { openThread = nil }
                 if search?.chat != selectedChat { search = nil }
             }
@@ -322,6 +327,8 @@ public final class AppModel {
     public let money = MoneyArrivals()
     /// Calls: presence, the recent calls, and the call this device is on.
     public let calls: CallStore
+    /// The person's Stadeum workspaces, paired on this device, and the apps listed.
+    public let stadeum = Stadeum()
     /// What the app supplies: panels, the clipboard, playback, calls, presence.
     @ObservationIgnored public let platform: Platform
     /// The web pane beside the chat, with this profile's website data.
@@ -380,12 +387,6 @@ public final class AppModel {
         }
         if destination == .agent, let agentChat { destination = .chat(agentChat) }
     }
-    /// Asked of Account › Brain until it is shown, which takes it: its home
-    /// server form, as "Connect a home server…" or "Change" opens it, or
-    /// "Switch back to this Mac?", as "Use this Mac" asks (the offscreen
-    /// driver's `brain-form` and `brain-leave`).
-    public var brainAsk: BrainAsk?
-    public enum BrainAsk: Sendable { case form, leave }
     /// Where the Connect panel is open from, if it is.
     public var agentConnectFrom: AgentConnectSource?
     /// The Account category shown, kept while Account is closed (`openAccount`).
@@ -424,6 +425,10 @@ public final class AppModel {
         }
         notifier.model = self
         calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
+        calls.hiveCall = { [weak self] peer in
+            guard let self else { throw PeelError("Peel is closing.") }
+            return try await stadeum.callLink(on: peer)
+        }
         calls.chatNotice = { [weak self] chat, change in
             guard let self else { return }
             let notice = change(conversationNotices[chat])
@@ -464,7 +469,7 @@ public final class AppModel {
         destination = .chat(chat)
     }
 
-    /// Account, at one of its categories: the agent chat's gear, a pairing
+    /// Account, at one of its categories: the agent chat's gear, a Peel Home
     /// link, the dictation offer.
     public func openAccount(_ page: AccountPage) {
         accountPage = page
@@ -653,7 +658,8 @@ public final class AppModel {
         ChatRow.People(
             me: me(in: chat),
             contact: Sender(alias: conversation?.name, photoURL: conversation?.photoURL,
-                            hue: hue(pubkey: chat, alias: nil, inTribe: false))
+                            hue: hue(pubkey: chat, alias: nil, inTribe: false)),
+            colours: syncedColours
         )
     }
 
@@ -717,6 +723,10 @@ public final class AppModel {
     public func becameActive() {
         Diagnostics.setForeground(true)
         lockIfDue()
+        // A pairing under way polls now (the person may have just approved
+        // it in the browser); the workspaces are renewed if due, which the
+        // hourly look may have slept through.
+        if phase == .ready { stadeum.cameToFront() }
         // Asked first, so the open chat's `read` goes after the ask and its
         // answer is not applied over it.
         Task {
@@ -725,6 +735,14 @@ public final class AppModel {
         }
         Task { await engine?.refreshPreferences() }
         Task { await notifier.refreshPermission() }
+        checkOwnMessageStatus()
+    }
+
+    /// Asks the server, in the background, what became of the open chat's own
+    /// messages it has not confirmed, so their bolts settle (rate-limited by the engine).
+    private func checkOwnMessageStatus() {
+        guard let chat = selectedChat else { return }
+        Task { await engine?.checkOwnMessageStatus(in: chat) }
     }
 
     public func lockIfDue() {
@@ -782,12 +800,12 @@ public final class AppModel {
 
     /// Brings an account back from its twelve words, then pulls contacts and
     /// history in the background; `restoreProgress` follows it.
-    public func restoreAccount(words: [String], name: String, pin: String) async throws {
+    public func restoreAccount(words: [String], pin: String) async throws {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
         let mnemonic = words.joined(separator: " ")
         try? profile.biometrics?.turnOff()
-        let engine = try await Account.restore(profile, mnemonic: mnemonic, alias: name, pin: pin)
+        let engine = try await Account.restore(profile, mnemonic: mnemonic, pin: pin)
         // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()
         await attach(engine)
@@ -828,6 +846,16 @@ public final class AppModel {
     public func setNotificationShowsText(_ shows: Bool) async throws {
         try await signedIn().setNotificationShowsText(shows)
         notifier.showsText = shows
+    }
+
+    public func setNotificationStyle(_ style: NotificationPolicy.Style) async throws {
+        try await signedIn().setNotificationStyle(style)
+        notifier.style = style
+    }
+
+    public func setNotificationSound(_ name: String) async throws {
+        try await signedIn().setNotificationSound(name)
+        notifier.sound = name
     }
 
     /// A click on a notification: Peel to the front with that chat open,
@@ -1234,6 +1262,15 @@ public final class AppModel {
     /// Yours, by your key everywhere, as the official apps key their own
     /// messages. Every other colour comes from `hue(pubkey:alias:inTribe:)`.
     public private(set) var myHue = PersonHue(pubkey: "", alias: nil, inTribe: false)
+    /// The colours other devices gave people and chats, by colour key, as
+    /// `#rrggbb` (`Engine.syncedColours`).
+    public private(set) var syncedColours: [String: String] = [:]
+    /// The file says Face ID is on on another device and it is off here:
+    /// You offers to turn it on, through the PIN (`turnOnBiometrics`).
+    public internal(set) var biometricsOffered = false
+    /// The file holds an agent key that differs from the one connected
+    /// here; the connect panel offers it (`adoptSyncedAgentKey`).
+    public private(set) var agentKeyAvailable = false
 
     /// Someone in a boost, a thread or a call: you, or who they said they
     /// are (a tribe member by alias, or the contact, whose key is the chat's).
@@ -1251,9 +1288,61 @@ public final class AppModel {
     }
 
     /// Someone known by their key: a contact, or a tribe member (by alias).
+    /// The colour another device gave them (`syncedColours`) if it did, else the hash.
     public func hue(pubkey: String?, alias: String?, inTribe: Bool) -> PersonHue {
         if let pubkey, pubkey == myPubkey { return myHue }
-        return PersonHue(pubkey: pubkey ?? "", alias: alias, inTribe: inTribe)
+        return PersonHue(pubkey: pubkey ?? "", alias: alias, inTribe: inTribe, synced: syncedColours)
+    }
+
+    /// What this account's preferences file gives the app beyond the
+    /// settings it reads from `settings()`: the colours other devices gave
+    /// (`chat_color`, import-only), what Face ID's choice elsewhere asks
+    /// of this device, and whether the file holds a different agent key.
+    /// Read when an account opens and on every `.preferencesChanged`.
+    private func refreshSyncedPreferences(_ engine: Engine) async {
+        let colours = (try? await engine.syncedColours()) ?? [:]
+        let wish = try? await engine.biometricWish()
+        let adoptable = await engine.agentCredentialAdoptable
+        guard self.engine === engine else { return }
+        if colours != syncedColours { syncedColours = colours }
+        agentKeyAvailable = adoptable
+        guard let biometrics = profile?.biometrics, let wish else {
+            biometricsOffered = false
+            return
+        }
+        let on = await Task.detached { biometrics.isOn }.value
+        guard self.engine === engine else { return }
+        if wish {
+            // Never turned on from the file: Face ID needs the PIN typed.
+            biometricsOffered = !on && BiometricUnlock.available != nil
+        } else {
+            biometricsOffered = false
+            // Turning it off is the safe direction; and it writes nothing back.
+            if on { _ = try? await Task.detached { try biometrics.turnOff() }.value }
+        }
+    }
+
+    /// Takes the agent key the file holds in place of the one connected
+    /// here, after the person confirmed (`agentKeyAvailable`). The running
+    /// agent is handed it as a manual connect would be.
+    public func adoptSyncedAgentKey() async throws {
+        let engine = try signedIn()
+        try await engine.adoptSyncedAgentCredential()
+        agentKeyAvailable = await engine.agentCredentialAdoptable
+    }
+
+    /// What this device adds to the account's synced preferences: Face ID
+    /// where the platform syncs it and the account has a PIN, the agent's
+    /// credential where there is an agent.
+    private func preferenceCapabilities(for profile: Profile?) -> PreferenceCapabilities {
+        let agentCredential = agentHost == nil ? nil : profile.map { profile in
+            AgentCredentialSync(item: profile.agentCredential) { [weak self] in
+                Task { @MainActor in self?.agent?.reloadConnection() }
+            }
+        }
+        return PreferenceCapabilities(
+            biometrics: platform.syncsBiometrics && profile?.biometrics != nil, agentCredential: agentCredential
+        )
     }
 
     public func signedIn() throws -> Engine {
@@ -1286,7 +1375,6 @@ public final class AppModel {
         focus = nil
         destination = nil
         accountPage = .profile
-        brainAsk = nil
         searchQuery = ""
         timeline = .empty
         openThread = nil
@@ -1330,6 +1418,9 @@ public final class AppModel {
         savedLayout = ChatSections.Layout()
         sidebarLayout = savedLayout
         senderZoneCache = [:]
+        syncedColours = [:]
+        biometricsOffered = false
+        agentKeyAvailable = false
         lastActiveAt = nil
         notifier.reset()
     }
@@ -1340,13 +1431,13 @@ public final class AppModel {
         self.engine = engine
         let storage = engine.storage
         let settings = await engine.settings()
-        myAlias = settings.alias
+        myAlias = settings.alias.nilIfEmpty
         myPhotoURL = settings.photoURL
         myContactInfo = settings.contactInfo
         echoedAliases = settings.echoedAliases
         refreshMentionAliases()
         myServer = settings.server
-        calls.attach(engine, server: settings.callServer)
+        calls.attach(engine, server: settings.callServer, jamiePicks: settings.callJamie ?? [:])
         pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
         balanceMsat = settings.balanceMsat
         wordsConfirmed = settings.wordsConfirmed ?? false
@@ -1363,6 +1454,11 @@ public final class AppModel {
         // chat: the agent is this account's own, from the same words.
         if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
         if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
+        await engine.configurePreferences(preferenceCapabilities(for: profile))
+        await refreshSyncedPreferences(engine)
+        guard self.engine === engine else { return }
+        notifier.style = settings.notificationStyle ?? .default
+        notifier.sound = settings.notificationSound ?? ""
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
@@ -1417,6 +1513,7 @@ public final class AppModel {
                 case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)
                 case .messages: restoreProgress.messages = .init(reached: reached, end: end)
                 }
+                checkOwnMessageStatus()
             case .historyResumed(let restart):
                 if restoreProgress.paused != nil { restoreProgress.outcome = nil }
                 if restart { (restoreProgress.contacts, restoreProgress.messages) = (nil, nil) }
@@ -1424,8 +1521,13 @@ public final class AppModel {
                 restoreProgress.restoring = false
                 restoreProgress.outcome = .finished
                 notifier.historyEnded()
+                // A safety net: a missed `.profile` must not leave the header stale.
+                let settings = await engine.settings()
+                myAlias = settings.alias.nilIfEmpty
+                myPhotoURL = settings.photoURL
+                rebuildRows()
             case .profile(let alias, let photoURL):
-                myAlias = alias
+                myAlias = alias.nilIfEmpty
                 myPhotoURL = photoURL
                 refreshMentionAliases()
                 rebuildRows()
@@ -1454,6 +1556,7 @@ public final class AppModel {
                 guard self.engine === engine else { break }
                 paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
                 boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+                await refreshSyncedPreferences(engine)
             case .sendStatus:
                 break
             }

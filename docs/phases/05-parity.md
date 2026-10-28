@@ -418,8 +418,25 @@ canvas, adapted: no Touch ID, devices or invite rows yet. Notifications
   sent messages, whose sender JSON carries `alias` and `photo_url`. Peel now
   does the same at the end of a restore: if no photo is set, it takes the
   photo of the newest own direct message (`Storage.newestOwnPhotoURL`; tribe
-  messages left out, as the official app does). The name is not filled
-  because Peel's restore always asks for one.
+  messages left out, as the official app does). Update: the restore no longer
+  asks for a name, so `Engine.recoverOwnProfile` fills the name too, from
+  the newest own message to a contact that carries one
+  (`Storage.newestOwnAlias`; payments and boosts count, they keep the alias
+  when they drop the photo). Contact chats only; retried after each history
+  sync and on start until both are settled. The photo is the newest
+  *usable* one: messages with an empty or missing photo are skipped (official
+  apps send some without), an `http` link is upgraded to `https` (and
+  trimmed, percent-encoded if needed; `httpsOnly` itself stays strict), and
+  when no direct message carries a photo the newest own tribe messages are
+  tried (tribes rewrite the alias but keep `photo_url`). On `.historyDone`
+  the app re-reads the engine's settings so a missed `.profile` cannot leave
+  the header stale. With no sent message the photo stays empty until set in
+  Profile. Update: a name with no sent message to recover it from is no
+  longer left empty either — "Open Peel" on the progress screen asks for one
+  first, instead of opening straight into a blank name. And since a restore
+  can still reach the app this way (or an old one already does, from before
+  this), sending is off without a name set, at the composer and again in
+  `AppModel.send`, rather than let a message go out under none.
 - **Contact info** with Copy and a QR code (CoreImage `qrCodeGenerator`);
   the old contact-info popover on the sidebar footer is gone.
 - **Twelve words**: only after the PIN (`Profile.words(pin:)`, derived off

@@ -4,10 +4,11 @@ import PeelCore
 
 /// Peel's half of strut's `orchestrator` (docs/agent-on-strut.md, section 1):
 /// the workflow strut ships and seeds, which the bridge runs for each of the
-/// owner's messages. strut gives it its own tools (`memory/*`, `job/*`) and
-/// a generic prompt; Peel adds the rest through the host delta the bundled
-/// server reads at boot (`hostConfig`, `STRUT_HOST_CONFIG`): its prompt
-/// section, the `sphinx/*` steps that ask this Mac for what only it can do
+/// owner's messages. strut gives it its own tools (`job/*`) and a generic
+/// prompt; Peel adds the rest through the host delta the bundled server
+/// reads at boot (`hostConfig`, `STRUT_HOST_CONFIG`): its prompt section,
+/// strut's `memory/*` steps, which strut's own orchestrator leaves out, the
+/// `sphinx/*` steps that ask this Mac for what only it can do
 /// (read the person's chats, send as them), and strut's `automation/*` steps
 /// on `peel-automation-run`, each change behind an `approve` card on the
 /// Mac. The steps and that workflow are Peel's, published as the bridge
@@ -217,7 +218,7 @@ public enum Orchestrator {
         // (`PeerRequest`). strut grants `strut/run-workflow` to both, and since strut#294 no other route reaches it.
         let approve: AgentKit.JSONValue = [.string(DeviceActions.peerTool)]
         let config: AgentKit.JSONValue = [
-            "orchestrator": ["tools": .array((tools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
+            "orchestrator": ["tools": .array((tools + memoryTools + MCPGrants.tools(grants.assistant)).map(AgentKit.JSONValue.string)),
                              "system": .string(system), "model": .null, "approve": approve],
             "job": ["tools": .array(MCPGrants.tools(grants.jobs).map(AgentKit.JSONValue.string)), "approve": approve],
             "builder": ["peer": false],

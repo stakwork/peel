@@ -96,7 +96,8 @@ chat's search, the forms) they open the next unread chat instead of the
 text view's ⌥⇧↓ and ⌥⇧↑ (select to the paragraph's end or start), as in
 Slack.
 **Keys.** Clicking a row gives the sidebar the keyboard: Down and Up move a
-soft highlight (the hover fill) through Threads, Mentions, Payments, then
+soft highlight (the hover fill) through Apps and the apps under it,
+Automations, Mentions, Payments, Threads (A–Z), then
 the chats as shown (Unread, tribes, direct messages), skipping the section
 headers, the "+" and "Show all" rows (reached by a click only), invites
 and what a trimmed or collapsed section hides, and
@@ -275,8 +276,13 @@ Approved by Tom on 2026-10-07; mocks on the "Peel layout directions" canvas
   received", and never "no sats": the stored balance may be older than
   sats received since.
 - **Restore:** twelve word fields (paste fills all twelve, suggestions as you
-  type), then a progress page: account, contacts, messages with a count,
-  tribes. "Open Peel" works before history finishes.
+  type), a PIN, then a progress page: account, contacts, messages with a count,
+  tribes. "Open Peel" works before history finishes. There is no name step:
+  the name and photo come back from the account's own newest sent messages
+  (contact chats). When the name does not come back, "Open Peel" asks for one
+  before opening (a photo missing the same way just stays unset, set later in
+  Profile); sending is off until a name is set, rather than let a message go
+  out under none.
 - **The PIN is required, as in the official apps** (Tom, 2026-10-07). The
   restore flow gets a PIN step too. How the PIN protects the words is a
   phase 2 decision; see `docs/phases/02-messaging.md`.
@@ -681,7 +687,7 @@ Built so far:
   apart (the web pane's Try again, `.peel(.outline, size: .sm)`); 24 of
   padding. `.sm` is a list in a panel: 12 pt, 8 of padding (the
   Account's "No time zone matches."). The start screen ("Pick a
-  conversation…", under the "Peel" header), Threads, Mentions, Payments
+  conversation…", under the "Peel" header), Apps, Threads, Mentions, Payments
   and the web pane's failed page use it; a screen keeps its own
   `DetailHeader` above it.
 - **Problem lines** (batch 7). Every failure the app shows goes through

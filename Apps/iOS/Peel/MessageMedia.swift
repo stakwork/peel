@@ -2,13 +2,16 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-// Pictures and files in a conversation on the phone: images (alone or a
-// run's grid) and GIFs drawn, downloaded through the model as on the Mac
-// (`AppModel.autoDownload`, `ImageCache`); other files named. Playing,
-// saving, buying and the full-size viewer are the Mac's for now.
+// Pictures, video and files in a conversation on the phone: images (alone
+// or a run's grid) and GIFs drawn, voice messages played, video in place
+// (`VideoTile`), PDFs and other files as a card that previews and shares
+// (`FileCard`), all downloaded through the model as on the Mac
+// (`AppModel.autoDownload`, `ImageCache`). Buying and the full-size image
+// viewer are the Mac's for now.
 
 /// A message's attachment: a run of images as a grid, one image, or a file.
 struct AttachmentBlock: View {
+    @Environment(AppModel.self) private var model
     let row: ChatRow
 
     var body: some View {
@@ -24,10 +27,14 @@ struct AttachmentBlock: View {
             .accessibilityLabel("\(row.images.count) images")
         } else if message.attachmentPriceMsat != nil, !message.fromMe {
             FileMark(message: message, note: "Paid. Buy it on the Mac for now.")
-        } else if message.attachmentKind == .image {
-            ImageTile(message: message)
         } else {
-            FileMark(message: message, note: message.uploadState == .pending ? "Uploading…" : "Opens on the Mac for now")
+            // What the bytes turned out to be once downloaded: a fake video is a file.
+            switch model.attachmentKind(of: message) {
+            case .image: ImageTile(message: message)
+            case .video: VideoTile(message: message)
+            case .audio: VoiceBubble(message: message)
+            case .pdf, .text, .file, nil: FileCard(message: message)
+            }
         }
     }
 }
@@ -120,8 +127,8 @@ struct GiphyPicture: View {
     }
 }
 
-/// A file, video or recording: its kind's symbol, its name, and why it
-/// does not open here.
+/// A paid attachment of someone else's: its kind's symbol, its name, and
+/// why it does not open here.
 struct FileMark: View {
     let message: Message
     let note: String

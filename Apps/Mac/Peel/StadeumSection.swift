@@ -13,15 +13,15 @@ struct StadeumSection: View {
     @State private var unpairing = false
 
     var body: some View {
-        let hive = model.hive
+        let hive = model.stadeum
         VStack(alignment: .leading, spacing: 6) {
             SettingsSection("Stadeum workspaces") {
                 switch hive.status {
                 case .off:
                     Fact("Stadeum") {
-                        Text(model.brain == .thisMac
-                             ? "Let your assistant ask your team's workspaces and run their workflows."
-                             : "For the assistant on this Mac only: your home server's assistant is paired from there.")
+                        Text(model.brain?.moved != nil
+                             ? "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
+                             : "Let your assistant ask your team's workspaces and run their workflows.")
                             .muted()
                             .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
@@ -119,7 +119,7 @@ private struct WorkspaceRow: View {
                     do {
                         try model.agent?.revoke(rule)
                     } catch {
-                        model.hive.problem = PeelError.problem(error, couldNot: "change how \(peer.name) is asked")
+                        model.stadeum.problem = PeelError.problem(error, couldNot: "change how \(peer.name) is asked")
                     }
                 }
                     .buttonStyle(.peel(.outline))

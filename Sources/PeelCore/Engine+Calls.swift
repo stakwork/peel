@@ -15,11 +15,16 @@ extension Engine {
     /// form. A tribe takes only the 3-sat floor for it. Only while connected,
     /// since a call message is never sent again (its room would be stale);
     /// a publish that fails all the same is reported as a send status for
-    /// the tag returned, like any send's. Joining is the caller's.
-    public func startCall(in pubkey: String, audioOnly: Bool) async throws -> (link: CallLink, tag: String?) {
+    /// the tag returned, like any send's. Joining is the caller's. With
+    /// `hiveLink`, the call Hive made with Jamie in it is posted in place of
+    /// a new room, once it passes the same checks (`CallLink.hive`).
+    public func startCall(
+        in pubkey: String, audioOnly: Bool, hiveLink: String? = nil
+    ) async throws -> (link: CallLink, tag: String?) {
         let tribe = try openTribe(pubkey)
         guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
-        let link = try CallLink.new(server: callServer(), audioOnly: audioOnly)
+        let link = try hiveLink.map { try CallLink.hive($0, server: callServer(), audioOnly: audioOnly) }
+            ?? CallLink.new(server: callServer(), audioOnly: audioOnly)
         guard transport != nil else { throw Failure.notConnected }
         let tag = try await deliver(body: Self.json(["content": link.message]), to: pubkey, type: MessageType.call, replacing: nil)
         return (link, tag)
@@ -40,7 +45,10 @@ extension Engine {
     /// key. Memory only; never store or log it.
     public func callTicket(for link: CallLink, in chat: String?) async throws -> CallTicket {
         let tribe = chat.flatMap { tribes[$0] }
-        let name = tribe?.sentAlias(account: alias) ?? (alias.isEmpty ? tribeAlias(alias) : alias)
+        // A blank account name joins as "Peel user", not the tribes' "Unknown",
+        // which the call chat and Jamie would take for the speaker.
+        let name = tribe?.sentAlias(account: alias)
+            ?? (alias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Peel user" : alias)
         let photo = (tribe?.sentPhoto(account: photoURL) ?? photoURL).httpsOnly
         return try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: photo)
     }

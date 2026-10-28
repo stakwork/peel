@@ -58,12 +58,17 @@ final class CallSession {
     /// This side's identity on the call (the token's), to tell you apart
     /// in the presence feed.
     let identity: String
+    /// The name this side joined with, sent as the sender of its chat messages.
+    let participantName: String
     private(set) var state = State.connecting
     /// When the room first connected: the running time counts from here.
     private(set) var connectedAt: Date?
     /// Everyone on the call, the others in the order they joined, you last.
     private(set) var tiles: [Tile] = []
     private(set) var micOn = false
+    /// Whether the call server is recording the call (the room says so);
+    /// everyone on it must be told.
+    private(set) var isRecording = false
     private(set) var cameraOn = false
     /// Whether you last chose the camera on (or started a video call):
     /// what a rejoin brings back.
@@ -80,11 +85,38 @@ final class CallSession {
     private(set) var deviceNotice: String?
     /// What you share, while you share it (and while it is being published).
     var sharing: ScreenShare.Content? { share?.content }
+    /// Whether the next share includes Peel's own windows, which are left out
+    /// by default. Applies when a share starts, not to one already running.
+    var includePeelWindows = false
+    /// Whether the running share includes Peel's own windows.
+    var sharingIncludesPeel: Bool { share?.includesPeel ?? false }
     /// The tile shown large with the others in a strip beside it; nil for
     /// the grid. A screen someone starts sharing takes it.
     private(set) var focus: Tile.ID?
     /// The call window floats above other apps' windows, for this call.
     var keepOnTop = false
+
+    // MARK: Chat state
+
+    /// The call's chat, oldest first; in memory for this call only.
+    var chatRows: [CallChatLog.Row] { log.rows }
+    /// Messages from others that came while the panel was closed.
+    private(set) var chatUnread = 0
+    /// Whether the chat panel is open beside the call.
+    private(set) var chatOpen = false
+    /// Jamie is working on a request (it sent a status row, no answer yet);
+    /// only ever set while Jamie is in the call.
+    var jamieThinking: Bool { jamieInCall && log.jamieThinking }
+    /// Jamie is in the call: a remote participant named "Jamie" with the
+    /// `tts` attribute a sphinx-voice agent sets. Nil attribute: a person who
+    /// happens to be called Jamie.
+    private(set) var jamieInCall = false
+    /// Jamie is still on the last request, so another may be skipped.
+    var jamieBusy: Bool { jamieThinking }
+    /// A short-lived hint above the composer.
+    private(set) var chatNotice: String?
+    private var log = CallChatLog()
+    @ObservationIgnored private var noticeTask: Task<Void, Never>?
 
     @ObservationIgnored private let room = Room(roomOptions: RoomOptions(adaptiveStream: true, dynacast: true))
     @ObservationIgnored private var connecting: Task<Void, Never>?
@@ -117,6 +149,7 @@ final class CallSession {
         self.chat = chat
         self.title = title
         identity = ticket.identity
+        participantName = ticket.participantName
         wantsCamera = camera
         refreshAccess()
         refreshAudioDevices()
@@ -152,6 +185,7 @@ final class CallSession {
         let url = ticket.serverURL.absoluteString, token = ticket.token
         connecting = Task { [weak self] in await self?.connect(url: url, token: token, camera: camera) }
         Task { await refreshCameras() }
+        room.add(delegate: self)
         // Your own tile from the start, while the room connects.
         refresh()
     }
@@ -204,6 +238,12 @@ final class CallSession {
         connecting?.cancel()
         await connecting?.value
         await stopSharing()
+        // Chat is for this call only.
+        noticeTask?.cancel()
+        log = CallChatLog()
+        chatNotice = nil
+        chatUnread = 0
+        chatOpen = false
         changes = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
@@ -299,10 +339,10 @@ final class CallSession {
         defer { switchingShare = false }
         // Nothing is shared unless the picker returned something and the
         // call is still on when it did.
-        guard let filter = await ScreenShare.pick(kind), !leaving, state == .connected else { return }
+        guard let filter = await ScreenShare.pick(kind, includePeel: includePeelWindows), !leaving, state == .connected else { return }
         let started: ScreenShare
         do {
-            started = try await ScreenShare.start(filter) { [weak self] in self?.shareEnded() }
+            started = try await ScreenShare.start(filter, includePeel: includePeelWindows) { [weak self] in self?.shareEnded() }
         } catch {
             deviceNotice = "Could not start sharing"
             return
@@ -463,6 +503,16 @@ final class CallSession {
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
+        if room.isRecording != isRecording { isRecording = room.isRecording }
+        let jamie = others.contains {
+            $0.name?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Jamie") == .orderedSame
+                && $0.attributes["tts"] != nil
+        }
+        if jamie != jamieInCall {
+            jamieInCall = jamie
+            // Jamie left: nothing is coming.
+            if !jamie { log.stopThinking() }
+        }
 
         let now: State
         switch room.connectionState {
@@ -524,5 +574,92 @@ final class CallSession {
         let person = CallParticipant(identity: id, name: name, metadata: metadata)
         readPeople[id] = (name, metadata, person)
         return person
+    }
+}
+
+// MARK: - Chat
+
+/// Longest a "Jamie is thinking…" line stays when no answer comes.
+private let thinkingLimit = Duration.seconds(120)
+/// How long the busy hint stays.
+private let noticeLimit = Duration.seconds(6)
+
+extension CallSession {
+    /// Opens or closes the chat panel; opening reads what came meanwhile.
+    func setChatOpen(_ open: Bool) {
+        chatOpen = open
+        if open { chatUnread = 0 }
+    }
+
+    /// Sends `text` to everyone on the call as the name you joined with:
+    /// shown at once, then published on the chat topic. A publish that fails
+    /// leaves the row marked "Not sent" for `retryChat`. Asking Jamie while
+    /// it is still on the last request is allowed, with a hint.
+    func sendChat(_ text: String) async {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !leaving else { return }
+        let message = CallChatMessage(
+            id: UUID().uuidString, timestamp: .now, text: text, sender: participantName
+        )
+        log.appendLocal(message)
+        if CallChatWire.mentionsJamie(text), jamieBusy {
+            showChatNotice("Jamie is still working on your last request; this one may be skipped.")
+        }
+        await publish(message)
+    }
+
+    /// Sends a row that failed again.
+    func retryChat(_ id: String) async {
+        guard let row = log.rows.first(where: { $0.id == id && $0.failed }) else { return }
+        log.mark(id: id, failed: false)
+        await publish(row.message)
+    }
+
+    private func publish(_ message: CallChatMessage) async {
+        let data = CallChatWire.encode(
+            id: message.id, timestamp: message.timestamp, text: message.text, sender: participantName
+        )
+        do {
+            try await room.localParticipant.publish(
+                data: data, options: DataPublishOptions(topic: CallChatWire.topic, reliable: true)
+            )
+        } catch {
+            log.mark(id: message.id, failed: true)
+        }
+    }
+
+    private func showChatNotice(_ text: String) {
+        chatNotice = text
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(for: noticeLimit)
+            guard !Task.isCancelled else { return }
+            self?.chatNotice = nil
+        }
+    }
+
+    fileprivate func receiveChat(_ incoming: CallChatWire.Incoming) {
+        guard !leaving else { return }
+        let added = log.receive(incoming)
+        if added != nil, !chatOpen { chatUnread += 1 }
+        if case .status = incoming {
+            let serial = log.thinkingSerial
+            Task { [weak self] in
+                try? await Task.sleep(for: thinkingLimit)
+                self?.log.stopThinking(ifSerial: serial)
+            }
+        }
+    }
+}
+
+extension CallSession: RoomDelegate {
+    /// Chat and Jamie's status rows arrive here, on LiveKit's queue: only
+    /// the chat topic is read, and the result is applied on the main actor.
+    nonisolated func room(
+        _ room: Room, participant: RemoteParticipant?, didReceiveData data: Data, forTopic topic: String,
+        encryptionType: EncryptionType
+    ) {
+        guard topic == CallChatWire.topic, let incoming = CallChatWire.decode(data) else { return }
+        Task { @MainActor [weak self] in self?.receiveChat(incoming) }
     }
 }

@@ -182,6 +182,14 @@ struct StadeumTests {
             return
         }
         #expect(appPage.url.absoluteString == "https://acme.sphinx.chat:3355/lab/?app=hive%2Fboard&solo=1")
+        // Titled by the app's own, or the artifact's the caller names; the token still hidden.
+        #expect(appPage.title == "Board" && page.title == nil)
+        guard case .page(let titled) = stadeum.opening(file, title: "Plan") else {
+            Issue.record("no titled page")
+            return
+        }
+        #expect(titled.title == "Plan" && titled.workspace == "Acme")
+        #expect(!"\(titled)".contains("jwt") && !"\(titled)".contains("Plan") && !String(reflecting: titled).contains("jwt"))
         #expect(stadeum.opening(try #require(AgentArtifact.Handle(path: "/peers/globex/jobs/j/files/a.md"))) == .notPaired("globex"))
         #expect(stadeum.opening(try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))) == .onMac)
         #expect(stadeum.opening(WorkspaceApp(peer: nil, name: "mine", title: "Mine", about: nil)) == .onMac)

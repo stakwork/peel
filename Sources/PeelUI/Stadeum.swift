@@ -308,21 +308,23 @@ public final class Stadeum {
     }
 
     /// How a deliverable from the agent's DM opens: on its org's strut.
-    public func opening(_ handle: AgentArtifact.Handle) -> Opening {
-        handle.onOrg.map(opening) ?? .onMac
+    /// `title` is what the person calls it (the artifact's), for the page's title.
+    public func opening(_ handle: AgentArtifact.Handle, title: String? = nil) -> Opening {
+        handle.onOrg.map { opening($0, title: title) } ?? .onMac
     }
 
     /// How a workspace's app opens: on its own strut.
     public func opening(_ app: WorkspaceApp) -> Opening {
-        app.peer.map { opening(OrgPage.app(app.name, on: $0)) } ?? .onMac
+        app.peer.map { opening(OrgPage.app(app.name, on: $0), title: app.title) } ?? .onMac
     }
 
-    private func opening(_ page: OrgPage) -> Opening {
+    private func opening(_ page: OrgPage, title: String? = nil) -> Opening {
         guard let peer = live.first(where: { $0.id == page.peer }) else {
             return link == nil || revoked ? .connectFirst : .notPaired(page.peer)
         }
         guard let base = URL(string: peer.baseUrl), let url = page.url(on: base) else { return .notPaired(page.peer) }
-        return .page(OrgPageRequest(url: url, token: peer.token, peer: peer.id, workspace: peer.name))
+        return .page(OrgPageRequest(url: url, token: peer.token, peer: peer.id, workspace: peer.name,
+                                      title: title))
     }
 
     // MARK: - The apps
@@ -408,6 +410,9 @@ public struct OrgPageRequest: Identifiable, Equatable, Sendable, CustomStringCon
     public let peer: String
     /// The org as the person reads it.
     public let workspace: String
+    /// The app's or artifact's own title, when it has one: what a sheet
+    /// shows before the workspace. Not part of what makes two requests the same.
+    public var title: String? = nil
 
     public var description: String { "org page on \(workspace)" }
     public var debugDescription: String { description }
@@ -475,5 +480,18 @@ extension WorkspaceApp {
     /// or where it comes from (`@workspace`, Yours).
     public func matches(_ query: String) -> Bool {
         [title, about ?? "", source].contains { ChatSections.matches($0, query: query) }
+    }
+
+    /// The sources `apps` come from, as the person reads them: Yours first
+    /// when any is the person's own, then each workspace's `@peer` A–Z.
+    public static func sources(of apps: [WorkspaceApp]) -> [String] {
+        let peers = Set(apps.compactMap(\.peer)).sorted().map { "@\($0)" }
+        return (apps.contains { $0.peer == nil } ? [yours] : []) + peers
+    }
+
+    /// `apps` from `source` (all when nil) that a search for `query` finds,
+    /// in their order.
+    public static func filter(_ apps: [WorkspaceApp], query: String, source: String?) -> [WorkspaceApp] {
+        apps.filter { (source == nil || $0.source == source) && $0.matches(query) }
     }
 }

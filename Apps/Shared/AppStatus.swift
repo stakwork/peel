@@ -12,9 +12,9 @@ extension WorkspaceApp {
     }
 }
 
-/// What an app's page needs looked at, else the release its workspace holds
-/// it at: one of them, on its card and in its header (the Mac's), and on its
-/// row (the iPhone's).
+/// What an app's page needs looked at, else a version of the person's own
+/// waiting to be made live, else the release it is held at: one of them, on
+/// its card and in its header (the Mac's), and on its row (the iPhone's).
 struct AppStatus: View {
     let app: WorkspaceApp
 
@@ -30,6 +30,13 @@ struct AppStatus: View {
             .help("Strut's monitor flagged how its page uses the workspace")
             #endif
             .accessibilityHint("Strut's monitor flagged how its page uses the workspace")
+        } else if let waiting = app.waiting {
+            Text("\(waiting) waiting")
+                .font(Theme.font(12, .medium))
+                .foregroundStyle(Theme.attention)
+            #if os(macOS)
+                .help("\(waiting) is built and waits for you to make it live; everyone opens \(app.version ?? "")")
+            #endif
         } else if let release = app.release {
             Chip("Release \(release)")
                 .fixedSize()

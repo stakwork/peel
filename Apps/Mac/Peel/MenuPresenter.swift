@@ -452,8 +452,8 @@ private struct MenuPanel: View {
     }
 }
 
-/// One item. A destructive one after its first click reads its `confirm`
-/// text in bold with "Click again" beside it.
+/// One item. One that confirms, after its first click, reads its `confirm`
+/// text in bold with "Click again" beside it (and a trash can, if destructive).
 private struct MenuRow: View {
     let item: MenuItem
     let highlighted: Bool
@@ -466,7 +466,7 @@ private struct MenuRow: View {
             Group {
                 if item.checked {
                     Image(systemName: "checkmark")
-                } else if let systemImage = confirming ? "trash" : item.systemImage {
+                } else if let systemImage = confirming && item.destructive ? "trash" : item.systemImage {
                     Image(systemName: systemImage)
                 } else if leading {
                     Color.clear.frame(height: 1)

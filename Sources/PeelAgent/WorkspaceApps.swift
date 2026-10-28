@@ -27,6 +27,23 @@ extension AutomationsClient {
         let answer = try await call("GET", "apps", what: "your apps")
         return try WorkspaceApp.listing(Data(answer.jsonString.utf8), peer: nil)
     }
+
+    /// One of the person's own apps' versions and releases
+    /// (`GET /apps/:name/versions`). A workspace's are its own to change.
+    public func versions(of name: String) async throws -> AppVersions {
+        let answer = try await call("GET", "apps/\(Self.escaped(path: name))/versions", what: "the app's versions")
+        guard let versions = AppVersions(reply: Data(answer.jsonString.utf8)) else {
+            throw PeelError("strut's reply named no live version.")
+        }
+        return versions
+    }
+
+    /// Changes what everyone who opens the person's own app `name` gets
+    /// (`PUT /apps/:name/active`): strut takes the release and its lock.
+    public func makeLive(_ name: String, _ target: AppLiveTarget) async throws {
+        let body = AgentKit.JSONValue.object(target.body.mapValues { .string($0) })
+        _ = try await call("PUT", "apps/\(Self.escaped(path: name))/active", body, what: "the app's live version")
+    }
 }
 
 extension MemoryServer {
@@ -34,8 +51,9 @@ extension MemoryServer {
     /// key handed over as `?key=` (its UI keeps it for the tab and takes it
     /// out of the address). Peel's own strut only. The address carries the key, so it is
     /// handed to the web view and never shown, logged or kept.
-    public func page(of app: WorkspaceApp) -> URL? {
-        page("app", app.id)
+    public func page(of app: WorkspaceApp, version: String? = nil) -> URL? {
+        // `name@vN`: that version rather than the one everyone opens.
+        page("app", version.map { "\(app.id)@\($0)" } ?? app.id)
     }
 
     /// strut's UI showing a deliverable from the agent's DM alone, as for an

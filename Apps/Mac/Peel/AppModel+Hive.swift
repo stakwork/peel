@@ -165,6 +165,25 @@ extension AppModel {
                          still: { [weak self] in self?.memoryServer == server })
     }
 
+    /// Changes what everyone who opens one of the person's own apps gets,
+    /// on Peel's strut, then reads the apps again so every card, row and
+    /// open page follows; `done` or the problem shows at the window's foot.
+    /// Whether strut made the change.
+    @discardableResult
+    func makeLive(_ app: WorkspaceApp, _ target: AppLiveTarget, done: String) async -> Bool {
+        guard app.peer == nil, let server = memoryServer else { return false }
+        let presenter = mainPresenter as? MenuPresenter
+        do {
+            try await AutomationsClient(server: server).makeLive(app.name, target)
+            presenter?.showToast(done)
+            refreshApps(workspaces: false)
+            return true
+        } catch {
+            presenter?.showToast(PeelError.problem(error, couldNot: "change the live version"))
+            return false
+        }
+    }
+
     /// The listed app a destination opens.
     func app(peer: String?, name: String) -> WorkspaceApp? {
         stadeum.apps.first { $0.peer == peer && $0.name == name }
@@ -193,7 +212,11 @@ extension AppModel {
     /// the account's sidebar layout.
     func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
         var pins = sidebarLayout.pinnedApps.filter { $0 != app.id }
-        if pinned { pins.append(app.id) }
+        if pinned {
+            // The first pin shows: the row's fold, closed before, is no longer there to open.
+            if pins.isEmpty { sidebarLayout.appsOpen = true }
+            pins.append(app.id)
+        }
         if pins != sidebarLayout.pinnedApps { sidebarLayout.pinnedApps = pins }
     }
 }

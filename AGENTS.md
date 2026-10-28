@@ -254,7 +254,14 @@ is a short plan. Update the status and the journal when you finish something.
     pinned as a tab or one of the person's own: read from strut's `GET
     /apps` (`listing`, `init(peer:entry:)`), on a workspace's own strut
     with the person's token for the iPhone (`pinned(on:)`), and A–Z
-    (`byTitle`); its words for the person are PeelUI's
+    (`byTitle`), and the version a held app of the person's own has
+    waiting (`waiting`); its words for the person are PeelUI's
+  - `AppVersions.swift` — one of the person's own apps' versions and
+    releases as strut gives them (`GET /apps/:name/versions`, strut's
+    plans/app-releases.md): the live version, held or following latest,
+    which versions wait, what the live release locked that moved on; and
+    `AppLiveTarget`, what `PUT /apps/:name/active` is sent (tested in
+    `AppVersionsTests`)
   - `OrgPage.swift` — a deliverable from the agent's DM on its org's own
     strut, as the iPhone opens it (`AgentArtifact.Handle.onOrg`: the brain's
     `/peers/<org>` hop taken off; none for the brain's own), and
@@ -403,7 +410,9 @@ is a short plan. Update the status and the journal when you finish something.
   Peel's strut and those the workspaces pinned read through it,
   `refreshApps`, `appSources`; the person's pins under the
   sidebar's Apps row, `isPinned`, `setPinned`: none until the person
-  pins one, `ChatSections.Layout.pinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
+  pins one, `ChatSections.Layout.pinnedApps`, folded by the row's chevron,
+  `appsOpen`; `makeLive`, what everyone opens of one of the person's own
+  apps), `AppsView` (the sidebar's Apps row: every listed app
   as a card, A–Z, its icon, version and status (`AppStatus`), with a
   search and the source to show, Yours or a workspace;
   `docs/apps-browser.md`), `WorkspaceAppView` (one of
@@ -411,7 +420,11 @@ is a short plan. Update the status and the journal when you finish something.
   row: Peel's own strut's UI showing its page, in a `WKWebView` whose store
   keeps nothing and which goes nowhere but that strut, and `AppPinButton`,
   its pin in the header and on its card; `docs/agent-on-strut.md`, "Built:
-  a workspace's apps"), `StrutPage` (a page of Peel's own strut's UI shown
+  a workspace's apps"), `AppVersionsViews` (the person's own app's version
+  chip in that header and its menu: the newest versions, one picked shown
+  in that window only under `AppPreviewBar`, History's releases to roll
+  back to, Follow latest; and Make vN live, asked once in its panel),
+  `StrutPage` (a page of Peel's own strut's UI shown
   alone with strut's key in its address, and the rules the app view and the
   web pane's deliverable both keep to: only that strut, its `srcdoc` and
   blob frames, a link out only on the person's own click, which
@@ -879,7 +892,7 @@ is a short plan. Update the status and the journal when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
-  `ReadMarkerTests`, `ChatSectionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
+  `ReadMarkerTests`, `ChatSectionsTests`, `AppVersionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,

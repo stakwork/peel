@@ -99,7 +99,8 @@ private struct ThreadListRow: View {
                         (Text(sender.label + ": ").foregroundColor(sender.hue.name).fontWeight(.semibold)
                             + Text(latest.threadReplyPreview).foregroundColor(Theme.tertiaryText))
                             .phoneFont(.secondary)
-                            .lineLimit(1)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

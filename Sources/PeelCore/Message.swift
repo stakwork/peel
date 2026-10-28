@@ -342,16 +342,12 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 }
 
 extension Message {
-    /// How many characters of a reply a thread's row shows.
-    public static let threadPreviewLimit = 120
-
-    /// The newest reply as a thread's row shows it: its text cut at
-    /// `threadPreviewLimit` characters, or for a message with no words what
-    /// it is ("Photo", "Video", "Voice message", "File", "Payment"…).
+    /// The newest reply as a thread's row shows it: its complete text (never
+    /// cut), or for a message with no words what it is ("Photo", "Video", "Voice message", "File", "Payment"…).
     public var threadReplyPreview: String {
         if deleted { return "Message deleted" }
         if giphy == nil, let text = content.map(MessageMarkup.plainText), !text.isEmpty {
-            return Self.cut(text)
+            return text
         }
         switch type {
         case MessageType.directPayment, MessageType.boost: return "Payment"
@@ -359,18 +355,14 @@ extension Message {
         case MessageType.call: return "Call"
         default: break
         }
-        if giphy != nil { return Self.cut(preview) }
+        if giphy != nil { return preview }
         switch attachmentKind {
         case .image: return "Photo"
         case .video: return "Video"
         case .audio: return "Voice message"
         case .pdf, .text, .file: return "File"
-        case nil: return Self.cut(preview)
+        case nil: return preview
         }
-    }
-
-    private static func cut(_ text: String) -> String {
-        text.count <= threadPreviewLimit ? text : String(text.prefix(threadPreviewLimit)) + "…"
     }
 }
 

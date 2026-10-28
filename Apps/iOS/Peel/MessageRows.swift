@@ -540,8 +540,8 @@ struct ThreadSummaryButton: View {
                 (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
                     + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
                     .phoneFont(.time)
-                    .lineLimit(1)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             }
             .frame(minHeight: Theme.touchTarget)

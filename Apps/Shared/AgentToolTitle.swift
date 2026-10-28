@@ -16,6 +16,13 @@ enum AgentToolTitle {
         "memory_ontology": "Read memory's vocabulary",
         "forget_memory": "Forgot",
         "merge_memory": "Merged",
+        // strut's graph reads, which read memory on Peel.
+        "graph_graph-search": "Searched memory",
+        "graph_graph-get": "Read memory",
+        "graph_graph-get-batched": "Read memory",
+        "graph_graph-neighbors": "Followed links in memory",
+        "graph_get-ontology": "Read memory's vocabulary",
+        "graph_get-ontology-type": "Read memory's vocabulary",
         "list_automations": "Read automations",
         "preview_schedule": "Checked a schedule",
         "create_automation": "Create an automation",

@@ -131,6 +131,7 @@ public final class AppModel {
                 newestLimit = Storage.pageSize
                 loadingOlder = false
                 observeMessages()
+                checkOwnMessageStatus()
                 if openThread?.chat != selectedChat { openThread = nil }
                 if search?.chat != selectedChat { search = nil }
             }
@@ -733,6 +734,14 @@ public final class AppModel {
         }
         Task { await engine?.refreshPreferences() }
         Task { await notifier.refreshPermission() }
+        checkOwnMessageStatus()
+    }
+
+    /// Asks the server, in the background, what became of the open chat's own
+    /// messages it has not confirmed, so their bolts settle (rate-limited by the engine).
+    private func checkOwnMessageStatus() {
+        guard let chat = selectedChat else { return }
+        Task { await engine?.checkOwnMessageStatus(in: chat) }
     }
 
     public func lockIfDue() {
@@ -1436,6 +1445,7 @@ public final class AppModel {
                 case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)
                 case .messages: restoreProgress.messages = .init(reached: reached, end: end)
                 }
+                checkOwnMessageStatus()
             case .historyResumed(let restart):
                 if restoreProgress.paused != nil { restoreProgress.outcome = nil }
                 if restart { (restoreProgress.contacts, restoreProgress.messages) = (nil, nil) }

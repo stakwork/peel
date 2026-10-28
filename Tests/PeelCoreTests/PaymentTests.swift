@@ -433,9 +433,48 @@ struct SendStatusTests {
             .init(tag: "boost", createdAt: 5_000, movesMoney: true),
             .init(tag: "old", createdAt: 1_000, movesMoney: false),
             .init(tag: "restored", createdAt: 7_000, movesMoney: false),
+            .init(tag: "restored text", createdAt: 7_000, movesMoney: false),
             .init(tag: "invoice", createdAt: 2_000, movesMoney: true),
             .init(tag: "invite", createdAt: 3_000, movesMoney: true),
         ])
+    }
+
+    @Test func theChatCheckAsksOnlyAboutItsOwnUnconfirmedMessages() throws {
+        let storage = try profile.storage()
+        let done = Message.Delivery.delivered.rawValue
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true), (other, true)], messages: [
+            (.fixture(uuid: uuid(1), chat: dm, fromMe: true, tag: "none"), false, nil),
+            (.fixture(uuid: uuid(2), chat: dm, fromMe: true, tag: "pending", status: "PENDING"), false, nil),
+            (.fixture(uuid: uuid(3), chat: dm, fromMe: true, tag: "done", status: done), false, nil),
+            (.fixture(uuid: uuid(4), chat: dm, fromMe: true, tag: "failed", status: "FAILED"), false, nil),
+            (.fixture(uuid: uuid(5), chat: dm, fromMe: true), false, nil),
+            (.fixture(uuid: uuid(6), chat: dm, tag: "theirs"), false, nil),
+            (.fixture(uuid: uuid(7), chat: other, fromMe: true, tag: "elsewhere"), false, nil),
+        ]))
+        #expect(Set(try storage.unconfirmedTags(in: dm)) == ["none", "pending"])
+    }
+
+    @Test func ourOwnEchoWithAServerIndexIsMarkedComplete() throws {
+        let storage = try profile.storage()
+        let pending = Message.Delivery.pending.rawValue
+        _ = try storage.apply(Storage.Commit(contacts: [(dm, true)], messages: [
+            (.fixture(uuid: uuid(1), chat: dm, fromMe: true, tag: "a", status: pending), false, nil),
+            (.fixture(uuid: uuid(2), chat: dm, fromMe: true, tag: "b"), false, nil),
+            (.fixture(uuid: uuid(3), type: MessageType.boost, chat: dm, fromMe: true, tag: "c", status: pending), false, nil),
+            (.fixture(uuid: uuid(4), chat: dm, fromMe: true, tag: "d", status: Message.Delivery.failed.rawValue), false, nil),
+        ]))
+        _ = try storage.apply(Storage.Commit(messages: [
+            (.fixture(uuid: uuid(4), serverIndex: 10, chat: dm, fromMe: true), false, nil),
+            (.fixture(uuid: uuid(1), serverIndex: 7, chat: dm, fromMe: true), false, nil),
+            (.fixture(uuid: uuid(2), serverIndex: 8, chat: dm, fromMe: true), false, nil),
+            (.fixture(uuid: uuid(3), serverIndex: 9, type: MessageType.boost, chat: dm, fromMe: true), false, nil),
+        ]))
+        #expect(try storage.message(uuid: uuid(1), in: dm)?.delivery == .delivered)
+        #expect(try storage.message(uuid: uuid(2), in: dm)?.delivery == .delivered)
+        // A payment waits for the mixer's own word.
+        #expect(try storage.message(uuid: uuid(3), in: dm)?.delivery == .pending)
+        // A failure is the server's word too: an echo never undoes it.
+        #expect(try storage.message(uuid: uuid(4), in: dm)?.delivery == .failed)
     }
 
     @Test func unrecordedOldPaymentsFailWhenTheServerHasNoRecord() {

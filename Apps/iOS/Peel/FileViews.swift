@@ -20,9 +20,15 @@ struct FileCard: View {
     @State private var notice: String?
 
     var body: some View {
-        let handle = message.id.map(model.attachment)
-        let name = handle?.downloaded?.fileName ?? message.fileName
-        let size = handle?.downloaded.map { Int64($0.size) } ?? message.fileSize
+        let handle: AttachmentHandle? = message.id.map(model.attachment)
+        let name: String? = handle?.downloaded?.fileName ?? message.fileName
+        let size: Int64? = handle?.downloaded.map { Int64($0.size) } ?? message.fileSize
+        let title: String = name ?? AttachmentFormat.kind(mediaType: message.mediaType) ?? "File"
+        let detail: String = [AttachmentFormat.size(size), AttachmentFormat.kind(name)]
+            .compactMap { $0 }.joined(separator: " · ")
+        let spoken: String = [name ?? "File", AttachmentFormat.size(size)]
+            .compactMap { $0 }.joined(separator: ", ")
+        let openable: Bool = canOpen(handle)
         PhoneCard {
             HStack(spacing: Theme.Space.md) {
                 Button(action: open) {
@@ -30,13 +36,12 @@ struct FileCard: View {
                         mark(name)
                         VStack(alignment: .leading, spacing: 2) {
                             // The name comes with the download; until then, what it says it is.
-                            Text(name ?? AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
+                            Text(title)
                                 .phoneFont(.row)
                                 .foregroundStyle(Theme.text)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
-                            Text([AttachmentFormat.size(size), AttachmentFormat.kind(name)]
-                                .compactMap { $0 }.joined(separator: " · "))
+                            Text(detail)
                                 .phoneFont(.time)
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.secondaryText)
@@ -47,10 +52,10 @@ struct FileCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(!canOpen(handle))
-                .accessibilityLabel([name ?? "File", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: ", "))
-                .accessibilityHint(canOpen(handle) ? "Opens a preview" : "")
-                if canOpen(handle) {
+                .disabled(!openable)
+                .accessibilityLabel(spoken)
+                .accessibilityHint(openable ? "Opens a preview" : "")
+                if openable {
                     Button(action: share) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16))
@@ -63,7 +68,7 @@ struct FileCard: View {
                 }
             }
             .padding(.leading, Theme.Space.md)
-            .padding(.trailing, canOpen(handle) ? 0 : Theme.Space.md)
+            .padding(.trailing, openable ? CGFloat(0) : Theme.Space.md)
             .padding(.vertical, 6)
         }
         .frame(maxWidth: 320, alignment: .leading)

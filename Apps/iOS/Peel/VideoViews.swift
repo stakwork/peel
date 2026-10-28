@@ -67,49 +67,32 @@ struct VideoTile: View {
     private var playback: VideoPlayback { .shared }
     private var id: Int64 { message.id ?? 0 }
 
+    private static let defaultAspect: CGFloat = CGFloat(16) / CGFloat(9)
+
+    /// Width over height of the video, clamped; 16:9 until known.
+    private func aspect(of info: MediaInfo?) -> CGFloat {
+        guard let size = info?.size else { return Self.defaultAspect }
+        let height: CGFloat = CGFloat(size.height)
+        let width: CGFloat = CGFloat(size.width)
+        if height > 0 {
+            let ratio: CGFloat = width / height
+            return min(max(ratio, CGFloat(0.5)), CGFloat(2))
+        }
+        return Self.defaultAspect
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+    }
+
     var body: some View {
-        let handle = model.attachment(id)
-        let file = handle.file
-        let known = Self.known(read, file: file)
+        let handle: AttachmentHandle = model.attachment(id)
+        let file: URL? = handle.file
+        let known: MediaInfo?? = Self.known(read, file: file)
         let info: MediaInfo? = known.flatMap { $0 }
-        let aspect = info?.size.map { $0.height > 0 ? min(max($0.width / $0.height, 0.5), 2) : 16 / 9 } ?? 16 / 9
-        let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-        let status = Status(message, handle, unplayable: known != nil && info == nil)
-        Color.clear
-            .aspectRatio(aspect, contentMode: .fit)
-            .frame(maxWidth: ImageTile.side)
-            .overlay {
-                if playback.current == id, let player = playback.player, file != nil {
-                    VideoPlayer(player: player)
-                } else {
-                    poster(info?.poster, duration: info?.duration, handle: handle, status: status)
-                }
-            }
-            .clipShape(shape)
-            .overlay(shape.strokeBorder(Theme.divider))
-            .overlay(alignment: .topTrailing) {
-                if file != nil, message.uploadState != .pending, status == nil {
-                    Button(action: share) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(.black.opacity(0.5), in: Circle())
-                            .frame(width: Theme.touchTarget, height: Theme.touchTarget)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Share video")
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if message.fromMe, message.uploadState == .pending {
-                    TransferLine(label: "Uploading", progress: handle.progress)
-                        .padding(Theme.Space.sm)
-                        .background(Theme.input.opacity(0.92), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-                        .padding(Theme.Space.sm)
-                }
-            }
+        let status: Status? = Status(message, handle, unplayable: known != nil && info == nil)
+        let base = tile(info: info, file: file, handle: handle, status: status)
+        base
             .sheet(item: $sharing) { shared in
                 FileShareSheet(url: shared.url).presentationDetents([.medium, .large])
             }
@@ -120,6 +103,59 @@ struct VideoTile: View {
                 read = (file, await MediaInfoCache.shared.info(file, kind: .video))
             }
             .onDisappear { playback.left(id) }
+    }
+
+    private func tile(info: MediaInfo?, file: URL?, handle: AttachmentHandle, status: Status?) -> some View {
+        let clipped = Color.clear
+            .aspectRatio(aspect(of: info), contentMode: .fit)
+            .frame(maxWidth: ImageTile.side)
+            .overlay { media(info: info, file: file, handle: handle, status: status) }
+            .clipShape(shape)
+        return clipped
+            .overlay(shape.strokeBorder(Theme.divider))
+            .overlay(alignment: .topTrailing) { shareButton(file: file, status: status) }
+            .overlay(alignment: .bottom) { uploadLine(handle: handle) }
+    }
+
+    @ViewBuilder
+    private func media(info: MediaInfo?, file: URL?, handle: AttachmentHandle, status: Status?) -> some View {
+        if playback.current == id, let player = playback.player, file != nil {
+            VideoPlayer(player: player)
+        } else {
+            poster(info?.poster, duration: info?.duration, handle: handle, status: status)
+        }
+    }
+
+    @ViewBuilder
+    private func shareButton(file: URL?, status: Status?) -> some View {
+        if file != nil, message.uploadState != .pending, status == nil {
+            Button(action: share) {
+                shareIcon
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share video")
+        }
+    }
+
+    private var shareIcon: some View {
+        Image(systemName: "square.and.arrow.up")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 32, height: 32)
+            .background(.black.opacity(0.5), in: Circle())
+            .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+            .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func uploadLine(handle: AttachmentHandle) -> some View {
+        if message.fromMe, message.uploadState == .pending {
+            let backdrop = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+            TransferLine(label: "Uploading", progress: handle.progress)
+                .padding(Theme.Space.sm)
+                .background(Theme.input.opacity(0.92), in: backdrop)
+                .padding(Theme.Space.sm)
+        }
     }
 
     /// Why it cannot play, nil while it loads or plays.

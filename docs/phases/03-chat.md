@@ -3312,7 +3312,7 @@ mixer (`test-stack.sh mixer <dir> fund`) before each run cleared it.
 
 ## The last reply on a thread's row (2026-10-26)
 
-A collapsed thread's row (Mac `ThreadSummaryLine`, iPhone `ThreadSummaryButton`) now also shows the newest reply's words under its reply count and "replied …" label: smaller, as "Name: text" level with the reply count (the sender's photo is already in the avatars beside it), two lines at most. `ThreadSummary.latest` already carried the message from `threadsSQL`'s `latestID` (one query for all rows), so no storage change. `Message.threadReplyPreview` (PeelCore) is the one string: text cut at 120 characters, else "Photo", "Video", "Voice message", "File", "Payment", "Payment request", "Call". Tested in `MessageTests`; the Apple UI was not built on this Linux pod.
+A collapsed thread's row (Mac `ThreadSummaryLine`, iPhone `ThreadSummaryButton`) now also shows the newest reply's words under its reply count and "replied …" label: smaller, as "Name: text" on one line level with the reply count (the sender's photo is already in the avatars beside it); the label beside the count is just the time, since the preview names who replied. `ThreadSummary.latest` already carried the message from `threadsSQL`'s `latestID` (one query for all rows), so no storage change. `Message.threadReplyPreview` (PeelCore) is the one string: text cut at 120 characters, else "Photo", "Video", "Voice message", "File", "Payment", "Payment request", "Call". Tested in `MessageTests`; the Apple UI was not built on this Linux pod.
 
 ## Voice messages on the iPhone (2026-10-27)
 

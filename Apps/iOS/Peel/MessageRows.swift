@@ -511,7 +511,7 @@ struct ThreadSummaryButton: View {
                         .foregroundStyle(Theme.text)
                 }
                 if let last = summary.lastDate {
-                    Text("Last reply \(Formatting.time(last))")
+                    Text(Formatting.time(last))
                         .phoneFont(.time)
                         .monospacedDigit()
                         .foregroundStyle(Theme.quietText(on: surface))
@@ -523,7 +523,7 @@ struct ThreadSummaryButton: View {
                 (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
                     + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
                     .phoneFont(.time)
-                    .lineLimit(2)
+                    .lineLimit(1)
                     .multilineTextAlignment(.leading)
             }
             }

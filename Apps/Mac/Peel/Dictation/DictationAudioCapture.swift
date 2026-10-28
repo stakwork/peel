@@ -117,9 +117,18 @@ final class DictationAudioCapture: @unchecked Sendable {
 
     /// A new engine on the current default input, its tap filling the
     /// recording under way.
+    ///
+    /// Set to the device itself: an engine that follows the default opens the
+    /// app's default-device aggregate, which a call's voice processing can
+    /// leave deaf until Peel is relaunched (docs/dictation.md, 2026-10-28).
     private func install() throws {
+        guard var id = Self.currentInput() else { throw Failure.noInput }
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        guard let unit = input.audioUnit, AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+            &id, UInt32(MemoryLayout<AudioDeviceID>.size)
+        ) == noErr else { throw Failure.noInput }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw Failure.noInput }
         guard let outputFormat, let converter = AVAudioConverter(from: format, to: outputFormat) else {
@@ -139,7 +148,7 @@ final class DictationAudioCapture: @unchecked Sendable {
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in self?.rebuildSoon() }
         self.engine = engine
-        device = Self.currentInput()
+        device = id
     }
 
     private func tearDown() {

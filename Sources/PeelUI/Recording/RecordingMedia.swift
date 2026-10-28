@@ -52,6 +52,40 @@ public enum RecordingMedia {
         }.value
     }
 
+    /// `wav`, as `extractAudio` writes it, in pieces cut at pauses
+    /// (`RecordingCaptions.pieces`), each a WAV in `folder`, with when it
+    /// starts in the recording, in seconds.
+    public static func pieces(of wav: URL, in folder: URL) async throws -> [(url: URL, start: TimeInterval)] {
+        let rate = Int(DictationDefaults.sampleRate)
+        // 50 ms: shorter than the gap between two words.
+        let frame = rate / 20
+        return try await Task.detached {
+            let data = try Data(contentsOf: wav, options: .alwaysMapped)
+            // `WAVFileWriter`'s header, then the samples.
+            let header = 44
+            guard data.count >= header else { throw Failure.unreadable }
+            return try data.withUnsafeBytes { raw in
+                let sound = UnsafeRawBufferPointer(rebasing: raw[header...])
+                let samples = sound.count / 2
+                let levels = stride(from: 0, to: samples, by: frame).map { first in
+                    var sum = 0
+                    for at in first..<min(first + frame, samples) {
+                        sum += abs(Int(sound.loadUnaligned(fromByteOffset: at * 2, as: Int16.self)))
+                    }
+                    return Float(sum) / Float(frame)
+                }
+                let cuts = RecordingCaptions.pieces(levels: levels, frame: Double(frame) / Double(rate))
+                return try cuts.enumerated().map { index, frames in
+                    let from = frames.lowerBound * frame, to = min(frames.upperBound * frame, samples)
+                    let writer = try WAVFileWriter(url: folder.appendingPathComponent("\(index).wav"), sampleRate: rate)
+                    try writer.append(UnsafeRawBufferPointer(rebasing: sound[(from * 2)..<(to * 2)]))
+                    try writer.finish()
+                    return (writer.url, Double(from) / Double(rate))
+                }
+            }
+        }.value
+    }
+
     /// A copy of `video` at `destination` with `cues` as an English subtitle
     /// track (3GPP timed text, which QuickTime and AVPlayer show as
     /// captions); its picture and sound are copied as they are.

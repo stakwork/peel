@@ -38,6 +38,27 @@ struct RecordingCaptionsTests {
         #expect(RecordingCaptions.cues(from: [], duration: 5).isEmpty)
     }
 
+    @Test func aLongRecordingIsCutAtItsPauses() {
+        // 50 s of speech at 20 frames a second, quiet at 12 s and 30 s.
+        var levels = [Float](repeating: 100, count: 1000)
+        levels[240] = 1
+        levels[600] = 1
+        let pieces = RecordingCaptions.pieces(levels: levels, frame: 0.05)
+        #expect(pieces == [0..<240, 240..<600, 600..<1000])
+    }
+
+    @Test func aPieceIsNeverLongerThanStrutCanFix() {
+        // No pause at all: cut at the longest a piece may be, end to end.
+        let pieces = RecordingCaptions.pieces(levels: [Float](repeating: 100, count: 1000), frame: 0.05)
+        #expect(pieces.allSatisfy { $0.count <= 400 })
+        #expect(pieces.first?.lowerBound == 0 && pieces.last?.upperBound == 1000)
+        #expect(zip(pieces, pieces.dropFirst()).allSatisfy { $0.upperBound == $1.lowerBound })
+    }
+
+    @Test func aShortRecordingIsOnePiece() {
+        #expect(RecordingCaptions.pieces(levels: [Float](repeating: 100, count: 300), frame: 0.05) == [0..<300])
+    }
+
     @Test func theVocabularysWordsTakeTheHeardTimes() {
         let heard = words([("ask", 1), ("the", 1.2), ("stack", 1.4), ("work", 1.7), ("team", 2)])
         let timed = RecordingCaptions.retimed(heard, as: "Ask the Stakwork team.")
@@ -110,6 +131,27 @@ struct RecordingMediaTests {
             texts.append(String(decoding: bytes[2..<(2 + length)], as: UTF8.self))
         }
         #expect(texts.filter { !$0.isEmpty } == ["Hello there.", "This is Peel"])
+    }
+
+    @Test func piecesStartWhereTheyAreInTheRecording() async throws {
+        // 30 s of tone, silent from 15 s to 15.5 s.
+        let wav = temp("in.wav")
+        let folder = temp("pieces")
+        defer { try? FileManager.default.removeItem(at: wav); try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let writer = try WAVFileWriter(url: wav, sampleRate: 16000)
+        let pause = (15 * 16000)..<(31 * 8000)
+        let samples: [Int16] = (0..<(30 * 16000)).map { at in
+            if pause.contains(at) { return 0 }
+            return at % 64 < 32 ? 3000 : -3000
+        }
+        try writer.append(samples)
+        try writer.finish()
+
+        let pieces = try await RecordingMedia.pieces(of: wav, in: folder)
+        #expect(pieces.map(\.start) == [0, 15])
+        let sizes = try pieces.map { try Data(contentsOf: $0.url).count - 44 }
+        #expect(sizes == [15 * 16000 * 2, 15 * 16000 * 2])
     }
 
     @Test func aVideoWithoutSoundHasNoAudio() async throws {

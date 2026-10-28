@@ -60,10 +60,14 @@ until you send it.
   taken; if Downloads can't have it, a save panel asks where, and it is
   never deleted for that. What a quit or crash leaves in the temp folder
   is swept at launch. Its audio is read out as
-  16 kHz mono WAV (`RecordingMedia.extractAudio`), sent to Peel's strut
+  16 kHz mono WAV (`RecordingMedia.extractAudio`), cut at pauses into
+  pieces of 8 to 20 s (`RecordingMedia.pieces`): strut's fixer has 1.5 s,
+  enough for a dictation's text but not a whole recording's, which would
+  go out without the vocabulary. Each piece is sent to Peel's strut
   (`POST /audio/transcribe`, the dictation engine and the user's vocabulary)
   and comes back as text with the vocabulary applied, and each word as
-  heard with its start time: strut leaves the timed words as heard. The
+  heard with its start time, moved by where its piece starts: strut
+  leaves the timed words as heard. The
   text's words take the heard words' times (`RecordingCaptions.retimed`:
   "Stakwork" at the time "stack work" was heard) and become caption
   cues (`RecordingCaptions`, at most 42 characters and 6 s each), written
@@ -129,3 +133,6 @@ be in a recording: not changed, as Peel itself now is.
 Tom's test, 2026-10-28: Peel should be in its own recordings (decision 7,
 the recording's `WindowCloak` hold removed), and the captions lacked his
 vocabulary (strut applies it to the text only; `RecordingCaptions.retimed`).
+Then that the vocabulary was still missing: strut's fixer scores the
+whole transcript and has 1.5 s, so a recording's went out as heard. Now
+sent in pieces cut at pauses (`RecordingCaptions.pieces`).

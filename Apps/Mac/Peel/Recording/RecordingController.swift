@@ -244,14 +244,21 @@ final class RecordingController {
         captions[video] = "Adding captions…"
         let temp = FileManager.default.temporaryDirectory
         let wav = temp.appendingPathComponent("peel-recording-\(UUID().uuidString).wav")
+        let pieces = temp.appendingPathComponent("peel-recording-\(UUID().uuidString)")
         let captioned = temp.appendingPathComponent("peel-recording-\(UUID().uuidString).mp4")
         defer {
-            try? FileManager.default.removeItem(at: wav)
-            try? FileManager.default.removeItem(at: captioned)
+            for leftover in [wav, pieces, captioned] { try? FileManager.default.removeItem(at: leftover) }
         }
         do {
             let duration = try await RecordingMedia.extractAudio(from: video, to: wav)
-            let words = try await DictationController.shared.speech.words(wav)
+            try FileManager.default.createDirectory(at: pieces, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            // A dictation's length at a time, cut at pauses, so strut has time
+            // to apply the vocabulary; each piece's times moved to the recording's.
+            var words: [TimedWord] = []
+            for piece in try await RecordingMedia.pieces(of: wav, in: pieces) {
+                words += try await DictationController.shared.speech.words(piece.url)
+                    .map { TimedWord(text: $0.text, start: $0.start + piece.start) }
+            }
             guard !words.isEmpty else {
                 captions[video] = "No speech was heard"
                 return

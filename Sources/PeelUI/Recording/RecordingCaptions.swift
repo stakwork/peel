@@ -34,6 +34,9 @@ public enum RecordingCaptions {
     static let pause: TimeInterval = 1.2
     /// How long the last word of a cue is held when no next word ends it.
     static let lastWordHold: TimeInterval = 0.8
+    /// The shortest and longest piece a recording's sound goes to strut in.
+    static let shortestPiece: TimeInterval = 8
+    static let longestPiece: TimeInterval = 20
 
     /// The words, in order, as cues no longer than `maxCharacters` or
     /// `maxSeconds`, a new one after each pause or sentence end; each ends
@@ -101,6 +104,27 @@ public enum RecordingCaptions {
             }
         }
         return timed
+    }
+
+    /// Where a recording's sound is cut for strut, from how loud each
+    /// `frame`-long stretch of it is: pieces of `shortestPiece` to
+    /// `longestPiece`, each cut at the quietest stretch in that span, a
+    /// pause between words. Strut puts a piece's words right with the
+    /// user's vocabulary as it does a dictation's; a whole recording's
+    /// text is too long for its fixer's time, and goes out as heard.
+    /// Ranges of frames, end to end.
+    public static func pieces(levels: [Float], frame: TimeInterval) -> [Range<Int>] {
+        let shortest = Int(shortestPiece / frame), longest = Int(longestPiece / frame)
+        var pieces: [Range<Int>] = []
+        var start = 0
+        while levels.count - start > longest {
+            let span = (start + shortest)..<(start + longest)
+            let cut = span.min { levels[$0] < levels[$1] } ?? span.upperBound
+            pieces.append(start..<cut)
+            start = cut
+        }
+        if start < levels.count { pieces.append(start..<levels.count) }
+        return pieces
     }
 
     /// "Peel Recording 2026-10-28 at 14.03.07": a name Finder sorts by time,

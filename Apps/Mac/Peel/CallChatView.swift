@@ -78,8 +78,8 @@ struct CallChatView: View {
             if let notice = call.chatNotice {
                 Text(notice).font(Theme.font(12)).foregroundStyle(Theme.secondaryText)
             }
-            if call.jamieInCall, let word = Self.mentionPrefix(in: draft) {
-                Button { draft.removeLast(word.count); draft += "@Jamie " } label: {
+            if call.jamieInCall, Self.mentionPrefix(in: draft) != nil {
+                Button { draft = CallChatWire.completingJamie(draft) ?? draft } label: {
                     Text("Jamie").font(Theme.font(12, .medium)).foregroundStyle(Theme.accent)
                         .padding(.horizontal, Theme.Space.sm).padding(.vertical, 2)
                         .background(Theme.mentionFill, in: Capsule())
@@ -94,6 +94,13 @@ struct CallChatView: View {
                     .lineLimit(1...4)
                     .focused($focused)
                     .onSubmit(send)
+                    // Tab completes a started @mention of Jamie; with nothing to
+                    // complete it is left alone and moves focus as usual.
+                    .onKeyPress(.tab) {
+                        guard call.jamieInCall, let completed = CallChatWire.completingJamie(draft) else { return .ignored }
+                        draft = completed
+                        return .handled
+                    }
                     .padding(.horizontal, Theme.Space.sm)
                     .padding(.vertical, 6)
                     .background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: Theme.Radius.control))

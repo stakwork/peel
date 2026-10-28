@@ -84,6 +84,20 @@ public enum CallChatWire {
         ))
     }
 
+    /// `text` with its last word, an `@` or the start of `@jamie` in any
+    /// case (`@`, `@j`, `@JAM`, `@jamie`), completed to `@Jamie ` for the Tab
+    /// key. Nil when the text does not end in such a word (a space after it,
+    /// an address, or another name), so Tab then does what it always does.
+    public static func completingJamie(_ text: String) -> String? {
+        guard text.last?.isWhitespace == false else { return nil }
+        let start = text.lastIndex(where: \.isWhitespace).map { text.index(after: $0) } ?? text.startIndex
+        let word = text[start...]
+        guard word.hasPrefix("@") else { return nil }
+        let typed = word.dropFirst().lowercased()
+        guard typed.count <= "jamie".count, "jamie".hasPrefix(typed) else { return nil }
+        return String(text[..<start]) + "@Jamie "
+    }
+
     /// Whether `text` asks Jamie: an `@jamie` (any case) at the start or
     /// after whitespace, and not the start of a longer word or an address.
     public static func mentionsJamie(_ text: String) -> Bool {

@@ -74,6 +74,19 @@ struct CallChatWireTests {
     func seesNoMentionInOtherText(text: String) {
         #expect(!CallChatWire.mentionsJamie(text))
     }
+
+    @Test(arguments: [
+        ("@", "@Jamie "), ("@j", "@Jamie "), ("@JAM", "@Jamie "), ("@jamie", "@Jamie "),
+        ("hi @ja", "hi @Jamie "), ("a\n@Ji", "a\n@Jamie "),
+    ])
+    func tabCompletesAStartedMention(text: String, completed: String) {
+        #expect(CallChatWire.completingJamie(text) == completed)
+    }
+
+    @Test(arguments: ["", "hi", "@Jamie ", "@jamiex", "@bob", "email@j", "hi @ ", "@ja me"])
+    func tabLeavesOtherTextAlone(text: String) {
+        #expect(CallChatWire.completingJamie(text) == nil)
+    }
 }
 
 struct CallChatLogTests {

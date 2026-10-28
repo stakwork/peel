@@ -16,7 +16,8 @@ struct PeelCommand {
           rename <name>               the name others see on messages sent from now on
           upload-photo <picture>      upload a picture to the memes server and make it this account's photo
           prefs                       every preference stored: its key, chat, value as the preferences file
-                                      holds it, when it was chosen, and whether it follows the account
+                                      holds it (<redacted> for the agent's key, which is only in the
+                                      Keychain), when it was chosen, and whether it follows the account
           prefs-sync                  sync the account's preferences with the encrypted file on its memes
                                       server now (the app also syncs on connect and after each change; a
                                       CLI change goes up with the next prefs-sync or connect); --dry-run

@@ -71,11 +71,16 @@ public struct AgentCredential: Codable, Sendable, Equatable, CustomStringConvert
     public var provider: AgentProvider
     public var model: String
     public var apiKey: String
+    /// The agent's name from the preferences file (`ai_agent_config`),
+    /// kept beside the key so it goes back unchanged; nil when none came.
+    /// Stored credentials from before it was kept decode with none.
+    public var agentName: String?
 
-    public init(provider: AgentProvider, model: String, apiKey: String) {
+    public init(provider: AgentProvider, model: String, apiKey: String, agentName: String? = nil) {
         self.provider = provider
         self.model = model
         self.apiKey = apiKey
+        self.agentName = agentName
     }
 
     /// The key's last four characters, all a screen shows of it.

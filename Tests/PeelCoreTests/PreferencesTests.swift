@@ -13,15 +13,23 @@ struct PreferencesTests {
     /// Official keys by their official names, Peel's under `peel.`, and
     /// what stays on this device under `device.`, never synced.
     @Test func keysAreNamespacedByWhereTheyGo() {
-        let official: Set = ["tip_amount", "timezone"]
+        let official: Set = ["tip_amount", "timezone", "chat_color", "biometric_enabled", "ai_agent_config"]
         for (key, entry) in Preferences.registry {
-            if entry.scope == .account {
+            if entry.scope != .device {
                 #expect(official.contains(key) || key.hasPrefix(Preferences.peelPrefix), "\(key)")
             } else {
                 #expect(key.hasPrefix(Preferences.devicePrefix), "\(key)")
             }
         }
-        #expect(Preferences.synced == official.union(["peel.payment_confirmation_msat", "peel.time_zone"]))
+        // `pin_timeout` stays a pass-through in the file (decision 4).
+        #expect(Preferences.registry["pin_timeout"] == nil)
+        // Face ID and the agent's key sync only where a device says it has them.
+        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.time_zone"])
+        #expect(Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("biometric_enabled"))
+        #expect(!Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("ai_agent_config"))
+        #expect(Preferences.syncedKeys(enabling: ["ai_agent_config"]).contains("ai_agent_config"))
+        // A key that is not opt-in cannot be "enabled" in or out; device keys never sync.
+        #expect(Preferences.syncedKeys(enabling: ["device.notification_text"]) == Preferences.synced)
     }
 
     /// What the official apps write back for a string they read

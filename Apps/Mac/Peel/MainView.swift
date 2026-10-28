@@ -218,7 +218,8 @@ struct Detail: View {
                 AppsView()
             case .app(let peer, let name):
                 if let app = model.app(peer: peer, name: name) {
-                    WorkspaceAppView(app: app)
+                    // One view per app: a version picked or read in one is not another's.
+                    WorkspaceAppView(app: app).id(app.id)
                 } else {
                     start("This app is no longer listed.")
                 }

@@ -40,7 +40,8 @@ struct MenuItem {
     var checked = false
     var destructive = false
     /// What the row says once clicked, waiting for a second click, for
-    /// what deletes, discards or leaves ("Delete for everyone").
+    /// what deletes, discards or leaves ("Delete for everyone"), or changes
+    /// what everyone sees ("Everyone opens v5").
     var confirm: String?
     /// Shown at the bottom of the window when `action` says it did its job
     /// ("Copied"), since the menu has gone by then.

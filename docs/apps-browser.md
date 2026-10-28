@@ -160,6 +160,55 @@ own authoring UI. Your chat with Peel is the way in:
   pinned row, its page asked of strut by name), and the development
   profile's own strut listing nothing once its `strut/views` is left out.
 
+## Built: versions and releases (2026-10-28)
+
+Which version of one of your own apps everyone opens (strut's
+plans/app-releases.md, `GET /apps/:name/versions` and `PUT
+/apps/:name/active`; Tom's design board, "Strut App Versions"):
+
+- The app's header: a chip with the live version (a lock while held at a
+  release), opening its menu; beside it **Make vN live** while a newer
+  version waits or another is previewed, asked once in a panel. The menu
+  lists the newest six versions (waiting, live, when); a pick shows that
+  version in this window only (`?app=name@vN`), under a bar that says
+  everyone else opens the live one. History lists the releases to roll back
+  to, and what the live release locked that has moved on ("Use these with
+  v7"). Follow latest makes every publish live again. Rolling back, taking
+  the new workflows and following latest each ask for a second click.
+- A card and the iPhone's row say "v9 waiting" while one of yours is held
+  behind a newer version (`WorkspaceApp.waiting`, from `GET /apps`).
+- The sidebar: the pinned apps sit under the Apps row behind a hairline,
+  indented as shadcn's sub-menu, each with its own icon and title only
+  (where it comes from is on its card and header); the row's chevron folds them,
+  keeping the open one (`ChatSections.Layout.appsOpen`).
+- Not built: a workspace's versions (its own to change, still the `Release
+  rN` chip); the locks a promote would take, before it (strut has no dry
+  run); Undo in the toast (Peel's toasts have no action).
+- Checked: `AppVersionsTests`, `HiveTests.yourOwnAppsVersionsAreReadAndMadeLiveByName`;
+  offscreen against a development profile's own strut holding an app at v2
+  with v3 built (card, header, menu, History, the fold, Make live moving it
+  to v3), and the sidebar's nesting open and folded. Not driven: a preview's
+  pick and the confirm panel's button (no click step), the page itself in
+  the frame.
+- Review findings not applied, and why:
+  - Strut, not Peel, should say which versions wait (`waiting` on `GET
+    /apps` and per version on `/versions`): a strut change, next. Peel's
+    rule (`AppVersions.isNewer`) is kept in one place until then.
+  - The offscreen steps build the versions menu and call `makeLive`
+    themselves rather than open the header's chip and panel: the driver has
+    no click step, and a model-level request only for it would be a
+    test-only seam.
+  - The chip re-states `MenuButton`'s trigger (anchor, lit, gone) with a
+    `Chip` label; making `MenuButton` generic over its label reaches past
+    this change.
+  - Make live keeps its panel rather than `InlineConfirm`: Tom chose the
+    panel on the board.
+  - Previewing a version a release already names offers a new release of it
+    (today's workflows), not a roll back to that release; History has the
+    roll back.
+  - A publish to an app that follows latest does not reload an open page
+    (as before): only a change made in its window, Reload, or a preview does.
+
 ## PRs, in order
 
 1. **Sidebar and browser (Peel only).** The nav row in A–Z order, the

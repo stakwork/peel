@@ -77,7 +77,7 @@ struct CallChatWireTests {
 
     @Test(arguments: [
         ("@", "@Jamie "), ("@j", "@Jamie "), ("@JAM", "@Jamie "), ("@jamie", "@Jamie "),
-        ("hi @ja", "hi @Jamie "), ("a\n@Ji", "a\n@Jamie "),
+        ("hi @ja", "hi @Jamie "), ("a\n@Ja", "a\n@Jamie "),
     ])
     func tabCompletesAStartedMention(text: String, completed: String) {
         #expect(CallChatWire.completingJamie(text) == completed)

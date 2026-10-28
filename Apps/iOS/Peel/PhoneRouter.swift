@@ -117,6 +117,21 @@ final class PhoneRouter {
         }
     }
 
+    /// Back to a fresh Chats tab with nothing pushed: onboarding (an account
+    /// forgotten from You, or a restore) must not reopen on the tab the last
+    /// account was left on (Profile).
+    func reset() {
+        holding = true
+        tab = .chats
+        chats = []
+        search = []
+        payments = []
+        you = []
+        orgPage = nil
+        holding = false
+        publish()
+    }
+
     // MARK: Opening things
 
     /// A chat, pushed over the Chats list (or the list it was opened from,

@@ -56,7 +56,7 @@ struct VideoTile: View {
     let message: Message
 
     @State private var read: (file: URL, info: MediaInfo?)?
-    @State private var sharing: SharedFile?
+    @State private var sharing: SharedFileItem?
 
     /// What was read for `file`, or is cached from an earlier row: nil when
     /// not read yet, nil inside when AVFoundation cannot play it.
@@ -111,7 +111,7 @@ struct VideoTile: View {
                 }
             }
             .sheet(item: $sharing) { shared in
-                ShareSheet(url: shared.url).presentationDetents([.medium, .large])
+                FileShareSheet(url: shared.url).presentationDetents([.medium, .large])
             }
             // Again once an upload of ours is done (the Mac's `AutoDownload`).
             .task(id: "\(id)/\(message.upload ?? "")") { await model.autoDownload(message) }
@@ -243,7 +243,7 @@ struct VideoTile: View {
         let name = model.attachment(id).downloaded?.fileName ?? message.fileName
         Task {
             if let url = try? await FileCopy.named(file, name: name, mediaType: message.mediaType) {
-                sharing = SharedFile(url: url)
+                sharing = SharedFileItem(url: url)
             }
         }
     }

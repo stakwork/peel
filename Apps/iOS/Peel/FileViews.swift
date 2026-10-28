@@ -16,7 +16,7 @@ struct FileCard: View {
     let message: Message
 
     @State private var previewing: URL?
-    @State private var sharing: SharedFile?
+    @State private var sharing: SharedFileItem?
     @State private var notice: String?
 
     var body: some View {
@@ -69,7 +69,7 @@ struct FileCard: View {
         .frame(maxWidth: 320, alignment: .leading)
         .quickLookPreview($previewing)
         .sheet(item: $sharing) { shared in
-            ShareSheet(url: shared.url).presentationDetents([.medium, .large])
+            FileShareSheet(url: shared.url).presentationDetents([.medium, .large])
         }
     }
 
@@ -103,7 +103,7 @@ struct FileCard: View {
 
     private func share() {
         Task {
-            if let url = await prepared() { sharing = SharedFile(url: url) }
+            if let url = await prepared() { sharing = SharedFileItem(url: url) }
         }
     }
 
@@ -170,7 +170,7 @@ struct TransferLine: View {
 }
 
 /// A file ready to share: a copy under its real name.
-struct SharedFile: Identifiable {
+struct SharedFileItem: Identifiable {
     let url: URL
     var id: URL { url }
 }
@@ -203,7 +203,7 @@ enum FileCopy {
 }
 
 /// The system share sheet for one file.
-struct ShareSheet: UIViewControllerRepresentable {
+struct FileShareSheet: UIViewControllerRepresentable {
     let url: URL
 
     func makeUIViewController(context: Context) -> UIActivityViewController {

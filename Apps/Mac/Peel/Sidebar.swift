@@ -805,8 +805,8 @@ private struct AppsUnderRow: View {
 }
 
 /// An app under the Apps row (`WorkspaceAppView`): its own icon, small and
-/// muted, and a workspace's `@workspace` beside it; the person's own say
-/// nothing (Tom, 2026-10-28).
+/// muted, and its title; where it comes from is its card's and header's to
+/// say (Tom, 2026-10-28).
 private struct WorkspaceAppLink: View {
     let app: WorkspaceApp
 
@@ -815,13 +815,6 @@ private struct WorkspaceAppLink: View {
             Image(systemName: app.iconSymbol)
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
-        } accessory: {
-            if app.peer != nil {
-                Text(app.source)
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
-            }
         }
         .help(app.about ?? app.title)
     }

@@ -178,8 +178,8 @@ plans/app-releases.md, `GET /apps/:name/versions` and `PUT
 - A card and the iPhone's row say "v9 waiting" while one of yours is held
   behind a newer version (`WorkspaceApp.waiting`, from `GET /apps`).
 - The sidebar: the pinned apps sit under the Apps row behind a hairline,
-  indented as shadcn's sub-menu, each with its own icon and `@workspace`
-  for a workspace's (Yours says nothing); the row's chevron folds them,
+  indented as shadcn's sub-menu, each with its own icon and title only
+  (where it comes from is on its card and header); the row's chevron folds them,
   keeping the open one (`ChatSections.Layout.appsOpen`).
 - Not built: a workspace's versions (its own to change, still the `Release
   rN` chip); the locks a promote would take, before it (strut has no dry

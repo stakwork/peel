@@ -97,6 +97,12 @@ struct RootView: View {
             .onChange(of: model.destination) { _, destination in
                 router.follow(destination)
             }
+            // Onboarding starts from Chats: the tab left selected by a
+            // forgotten account (You, Profile) must not outlive it.
+            .onChange(of: model.phase) { _, phase in
+                if phase == .onboarding { router.reset() }
+            }
+            .onAppear { if model.phase == .onboarding { router.reset() } }
     }
 
     @ViewBuilder private var phase: some View {

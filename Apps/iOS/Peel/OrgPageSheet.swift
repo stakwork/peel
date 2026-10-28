@@ -70,7 +70,7 @@ struct OrgPageSheet: View {
 }
 
 /// A file a page's own download saved, to hand to the share sheet.
-private struct SharedFile: Identifiable {
+private struct OrgPageSharedFile: Identifiable {
     let id = UUID()
     let url: URL
 }
@@ -98,7 +98,7 @@ private final class OrgPageController {
     /// Why the page did not open, in the person's words; nil when it did.
     var problem: String?
     /// A download that finished, for the share sheet.
-    var shared: SharedFile?
+    var shared: OrgPageSharedFile?
     /// A download that failed.
     var notice: String?
 
@@ -316,7 +316,7 @@ private struct OrgWebView: UIViewRepresentable {
 
         func downloadDidFinish(_ download: WKDownload) {
             guard let entry = downloads.removeValue(forKey: ObjectIdentifier(download)), let file = entry.file else { return }
-            controller.shared = SharedFile(url: file)
+            controller.shared = OrgPageSharedFile(url: file)
         }
 
         func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {

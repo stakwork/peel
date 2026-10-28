@@ -55,11 +55,12 @@ struct PhoneFiles: FilePicking {
     func reveal(_ file: URL) {}
 }
 
-/// Nothing plays yet: the read-only conversation shows no media (I3).
+/// Video plays in its row (`VideoPlayback`); there is no full-screen viewer
+/// of ours, so closing one has nothing to do.
 struct PhonePlayback: Playback {
-    func play(_ id: Int64, file: URL) {}
+    func play(_ id: Int64, file: URL) { VideoPlayback.shared.play(id, file: file) }
     func closeFullScreen() {}
-    func stop() {}
+    func stop() { VideoPlayback.shared.stop() }
 }
 
 /// No web pane yet; an HTML attachment says so where it was opened.

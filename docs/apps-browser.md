@@ -225,8 +225,9 @@ plans/app-releases.md, `GET /apps/:name/versions` and `PUT
 5. **Manage.** The ⋯ menu: versions and delete for yours, hide and "Open in
    Stadeum" for a workspace's.
 
-The iPhone stays out (no strut of its own). `PhoneRouter` gets the Apps row
-once a phone can reach a strut.
+The iPhone has no strut of its own, so it stays out of the strut side. It does
+pin the workspaces' apps under Chats' Apps row, sharing the Mac's sidebar
+layout (`ChatSections.Layout.pinnedApps`).
 
 ## Questions for Tom
 

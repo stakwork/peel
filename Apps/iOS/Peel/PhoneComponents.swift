@@ -175,7 +175,7 @@ struct ChatListRow: View {
 /// A row's layout: the icon column, the title, then what sits at its end.
 /// 44 tall at least (a list puts `Theme.phoneGutter` at its sides); at
 /// accessibility text sizes the end goes under the title rather than clipping it.
-private struct RowLayout<Leading: View, Title: View, Trailing: View>: View {
+struct RowLayout<Leading: View, Title: View, Trailing: View>: View {
     @ViewBuilder let leading: Leading
     @ViewBuilder let title: Title
     @ViewBuilder let trailing: Trailing

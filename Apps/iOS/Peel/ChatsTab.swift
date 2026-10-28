@@ -80,6 +80,7 @@ struct ChatList: View {
                         NavigationLink(value: ChatsRoute.apps) {
                             NavRow(title: "Apps", systemImage: WorkspaceApp.symbol)
                         }
+                        PinnedAppRows()
                     }
                     NavigationLink(value: ChatsRoute.automations) {
                         NavRow(title: "Automations", systemImage: "clock.arrow.circlepath")
@@ -281,5 +282,44 @@ private struct ShowAll: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(all ? "Show fewer \(fewer)" : "Show all \(what)")
+    }
+}
+
+/// The apps the person pinned, under the Apps row as the Mac's sidebar
+/// nests them (kept in the same layout): a tap opens one in the org page
+/// sheet, a swipe unpins it. Only workspaces still in use.
+private struct PinnedAppRows: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+
+    var body: some View {
+        let stadeum = model.stadeum
+        let live = Set(stadeum.live.map(\.id))
+        let pinned = WorkspaceApp.byTitle(stadeum.apps.filter { app in
+            model.isPinned(app) && (app.peer.map(live.contains) ?? false)
+        })
+        if model.sidebarLayout.appsOpen {
+            ForEach(pinned) { app in
+                Button {
+                    if case .page(let page) = stadeum.opening(app) { router.orgPage = page }
+                } label: {
+                    RowLayout {
+                        Image(systemName: app.iconSymbol)
+                            .font(.system(size: 15))
+                            .frame(width: 30)
+                            .accessibilityHidden(true)
+                    } title: {
+                        Text(app.title).phoneFont(.row).lineLimit(1)
+                    } trailing: {
+                        EmptyView()
+                    }
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.leading, Theme.Space.lg)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens it")
+                .swipeActions(edge: .trailing) { PinAppButton(app: app) }
+            }
+        }
     }
 }

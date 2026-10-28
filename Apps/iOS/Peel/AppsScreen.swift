@@ -36,6 +36,8 @@ struct AppsScreen: View {
                         AppRow(app: app, showsSource: several)
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) { PinAppButton(app: app) }
+                    .contextMenu { PinAppButton(app: app) }
                 }
             } footer: {
                 if !unread.isEmpty, !apps.isEmpty {
@@ -148,5 +150,41 @@ private struct UnreadNote: View {
         Text("Couldn't read \(names.joined(separator: ", ")) just now. Pull to try again.")
             .phoneFont(.secondary)
             .foregroundStyle(Theme.tertiaryText)
+    }
+}
+
+/// Pins an app under Chats' Apps row, or takes it off, as the Mac pins one
+/// under its sidebar's: kept with the account's sidebar layout
+/// (`ChatSections.Layout.pinnedApps`), so both show the same pins.
+struct PinAppButton: View {
+    @Environment(AppModel.self) private var model
+    let app: WorkspaceApp
+
+    var body: some View {
+        let pinned = model.isPinned(app)
+        Button {
+            model.setPinned(app, !pinned)
+        } label: {
+            Label(pinned ? "Unpin from Chats" : "Pin to Chats", systemImage: pinned ? "pin.slash" : "pin")
+        }
+        .tint(.orange)
+    }
+}
+
+extension AppModel {
+    /// Whether the person pinned `app` under Chats' Apps row.
+    func isPinned(_ app: WorkspaceApp) -> Bool {
+        sidebarLayout.pinnedApps.contains(app.id)
+    }
+
+    /// Puts `app` under the Apps row, or takes it off.
+    func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
+        var pins = sidebarLayout.pinnedApps.filter { $0 != app.id }
+        if pinned {
+            // The first pin shows: the fold, closed before, is no longer there to open.
+            if pins.isEmpty { sidebarLayout.appsOpen = true }
+            pins.append(app.id)
+        }
+        if pins != sidebarLayout.pinnedApps { sidebarLayout.pinnedApps = pins }
     }
 }

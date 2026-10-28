@@ -75,21 +75,37 @@ struct ChatList: View {
         List {
             if !sections.searching {
                 Section {
-                    // The workspaces' apps, once Stadeum is connected here.
-                    if !model.stadeum.live.isEmpty {
-                        NavigationLink(value: ChatsRoute.apps) {
-                            NavRow(title: "Apps", systemImage: WorkspaceApp.symbol)
-                        }
-                        PinnedAppRows()
+                    // The Mac sidebar's order, A–Z (Tom, 2026-10-26); Payments is a tab.
+                    NavigationLink(value: ChatsRoute.apps) {
+                        NavRow(title: "Apps", systemImage: WorkspaceApp.symbol)
                     }
+                    .overlay(alignment: .trailing) {
+                        // Beside the link, not in it: the row still opens Apps.
+                        if model.stadeum.apps.contains(where: model.isPinned) {
+                            Button {
+                                model.sidebarLayout.appsOpen.toggle()
+                            } label: {
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .rotationEffect(.degrees(model.sidebarLayout.appsOpen ? 0 : -90))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Pinned apps")
+                            .accessibilityValue(model.sidebarLayout.appsOpen ? "Expanded" : "Collapsed")
+                        }
+                    }
+                    PinnedAppRows()
                     NavigationLink(value: ChatsRoute.automations) {
                         NavRow(title: "Automations", systemImage: "clock.arrow.circlepath")
                     }
-                    NavigationLink(value: ChatsRoute.threads) {
-                        NavRow(title: "Threads", systemImage: "bubble.left", count: model.unreadThreads)
-                    }
                     NavigationLink(value: ChatsRoute.mentions) {
                         NavRow(title: "Mentions", systemImage: "at", count: model.unreadMentions)
+                    }
+                    NavigationLink(value: ChatsRoute.threads) {
+                        NavRow(title: "Threads", systemImage: "bubble.left", count: model.unreadThreads)
                     }
                 }
                 .phoneRows()

@@ -132,7 +132,10 @@ struct PreferencesFileTests {
             {"key":"tip_amount","identifier":"0","date":"1","value":"7"}
             """#
         let server = try file(others, extra: #","version":"2""#)
-        let untouched = server.merged(with: [row("tip_amount", #""7""#, at: 1)])
+        // `chat_color` is Peel's (import-only), so this device already holds the file's value.
+        let untouched = server.merged(with: [
+            row("tip_amount", #""7""#, at: 1), row("chat_color", ##""#ff00aa""##, at: 9, for: "Ann-color"),
+        ])
         #expect(!untouched.changed && untouched.apply.isEmpty)
         let merge = server.merged(with: [row("tip_amount", #""250""#, at: 50)])
         #expect(merge.changed && merge.uploads == [.init(key: "tip_amount", identifier: "0")])

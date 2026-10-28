@@ -283,6 +283,14 @@ macOS 13+ is already the minimum (the project targets 15.6).
   They are near-silent with `say` playing (echo cancellation would remove
   that anyway), and the 3→1 `AVAudioConverter` turns them into all
   zeros. It needs its own fix and a person speaking to judge it.
+  Also open: voice processing in *another* process on the same mic
+  silences dictation while it runs. On 2026-10-28 between 11:17 and
+  11:25, the test harness's runs did this to Peel with no call in Peel,
+  and dictation came back on its own when they stopped. A Zoom or Meet
+  call likely does the same. It has not been checked whether binding to
+  the device helps, or whether this is macOS behaviour to document.
+  Checking it means running voice processing against the real mic, so
+  only do it with Tom's go-ahead or on a virtual input.
 
 - 2026-10-26: after the key is let go, the pill stays with a spinner while
   strut transcribes, until the text is typed or a message takes its place;

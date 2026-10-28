@@ -156,6 +156,10 @@ is a short plan. Update the status and the journal when you finish something.
     the recent calls across chats whose presence the app keeps, and their
     live query (`Storage.recentCallMessages`, beside them as
     `PaymentHistory.swift` keeps its own)
+  - `CallChat.swift` — the call's chat without LiveKit: `CallChatMessage`,
+    `CallChatWire` (the `lk-chat-topic` JSON: messages, Jamie's status rows,
+    `mentionsJamie`) and `CallChatLog` (rows capped at 500, deduped, Jamie
+    thinking); tested in `CallChatTests`
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
@@ -472,7 +476,7 @@ is a short plan. Update the status and the journal when you finish something.
   section, and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
-  and devices), `CallWindow` (the grid, the focus layout with its strip,
+  and devices, and the chat over the data channel), `CallChatView` (the chat panel beside the stage), `CallWindow` (the grid, the focus layout with its strip,
   keep on top, the recording indicator and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);

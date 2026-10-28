@@ -19,21 +19,26 @@ public enum MemoryResult: Sendable, Equatable {
     /// or what was said that it remembered.
     public static func asked(tool: String, input: JSONValue) -> String? {
         switch tool {
-        case "recall": input["q"]?.string.map { "Searched for \u{201C}\(MemoryRef.clean($0))\u{201D}" }
+        case "recall", "graph_graph-search": input["q"]?.string.map { "Searched for \u{201C}\(MemoryRef.clean($0))\u{201D}" }
         case "remember": input["episode"]?.string.map { "From \u{201C}\(MemoryRef.clean($0))\u{201D}" }
         default: nil
         }
     }
 
     /// The tools whose rows read as one.
-    public static let tools: Set<String> = ["remember", "recall", "read_memory"]
+    public static let tools: Set<String> = ["remember", "recall", "read_memory", "graph_graph-search", "graph_graph-neighbors", "graph_graph-get"]
 
     public init?(tool: String, row: JSONValue) {
         switch tool {
         case "remember": self = .remembered(Remembered(row))
-        case "recall": self = .found(MemoryRef.once((row.array ?? []).compactMap { MemoryRef($0, name: "name", type: "node_type") }, \.id))
+        // Search rows are recall's shape; neighbors rows add the edge, which the row leaves out.
+        case "recall", "graph_graph-search", "graph_graph-neighbors":
+            self = .found(MemoryRef.once((row.array ?? []).compactMap { MemoryRef($0, name: "name", type: "node_type") }, \.id))
         case "read_memory":
             guard let node = MemoryNode(row) else { return nil }
+            self = .read(node)
+        case "graph_graph-get":
+            guard let node = MemoryNode(graphGet: row) else { return nil }
             self = .read(node)
         default: return nil
         }
@@ -161,6 +166,35 @@ public enum MemoryNode: Sendable, Equatable {
                     return Entity.Known(fact: ref, since: Self.date(fact["since"]))
                 }, \.fact.id),
                 mentionedIn: output["mentioned_in_episodes"]?.int ?? 0))
+        }
+    }
+
+    /// A node as strut's `graph/graph-get` returns it: `{ref_id, node_type,
+    /// name, properties, edges}`, `edges` a count per edge type. The facts,
+    /// sources and replaced facts are left empty: the panel opened from a row
+    /// loads the whole node (`memory/get`).
+    public init?(graphGet output: JSONValue) {
+        guard let id = output["ref_id"]?.string, let type = output["node_type"]?.string else { return nil }
+        let properties = output["properties"]
+        let clean = { (value: JSONValue?) in MemoryRef.clean(value?.string ?? "") }
+        switch type {
+        case "Fact":
+            self = .fact(Fact(
+                id: id, text: clean(properties?["text"]), predicate: clean(properties?["predicate"]),
+                subject: properties?["subject_ref_id"]?.string.map { MemoryRef(id: $0, name: clean(properties?["subject"])) },
+                object: properties?["object_ref_id"]?.string.map { MemoryRef(id: $0, name: clean(properties?["object"])) },
+                since: Self.date(properties?["valid_at"]), expired: Self.date(properties?["expired_at"]),
+                byAgent: properties?["created_by"]?.string == "agent",
+                from: [], replaced: [], replacedBy: []))
+        case "Episode":
+            self = .episode(Episode(
+                said: Said(id: id, words: Self.words(properties?["content"]?.string), at: Self.date(properties?["occurred_at"])),
+                mentions: []))
+        default:
+            self = .entity(Entity(
+                ref: MemoryRef(id: id, name: clean(output["name"]), type: type),
+                aliases: (properties?["aliases"]?.array ?? []).compactMap { $0.string.map(MemoryRef.clean) },
+                facts: [], mentionedIn: 0))
         }
     }
 

@@ -169,4 +169,51 @@ struct MemoryServerTests {
                 == "From \u{201C}We moved. To Bristol.\u{201D}")
         #expect(MemoryResult.asked(tool: "read_memory", input: ["type": "Self"]) == nil)
     }
+
+    /// The graph tools' rows: search and neighbors as found, `graph-get` as the node read.
+    @Test func graphToolRowsReadLikeMemoryRows() throws {
+        let search = try JSONValue(parsing: #"[{"ref_id":"k","name":"Kate","node_type":"Person","description":"d","edges":2}]"#)
+        #expect(MemoryResult(tool: "graph_graph-search", row: search) == .found([MemoryRef(id: "k", name: "Kate", type: "Person")]))
+        let neighbors = try JSONValue(parsing: #"""
+            [{"ref_id":"f1","node_type":"Fact","name":"Kate is Tom's wife.","edge_type":"ABOUT","direction":"in","edges":1}]
+            """#)
+        #expect(MemoryResult(tool: "graph_graph-neighbors", row: neighbors) == .found([
+            MemoryRef(id: "f1", name: "Kate is Tom's wife.", type: "Fact")]))
+        #expect(MemoryResult.asked(tool: "graph_graph-search", input: ["q": "Kate"]) == "Searched for \u{201C}Kate\u{201D}")
+        #expect(MemoryResult(tool: "graph_walk", row: search) == nil)
+
+        let fact = try JSONValue(parsing: #"""
+            {"ref_id":"f1","node_type":"Fact","name":"Tom lives in Bristol.","edges":{"ABOUT":2},
+             "properties":{"text":"Tom lives in Bristol.","predicate":"lives_in","subject":"Me","subject_ref_id":"me",
+                           "object":"Bristol","object_ref_id":"bri","valid_at":"2026-10-13T10:39:50Z","expired_at":null,"created_by":"agent"}}
+            """#)
+        guard case .fact(let read)? = MemoryNode(graphGet: fact) else {
+            Issue.record("expected a fact")
+            return
+        }
+        #expect(read.text == "Tom lives in Bristol." && read.predicate == "lives_in")
+        #expect(read.subject == MemoryRef(id: "me", name: "Me") && read.object == MemoryRef(id: "bri", name: "Bristol"))
+        #expect(read.since == Date(timeIntervalSince1970: 1_791_887_990))
+        #expect(read.expired == nil && read.byAgent)
+        #expect(read.from.isEmpty && read.replaced.isEmpty && read.replacedBy.isEmpty)
+
+        let episode = try JSONValue(parsing: #"""
+            {"ref_id":"e1","node_type":"Episode","name":"chat","edges":{},
+             "properties":{"content":"We moved to Bristol.","occurred_at":"2026-10-13T10:39:50Z"}}
+            """#)
+        guard case .episode(let said)? = MemoryNode(graphGet: episode) else {
+            Issue.record("expected an episode")
+            return
+        }
+        #expect(said.said.words == "We moved to Bristol." && said.said.at == Date(timeIntervalSince1970: 1_791_887_990))
+
+        let entity = try JSONValue(parsing: #"""
+            {"ref_id":"me","node_type":"Self","name":"Me","edges":{"ABOUT":3},"properties":{"aliases":["me","tom"]}}
+            """#)
+        guard case .read(.entity(let me))? = MemoryResult(tool: "graph_graph-get", row: entity) else {
+            Issue.record("expected an entity")
+            return
+        }
+        #expect(me.ref == MemoryRef(id: "me", name: "Me", type: "Self") && me.aliases == ["tom"] && me.facts.isEmpty)
+    }
 }

@@ -41,7 +41,7 @@ struct CallChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Theme.Space.md) {
-                    ForEach(call.chat) { row in
+                    ForEach(call.chatRows) { row in
                         ChatRowView(call: call, row: row)
                             .id(row.id)
                     }
@@ -55,7 +55,7 @@ struct CallChatView: View {
                 .padding(Theme.Space.md)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .onChange(of: call.chat.last?.id) { scrollToNewest(proxy) }
+            .onChange(of: call.chatRows.last?.id) { scrollToNewest(proxy) }
             .onChange(of: call.jamieThinking) { scrollToNewest(proxy) }
             .onAppear { scrollToNewest(proxy, animated: false) }
         }
@@ -64,7 +64,7 @@ struct CallChatView: View {
     private static let thinkingID = "jamie-thinking"
 
     private func scrollToNewest(_ proxy: ScrollViewProxy, animated: Bool = true) {
-        let target = call.jamieThinking ? Self.thinkingID : call.chat.last?.id
+        let target = call.jamieThinking ? Self.thinkingID : call.chatRows.last?.id
         guard let target else { return }
         if animated { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(target, anchor: .bottom) } } else {
             proxy.scrollTo(target, anchor: .bottom)

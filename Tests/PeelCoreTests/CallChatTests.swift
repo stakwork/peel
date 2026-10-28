@@ -30,7 +30,10 @@ struct CallChatWireTests {
 
     @Test func aMessageWithNoSenderIsJamies() throws {
         let sample = #"{"id":"2","timestamp":1730000001000,"message":"Three tasks merged.\n\n- [Notes](https://x.test/n)"}"#
-        guard case .message(let message)? = incoming(sample) else { return Issue.record("not a message") }
+        guard case .message(let message)? = incoming(sample) else {
+            Issue.record("not a message")
+            return
+        }
         #expect(message.sender == nil)
         #expect(message.isFromJamie)
         #expect(message.text == "Three tasks merged.\n\n- [Notes](https://x.test/n)")
@@ -43,7 +46,10 @@ struct CallChatWireTests {
 
     @Test func readsASpokenCommandAsThePersonsRow() {
         let sample = #"{"id":"4","timestamp":1730000003000,"message":"what shipped","sender":"Sam","voice":true}"#
-        guard case .message(let message)? = incoming(sample) else { return Issue.record("not a message") }
+        guard case .message(let message)? = incoming(sample) else {
+            Issue.record("not a message")
+            return
+        }
         #expect(message.sender == "Sam")
         #expect(message.isVoice)
         #expect(!message.isFromJamie)
@@ -77,7 +83,8 @@ struct CallChatLogTests {
 
     @Test func aStatusRowSetsThinkingAndIsNeverStored() {
         var log = CallChatLog()
-        #expect(log.receive(.status(id: "s")) == nil)
+        let row = log.receive(.status(id: "s"))
+        #expect(row == nil)
         #expect(log.jamieThinking)
         #expect(log.rows.isEmpty)
     }
@@ -89,7 +96,8 @@ struct CallChatLogTests {
         #expect(log.jamieThinking, "a person's message does not end it")
         let row = log.receive(.message(message("j", sender: nil)))
         #expect(!log.jamieThinking)
-        #expect(row.map(log.isFromJamie) == true)
+        let fromJamie = row.map { log.isFromJamie($0) }
+        #expect(fromJamie == true)
         #expect(log.rows.map(\.id) == ["p", "j"])
     }
 
@@ -106,9 +114,12 @@ struct CallChatLogTests {
 
     @Test func aRepeatedIdIsIgnored() {
         var log = CallChatLog()
-        #expect(log.receive(.message(message("1"))) != nil)
-        #expect(log.receive(.message(message("1"))) == nil)
-        #expect(!log.appendLocal(message("1")))
+        let first = log.receive(.message(message("1")))
+        let repeated = log.receive(.message(message("1")))
+        let added = log.appendLocal(message("1"))
+        #expect(first != nil)
+        #expect(repeated == nil)
+        #expect(!added)
         #expect(log.rows.count == 1)
     }
 

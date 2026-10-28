@@ -99,7 +99,7 @@ final class CallSession {
     // MARK: Chat state
 
     /// The call's chat, oldest first; in memory for this call only.
-    var chat: [CallChatLog.Row] { log.rows }
+    var chatRows: [CallChatLog.Row] { log.rows }
     /// Messages from others that came while the panel was closed.
     private(set) var chatUnread = 0
     /// Whether the chat panel is open beside the call.

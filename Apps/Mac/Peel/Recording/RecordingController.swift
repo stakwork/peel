@@ -42,8 +42,7 @@ final class RecordingController {
     /// How long until the recording reaches `longest`, once that is under a
     /// minute (`warning`): shown on the bar.
     private(set) var timeLeft: TimeInterval?
-    /// The mic went quiet: the one now recorded, for a moment, or that
-    /// none is heard. Shown on the bar.
+    /// That nothing is heard from the mic. Shown on the bar.
     private(set) var micNote: String?
     /// What last went wrong, or why the last recording stopped on its own.
     private(set) var problem: String?
@@ -69,7 +68,6 @@ final class RecordingController {
     @ObservationIgnored private var picked: (filter: SCContentFilter, screen: NSScreen?)?
     @ObservationIgnored private var discarding = false
     @ObservationIgnored private var ticker: Timer?
-    @ObservationIgnored private var micChangedAt: ContinuousClock.Instant?
     @ObservationIgnored private lazy var bubble = CameraBubblePanel()
     @ObservationIgnored private lazy var bar = RecordingBarPanel(controller: self)
     /// Why a recording stopped on its own, where the bar was: the dictation HUD's message.
@@ -88,8 +86,6 @@ final class RecordingController {
     private static let warning: TimeInterval = 60
     /// This long with nothing at all from the mic, not even its hiss, it is deaf.
     private static let deaf: TimeInterval = 2
-    /// How long the bar says which mic the recording moved to.
-    private static let micNoteShown: Duration = .seconds(5)
     /// The longest captions wait for strut's fixer to load, over a whole
     /// recording: past strut's own 30 s of leaving a slow one out.
     private static let fixerWait: Duration = .seconds(45)
@@ -142,7 +138,7 @@ final class RecordingController {
         micNote = nil
         Task {
             do {
-                let started = try await ScreenRecorder.start(picked.filter, micChanged: { name in self.micChanged(to: name) }) { url, error in
+                let started = try await ScreenRecorder.start(picked.filter) { url, error in
                     self.ended(url, error)
                 }
                 // Ended already, as it started.
@@ -208,24 +204,10 @@ final class RecordingController {
         }
         let before = (timeLeft == nil, micNote)
         timeLeft = left <= Self.warning ? left : nil
-        if recorder.micSilence >= Self.deaf {
-            // Gone deaf (a headset's mic dropped): the default input again.
-            micNote = "No sound from your mic"
-            recorder.reopenMic()
-        } else if let changed = micChangedAt, changed.duration(to: .now) < Self.micNoteShown {
-            // The note `micChanged` set stays a moment.
-        } else if micNote != nil {
-            micNote = nil
-        }
+        // Gone deaf (a headset's mic dropped): said, as moving to another
+        // mic would end the recording (`ScreenRecorder`).
+        micNote = recorder.micSilence >= Self.deaf ? "No sound from your mic" : nil
         if before != (timeLeft == nil, micNote) { bar.refit() }
-    }
-
-    /// The recording moved to another mic, macOS's default input now.
-    private func micChanged(to name: String) {
-        guard phase == .recording else { return }
-        micChangedAt = .now
-        micNote = "Now using \(name)"
-        bar.refit()
     }
 
     /// The file at `url` is finished, or the recording failed (after `stop`,

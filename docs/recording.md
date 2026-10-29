@@ -53,12 +53,13 @@ until you send it.
   recording. A recording over it says "Too large to send in Peel" in
   Account › Recording, and is shared from Finder (Drive, Dropbox): it
   still drags out, to a browser's upload or Finder.
-- **The mic** follows macOS's default input, as dictation's does: when it
-  changes, the stream is moved to it (`updateConfiguration`) and the bar
-  says "Now using …" for 5 s. A mic that sends only zeros for 2 s is deaf
-  (a Bluetooth headset dropped its voice link, Tom's recording of
-  2026-10-28: silence from 0:03 to the end); it is opened again every 5 s,
-  and the bar says "No sound from your mic" until it is back.
+- **The mic** is macOS's default input at Record, for the whole
+  recording. Any `updateConfiguration` mid-recording, another mic or the
+  same one reopened, makes `SCRecordingOutput` finish its file there
+  (AirPods connecting, Tom, 2026-10-29), so the mic is never moved. A mic
+  that sends only zeros for 2 s is deaf (a Bluetooth headset dropped its
+  voice link, Tom's recording of 2026-10-28: silence from 0:03 to the
+  end); the bar says "No sound from your mic" until it is back.
 - **Peel's windows** are recorded as they are. The control bar is never
   captured (`sharingType = .none`). A call's screen share still hides
   Peel's windows (`WindowCloak`, a `Hold` per share) from every capture

@@ -38,7 +38,8 @@ struct KeepAliveTests {
         _ = kept.value(for: "a", owner: "a") { Item() }   // a is the most recent now
         _ = kept.value(for: "c", owner: "c") { Item() }   // b goes
         #expect(torn.count == 1)
-        #expect(kept.value(for: "a", owner: "a") { Item() } === a)
+        let again = kept.value(for: "a", owner: "a") { Item() }
+        #expect(again === a)
     }
 
     @Test func evictingByKeyOwnerOrAllTearsDown() {

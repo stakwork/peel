@@ -33,7 +33,7 @@ public final class KeepAlive<Key: Hashable, Value> {
             entries.append(entry)
             return entry.value
         }
-        evict { $0.owner == owner }
+        drop { $0.owner == owner }
         let entry = Entry(key: key, owner: owner, value: make())
         entries.append(entry)
         while entries.count > limit { teardown(entries.removeFirst().value) }
@@ -42,19 +42,19 @@ public final class KeepAlive<Key: Hashable, Value> {
 
     /// Tears down every kept key that `isGone` names.
     public func evict(where isGone: (Key) -> Bool) {
-        evict { isGone($0.key) }
+        drop { isGone($0.key) }
     }
 
     /// Tears down everything kept for owners `isGone` names.
     public func evict(owners isGone: (String) -> Bool) {
-        evict { isGone($0.owner) }
+        drop { isGone($0.owner) }
     }
 
     public func evictAll() {
-        evict { _ in true }
+        drop { _ in true }
     }
 
-    private func evict(_ isGone: (Entry) -> Bool) {
+    private func drop(_ isGone: (Entry) -> Bool) {
         let gone = entries.filter(isGone)
         entries.removeAll(where: isGone)
         gone.forEach { teardown($0.value) }

@@ -231,6 +231,8 @@ extension Engine {
         case notPinnable
         case invalidPrice
         case notAFile(String)
+        /// A file over `sendLimit`, by name.
+        case tooLargeToSend(String)
         case notAPaidAttachment
         case purchaseInProgress
         case alreadyBought
@@ -346,6 +348,8 @@ extension Engine {
             case .notPinnable: "only a message the tribe has delivered can be pinned"
             case .invalidPrice: "a price must be from 1 to \(Engine.maxAttachmentPriceSats.formatted()) sats"
             case .notAFile(let path): "\(path) is not a file"
+            case .tooLargeToSend(let name):
+                "\(name) is larger than \(ByteCountFormatter.string(fromByteCount: Int64(Engine.sendLimit), countStyle: .file)), the most Peel can send"
             case .notAPaidAttachment: "that is not a paid attachment someone sent"
             case .purchaseInProgress: "this attachment is already being bought"
             case .alreadyBought: "this attachment is already bought"

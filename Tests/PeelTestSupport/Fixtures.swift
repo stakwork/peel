@@ -126,6 +126,16 @@ let registeredState: [String: Data] = [
     "my_scid": be64(1), "server_pubkey": hex(key3G), "blockheight": be64(800_000), "device": Data("dev".utf8),
 ]
 
+/// A file of `size` zero bytes at `url`, sparse, so a large one costs no disk.
+@discardableResult
+func sparseFile(_ url: URL, size: Int) throws -> URL {
+    FileManager.default.createFile(atPath: url.path, contents: nil)
+    let handle = try FileHandle(forWritingTo: url)
+    defer { try? handle.close() }
+    try handle.truncate(atOffset: UInt64(size))
+    return url
+}
+
 /// A registered account (`registeredState`) on a server nothing dials, with
 /// `contact` as a ready contact at child index 1, and what else `commit` holds.
 func registeredStorage(

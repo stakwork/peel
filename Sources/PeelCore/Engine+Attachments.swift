@@ -28,13 +28,12 @@ extension Engine {
         guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
         _ = try memesServer()
         let links = try links(replyTo: replyTo, inThread: inThread, in: pubkey)
-        let limit = Self.attachmentLimit
         let (outgoing, plain, sealed, key) = try await Task.detached {
             let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             guard values.isRegularFile == true else { throw Failure.notAFile(file.path) }
-            guard (values.fileSize ?? 0) <= limit else { throw TooLarge(limit: limit) }
+            try Self.checkSendable(file.lastPathComponent, size: values.fileSize ?? 0)
             let plain = try Data(contentsOf: file)
-            guard plain.count <= limit else { throw TooLarge(limit: limit) }
+            try Self.checkSendable(file.lastPathComponent, size: plain.count)
             let key = MediaCrypto.newKey()
             return (OutgoingFile(name: file.lastPathComponent, data: plain), plain,
                     try MediaCrypto.encrypt(plain, key: key), key)
@@ -64,6 +63,19 @@ extension Engine {
         emit.yield(.message(row, .live))
         try await uploadAndDeliver(row, file: (plain, sealed))
         return id
+    }
+
+    /// Refuses a file over `sendLimit` before anything is stored or
+    /// uploaded: the memes server would refuse it only after the upload.
+    public static func checkSendable(_ name: String, size: Int) throws {
+        guard size <= sendLimit else { throw Failure.tooLargeToSend(name) }
+    }
+
+    /// The same for a file on disk; one whose size cannot be read passes
+    /// here and is checked again as it is read to send.
+    public static func checkSendable(_ file: URL) throws {
+        let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        try checkSendable(file.lastPathComponent, size: size)
     }
 
     /// Sends several files to one chat, one message each, with `text` as

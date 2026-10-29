@@ -1,33 +1,30 @@
 import AVFoundation
 import CoreMedia
+import os
 @preconcurrency import ScreenCaptureKit
 import Synchronization
+import PeelUI
 
-/// A display, its cursor and the microphone, written to an MP4 by
-/// ScreenCaptureKit's own recording output (docs/recording.md). The display
-/// comes from macOS's picker (`ScreenShare.pick`), so Peel holds no standing
-/// Screen Recording permission. Peel's own windows are in it, as anything
-/// else on the display is (a recording of Peel itself); only the recording's
-/// bar never is.
+/// A display, its cursor and the microphone, written to an MP4 by Peel's
+/// own writer (`RecordingMedia.recordingWriter`, docs/recording.md). The
+/// display comes from macOS's picker (`ScreenShare.pick`), so Peel holds no
+/// standing Screen Recording permission. Peel's own windows are in it, as
+/// anything else on the display is (a recording of Peel itself); only the
+/// recording's bar never is.
 ///
-/// The mic is the default input at Record, for the whole recording: any
-/// change to the stream's configuration (another mic, or the same one
-/// opened again) makes the recording output finish its file, ending the
-/// recording there. A mic that drops mid-recording is only noticed
-/// (`micSilence`).
+/// The mic is the default input at Record, for the whole recording. A mic
+/// that drops mid-recording is only noticed (`micSilence`).
 @MainActor
 final class ScreenRecorder {
     private let stream: SCStream
-    private let output: SCRecordingOutput
     private let delegate: RecorderDelegate
 
     /// The longest side recorded: sharp text, a file that fits an attachment.
     private static let maxSide: CGFloat = 1920
     private static let fps: Int32 = 30
 
-    private init(stream: SCStream, output: SCRecordingOutput, delegate: RecorderDelegate) {
+    private init(stream: SCStream, delegate: RecorderDelegate) {
         self.stream = stream
-        self.output = output
         self.delegate = delegate
     }
 
@@ -40,85 +37,84 @@ final class ScreenRecorder {
         _ filter: SCContentFilter, ended: @escaping @MainActor (URL, (any Error)?) -> Void
     ) async throws -> ScreenRecorder {
         let configuration = SCStreamConfiguration.fitting(filter, maxSide: maxSide, fps: fps)
-        configuration.captureMicrophone = true
         // The input itself, as dictation learned: one following the default
         // can be left deaf by a call's voice processing.
-        configuration.microphoneCaptureDeviceID = AVCaptureDevice.default(for: .audio)?.uniqueID
+        let mic = AVCaptureDevice.default(for: .audio)?.uniqueID
+        configuration.captureMicrophone = mic != nil
+        configuration.microphoneCaptureDeviceID = mic
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("peel-recording-\(UUID().uuidString).mp4")
-        let recording = SCRecordingOutputConfiguration()
-        recording.outputURL = url
-        recording.outputFileType = .mp4
-        recording.videoCodecType = .h264
-
-        let delegate = RecorderDelegate { error in
+        let file = try RecordingMedia.recordingWriter(at: url, width: configuration.width, height: configuration.height)
+        let delegate = RecorderDelegate(writer: file.writer, video: file.video, audio: file.audio) { error in
             Task { @MainActor in ended(url, error) }
         }
-        let output = SCRecordingOutput(configuration: recording, delegate: delegate)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: delegate)
         do {
-            try stream.addRecordingOutput(output)
-            // Frames are taken (and dropped) here as well, so the stream never
-            // reports frames without an output for them.
+            guard file.writer.startWriting() else { throw file.writer.error ?? RecordingMedia.Failure.unwritable }
+            // No mic on this Mac: the writer would otherwise hold the
+            // picture back waiting for sound.
+            if mic == nil { file.audio.markAsFinished() }
             try stream.addStreamOutput(delegate, type: .screen, sampleHandlerQueue: delegate.queue)
             try stream.addStreamOutput(delegate, type: .microphone, sampleHandlerQueue: delegate.queue)
             try await stream.startCapture()
         } catch {
             // Nothing for `ended` to report: this throws instead.
-            _ = delegate.claim()
+            delegate.abandon()
             try? FileManager.default.removeItem(at: url)
             throw error
         }
-        return ScreenRecorder(stream: stream, output: output, delegate: delegate)
+        return ScreenRecorder(stream: stream, delegate: delegate)
     }
 
-    var duration: TimeInterval { output.recordedDuration.seconds.isFinite ? output.recordedDuration.seconds : 0 }
+    var duration: TimeInterval { delegate.duration }
 
     /// How long the mic has sent nothing but zeros: a live mic always
     /// hears something, so this is a mic gone, not a quiet room.
     var micSilence: TimeInterval { delegate.micSilence }
 
-    /// Ends the recording; `ended` follows once the file is finished, or,
-    /// if the recording output never says so, after `finishing`.
+    /// Ends the recording; `ended` follows once the file is finished.
     func stop() async {
-        do {
-            try await stream.stopCapture()
-            delegate.finishLater(nil)
-        } catch {
-            // Already stopped (macOS's Stop came first): its file may still be closing.
-            delegate.finishLater(error)
-        }
+        // Already stopped (macOS's Stop came first) is no failure: what was
+        // written is finished either way.
+        try? await stream.stopCapture()
+        delegate.finish(nil)
     }
 }
 
-/// The stream's and the recording's delegate, on ScreenCaptureKit's queues.
-private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput, SCRecordingOutputDelegate, Sendable {
+/// The stream's delegate, writing its frames and sound, on its queue.
+private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
     let queue = DispatchQueue(label: "peel.screen-recording")
+    // The writer and its inputs are only touched on `queue`.
+    private let writer: AVAssetWriter
+    private let video: AVAssetWriterInput
+    private let audio: AVAssetWriterInput
     private let ended: @Sendable ((any Error)?) -> Void
-    private let done = Mutex(false)
+    private let log = Logger(subsystem: "dev.peel.mac", category: "recording")
+
+    private struct State {
+        var done = false
+        /// The first frame's time, where the file starts, and the latest
+        /// time heard from the stream, frame or sound.
+        var start: CMTime?
+        var latest: CMTime?
+        var micSeen = false
+    }
+    private let state = Mutex(State())
     /// When the mic last sent anything but zeros.
     private let lastSound = Mutex(ContinuousClock.now)
 
-    /// How long the recording output has to finish its file after macOS
-    /// ends the capture, before the stop's error stands: a long recording's
-    /// file takes a while to close.
-    private static let finishing: TimeInterval = 60
-
-    init(ended: @escaping @Sendable ((any Error)?) -> Void) {
+    init(writer: AVAssetWriter, video: AVAssetWriterInput, audio: AVAssetWriterInput, ended: @escaping @Sendable ((any Error)?) -> Void) {
+        self.writer = writer
+        self.video = video
+        self.audio = audio
         self.ended = ended
     }
 
-    /// True the first time only: whoever claims it reports the end.
-    func claim() -> Bool {
-        done.withLock { done in
-            defer { done = true }
-            return !done
+    var duration: TimeInterval {
+        state.withLock { state in
+            guard let start = state.start, let latest = state.latest else { return 0 }
+            return max(0, (latest - start).seconds)
         }
-    }
-
-    /// Once only: the recording finished, or the first failure.
-    func finish(_ error: (any Error)?) {
-        if claim() { ended(error) }
     }
 
     var micSilence: TimeInterval {
@@ -126,9 +122,95 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
         return Double(quiet.seconds) + Double(quiet.attoseconds) / 1e18
     }
 
-    /// Frames are dropped; the mic's sound is read for whether it is there at all.
+    /// True the first time only: whoever claims it ends the file.
+    private func claim() -> Bool {
+        state.withLock { state in
+            defer { state.done = true }
+            return !state.done
+        }
+    }
+
+    /// The capture failed to start: the writer let go, nothing reported.
+    func abandon() {
+        queue.async { [self] in
+            if claim() { writer.cancelWriting() }
+        }
+    }
+
+    /// Once only: the file finished with what was written, then `ended`,
+    /// with `error` if the capture failed but the file is whole.
+    func finish(_ error: (any Error)?) {
+        queue.async { [self] in
+            guard claim() else { return }
+            let (start, latest) = state.withLock { ($0.start, $0.latest) }
+            guard let start else {
+                // Not one frame: no file.
+                writer.cancelWriting()
+                return ended(error ?? RecordingMedia.Failure.unwritable)
+            }
+            video.markAsFinished()
+            audio.markAsFinished()
+            writer.endSession(atSourceTime: max(start, latest ?? start))
+            writer.finishWriting { [self] in
+                ended(writer.status == .completed ? nil : writer.error ?? error ?? RecordingMedia.Failure.unwritable)
+            }
+        }
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .microphone, let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
+        let time = sampleBuffer.presentationTimeStamp
+        guard time.isValid else { return }
+        switch type {
+        case .screen:
+            // A frame unchanged since the last (`idle`) has no picture, but
+            // its time still counts.
+            let complete = Self.status(of: sampleBuffer) == .complete
+            let started = state.withLock { state -> Bool in
+                guard !state.done else { return false }
+                if state.start == nil, complete {
+                    state.start = time
+                    writer.startSession(atSourceTime: time)
+                }
+                if state.start != nil { state.latest = max(state.latest ?? time, time) }
+                return state.start != nil
+            }
+            if started, complete, video.isReadyForMoreMediaData { video.append(sampleBuffer) }
+        case .microphone:
+            hear(sampleBuffer)
+            let started = state.withLock { state -> Bool in
+                guard !state.done, let start = state.start else { return false }
+                state.latest = max(state.latest ?? time, time)
+                // The mic and the frames on one clock, or the voice drifts
+                // off the picture: the first of each, for checking.
+                if !state.micSeen {
+                    state.micSeen = true
+                    log.info("recording clocks: first frame \(start.seconds, privacy: .public) s, first mic \(time.seconds, privacy: .public) s")
+                }
+                return true
+            }
+            // Sound from before the first frame is dropped by the writer.
+            if started, audio.isReadyForMoreMediaData { audio.append(sampleBuffer) }
+        default:
+            return
+        }
+        if writer.status == .failed {
+            // The disk filled, or the encoder gave up: the capture ended,
+            // keeping what the fragments hold.
+            log.error("recording writer failed: \(String(describing: self.writer.error), privacy: .public)")
+            stream.stopCapture { _ in }
+            finish(writer.error)
+        }
+    }
+
+    private static func status(of sample: CMSampleBuffer) -> SCFrameStatus? {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+              let raw = attachments.first?[.status] as? Int else { return nil }
+        return SCFrameStatus(rawValue: raw)
+    }
+
+    /// The mic's sound read for whether it is there at all.
+    private func hear(_ sampleBuffer: CMSampleBuffer) {
+        guard let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
         var length = 0
         var bytes: UnsafeMutablePointer<CChar>?
         guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: &length, totalLengthOut: nil, dataPointerOut: &bytes) == noErr,
@@ -139,24 +221,9 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
         }
     }
 
-    /// The end, unless the recording output reports it first, within `finishing`.
-    func finishLater(_ error: (any Error)?) {
-        queue.asyncAfter(deadline: .now() + Self.finishing) { [self] in
-            finish(error ?? CocoaError(.fileWriteUnknown))
-        }
-    }
-
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
-        // macOS ended the capture (the menu bar's Stop): the recording output
-        // finishes its file and says so; if it never does, this error stands.
-        finishLater(error)
-    }
-
-    func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
-        finish(nil)
-    }
-
-    func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: any Error) {
+        // macOS ended the capture (the menu bar's Stop, the display gone):
+        // what was written is kept.
         finish(error)
     }
 }

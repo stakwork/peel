@@ -155,6 +155,90 @@ struct RecordingMediaTests {
         #expect(sizes == [15 * 16000 * 2, 15 * 16000 * 2])
     }
 
+    @Test func withoutCaptionsTheCopyHasNoSubtitlesAndItsIndexFirst() async throws {
+        let video = try await SyntheticVideo.make(at: temp("in.mp4"), seconds: 2)
+        let out = temp("out.mp4")
+        defer { try? FileManager.default.removeItem(at: video); try? FileManager.default.removeItem(at: out) }
+        try await RecordingMedia.addCaptions([], to: video, writingTo: out)
+
+        let asset = AVURLAsset(url: out)
+        #expect(try await asset.loadTracks(withMediaType: .subtitle).isEmpty)
+        #expect(try await asset.loadTracks(withMediaType: .video).count == 1)
+        // The top-level boxes: the index (`moov`) before the media (`mdat`).
+        let data = try Data(contentsOf: out)
+        var boxes: [String] = []
+        var at = 0
+        while at + 8 <= data.count {
+            var size = data[at..<(at + 4)].reduce(0) { $0 << 8 | Int($1) }
+            boxes.append(String(decoding: data[(at + 4)..<(at + 8)], as: UTF8.self))
+            // 1: the size is the 8 bytes after the name.
+            if size == 1, at + 16 <= data.count { size = data[(at + 8)..<(at + 16)].reduce(0) { $0 << 8 | Int($1) } }
+            guard size >= 8 else { break }
+            at += size
+        }
+        let index = try #require(boxes.firstIndex(of: "moov"))
+        let media = try #require(boxes.firstIndex(of: "mdat"))
+        #expect(index < media)
+    }
+
+    @Test func aRecordingKeysEveryTenSecondsAndPlaysIfCutShort() async throws {
+        let url = temp("rec.mp4")
+        let cut = temp("cut.mp4")
+        defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: cut) }
+        let (width, height, fps) = (320, 180, 30)
+        let file = try RecordingMedia.recordingWriter(at: url, width: width, height: height)
+        let pixels = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: file.video, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
+        ])
+        #expect(file.writer.startWriting())
+        file.writer.startSession(atSourceTime: .zero)
+        // No sound here: a writer waiting for some would hold the picture back.
+        file.audio.markAsFinished()
+        // 22 s of a bar moving down the screen, fed as a live capture is.
+        for frame in 0..<(22 * fps) {
+            while !file.video.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            let pool = try #require(pixels.pixelBufferPool)
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            let pixel = try #require(buffer)
+            CVPixelBufferLockBaseAddress(pixel, [])
+            let base = try #require(CVPixelBufferGetBaseAddress(pixel))
+            let row = CVPixelBufferGetBytesPerRow(pixel)
+            memset(base, 200, row * height)
+            memset(base + row * (frame % (height - 10)), 20, row * 10)
+            CVPixelBufferUnlockBaseAddress(pixel, [])
+            #expect(pixels.append(pixel, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))))
+            // What a crash at 15 s leaves: the file as it is on disk.
+            if frame == 15 * fps { try FileManager.default.copyItem(at: url, to: cut) }
+        }
+        file.video.markAsFinished()
+        await file.writer.finishWriting()
+        #expect(file.writer.status == .completed)
+
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let format = try #require(try await track.load(.formatDescriptions).first)
+        #expect(CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_H264)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        reader.add(output)
+        #expect(reader.startReading())
+        var keys: [Double] = []
+        while let sample = output.copyNextSampleBuffer() {
+            guard CMSampleBufferGetNumSamples(sample) > 0 else { continue }
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]]
+            if attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool != true { keys.append(sample.presentationTimeStamp.seconds) }
+        }
+        #expect(keys == [0, 10, 20])
+
+        let left = AVURLAsset(url: cut)
+        #expect(try await left.load(.isPlayable))
+        // The fragments written by then: fed this fast, the encoder is a few
+        // behind.
+        #expect(try await left.load(.duration).seconds >= 2)
+    }
+
     @Test func aVideoWithoutSoundHasNoAudio() async throws {
         let video = try await SyntheticVideo.make(at: temp("in.mp4"), seconds: 1, sound: false)
         defer { try? FileManager.default.removeItem(at: video) }

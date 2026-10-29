@@ -321,11 +321,17 @@ struct AgentArtifactLine: View {
     @ViewBuilder private var open: some View {
         if let handle = artifact.handle, let name = strutPage(handle)?.name {
             // Made again on the click: strut may have started again on another port and key.
-            // The pane is the main window's: from the call's chat, that window
-            // comes to the front (opened again if it was closed).
+            // An app the Apps list has opens there, as from the sidebar; else
+            // the page, in the web pane. Both are the main window's: from the
+            // call's chat, that window comes to the front (opened again if closed).
             Button("Open") {
-                guard let page = strutPage(handle) else { return }
-                model.web.open(page)
+                if let app = listedApp(handle) {
+                    model.destination = .app(peer: app.peer, name: app.name)
+                } else if let page = strutPage(handle) {
+                    model.web.open(page)
+                } else {
+                    return
+                }
                 openWindow(id: MainWindow.id, value: MainWindow.Key.main)
             }
                 .buttonStyle(.peel(.link))
@@ -338,6 +344,14 @@ struct AgentArtifactLine: View {
                 .help(url.absoluteString)
             if let host = url.host() { Text(host).fixedSize() }
         }
+    }
+
+    /// The listed app `handle` names, when the Apps page shows what it
+    /// names: no version, or the live one (the page shows the live version).
+    private func listedApp(_ handle: AgentArtifact.Handle) -> WorkspaceApp? {
+        guard let named = handle.app, let app = model.app(peer: handle.peer, name: named.name),
+              named.version == nil || named.version == app.version else { return nil }
+        return app
     }
 
     /// The deliverable on Peel's own strut; nil while it is not running.

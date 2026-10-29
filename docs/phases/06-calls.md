@@ -1575,6 +1575,10 @@ chat payload as `strut: { workspace, artifacts }`, beside the markdown links.
   passes on as a url and Hive's canvas shows as "Unavailable (bad url)".
   Peel now reads that link as the app, as Hive's `workspaceAppOfKey` does;
   strut turning it into an `app` entry is strut's to do.
+- An app the Apps list has opens on its page there (`.app(peer:name:)`),
+  as from the sidebar, in the call's chat and the agent's DM alike; one
+  not listed, or pinned to a version that is not live, opens in the web
+  pane as before (the page shows the live version).
 
 ## Decided (Tom, 2026-10-08)
 

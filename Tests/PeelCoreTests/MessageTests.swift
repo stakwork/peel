@@ -125,10 +125,11 @@ struct MessageTests {
         #expect(Message.fixture(timestamp: nil).date == Date(timeIntervalSince1970: 0))
     }
 
-    @Test func threadReplyPreviewShowsTextCutLong() {
+    @Test func threadReplyPreviewShowsFullText() {
         #expect(Message.fixture(content: "hello **there**").threadReplyPreview == "hello there")
         let long = Message.fixture(content: String(repeating: "a", count: 300)).threadReplyPreview
-        #expect(long == String(repeating: "a", count: Message.threadPreviewLimit) + "…")
+        #expect(long == String(repeating: "a", count: 300))
+        #expect(!long.hasSuffix("…"))
         #expect(Message.fixture(content: String(repeating: "a", count: 120)).threadReplyPreview.count == 120)
     }
 

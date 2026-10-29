@@ -41,11 +41,17 @@ struct WorkspaceAppView: View {
             if let previewing, let versions {
                 AppPreviewBar(shown: previewing, live: versions.active) { self.previewing = nil }
             }
-            if let server = model.memoryServer, let page = server.page(of: app, version: previewing) {
-                let id = AppPageID(app: app.id, previewing: previewing, server: server, loads: loads)
-                AppPage(page: StrutPage(url: page, server: server, name: app.title), id: id, pages: model.appPages)
-                    // Another app, a preview, strut started again (a new port and key), Reload, or
-                    // a change of what is live made here: a new page; not a publish or the workspace
+            let place = model.appPlaces[app.id] ?? AppPlace()
+            if let server = model.memoryServer, let page = server.page(of: app, version: previewing, input: place.input) {
+                let id = AppPageID(app: app.id, previewing: previewing, server: server, loads: loads, opened: place.opened)
+                AppPage(page: StrutPage(url: page, server: server, name: app.title), id: id, pages: model.appPages,
+                        moved: { [model, app] input in
+                            if model.appPlaces[app.id]?.input != input { model.appPlaces[app.id, default: AppPlace()].input = input }
+                        },
+                        openApp: { [model] in model.open($0) })
+                    // Another app, a preview, strut started again (a new port and key), Reload,
+                    // a change of what is live made here, or a link opening it at a view: a new
+                    // page, at the view the last one had reached; not a publish or the workspace
                     // renaming it, which would lose what the page holds.
                     .id(id)
             } else {
@@ -129,6 +135,23 @@ struct AppPageID: Hashable {
     let previewing: String?
     let server: MemoryServer
     let loads: Int
+    /// `AppPlace.opened`.
+    let opened: Int
+}
+
+/// Where an app's page is (`AppModel.appPlaces`): the view it shows, as
+/// strut keeps it in the page's address (`?input=`, strut's plans/apps.md
+/// §7.1), which a page made again (Reload, a closed one shown again, a
+/// preview) opens at; and how many times a link has opened the app at a
+/// view, each a new page there.
+struct AppPlace: Hashable {
+    var input: String?
+    var opened = 0
+
+    mutating func open(at input: String?) {
+        self.input = input
+        opened += 1
+    }
 }
 
 /// The web views of the apps shown lately, kept while the person is in
@@ -152,17 +175,21 @@ extension AppPages {
 /// that keeps nothing (the key it is handed lives in the tab's session
 /// storage, and goes with the view), limited as the web pane is
 /// (`WebPane.limit`), and kept to `StrutPage`'s rules: a link out of the page
-/// opens beside it as a message's link does, only right after the person
-/// clicked or typed in it, since the page's scripts are the workspace's. No
-/// download, camera or microphone.
+/// opens beside it as a message's link does, and one to another app goes to
+/// `openApp`, only right after the person clicked or typed in it, since the
+/// page's scripts are the workspace's. Where the page moves to in place is
+/// told to `moved`. No download, camera or microphone.
 struct AppPage: NSViewRepresentable {
     let page: StrutPage
     let id: AppPageID
     let pages: AppPages
+    /// The view the page moved to (its `?input=`; nil for its first).
+    let moved: (String?) -> Void
+    let openApp: (StrutAppLink) -> Void
     @Environment(\.openURL) private var openURL
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(page: page, open: openURL)
+        Coordinator(page: page, open: openURL, moved: moved, openApp: openApp)
     }
 
     func makeNSView(context: Context) -> InputWebView {
@@ -175,6 +202,7 @@ struct AppPage: NSViewRepresentable {
             view.uiDelegate = context.coordinator
             // A force click's preview would load a link outside these rules.
             view.allowsLinkPreview = false
+            context.coordinator.watch(view)
             view.load(URLRequest(url: page.url))
             return (view, context.coordinator)
         }
@@ -192,11 +220,30 @@ struct AppPage: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private let page: StrutPage
         private let open: OpenURLAction
+        private let moved: (String?) -> Void
+        private let openApp: (StrutAppLink) -> Void
         private var crashes = CrashReload()
+        private var moves: NSKeyValueObservation?
 
-        init(page: StrutPage, open: OpenURLAction) {
+        init(page: StrutPage, open: OpenURLAction, moved: @escaping (String?) -> Void,
+             openApp: @escaping (StrutAppLink) -> Void) {
             self.page = page
             self.open = open
+            self.moved = moved
+            self.openApp = openApp
+        }
+
+        /// strut's page moves within the app in place, the view in its
+        /// address (`?input=`): each one is where the app is now.
+        func watch(_ view: WKWebView) {
+            moves = view.observe(\.url, options: [.new]) { [weak self] view, _ in
+                MainActor.assumeIsolated { self?.pageMoved(to: view.url) }
+            }
+        }
+
+        private func pageMoved(to url: URL?) {
+            guard let url, let shown = page.shownApp, let here = page.server.appLink(url, from: nil), here.app == shown else { return }
+            moved(here.input)
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
@@ -211,13 +258,13 @@ struct AppPage: NSViewRepresentable {
             _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
             for action: WKNavigationAction, windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            page.newWindow(for: action, from: webView, open: open, download: nil)
+            page.newWindow(for: action, from: webView, open: open, download: nil, openApp: openApp)
             return nil
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            // With the key: strut's UI took it out of the address it shows.
-            if crashes.again() { webView.load(URLRequest(url: page.url)) }
+            // With the key, which strut's UI took out of the address it shows, at the view it was on.
+            if crashes.again() { webView.load(URLRequest(url: page.url(at: webView.url))) }
         }
 
         func webView(

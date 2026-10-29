@@ -404,6 +404,27 @@ struct HiveTests {
         #expect(URLComponents(url: app, resolvingAgainstBaseURL: false)?.percentEncodedQuery == "key=k%2B1&app=%40acme%2Fhive%2Fboard&solo=1")
     }
 
+    /// A page's link to another app (strut's page alone hands one to its
+    /// host) is read on Peel's own strut only, a workspace's bare name as
+    /// that workspace's, and opens alone there at the view it names.
+    @Test func aPagesLinkToAnotherAppOpensAloneOnPeelsOwnStrut() throws {
+        let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:4100")!, key: "k+1"))
+        let link = try #require(server.appLink(URL(string: "http://127.0.0.1:4100/?app=board&input=view%3D%252Fruns")!, from: "acme"))
+        #expect(link == StrutAppLink(app: .app("@acme/board"), input: "view=%2Fruns"))
+        let page = try #require(server.page(showing: link.app, input: link.input))
+        #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+                == "key=k%2B1&app=%40acme%2Fboard&input=view%3D%252Fruns&solo=1")
+        // Another strut's address is not this one's link.
+        #expect(server.appLink(URL(string: "http://127.0.0.1:4101/?app=board")!, from: nil) == nil)
+        // A file's page shows no app, so a link in it (an org's words) opens none.
+        let report = try #require(AgentArtifact.Handle(path: "/peers/acme/jobs/j-1/files/r.md"))
+        let file = try #require(server.page(showing: report))
+        #expect(server.appLink(file, from: nil) == nil)
+        // strut's UI (a run's link, which opens nowhere) is not a file it serves (which a click saves).
+        #expect(server.servesPage(URL(string: "http://127.0.0.1:4100/?wf=clip&run=1")!))
+        #expect(!server.servesPage(URL(string: "http://127.0.0.1:4100/jobs/j-1/files/a.pdf?t=1")!))
+    }
+
     static func link(hive: URL) throws -> HiveLink {
         let peers = try JSONDecoder().decode([HivePeer].self, from: Data("[\(peer("acme-hive", "Acme"))]".utf8))
         return HiveLink(hive: hive, credential: "hivedev_abc", deviceID: "dev-1", deviceName: "Mac", actor: "tom-cm1",

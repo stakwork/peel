@@ -13,6 +13,9 @@ final class MacAgent: AgentHost {
     var memoryServer: MemoryServer?
     /// The apps' web views kept while another destination shows (`WorkspaceAppView`).
     @ObservationIgnored let appPages = AppPages.make()
+    /// Where each app's page is, by its id (`AppPlace`): what a page made
+    /// again opens at.
+    var appPlaces: [String: AppPlace] = [:]
     /// Where Peel Home is (`Profile.brain`), read when its agent opens;
     /// nil when it could not be read, and then no strut at all.
     var brain: Brain?
@@ -90,6 +93,7 @@ final class MacAgent: AgentHost {
 
     func stop() {
         appPages.evictAll()
+        appPlaces = [:]
         stopMove()
         deviceCards.close()
         agentBridge.stop()
@@ -123,6 +127,11 @@ extension AppModel {
     var macAgent: MacAgent { agentHost as! MacAgent }
 
     var appPages: AppPages { macAgent.appPages }
+
+    var appPlaces: [String: AppPlace] {
+        get { macAgent.appPlaces }
+        set { macAgent.appPlaces = newValue }
+    }
 
     var memoryServer: MemoryServer? {
         get { macAgent.memoryServer }
@@ -374,6 +383,7 @@ extension AppModel {
         closeMemory()
         memoryServer = nil
         appPages.evictAll()
+        appPlaces = [:]
         agentConnectFrom = nil
     }
 }

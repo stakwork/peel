@@ -45,7 +45,7 @@ struct OrchestratorTests {
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
         let section = Orchestrator.section
         for words in ["sphinx/unseen with no chat", "on their Mac, by asking it", "waiting for their Mac", "sphinx/send sends",
-                      "memory/remember", "with type Self it finds the user", "only with type Episode", "at most 50 per call", "from the time the message starts with",
+                      "memory/remember", "with type Self and the user's name as q it finds the user", "only with type Episode", "at most 50 per call", "from the time the message starts with",
                       "automation/list before changing it", ChatData.begin, AgentMessageLink.instruction] {
             #expect(section.contains(words), "\(words)")
         }

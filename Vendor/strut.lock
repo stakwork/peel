@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #368 (the default orchestrator ships no memory/* steps; Peel grants them), after #350–#363 (package apps, app uploads, package updates and subscriptions).
-8b56eb7bd38eb10b3935e91438ddc68351e64b67
+# stakwork/strut#387 (memory in the workspace graph, with #385 and #386): memory/remember, forget and merge write it; the graph reads read it on the host's memoryReaders.
+de2a78f11e925bbafd0a24c4e4258cb43afc1c50

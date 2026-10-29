@@ -66,7 +66,7 @@ public enum Orchestrator {
     /// which read it, and its three writes.
     static let memoryPrompt = """
         You have long-term memory on this Mac, in the same graph as the workspace, and the graph tools read it beside \
-        the workspace's workflows and runs. graph/graph-search finds nodes by words: with type Self it finds the user, \
+        the workspace's workflows and runs. graph/graph-search finds nodes by the words in q: with type Self and the user's name as q it finds the user, \
         and a type such as Person or Fact keeps it to memory. Episodes, the words things were remembered from, show \
         only with type Episode. graph/graph-get and graph/graph-get-batched read nodes by ref_id, and \
         graph/graph-neighbors follows a node's links, at most 50 per call. graph/get-ontology lists the types and \

@@ -302,7 +302,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, to scan an invoice, or to take a photo or record a video to send.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, and to record voice messages you hold the microphone button for.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and to record video with sound to send.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
@@ -336,7 +336,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, to scan an invoice, or to take a photo or record a video to send.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, and to record voice messages you hold the microphone button for.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and to record video with sound to send.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;

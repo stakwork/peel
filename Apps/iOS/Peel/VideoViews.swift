@@ -6,48 +6,26 @@ import SwiftUI
 // Received video on the phone, as the Mac's `VideoTile`: a poster with a
 // play button and its length, downloaded as it shows up to
 // `Engine.autoDownloadLimit`, a larger one waiting for a tap; a tap plays
-// it in place with the system's controls.
+// it full screen (`VideoViewer`) with the system's controls; the tile is
+// only the poster.
 
-/// The one video playing, so starting another stops it. A row's video
-/// pauses when the row leaves the screen.
+/// The one video open full screen (`VideoViewer`), set by a tap on its
+/// tile or by the model once a held video has downloaded.
 @MainActor @Observable
 final class VideoPlayback {
     static let shared = VideoPlayback()
 
-    /// The attachment loaded in `player`, playing or paused.
-    private(set) var current: Int64?
-    private(set) var player: AVPlayer?
-
-    func play(_ id: Int64, file: URL) {
-        let player: AVPlayer
-        if current == id, let loaded = self.player {
-            player = loaded
-        } else {
-            self.player?.pause()
-            player = AVPlayer(playerItem: AVPlayerItem(asset: MediaInfo.asset(file)))
-            self.player = player
-            current = id
-        }
-        // Sound with the silent switch on, as for a voice message.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        // From the start again once it has finished.
-        if let item = player.currentItem, item.duration.isNumeric, item.currentTime() >= item.duration - CMTime(value: 1, timescale: 10) {
-            player.seek(to: .zero)
-        }
-        player.play()
+    /// A video to show full screen: the attachment and its local file.
+    struct Request: Identifiable, Equatable {
+        let id: Int64
+        let file: URL
     }
 
-    /// Its row left the screen.
-    func left(_ id: Int64) {
-        if current == id { player?.pause() }
-    }
+    private(set) var request: Request?
 
-    func stop() {
-        player?.pause()
-        player = nil
-        current = nil
-    }
+    func play(_ id: Int64, file: URL) { request = Request(id: id, file: file) }
+
+    func stop() { request = nil }
 }
 
 /// A video in a message, as wide as an image tile.
@@ -102,7 +80,10 @@ struct VideoTile: View {
                 guard let file else { return }
                 read = (file, await MediaInfoCache.shared.info(file, kind: .video))
             }
-            .onDisappear { playback.left(id) }
+            .fullScreenCover(item: Binding(
+                get: { playback.request.flatMap { $0.id == id ? $0 : nil } },
+                set: { if $0 == nil { playback.stop() } }
+            )) { VideoViewer(file: $0.file) }
     }
 
     private func tile(info: MediaInfo?, file: URL?, handle: AttachmentHandle, status: Status?) -> some View {
@@ -119,11 +100,7 @@ struct VideoTile: View {
 
     @ViewBuilder
     private func media(info: MediaInfo?, file: URL?, handle: AttachmentHandle, status: Status?) -> some View {
-        if playback.current == id, let player = playback.player, file != nil {
-            VideoPlayer(player: player)
-        } else {
-            poster(info?.poster, duration: info?.duration, handle: handle, status: status)
-        }
+        poster(info?.poster, duration: info?.duration, handle: handle, status: status)
     }
 
     @ViewBuilder
@@ -210,7 +187,8 @@ struct VideoTile: View {
         .buttonStyle(.plain)
         .disabled(status.map { !$0.canLoad } ?? false)
         .accessibilityLabel(label(status: status, duration: duration))
-        .accessibilityHint(status == nil || status?.canLoad == true ? "Plays the video" : "")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(status == nil ? "Opens the video full screen" : status?.canLoad == true ? "Loads the video" : "")
     }
 
     @ViewBuilder
@@ -264,7 +242,7 @@ struct VideoTile: View {
         return ["Video", duration.map(MediaInfo.format(duration:))].compactMap { $0 }.joined(separator: ", ")
     }
 
-    /// Plays it, downloading first when it was held or failed (the tap
+    /// Opens it full screen, downloading first when it was held or failed (the tap
     /// asks for it, past the auto-download limit).
     private func tap() {
         if let file = model.attachment(id).file {

@@ -278,6 +278,11 @@ public final class Stadeum {
         status = .off
         link = nil
         problem = nil
+        jamieReading?.cancel()
+        jamieReading = nil
+        jamieReadAt = nil
+        jamieLinks = nil
+        jamieProblem = nil
         // The workspaces' go with them; the person's own are not Stadeum's.
         apps.removeAll { $0.peer != nil }
     }
@@ -291,6 +296,109 @@ public final class Stadeum {
             throw PeelError("Connect Stadeum to call with Jamie from \(peer.name).")
         }
         return try await HiveClient(hive: link.hive).startCall(link, workspace: peer.id)
+    }
+
+    // MARK: - Jamie in tribes
+
+    /// Every tribe the person linked to an org, and Jamie's account, as
+    /// Hive last said (`readJamieLinks`, docs/hive-tribes.md): nil until read.
+    public private(set) var jamieLinks: JamieLinks?
+    /// Why the last read of `jamieLinks` failed, in words; nil once one works.
+    public private(set) var jamieProblem: String?
+    @ObservationIgnored private var jamieReading: Task<JamieLinks?, Never>?
+    @ObservationIgnored private var jamieReadAt: Date?
+
+    /// `tribe`'s link (its key), as Hive last said.
+    public func jamieLink(of tribe: String) -> JamieLink? {
+        jamieLinks?.tribes.first { $0.pubkey == tribe.lowercased() }
+    }
+
+    /// The workspace `tribe`'s Jamie answers from (a peer id), "" for none;
+    /// nil until Hive has said. What a tribe's Jamie row shows picked.
+    public func jamiePick(of tribe: String) -> String? {
+        jamieLinks.map { _ in jamieLink(of: tribe)?.workspace ?? "" }
+    }
+
+    /// What a tribe's Jamie row offers, by peer id: each live workspace by
+    /// name, the one `tribe` is linked to even when it is no longer live
+    /// (so the row says what is true), then No Jamie as "".
+    public func jamieOptions(for tribe: String) -> [(id: String, name: String)] {
+        var options = live.map { (id: $0.id, name: $0.name) }
+        if let linked = jamieLink(of: tribe)?.workspace, !options.contains(where: { $0.id == linked }) {
+            options.append((id: linked, name: "@" + linked))
+        }
+        return options + [(id: "", name: Self.noJamie)]
+    }
+
+    public static let noJamie = "No Jamie"
+
+    /// Whether a deliverable sent in a tribe opens here: on one of the
+    /// person's own live workspaces, with their own token. Anyone in a tribe
+    /// could have sent it (docs/hive-tribes.md, "Deliverables"), so what it
+    /// names anywhere else does not open.
+    public func opensFromTribe(_ handle: AgentArtifact.Handle) -> Bool {
+        handle.peer.map { peer in live.contains { $0.id == peer } } ?? false
+    }
+
+    /// A workspace as the person reads it: a live one's name, else `@id`.
+    public func workspaceName(_ id: String) -> String {
+        live.first { $0.id == id }?.name ?? "@" + id
+    }
+
+    /// Reads which tribes have Jamie from Hive, unless read in the last
+    /// `age` seconds; one read at a time, joined. Nil when there is no
+    /// pairing in use or the read failed (`jamieProblem` says why).
+    @discardableResult
+    public func readJamieLinks(ifOlderThan age: TimeInterval = 0) async -> JamieLinks? {
+        guard let link, !revoked else { return nil }
+        if let jamieLinks, let at = jamieReadAt, Date().timeIntervalSince(at) < age { return jamieLinks }
+        if let jamieReading { return await jamieReading.value }
+        let generation = generation
+        let reading = Task { () -> JamieLinks? in
+            do {
+                let read = try await HiveClient(hive: link.hive).jamieLinks(link)
+                // Closed, disconnected or paired again meanwhile: nothing of it is kept.
+                guard generation == self.generation, self.link?.credential == link.credential else { return nil }
+                jamieLinks = read
+                jamieReadAt = Date()
+                jamieProblem = nil
+                return read
+            } catch {
+                guard generation == self.generation else { return nil }
+                jamieProblem = PeelError.noted(error, couldNot: "read which tribes have Jamie")
+                return nil
+            }
+        }
+        jamieReading = reading
+        let read = await reading.value
+        if jamieReading == reading { jamieReading = nil }
+        return read
+    }
+
+    /// Links `tribe` to `peer`'s org (Jamie joins it and answers `@jamie`
+    /// there, as this person), or with nil unlinks it (No Jamie). A throw
+    /// is Hive's refusal in words (`HiveClient.linkTribe`).
+    public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws {
+        guard let link, !revoked else { throw PeelError("Connect Stadeum to add Jamie.") }
+        let generation = generation
+        let client = HiveClient(hive: link.hive)
+        let key = tribe.pubkey.lowercased()
+        if let peer {
+            guard live.contains(where: { $0.id == peer.id }) else { throw PeelError("Connect Stadeum to add Jamie from \(peer.name).") }
+            guard let host = tribe.host else { throw PeelError("This tribe's server isn't known here, so Jamie can't join it.") }
+            let (jamie, linked) = try await client.linkTribe(link, workspace: peer.id, tribe: tribe.pubkey, host: host, name: tribe.name)
+            guard generation == self.generation else { return }
+            var links = jamieLinks ?? JamieLinks(jamie: jamie, tribes: [])
+            links.jamie = jamie
+            links.tribes.removeAll { $0.pubkey == key }
+            links.tribes.append(linked)
+            jamieLinks = links
+        } else {
+            try await client.unlinkTribe(link, tribe: tribe.pubkey)
+            guard generation == self.generation else { return }
+            jamieLinks?.tribes.removeAll { $0.pubkey == key }
+        }
+        jamieProblem = nil
     }
 
     // MARK: - Opening an org's page

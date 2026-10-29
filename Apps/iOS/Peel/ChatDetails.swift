@@ -2,6 +2,7 @@ import PeelCore
 import PeelUI
 import PhotosUI
 import SwiftUI
+import UIKit
 
 // A chat's details on the phone (`ChatsRoute.details`, opened by
 // `PhoneRouter.openDetails` from the conversation's More), as the Mac's
@@ -123,8 +124,9 @@ private struct ContactDetailsView: View {
 // MARK: - A tribe
 
 /// A tribe: its image, name, kind and age, what it is about and its tags;
-/// owner, members, prices and escrow; its link with a QR code; how you
-/// appear in it; the time zone switch; for its owner Edit tribe; and Leave
+/// owner, members, prices and escrow; its link with a QR code; for its
+/// owner its Jamie; how you appear in it; the time zone switch; for its
+/// owner Edit tribe; and Leave
 /// (or Remove from Peel), confirmed in place. What only the registry knows
 /// arrives when the tribes server answers.
 private struct TribeDetailsView: View {
@@ -149,6 +151,9 @@ private struct TribeDetailsView: View {
                         PhoneSectionHeader("Tribe link")
                         ShareableCode(text: link, label: "QR code of the tribe link", copyTitle: "Copy link")
                     }
+                }
+                if model.offersJamie(in: tribe) {
+                    TribeJamie(tribe: tribe)
                 }
                 if tribe.canPost {
                     TribeIdentity(tribe: tribe)
@@ -299,6 +304,100 @@ private struct TribeDetailsView: View {
         } catch {
             problem = PeelError.problem(error, couldNot: "load tribe details")
         }
+    }
+}
+
+/// "Jamie", for the tribe's owner (docs/hive-tribes.md), as on the Mac
+/// (`TribeJamiePicker`): which of your Stadeum orgs answers `@jamie` here,
+/// as you, or No Jamie, as Hive has it; with no Jamie yet, the org the
+/// tribe's app or second brain is on, in one tap. Unpaired, Connect
+/// Stadeum pairs this iPhone from here.
+private struct TribeJamie: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    let tribe: Tribe
+
+    @State private var picker = TribeJamiePicker()
+
+    var body: some View {
+        let stadeum = model.stadeum
+        let connected = stadeum.status == .connected
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
+            PhoneSectionHeader("Jamie")
+            switch stadeum.status {
+            case .off, .needsPairing:
+                note("Connect Stadeum to let one of your orgs answer @jamie here.")
+                Button { stadeum.connect(as: UIDevice.current.name) } label: {
+                    Text(stadeum.status == .off ? "Connect Stadeum" : "Connect again").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.peel(.outline, size: .touch))
+                if let problem = stadeum.problem { ProblemText(problem) }
+            case .pairing(let pairing):
+                note("Approve this iPhone in Stadeum. Check the code matches:")
+                Text(pairing.userCode)
+                    .phoneFont(.title)
+                    .monospaced()
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Code \(pairing.userCode)")
+                Button { openURL(pairing.verificationUriComplete) } label: {
+                    Text("Open Stadeum").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.peel(.primary, size: .touch))
+                Button { stadeum.cancelPairing() } label: { Text("Cancel").frame(maxWidth: .infinity) }
+                    .buttonStyle(.peel(.ghost, size: .touch))
+            case .connected:
+                if let pick = stadeum.jamiePick(of: tribe.pubkey) {
+                    PhoneCard {
+                        HStack(spacing: Theme.Space.md) {
+                            Text("Answers from").phoneFont(.row)
+                            Spacer(minLength: Theme.Space.sm)
+                            Picker("Answers from", selection: Binding {
+                                pick
+                            } set: { id in
+                                Task { await picker.pick(id, for: tribe, with: model) }
+                            }) {
+                                ForEach(stadeum.jamieOptions(for: tribe.pubkey), id: \.id) { Text($0.name).tag($0.id) }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .disabled(picker.working)
+                        }
+                        .foregroundStyle(Theme.text)
+                        .padding(.horizontal, Theme.Space.md)
+                        .frame(minHeight: Theme.touchTarget)
+                    }
+                    if let suggested = model.jamieSuggestion(for: tribe) {
+                        Button { Task { await picker.pick(suggested.id, for: tribe, with: model) } } label: {
+                            Text("Add Jamie from \(suggested.name)").frame(maxWidth: .infinity).buttonProgress(picker.working)
+                        }
+                        .buttonStyle(.peel(.outline, size: .touch))
+                        .disabled(picker.working)
+                    }
+                    if let problem = picker.problem {
+                        ProblemText(problem)
+                    } else {
+                        note(TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum))
+                    }
+                } else if let problem = stadeum.jamieProblem {
+                    ProblemText(problem)
+                    Button { Task { await stadeum.readJamieLinks() } } label: { Text("Try again").frame(maxWidth: .infinity) }
+                        .buttonStyle(.peel(.outline, size: .touch))
+                } else {
+                    note("Asking Stadeum…")
+                }
+            }
+        }
+        // Read again each time the details open (the other device may have changed it), and once paired.
+        .task(id: connected) {
+            if connected { await stadeum.readJamieLinks() }
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .phoneFont(.secondary)
+            .foregroundStyle(Theme.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

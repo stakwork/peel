@@ -199,3 +199,17 @@ extension Conversation {
         !isTribe || tribe?.isPrivate == true
     }
 }
+
+extension AgentArtifact {
+    /// Whether opening it asks first: an app sent in a tribe, where anyone
+    /// could have sent it, and which runs with the reader's own access to
+    /// its workspace (docs/hive-tribes.md, "Deliverables").
+    public func asksBeforeOpening(inTribe: Bool) -> Bool {
+        inTribe && handle?.app != nil
+    }
+
+    /// What that asks, naming the workspace as the person reads it.
+    public static func tribeAppQuestion(on workspace: String) -> String {
+        "Open this app from \(workspace)? Anyone in the tribe could have sent it."
+    }
+}

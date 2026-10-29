@@ -18,6 +18,9 @@ struct EngineFailureTests {
         let engine = try engine(tribes: [Tribe(pubkey: key2G, isOwner: true)])
         await #expect(throws: Engine.Failure.ownerCannotLeave) { try await engine.leaveTribe(key2G) }
         await #expect(throws: Engine.Failure.notAMemberKey) { try await engine.kickMember("ann", from: key2G) }
+        // Jamie is approved unasked only by its key, and only in a tribe this account runs (docs/hive-tribes.md).
+        await #expect(throws: Engine.Failure.notAMemberKey) { try await engine.approveWaitingMember("Jamie", in: key2G) }
+        await #expect(throws: Engine.Failure.notTribeOwner) { try await engine.approveWaitingMember(keyG, in: keyG) }
     }
 
     @Test func aTribeThatIsGoneIsRemovedWithoutSending() async throws {

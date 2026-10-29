@@ -196,6 +196,53 @@ struct StadeumTests {
         stadeum.close()
     }
 
+    /// A tribe's Jamie as Hive keeps it (docs/hive-tribes.md): unknown
+    /// until read, read again at most once a minute for an approval,
+    /// offered with the org it is linked to even when this device no longer
+    /// pairs that org (the row says what is true), linked and unlinked
+    /// through Hive, and let go with the account. A deliverable sent in a
+    /// tribe opens only on an org this device pairs.
+    @Test func aTribesJamieIsHivesAndItsDeliverablesOpenOnlyOnAPairedOrg() async throws {
+        let tribe = String(repeating: "ab", count: 33), jamie = String(repeating: "0c", count: 33)
+        let reads = Mutex(0)
+        let hive = try await HTTPStub { _, request in
+            let line = request.prefix { $0 != "\r" }
+            if line.hasPrefix("GET /api/strut-devices/tribes ") {
+                reads.withLock { $0 += 1 }
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribes":[{"pubkey":"\#(tribe)","host":"h","workspace":"initech"}]}"#)
+            }
+            if line.hasPrefix("POST /api/strut-devices/tribes ") {
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribe":{"pubkey":"\#(tribe)","host":"h","workspace":"acme"}}"#)
+            }
+            if line.hasPrefix("DELETE /api/strut-devices/tribes/\(tribe) ") { return (200, #"{"unlinked":true}"#) }
+            return (404, "{}")
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile, renewNow: false)
+        #expect(stadeum.jamiePick(of: tribe) == nil)
+
+        await stadeum.readJamieLinks()
+        #expect(stadeum.jamiePick(of: tribe.uppercased()) == "initech")
+        #expect(stadeum.jamieOptions(for: tribe).map(\.name) == ["Acme", "@initech", "No Jamie"])
+        await stadeum.readJamieLinks(ifOlderThan: 60)
+        #expect(reads.withLock { $0 } == 1)
+
+        let record = Tribe(pubkey: tribe, host: "tribes.v2.sphinx.chat", isPrivate: true, isOwner: true)
+        try await stadeum.setJamie(stadeum.live.first, for: record)
+        #expect(stadeum.jamiePick(of: tribe) == "acme" && stadeum.jamieLinks?.jamie.pubkey == jamie)
+        try await stadeum.setJamie(nil, for: record)
+        #expect(stadeum.jamiePick(of: tribe) == "" && stadeum.jamieOptions(for: tribe).map(\.id) == ["acme", ""])
+
+        #expect(stadeum.opensFromTribe(try #require(AgentArtifact.Handle(app: "@acme/board"))))
+        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/peers/initech/jobs/j/files/a.md"))))
+        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))))
+        stadeum.close()
+        #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
+    }
+
     @Test func theWorkspacesAppsAreReadAtOnceAndOneThatCannotBeKeepsItsLast() async throws {
         let profile = try profile()
         try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme"), Self.peer("globex", "Globex")])

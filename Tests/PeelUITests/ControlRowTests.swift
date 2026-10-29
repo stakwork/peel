@@ -74,6 +74,26 @@ struct ControlRowTests {
         #expect(rows.map(\.kind) == [.message])
     }
 
+    /// A tribe's one rule beside that (docs/hive-tribes.md): a member's
+    /// message carrying strut's entries (Jamie's reply) shows its
+    /// deliverables, each resolved against the workspace it names. Never
+    /// yours, never a direct message's, never the tool rows beside them, and
+    /// a field that is not strut's entries leaves a plain message.
+    @Test func aTribeMembersDeliverablesShowUnderTheirMessage() {
+        func body(_ strut: String) -> String {
+            let metadata = #"{"strut":"# + strut + #","peel":{"tools":[{"name":"bash"}]}}"#
+            return String(decoding: try! JSONEncoder().encode(["content": "Here is the plan.", "metadata": metadata]), as: UTF8.self)
+        }
+        let strut = #"{"workspace":"acme","artifacts":[{"id":"plan","title":"Plan","url":"/jobs/j-1/files/plan.md"},"#
+            + #"{"id":"board","kind":"app","title":"Board","app":{"name":"board"}}]}"#
+        let rows = ChatRow.rows([message(0, chat: tribe, body: body(strut)), message(1, chat: tribe, fromMe: true, body: body(strut)),
+                                 message(2, chat: tribe, body: body(#""x""#))], parents: [:], inTribe: true, people: people)
+        #expect(rows.map(\.kind) == [.message, .message, .message])
+        #expect(rows[0].agentArtifacts.map(\.handle) == [.file("/peers/acme/jobs/j-1/files/plan.md"), .app("@acme/board")])
+        #expect(rows[0].agentTools.isEmpty && rows[1].agentArtifacts.isEmpty && rows[2].agentArtifacts.isEmpty)
+        #expect(ChatRow.rows([message(0, body: body(strut))], parents: [:], inTribe: false, people: people).map(\.agentArtifacts) == [[]])
+    }
+
     /// A control message with no words draws nothing; a long one draws one bounded line.
     @Test func blankAndLongLines() {
         #expect(ChatRow.rows([message(0, body: controlBody("  "))], parents: [:], inTribe: false, people: people).isEmpty)

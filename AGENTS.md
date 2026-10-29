@@ -64,7 +64,8 @@ is a short plan. Update the status and the journal when you finish something.
       send (`sendText(for:)`) is marked `sending`, with its uuid, in the
       commit that stores its message, so it goes at most once; one cut
       short there, or whose publish failed, answers `unknown`
-    - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
+    - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals
+      (`approveWaitingMember`: Jamie, by its key, docs/hive-tribes.md),
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
     - `Engine+Preferences.swift` — `set`, every change to a user setting
@@ -218,7 +219,9 @@ is a short plan. Update the status and the journal when you finish something.
     and what it points to, `AgentArtifact`: an https link, or the handle
     the bridge adds, `AgentArtifact.Handle`, a file strut serves or an app,
     only in those shapes, with strut's peer id and app name rules that
-    `Hive` and `WorkspaceApp` use too) and `AgentDM` (your
+    `Hive` and `WorkspaceApp` use too), `Message.strutArtifacts` (strut's
+    entries in `metadata.strut`: Jamie's deliverables in a tribe,
+    docs/hive-tribes.md) and `AgentDM` (your
     message the agent is still answering in its DM)
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device
@@ -245,7 +248,9 @@ is a short plan. Update the status and the journal when you finish something.
     for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
     (polled until the person answers; a poll that reaches no one or gets a
     5xx is tried again until the code runs out), renew, `startCall`: a call with
-    Jamie in it for one workspace, docs/hive-calls.md), what is kept of a pairing
+    Jamie in it for one workspace, docs/hive-calls.md; `jamieLinks`,
+    `linkTribe`, `unlinkTribe`: a tribe's Jamie, docs/hive-tribes.md, with
+    `JamieAccount` and `JamieLink`), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
     one org's strut and the person's token for it, and `HivePeer.jamie`,
     who a call in a chat brings Jamie from), and the Hive a profile
@@ -324,7 +329,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ThreadRef`, `AttachmentHandle`, `ListAnchor`), `AppModel+Calls` (a call's
   avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
-  `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
+  `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Jamie`
+  (Jamie in tribes: who sees the row, the one-tap org, and approving
+  Jamie's request to join unasked, docs/hive-tribes.md), `AppModel+Contacts`
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
@@ -338,7 +345,10 @@ is a short plan. Update the status and the journal when you finish something.
   `readApps` (the Mac through its strut, the iPhone on each org's own;
   `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
   app's words for the person; `callLink(on:)`, a call with Jamie in it
-  for a live workspace (docs/hive-calls.md); `opening`, how a deliverable or a workspace's
+  for a live workspace (docs/hive-calls.md); a tribe's Jamie as Hive keeps
+  it, `jamieLinks`, `jamiePick`, `jamieOptions`, `setJamie`, and
+  `opensFromTribe`, which org a tribe's deliverable may open on
+  (docs/hive-tribes.md); `opening`, how a deliverable or a workspace's
   app opens on its org's own strut; `StadeumHost`, what a device does
   beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
   with its token: its origin and folder, the token's hand-over script, the
@@ -363,7 +373,8 @@ is a short plan. Update the status and the journal when you finish something.
   status, a tribe's details lines and price to join, what a contact code
   adds); `TribeForms` (`TribeSettingsDraft`, Create and Edit tribe's
   fields and their problems; `TribeLookup`, Join a tribe's link and
-  lookup; `TribeIdentityDraft`, how you appear in a tribe; `TimeZoneSharingSwitch`, a chat's time zone switch; the Mac's forms and the phone's share them); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
+  lookup; `TribeIdentityDraft`, how you appear in a tribe; `TribeJamiePicker`,
+  a tribe's Jamie row; `TimeZoneSharingSwitch`, a chat's time zone switch; the Mac's forms and the phone's share them); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
   balance's roll, what Payments has not shown); `Notifier` (local
   notifications by PeelCore's `NotificationPolicy`, the badge through
   `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
@@ -447,7 +458,7 @@ is a short plan. Update the status and the journal when you finish something.
   `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
-  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories` stands in the chats' place, in `Sidebar`'s `SidebarColumn`, while it is open, under the sidebar's search, which then searches them);
+  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, its Jamie for its owner, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories` stands in the chats' place, in `Sidebar`'s `SidebarColumn`, while it is open, under the sidebar's search, which then searches them);
   for the chat: `MessageViews` (`MessageList` with its pill and Page
   keys, `ListRowContent`, the rows), `MessageTable` (the Mac's list
   engine for the chat, a thread and the agent chat, over any `TableRow`: a non-flipped `NSTableView` of reused hosting
@@ -657,8 +668,8 @@ is a short plan. Update the status and the journal when you finish something.
   code to copy and share), `ContactSheets` (`AddContactSheet`,
   `InviteSheet`, `InviteDetailScreen`), `TribeSheets` (`JoinTribeSheet`,
   `TribeSettingsSheet`: create and edit), `ChatDetails`
-  (`ChatDetailsScreen`: a contact's or a tribe's, how you appear in a
-  tribe, the time zone switch; `TribeMembersScreen`),
+  (`ChatDetailsScreen`: a contact's or a tribe's, a tribe's Jamie for its
+  owner, how you appear in a tribe, the time zone switch; `TribeMembersScreen`),
   `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
   now"),
   `ConversationScreen` (the header with Call and More in one capsule, the

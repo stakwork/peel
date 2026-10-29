@@ -1580,6 +1580,31 @@ chat payload as `strut: { workspace, artifacts }`, beside the markdown links.
   not listed, or pinned to a version that is not live, opens in the web
   pane as before (the page shows the live version).
 
+## Jamie in tribes (2026-10-29)
+
+The design is Hive's `docs/plans/jamie-in-tribes.md`; Peel's side is
+`../hive-tribes.md`, the twin of `../hive-calls.md`. A tribe's owner links
+it to one of their Stadeum orgs from the tribe's details, and `@jamie`
+there is a turn of that org's orchestrator, answered in the tribe by Jamie,
+one Sphinx account (stakwork/sphinx#401). Hive's routes are
+stakwork/hive#5667.
+
+- `HiveClient.jamieLinks`, `linkTribe`, `unlinkTribe`; `Stadeum.jamieLinks`,
+  `setJamie`; the Jamie row is `TribeJamieSection` on the Mac and
+  `TribeJamie` on the iPhone, over `TribeJamiePicker`.
+- The check is always Hive's link, read when the details open. The org the
+  tribe's pages point to, which a call would bring Jamie from, is a
+  one-tap "Add Jamie from …" button, never shown as picked.
+- Jamie's request to join a private tribe is approved unasked, by its key
+  on the tribes server's list (`Engine.approveWaitingMember`, from
+  `AppModel.approveJamie` on every member request in an owned tribe).
+- Jamie's replies carry `metadata.strut`. A tribe member's row shows those
+  deliverables (`Message.strutArtifacts`): opened only on the viewer's own
+  paired orgs, an app only after a confirm. The one rule beside "control
+  lines are never shown in a tribe".
+- Built and tested offline; the Mac and iPhone apps build. Not checked in
+  the running app, nor against a Hive with the routes on.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

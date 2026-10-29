@@ -202,6 +202,78 @@ struct HiveTests {
         }
     }
 
+    // MARK: Jamie in tribes (docs/hive-tribes.md)
+
+    static let tribeKey = String(repeating: "ab", count: 33)
+    static let jamieKey = String(repeating: "0c", count: 33)
+
+    /// A tribe linked, listed and unlinked with the device credential, in
+    /// the shapes stakwork/hive#5667 takes and answers. A link Peel could
+    /// not use is left out of the list; one already gone is unlinked.
+    @Test func aTribeIsLinkedListedAndUnlinkedWithTheDeviceCredential() async throws {
+        let jamie = #"{"pubkey":"\#(Self.jamieKey.uppercased())","alias":"Jamie"}"#
+        let linked = #"{"pubkey":"\#(Self.tribeKey)","host":"tribes.v2.sphinx.chat","name":"Builders","workspace":"acme-hive","org":"acme","createdAt":"2026-10-29T18:00:00.000Z"}"#
+        let listed = linked.replacingOccurrences(of: Self.tribeKey, with: Self.tribeKey.uppercased())
+        let hive = try await HTTPStub { _, request in
+            guard request.contains("Authorization: Bearer hivedev_abc") else { return (401, #"{"error":"Unauthorized"}"#) }
+            switch (request.split(separator: " ").first.map(String.init) ?? "", path(request)) {
+            case ("GET", "/api/strut-devices/tribes"):
+                let unusable = #"{"pubkey":"02","host":"x","workspace":"acme-hive"},{"pubkey":"\#(Self.jamieKey)","host":"x","workspace":"a/b"}"#
+                return (200, #"{"jamie":\#(jamie),"tribes":[\#(listed),\#(unusable)]}"#)
+            case ("POST", "/api/strut-devices/tribes"): return (200, #"{"jamie":\#(jamie),"tribe":\#(linked)}"#)
+            case ("DELETE", "/api/strut-devices/tribes/\(Self.tribeKey)"): return (200, #"{"unlinked":true}"#)
+            case ("DELETE", _): return (404, #"{"error":"Tribe not linked"}"#)
+            default: return (404, "{}")
+            }
+        }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        let client = HiveClient(hive: link.hive)
+
+        let links = try await client.jamieLinks(link)
+        #expect(links.jamie == JamieAccount(pubkey: Self.jamieKey, alias: "Jamie"))
+        #expect(links.tribes == [JamieLink(pubkey: Self.tribeKey, host: "tribes.v2.sphinx.chat", name: "Builders",
+                                           workspace: "acme-hive", org: "acme")])
+
+        let (answered, tribe) = try await client.linkTribe(link, workspace: "acme-hive", tribe: Self.tribeKey,
+                                                           host: "tribes.v2.sphinx.chat", name: "Builders")
+        #expect(answered.pubkey == Self.jamieKey && tribe.workspace == "acme-hive")
+        #expect(hive.requests[1].hasPrefix("POST ") && body(hive.requests[1])
+            == #"{"tribe":{"host":"tribes.v2.sphinx.chat","name":"Builders","pubkey":"\#(Self.tribeKey)"},"workspace":"acme-hive"}"#)
+
+        try await client.unlinkTribe(link, tribe: Self.tribeKey.uppercased())
+        #expect(hive.requests[2].hasPrefix("DELETE /api/strut-devices/tribes/\(Self.tribeKey) "))
+        // Unlinked from the person's other device already: done.
+        try await client.unlinkTribe(link, tribe: Self.jamieKey)
+        // Never a path built from something that is not a tribe's key.
+        await #expect(throws: PeelError.self) { try await client.unlinkTribe(link, tribe: "../peers") }
+        #expect(hive.requests.count == 4)
+    }
+
+    /// What Hive answers instead of a link, in words the owner can act on;
+    /// an answer naming a key that is not one, or another tribe, is refused.
+    @Test(arguments: [
+        (503, #"{"error":"Jamie in tribes is not configured"}"#, "Jamie isn't switched on in Stadeum yet."),
+        (409, #"{"error":"This tribe is linked to an org by someone else."}"#, "Someone else already linked this tribe to an org."),
+        (403, #"{"error":"Access denied"}"#, "Stadeum could not add Jamie: Access denied."),
+        (401, #"{"error":"Unauthorized"}"#,
+         "Stadeum didn't accept this device for Jamie. If it was disconnected in Stadeum, connect it again."),
+        (200, #"{"jamie":{"pubkey":"02ab","alias":"Jamie"},"tribe":{"pubkey":"\#(HiveTests.tribeKey)","host":"h","workspace":"acme-hive"}}"#,
+         "Stadeum's answer about Jamie could not be read."),
+        (200, #"{"jamie":{"pubkey":"\#(HiveTests.jamieKey)","alias":"Jamie"},"tribe":{"pubkey":"\#(HiveTests.jamieKey)","host":"h","workspace":"acme-hive"}}"#,
+         "Stadeum's answer about Jamie could not be read."),
+    ])
+    func aLinkHiveRefusesIsSaid(status: Int, answer: String, said: String) async throws {
+        let hive = try await HTTPStub { _, _ in (status, answer) }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        await #expect {
+            try await HiveClient(hive: link.hive).linkTribe(link, workspace: "acme-hive", tribe: Self.tribeKey, host: "h", name: nil)
+        } throws: { error in
+            "\(error)" == said
+        }
+    }
+
     /// Who a call brings Jamie from: the pick in that chat while the org is
     /// paired, else the tribe's own swarm, else none.
     @Test func aCallBringsJamieFromThePickElseTheTribesSwarm() throws {

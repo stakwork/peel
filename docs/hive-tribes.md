@@ -64,14 +64,17 @@ The picker puts "Could not add Jamie." (or "remove") in front of these.
 - Keys are kept in lower case.
 - A listed link Peel could not use is left out: a key that is not one, or
   a workspace id strut would not take.
-- A DELETE Hive answers 404 is unlinked already, from the person's other
-  device.
+- A DELETE that Hive answers 404 "Tribe not linked" is unlinked already,
+  from the person's other device. Any other 404 (a proxy's, a Hive without
+  the route) is a failure.
 
 **Stadeum** (`Sources/PeelUI/Stadeum.swift`) keeps what Hive last said:
 - `jamieLinks`, read by `readJamieLinks`. It is read each time a tribe's
   details open and each time an approval needs it, so the person's Mac and
   iPhone show the same pick. It is never kept on disk.
-- `setJamie(_:for:)` links or unlinks.
+- `setJamie(_:for:)` links or unlinks. A read Hive answers after a link or
+  unlink made here does not overwrite it, and the next read asks again.
+- A pairing made again, perhaps as another person, forgets them.
 - `jamiePick(of:)` is the picked peer id, "" for No Jamie, nil before Hive
   has answered.
 - `jamieOptions(for:)` lists each live org, then No Jamie. An org the tribe
@@ -90,15 +93,27 @@ and `TribeJamie` in the iPhone's `ChatDetails.swift`, over one model,
 
 **Approving Jamie** (`AppModel+Jamie.swift`, `Engine.approveWaitingMember`).
 - It starts on every member request in a tribe this account owns, live or
-  from history. It waits until Stadeum says the tribe is linked: the links
-  are read again unless read in the last minute, since the tribe may have
-  been linked on the other device.
+  from history. It needs Stadeum to say this person linked the tribe. The
+  links are read again unless read in the last minute, and again when that
+  minute's read does not name the tribe, since it may have been linked on
+  the other device just now.
+- A request that arrives while a check of the same tribe is under way is
+  looked at again once that check ends.
+- Each approval goes at most once a session: another would cost the
+  tribe's price again.
 - The request carries only an alias. So the engine asks the tribes server
   who waits and approves the entry whose key is Jamie's, by key.
 - It asks up to three times, five seconds apart, in case the server lists
   the request after it arrives.
 - A failure shows above the tribe's composer. The owner can still approve
   in Members.
+- **Someone else's Jamie.** Hive gives a tribe to whoever links it first,
+  and cannot tell who owns it. So Jamie may ask to join, or sit in a public
+  tribe, for an org the owner did not pick. Peel never approves that one.
+  It says so above the composer when the request comes, and the Jamie row
+  says it too (`AppModel.othersJamie`, from Jamie's key on the tribes
+  server's list): approving or keeping it sends what is said in the tribe
+  to that org.
 
 **Deliverables.** Jamie's replies carry `metadata` with
 `{ "strut": { workspace, artifacts } }`.
@@ -114,8 +129,9 @@ and `TribeJamie` in the iPhone's `ChatDetails.swift`, over one model,
     own token. On the Mac that is `Stadeum.opensFromTribe`; on the iPhone
     `Stadeum.opening` already holds to it. Anything else shows its title
     and "@acme isn't connected here";
-  - an app opens only after a confirm ("Open this app from Acme? Anyone in
-    the tribe could have sent it.");
+  - an app opens only after a confirm that names the app and version its
+    link opens, never the title its sender wrote ("Open the app “board” v3
+    from Acme? Anyone in the tribe could have sent this link.");
   - an https link opens as any link in a message does.
 
 ## Choices the plan left open
@@ -129,6 +145,10 @@ and `TribeJamie` in the iPhone's `ChatDetails.swift`, over one model,
    details, and when a member request needs them.
 3. **Both devices may approve.** If the Mac and the iPhone are both open,
    each may send the approval. The second one costs the tribe's price.
+   Within one device it goes once a session. The engine names the request
+   by the newest one with Jamie's alias (`answerJoinRequest(.member…)`), so
+   someone asking just after Jamie under the same alias gets their card
+   marked as answered while Jamie's stays open.
 4. **The tribe's name** goes to Hive as `tribe.name`, nothing when the
    tribe has none.
 5. **A deleted or left tribe** shows no Jamie row (`canManage`), and
@@ -144,10 +164,10 @@ and `TribeJamie` in the iPhone's `ChatDetails.swift`, over one model,
 - `HiveTests`: linking, listing and unlinking with the device credential,
   the request shapes, and Hive's refusals in words.
 - `StadeumTests`: the links as Hive keeps them, the pick and the options,
-  the minute's cache, and that a tribe's deliverable opens only on a
-  paired org.
+  the minute's cache, a read answered after a link not taking it back, and
+  that a tribe's deliverable opens only on a paired org.
 - `ControlRowTests`: a tribe member's deliverables on their row, never
-  yours or a DM's.
+  yours or a DM's; an app's confirm names what it opens.
 - `EngineFailureTests`: `approveWaitingMember`'s refusals.
 
 ## Not checked

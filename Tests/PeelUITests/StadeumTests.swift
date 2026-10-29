@@ -243,6 +243,39 @@ struct StadeumTests {
         #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
     }
 
+    /// A read of the links that Hive answers after this device linked the
+    /// tribe does not take the link back, and the next read asks again.
+    @Test func aReadAnsweredAfterALinkDoesNotTakeItBack() async throws {
+        let tribe = String(repeating: "ab", count: 33), jamie = String(repeating: "0c", count: 33)
+        let asked = DispatchSemaphore(value: 0), answer = DispatchSemaphore(value: 0)
+        let reads = Mutex(0)
+        let hive = try await HTTPStub { _, request in
+            if request.hasPrefix("GET /api/strut-devices/tribes ") {
+                // The first read waits until the link has been made.
+                if reads.withLock({ $0 += 1; return $0 }) == 1 {
+                    asked.signal()
+                    answer.wait()
+                }
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribes":[]}"#)
+            }
+            return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribe":{"pubkey":"\#(tribe)","host":"h","workspace":"acme"}}"#)
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile, renewNow: false)
+        let reading = Task { await stadeum.readJamieLinks() }
+        await withCheckedContinuation { done in DispatchQueue.global().async { asked.wait(); done.resume() } }
+        try await stadeum.setJamie(stadeum.live.first, for: Tribe(pubkey: tribe, host: "h", isOwner: true))
+        answer.signal()
+        _ = await reading.value
+        #expect(stadeum.jamiePick(of: tribe) == "acme")
+        await stadeum.readJamieLinks(ifOlderThan: 60)
+        #expect(reads.withLock { $0 } == 2 && stadeum.jamiePick(of: tribe) == "")
+        stadeum.close()
+    }
+
     @Test func theWorkspacesAppsAreReadAtOnceAndOneThatCannotBeKeepsItsLast() async throws {
         let profile = try profile()
         try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme"), Self.peer("globex", "Globex")])

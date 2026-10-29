@@ -359,14 +359,20 @@ public struct HiveClient: Sendable {
     }
 
     /// Unlinks `tribe` (its pubkey): Hive refuses its mentions from now on
-    /// and tells Jamie to leave. One Hive no longer has (unlinked from the
-    /// person's other device) is unlinked already.
+    /// and tells Jamie to leave. One Hive says it no longer has (unlinked
+    /// from the person's other device) is unlinked already; any other 404
+    /// (a proxy's, a Hive without the route) is not.
     public func unlinkTribe(_ link: HiveLink, tribe: String) async throws {
         guard tribe.isPubkey else { throw PeelError("That isn't a tribe's key.") }
         let (status, data) = try await request("DELETE", "api/strut-devices/tribes/\(tribe.lowercased())", nil,
                                                bearer: link.credential)
-        guard status == 200 || status == 404 else { throw Self.tribeFailure(status, data, couldNot: "remove Jamie") }
+        if status == 200 { return }
+        if status == 404, (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"] == Self.notLinked { return }
+        throw Self.tribeFailure(status, data, couldNot: "remove Jamie")
     }
+
+    /// Hive's answer to unlinking a tribe the person has no link for.
+    static let notLinked = "Tribe not linked"
 
     /// What Hive answers instead, in words: the refusals a person can act
     /// on said as such (docs/hive-tribes.md), the rest in Hive's words.

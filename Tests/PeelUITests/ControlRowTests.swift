@@ -94,6 +94,17 @@ struct ControlRowTests {
         #expect(ChatRow.rows([message(0, body: body(strut))], parents: [:], inTribe: false, people: people).map(\.agentArtifacts) == [[]])
     }
 
+    /// An app sent in a tribe asks before it opens, naming the app and
+    /// version its link opens, never the title its sender wrote; a file
+    /// opens without asking, and nothing asks outside a tribe.
+    @Test func aTribesAppAsksFirstNamingWhatItOpens() throws {
+        let app = AgentArtifact(id: "a", title: "Weekly report", handle: try #require(AgentArtifact.Handle(app: "@acme/board@v3")))
+        #expect(app.asksBeforeOpening(inTribe: true) && !app.asksBeforeOpening(inTribe: false))
+        #expect(app.tribeAppQuestion(on: "Acme") == "Open the app “board” v3 from Acme? Anyone in the tribe could have sent this link.")
+        let file = AgentArtifact(id: "f", title: "Plan", handle: try #require(AgentArtifact.Handle(path: "/peers/acme/jobs/j/files/plan.md")))
+        #expect(!file.asksBeforeOpening(inTribe: true))
+    }
+
     /// A control message with no words draws nothing; a long one draws one bounded line.
     @Test func blankAndLongLines() {
         #expect(ChatRow.rows([message(0, body: controlBody("  "))], parents: [:], inTribe: false, people: people).isEmpty)

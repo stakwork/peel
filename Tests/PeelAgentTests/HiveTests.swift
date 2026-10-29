@@ -222,7 +222,7 @@ struct HiveTests {
                 return (200, #"{"jamie":\#(jamie),"tribes":[\#(listed),\#(unusable)]}"#)
             case ("POST", "/api/strut-devices/tribes"): return (200, #"{"jamie":\#(jamie),"tribe":\#(linked)}"#)
             case ("DELETE", "/api/strut-devices/tribes/\(Self.tribeKey)"): return (200, #"{"unlinked":true}"#)
-            case ("DELETE", _): return (404, #"{"error":"Tribe not linked"}"#)
+            case ("DELETE", "/api/strut-devices/tribes/\(Self.jamieKey)"): return (404, #"{"error":"Tribe not linked"}"#)
             default: return (404, "{}")
             }
         }
@@ -243,11 +243,12 @@ struct HiveTests {
 
         try await client.unlinkTribe(link, tribe: Self.tribeKey.uppercased())
         #expect(hive.requests[2].hasPrefix("DELETE /api/strut-devices/tribes/\(Self.tribeKey) "))
-        // Unlinked from the person's other device already: done.
+        // Unlinked from the person's other device already, as Hive says it: done. Any other 404 is not.
         try await client.unlinkTribe(link, tribe: Self.jamieKey)
+        await #expect(throws: PeelError.self) { try await client.unlinkTribe(link, tribe: String(repeating: "cd", count: 33)) }
         // Never a path built from something that is not a tribe's key.
         await #expect(throws: PeelError.self) { try await client.unlinkTribe(link, tribe: "../peers") }
-        #expect(hive.requests.count == 4)
+        #expect(hive.requests.count == 5)
     }
 
     /// What Hive answers instead of a link, in words the owner can act on;

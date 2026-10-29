@@ -522,8 +522,8 @@ public final class AppModel {
     /// shown outside the Members panel (`TribeMembers.countLabel`).
     public private(set) var knownMembers: [String: TribeMembers] = [:]
     @ObservationIgnored private var readingMembers: Set<String> = []
-    /// Tribes whose waiting Jamie is being approved (`approveJamie`).
-    @ObservationIgnored var approvingJamie: Set<String> = []
+    /// Jamie's approvals this session (`approveJamie`).
+    @ObservationIgnored var jamieApprovals = JamieApprovals()
     /// The open tribe's pinned message, read from storage however old.
     public private(set) var pinnedMessage: Message?
     /// Invites made here by code, and those still waiting to be used,

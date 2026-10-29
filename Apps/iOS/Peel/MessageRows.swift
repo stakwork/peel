@@ -746,7 +746,7 @@ private struct AgentArtifactLine: View {
             Button(action: asksFirst ? { asking = true } : open) { line(where: whereTo, opens: true) }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens it")
-                .confirmationDialog(AgentArtifact.tribeAppQuestion(on: whereTo ?? ""), isPresented: $asking,
+                .confirmationDialog(artifact.tribeAppQuestion(on: whereTo ?? ""), isPresented: $asking,
                                     titleVisibility: .visible) {
                     Button("Open app", action: open)
                     Button("Cancel", role: .cancel) {}

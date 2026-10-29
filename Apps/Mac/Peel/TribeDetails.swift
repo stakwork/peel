@@ -233,14 +233,9 @@ private struct TribeJamieSection: View {
                     }
                 }
             case .pairing(let pairing):
-                FormItem(label: "Pair this Mac", helper: "Approve this Mac in Stadeum. Check the code matches.") {
-                    HStack(spacing: Theme.Space.md) {
-                        Text(pairing.userCode)
-                            .font(Theme.font(17, .semibold))
-                            .monospaced()
-                            .textSelection(.enabled)
-                        Link("Open in Stadeum", destination: pairing.verificationUriComplete)
-                            .font(Theme.font(12))
+                FormItem(label: "Pair this Mac") {
+                    HStack(alignment: .top) {
+                        StadeumPairingCode(pairing: pairing)
                         Spacer(minLength: 0)
                         Button("Cancel") { model.cancelHivePairing() }
                             .buttonStyle(.peel(.ghost))
@@ -249,7 +244,7 @@ private struct TribeJamieSection: View {
             case .connected:
                 if let pick = stadeum.jamiePick(of: tribe.pubkey) {
                     FormItem(label: "Answers from", helper: TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum),
-                             problem: picker.problem) {
+                             problem: picker.problem ?? model.othersJamie(in: tribe.pubkey)) {
                         HStack(spacing: Theme.Space.sm) {
                             PeelDropdown(selection: pick, options: stadeum.jamieOptions(for: tribe.pubkey).map { (value: $0.id, label: $0.name) }) { id in
                                 Task { await picker.pick(id, for: tribe, with: model) }

@@ -314,7 +314,6 @@ private struct TribeDetailsView: View {
 /// Stadeum pairs this iPhone from here.
 private struct TribeJamie: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openURL) private var openURL
     let tribe: Tribe
 
     @State private var picker = TribeJamiePicker()
@@ -333,18 +332,7 @@ private struct TribeJamie: View {
                 .buttonStyle(.peel(.outline, size: .touch))
                 if let problem = stadeum.problem { ProblemText(problem) }
             case .pairing(let pairing):
-                note("Approve this iPhone in Stadeum. Check the code matches:")
-                Text(pairing.userCode)
-                    .phoneFont(.title)
-                    .monospaced()
-                    .textSelection(.enabled)
-                    .accessibilityLabel("Code \(pairing.userCode)")
-                Button { openURL(pairing.verificationUriComplete) } label: {
-                    Text("Open Stadeum").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.peel(.primary, size: .touch))
-                Button { stadeum.cancelPairing() } label: { Text("Cancel").frame(maxWidth: .infinity) }
-                    .buttonStyle(.peel(.ghost, size: .touch))
+                StadeumPairingCode(pairing: pairing)
             case .connected:
                 if let pick = stadeum.jamiePick(of: tribe.pubkey) {
                     PhoneCard {
@@ -373,7 +361,7 @@ private struct TribeJamie: View {
                         .buttonStyle(.peel(.outline, size: .touch))
                         .disabled(picker.working)
                     }
-                    if let problem = picker.problem {
+                    if let problem = picker.problem ?? model.othersJamie(in: tribe.pubkey) {
                         ProblemText(problem)
                     } else {
                         note(TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum))

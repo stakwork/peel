@@ -341,7 +341,7 @@ struct AgentArtifactLine: View {
                 openWindow(id: MainWindow.id, value: MainWindow.Key.main)
             }
             if artifact.asksBeforeOpening(inTribe: inTribe) {
-                InlineConfirm(trigger: "Open", prompt: AgentArtifact.tribeAppQuestion(on: model.stadeum.workspaceName(handle.peer ?? "")),
+                InlineConfirm(trigger: "Open", prompt: artifact.tribeAppQuestion(on: model.stadeum.workspaceName(handle.peer ?? "")),
                               confirm: "Open app", confirmKind: .primary, style: .text) { openIt() }
                     .foregroundStyle(Theme.link)
                     .help(StrutPage.name(artifact.title, on: handle.peer))

@@ -258,6 +258,8 @@ public final class Stadeum {
         try host?.stadeum(willKeep: link, replacing: kept)
         try link.write(to: profile.hive)
         let changed = revoked || kept?.peers != link.peers
+        // Paired again (perhaps as another person): what Hive said of the old pairing's tribes is not this one's.
+        if kept?.credential != link.credential || kept?.actor != link.actor { forgetJamie() }
         self.link = link
         problem = nil
         host?.stadeum(kept: link, changed: changed)
@@ -278,11 +280,7 @@ public final class Stadeum {
         status = .off
         link = nil
         problem = nil
-        jamieReading?.cancel()
-        jamieReading = nil
-        jamieReadAt = nil
-        jamieLinks = nil
-        jamieProblem = nil
+        forgetJamie()
         // The workspaces' go with them; the person's own are not Stadeum's.
         apps.removeAll { $0.peer != nil }
     }
@@ -307,6 +305,9 @@ public final class Stadeum {
     public private(set) var jamieProblem: String?
     @ObservationIgnored private var jamieReading: Task<JamieLinks?, Never>?
     @ObservationIgnored private var jamieReadAt: Date?
+    /// Counts this device's links and unlinks: a read begun before one does
+    /// not overwrite it (`readJamieLinks`).
+    @ObservationIgnored private var jamieChanges = 0
 
     /// `tribe`'s link (its key), as Hive last said.
     public func jamieLink(of tribe: String) -> JamieLink? {
@@ -354,17 +355,20 @@ public final class Stadeum {
         if let jamieLinks, let at = jamieReadAt, Date().timeIntervalSince(at) < age { return jamieLinks }
         if let jamieReading { return await jamieReading.value }
         let generation = generation
+        let changes = jamieChanges
         let reading = Task { () -> JamieLinks? in
             do {
                 let read = try await HiveClient(hive: link.hive).jamieLinks(link)
                 // Closed, disconnected or paired again meanwhile: nothing of it is kept.
                 guard generation == self.generation, self.link?.credential == link.credential else { return nil }
+                jamieProblem = nil
+                // Linked or unlinked here while it was asked: older than what is kept, so the next read asks again.
+                guard changes == jamieChanges else { return jamieLinks }
                 jamieLinks = read
                 jamieReadAt = Date()
-                jamieProblem = nil
                 return read
             } catch {
-                guard generation == self.generation else { return nil }
+                guard generation == self.generation, self.link?.credential == link.credential else { return nil }
                 jamieProblem = PeelError.noted(error, couldNot: "read which tribes have Jamie")
                 return nil
             }
@@ -398,7 +402,18 @@ public final class Stadeum {
             guard generation == self.generation else { return }
             jamieLinks?.tribes.removeAll { $0.pubkey == key }
         }
+        jamieChanges += 1
         jamieProblem = nil
+    }
+
+    /// What Hive said of the tribes, let go: the account closed, or another pairing.
+    private func forgetJamie() {
+        jamieReading?.cancel()
+        jamieReading = nil
+        jamieReadAt = nil
+        jamieLinks = nil
+        jamieProblem = nil
+        jamieChanges += 1
     }
 
     // MARK: - Opening an org's page

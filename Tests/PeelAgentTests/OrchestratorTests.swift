@@ -18,8 +18,14 @@ struct OrchestratorTests {
         #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/diagnostics",
                           "sphinx/send", "automation/list", "automation/preview", "automation/create", "automation/update",
                           "automation/delete", "automation/run-now",
-                          // Memory is Peel's to grant: strut's default orchestrator has none.
-                          "memory/remember", "memory/recall", "memory/get", "memory/ontology", "memory/forget", "memory/merge"])
+                          // Memory is Peel's to grant: strut's default orchestrator has none. The graph tools read it.
+                          "memory/remember", "memory/forget", "memory/merge",
+                          "graph/graph-search", "graph/graph-get", "graph/graph-get-batched", "graph/graph-neighbors",
+                          "graph/get-ontology", "graph/get-ontology-type"])
+        // Only the orchestrator's and an automation run's graph reads see memory; a job's never do.
+        #expect(config["memoryReaders"] == ["orchestrator", "peel-automation-run"])
+        #expect(!(config["job"]?["tools"]?.array ?? []).contains { $0.string?.hasPrefix("graph/") == true })
+        #expect(Set(Orchestrator.memoryTools + Orchestrator.graphReads).isSubset(of: Orchestrator.automationRunTools))
         // Only the automation steps ask for a card: the model never words one itself.
         #expect(!tools.contains("sphinx/approve"))
         #expect(config["orchestrator"]?["model"] == .null, "the connected model runs it")
@@ -39,7 +45,7 @@ struct OrchestratorTests {
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
         let section = Orchestrator.section
         for words in ["sphinx/unseen with no chat", "on their Mac, by asking it", "waiting for their Mac", "sphinx/send sends",
-                      "memory/remember", "memory/get with user true", "from the time the message starts with",
+                      "memory/remember", "with type Self and the user's name as q it finds the user", "only with type Episode", "at most 50 per call", "from the time the message starts with",
                       "automation/list before changing it", ChatData.begin, AgentMessageLink.instruction] {
             #expect(section.contains(words), "\(words)")
         }
@@ -52,7 +58,8 @@ struct OrchestratorTests {
         #expect(!Orchestrator.automationRunTools.contains(DeviceStep.diagnostics.type), "an automation never reads Peel's record")
         #expect(section.contains("give it a grant"))
         // The prompts name the steps by hand: each one granted is named.
-        for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + Orchestrator.memoryTools + ["automation/list"] {
+        for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + Orchestrator.memoryTools
+                    + Orchestrator.graphReads + ["automation/list"] {
             #expect(section.contains(step), "\(step)")
         }
         for step in Orchestrator.automationRunTools { #expect(unattended.contains(step), "\(step)") }

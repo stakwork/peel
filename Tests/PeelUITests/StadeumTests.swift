@@ -231,4 +231,28 @@ struct StadeumTests {
         #expect(request.handOver.contains(#"["\#(origin)","\#(folder)","t\"</script>"]"#))
         #expect(request.handOver.contains("location.origin === origin && location.pathname.startsWith(folder)"))
     }
+
+    /// On the iPhone a page's link to another app opens that app alone on
+    /// the org's strut, at the view it names, with the token; a page loaded
+    /// again goes where it moved to, with the token, while that is strut's UI.
+    @Test func aLinkToAnotherAppOpensItAloneOnTheOrgsStrutWithTheToken() throws {
+        let request = OrgPageRequest(url: URL(string: "https://acme.sphinx.chat/lab/?app=x&solo=1")!, token: "t", peer: "acme", workspace: "Acme")
+        let board = URL(string: "https://acme.sphinx.chat/lab/?app=board&input=v%3D1")!
+        let link = try #require(request.appLink(board, from: request.url))
+        let there = try #require(request.request(for: link))
+        #expect(there.url?.absoluteString == "https://acme.sphinx.chat/lab/?app=board&input=v%3D1&solo=1")
+        #expect(there.value(forHTTPHeaderField: "Authorization") == "Bearer t")
+        // From a file (words an org or a model wrote), none.
+        #expect(request.appLink(board, from: URL(string: "https://acme.sphinx.chat/lab/?artifact=%2Fjobs%2Fj%2Ffiles%2Fr.md&solo=1")!) == nil)
+        // Another service on the host, no app, or the org's own peer's app: no link.
+        #expect(request.appLink(URL(string: "https://acme.sphinx.chat/other/?app=board")!, from: request.url) == nil)
+        #expect(request.appLink(URL(string: "https://acme.sphinx.chat/lab/?wf=clip&run=1")!, from: request.url) == nil)
+        #expect(request.appLink(URL(string: "https://acme.sphinx.chat/lab/?app=%40globex%2Fx")!, from: request.url) == nil)
+        let moved = URL(string: "https://acme.sphinx.chat/lab/?app=x&input=v%3D2&solo=1")!
+        #expect(request.request(at: moved)?.url == moved)
+        #expect(request.request(at: moved)?.value(forHTTPHeaderField: "Authorization") == "Bearer t")
+        // A file opened in place, or anywhere else: not this.
+        #expect(request.request(at: URL(string: "https://acme.sphinx.chat/lab/jobs/j/files/a.pdf?t=1")!) == nil)
+        #expect(request.request(at: URL(string: "https://evil.example/lab/?app=x")!) == nil)
+    }
 }

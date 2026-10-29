@@ -266,8 +266,11 @@ is a short plan. Update the status and the journal when you finish something.
     strut, as the iPhone opens it (`AgentArtifact.Handle.onOrg`: the brain's
     `/peers/<org>` hop taken off; none for the brain's own), and
     `StrutUI.page`, the one address of strut's UI showing one thing alone
-    (`?artifact=` or `?app=`, `&solo=1`, the UI's folder with its `/`), with
-    strut's key in it only for Peel's own strut
+    (`?artifact=` or `?app=`, an app's view as `&input=`, `&solo=1`, the
+    UI's folder with its `/`), with strut's key in it only for Peel's own
+    strut; and `StrutAppLink`, a page's link to an app as strut's UI reads
+    it (strut's plans/apps.md §7.1, "Deep links": a workspace page's bare
+    name is that workspace's app)
   - `TextLine.swift` — `TextLine.clean`, words someone else wrote as one
     safe line (control and direction characters out, no `<<<` marker,
     capped): the one cleaner the agent's chat data, Stadeum and strut's
@@ -338,8 +341,9 @@ is a short plan. Update the status and the journal when you finish something.
   for a live workspace (docs/hive-calls.md); `opening`, how a deliverable or a workspace's
   app opens on its org's own strut; `StadeumHost`, what a device does
   beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
-  with its token: its origin and folder, the token's hand-over script and
-  the first request, never described with the token);
+  with its token: its origin and folder, the token's hand-over script, the
+  first request, the request for another app a link in it names and for
+  loading it again where it moved to, never described with the token);
   `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
   the recent calls across chats watched while unlocked and the open chat's,
   the call you are on, join, start (with Jamie from a Stadeum workspace:
@@ -418,7 +422,8 @@ is a short plan. Update the status and the journal when you finish something.
   `docs/apps-browser.md`), `WorkspaceAppView` (one of
   those apps alone in the detail column, opened from Apps or its pinned
   row: Peel's own strut's UI showing its page, in a `WKWebView` whose store
-  keeps nothing and which goes nowhere but that strut, and `AppPinButton`,
+  keeps nothing and which goes nowhere but that strut, opened at the view
+  it was last on (`AppPlace`, `AppModel.appPlaces`), and `AppPinButton`,
   its pin in the header and on its card; `docs/agent-on-strut.md`, "Built:
   a workspace's apps"), `AppVersionsViews` (the person's own app's version
   chip in that header and its menu: the newest versions, one picked shown
@@ -428,7 +433,9 @@ is a short plan. Update the status and the journal when you finish something.
   alone with strut's key in its address, and the rules the app view and the
   web pane's deliverable both keep to: only that strut, its `srcdoc` and
   blob frames, a link out only on the person's own click, which
-  `InputWebView` knows of; "Built: a deliverable opens beside the chat");
+  `InputWebView` knows of, and a link to another app to `AppModel.open`;
+  "Built: a deliverable opens beside the chat", `docs/apps-browser.md`
+  "Built: deep links");
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -626,7 +633,8 @@ is a short plan. Update the status and the journal when you finish something.
   `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
   request's bearer and handed to the page's storage before its script
   runs, never in an address; only that strut's UI folder, its `srcdoc` and blob
-  frames, a link out only from strut's own page on the person's own tap, `TouchWebView`; strut's
+  frames, a link out only from strut's own page on the person's own tap, `TouchWebView`, and a
+  link to another app as that app's page in place; strut's
   specs/DESKTOP.md, "A device with no strut of its own"), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,

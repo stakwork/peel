@@ -442,8 +442,42 @@ public struct OrgPageRequest: Identifiable, Equatable, Sendable, CustomStringCon
     }
 
     /// The request that loads it: the token as its bearer.
-    public var request: URLRequest {
-        var request = URLRequest(url: url)
+    public var request: URLRequest { request(to: url) }
+
+    /// The request that loads it again where the page went (`current`, its
+    /// web view's address: strut keeps an app's view there), when that is
+    /// still strut's UI: as `request`, the token its bearer. Nil anywhere
+    /// else (a file opened in place).
+    public func request(at current: URL?) -> URLRequest? {
+        guard let current, serves(current), StrutUI.isPage(current, in: folder) else { return nil }
+        return request(to: current)
+    }
+
+    /// The app a link names (`StrutAppLink`: strut's page alone hands a link
+    /// to another app to its host), one of this org's own, when the page it
+    /// came from (`current`) shows one of the org's apps: never from a file,
+    /// whose links an org or a model wrote and which is no app's. Nil for a
+    /// link to anything else.
+    public func appLink(_ other: URL, from current: URL?) -> StrutAppLink? {
+        guard let current, shownApp(current) != nil, serves(other) else { return nil }
+        return StrutAppLink(other, folder: folder, from: .org)
+    }
+
+    /// The org's app the page at `current` shows, as its address names it;
+    /// nil for a file, or anything not this strut's UI.
+    public func shownApp(_ current: URL) -> AgentArtifact.Handle? {
+        serves(current) ? StrutAppLink(current, folder: folder, from: .org)?.app : nil
+    }
+
+    /// The request for `link`'s app alone on this org's strut, at the view
+    /// it names, loaded as this page is.
+    public func request(for link: StrutAppLink) -> URLRequest? {
+        guard case .app(let app) = link.app, let there = StrutUI.page(on: url, "app", app, input: link.input) else { return nil }
+        return request(to: there)
+    }
+
+    private func request(to target: URL) -> URLRequest {
+        var request = URLRequest(url: target)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return request
     }

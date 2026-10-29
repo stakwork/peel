@@ -15,6 +15,11 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate {
         // A token needs no permission, so it is asked for at every launch
         // (Apple advises it: the token can change).
         application.registerForRemoteNotifications()
+        #if DEBUG
+        // So a test push can be shown. Debug builds only; it touches neither
+        // the hub flag nor `setPushToken`.
+        Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
+        #endif
         return true
     }
 
@@ -59,13 +64,22 @@ final class PushCoordinator {
     }
 
     func received(token data: Data) {
-        token = PushToken.hex(data)
+        let hex = PushToken.hex(data)
+        token = hex
+        #if DEBUG
+        // `print`, not os_log, so Xcode's console shows it unredacted. Debug
+        // builds only. The push key is never printed.
+        print("[Peel push] APNs device token (\(config?.environment.rawValue ?? "unknown"), app \(config?.appID ?? "unknown")): \(hex)")
+        #endif
         Task { await registerIfReady() }
     }
 
     func failed(_ error: any Error) {
         // Expected in the simulator and without the push capability in the App ID.
         Self.log.error("remote notification registration failed: \((error as NSError).code, privacy: .public)")
+        #if DEBUG
+        print("[Peel push] registration failed: \(error)")
+        #endif
     }
 
     private func registerIfReady() async {

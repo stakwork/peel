@@ -1569,7 +1569,12 @@ chat payload as `strut: { workspace, artifacts }`, beside the markdown links.
 - The Mac's call chat shows `AgentArtifactLine` under Jamie's message,
   opened in the main window's web pane on Peel's own strut, as from the
   DM. The iPhone has no call chat yet.
-- Not yet checked on a live call.
+- First live call (2026-10-29): plans, pages, notes, a screenshot and a
+  PR opened; an app did not. Jamie named it by its document link
+  (`/apps/<name>/<vN>/files/dist/index.html`) with no `app`, which strut
+  passes on as a url and Hive's canvas shows as "Unavailable (bad url)".
+  Peel now reads that link as the app, as Hive's `workspaceAppOfKey` does;
+  strut turning it into an `app` entry is strut's to do.
 
 ## Decided (Tom, 2026-10-08)
 

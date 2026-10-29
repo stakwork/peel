@@ -15,6 +15,8 @@ struct ImageViewerRequest: Identifiable {
     let id = UUID()
     let messages: [Message]
     let start: Int
+    /// The tapped tile's picture, drawn at once while the full size loads.
+    var placeholder: CGImage?
 }
 
 struct ImageViewer: View {
@@ -39,7 +41,8 @@ struct ImageViewer: View {
             Color.black.opacity(fade).ignoresSafeArea()
             TabView(selection: $index) {
                 ForEach(Array(request.messages.enumerated()), id: \.offset) { offset, message in
-                    ViewerPage(message: message, zoomed: offset == index ? $zoomed : .constant(false))
+                    ViewerPage(message: message, placeholder: offset == request.start ? request.placeholder : nil,
+                               zoomed: offset == index ? $zoomed : .constant(false))
                         .tag(offset)
                 }
             }
@@ -86,6 +89,7 @@ struct ImageViewer: View {
 private struct ViewerPage: View {
     @Environment(AppModel.self) private var model
     let message: Message
+    let placeholder: CGImage?
     @Binding var zoomed: Bool
 
     @State private var image: CGImage?
@@ -96,18 +100,25 @@ private struct ViewerPage: View {
     private static let pixels = 4096
 
     var body: some View {
-        Group {
-            if let image {
-                ZoomableImage(image: UIImage(cgImage: image), zoomed: $zoomed)
+        let shown = image ?? placeholder
+        ZStack {
+            if let shown {
+                ZoomableImage(image: UIImage(cgImage: shown), zoomed: $zoomed)
                     .accessibilityElement()
                     .accessibilityLabel("Image")
                     .accessibilityAddTraits(.isImage)
-            } else if let notShown {
-                Text(notShown)
-                    .phoneFont(.secondary)
-                    .foregroundStyle(Theme.secondaryText)
-                    .padding(Theme.Space.xl)
-            } else {
+            }
+            if let notShown {
+                VStack(spacing: Theme.Space.md) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 28))
+                        .accessibilityHidden(true)
+                    Text(notShown).phoneFont(.secondary)
+                }
+                .foregroundStyle(Theme.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(Theme.Space.xl)
+            } else if image == nil {
                 ProgressView().tint(.white)
             }
         }
@@ -115,8 +126,10 @@ private struct ViewerPage: View {
         .task(id: message.id) {
             image = nil
             notShown = nil
-            await model.download(message)
-            let handle = model.attachment(message.id ?? 0)
+            let id = message.id ?? 0
+            // The tile already has the file; only fetch when it does not.
+            if model.attachment(id).file == nil { await model.download(message) }
+            let handle = model.attachment(id)
             guard let file = handle.file else {
                 if !Task.isCancelled { notShown = handle.failureReason ?? "The image could not be opened." }
                 return
@@ -124,8 +137,57 @@ private struct ViewerPage: View {
             let decoded = await ImageCache.shared.image(file, maxPixels: Self.pixels)
             guard !Task.isCancelled else { return }
             image = decoded
-            if decoded == nil { notShown = await AttachmentFormat.notShown(file) ?? "The image could not be drawn." }
+            if decoded == nil, placeholder == nil {
+                notShown = await AttachmentFormat.notShown(file) ?? "The image could not be drawn."
+            }
         }
+    }
+}
+
+/// A scroll view that lays its picture out aspect-fitted to its bounds
+/// whenever either changes, centred by insets so zooming stays centred.
+private final class FitScrollView: UIScrollView {
+    let picture = UIImageView()
+    private var fittedFor: CGSize = .zero
+    private var needsFit = true
+
+    var image: UIImage? {
+        didSet {
+            guard image !== oldValue else { return }
+            picture.image = image
+            needsFit = true
+            setNeedsLayout()
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if needsFit || fittedFor != bounds.size {
+            fit()
+        }
+        centre()
+    }
+
+    private func fit() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        needsFit = false
+        fittedFor = bounds.size
+        zoomScale = 1
+        var size = bounds.size
+        if let image, image.size.width > 0, image.size.height > 0 {
+            let scale = min(bounds.width / image.size.width, bounds.height / image.size.height)
+            size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        }
+        picture.frame = CGRect(origin: .zero, size: size)
+        contentSize = size
+        contentOffset = .zero
+    }
+
+    private func centre() {
+        let x = max((bounds.width - contentSize.width) / 2, 0)
+        let y = max((bounds.height - contentSize.height) / 2, 0)
+        let inset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
+        if contentInset != inset { contentInset = inset }
     }
 }
 
@@ -135,8 +197,8 @@ private struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
     @Binding var zoomed: Bool
 
-    func makeUIView(context: Context) -> UIScrollView {
-        let scroll = UIScrollView()
+    func makeUIView(context: Context) -> FitScrollView {
+        let scroll = FitScrollView()
         scroll.minimumZoomScale = 1
         scroll.maximumZoomScale = 6
         scroll.bouncesZoom = true
@@ -145,10 +207,11 @@ private struct ZoomableImage: UIViewRepresentable {
         scroll.contentInsetAdjustmentBehavior = .never
         scroll.backgroundColor = .clear
         scroll.delegate = context.coordinator
-        let picture = UIImageView(image: image)
+        let picture = scroll.picture
         picture.contentMode = .scaleAspectFit
         picture.isUserInteractionEnabled = true
         scroll.addSubview(picture)
+        scroll.image = image
         context.coordinator.picture = picture
         let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap))
         double.numberOfTapsRequired = 2
@@ -156,16 +219,9 @@ private struct ZoomableImage: UIViewRepresentable {
         return scroll
     }
 
-    func updateUIView(_ scroll: UIScrollView, context: Context) {
+    func updateUIView(_ scroll: FitScrollView, context: Context) {
         context.coordinator.parent = self
-        if context.coordinator.picture?.image !== image {
-            context.coordinator.picture?.image = image
-        }
-        // The picture fills the page at 1x, aspect-fitted; zoom scales that frame.
-        if scroll.zoomScale == 1, context.coordinator.picture?.frame != CGRect(origin: .zero, size: scroll.bounds.size) {
-            context.coordinator.picture?.frame = CGRect(origin: .zero, size: scroll.bounds.size)
-            scroll.contentSize = scroll.bounds.size
-        }
+        scroll.image = image
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -178,6 +234,7 @@ private struct ZoomableImage: UIViewRepresentable {
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { picture }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            (scrollView as? FitScrollView)?.setNeedsLayout()
             let zoomed = scrollView.zoomScale > 1.01
             if parent.zoomed != zoomed { parent.zoomed = zoomed }
         }

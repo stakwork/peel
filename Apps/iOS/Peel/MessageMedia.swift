@@ -54,10 +54,18 @@ struct ImageTile: View {
 
     static let side: CGFloat = 240
 
+    /// A picture's size fitted within the tile (`side` wide, 1.25 times that tall).
+    static func fitted(width: CGFloat, height: CGFloat) -> CGSize {
+        guard width > 0, height > 0 else { return CGSize(width: side, height: side) }
+        let scale = min(side / width, side * 1.25 / height)
+        return CGSize(width: width * scale, height: height * scale)
+    }
+
     var body: some View {
         let handle = message.id.map(model.attachment)
         let file = handle?.file
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        // The clip and border sit on the picture itself, so they hug it.
         Group {
             if let image {
                 let picture = Image(decorative: image, scale: 1).resizable()
@@ -65,8 +73,8 @@ struct ImageTile: View {
                     Color.clear.aspectRatio(1, contentMode: .fit)
                         .overlay { picture.scaledToFill() }
                 } else {
-                    picture.aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: Self.side, maxHeight: Self.side * 1.25, alignment: .leading)
+                    let fitted = Self.fitted(width: CGFloat(image.width), height: CGFloat(image.height))
+                    picture.frame(width: fitted.width, height: fitted.height)
                 }
             } else {
                 Theme.quote
@@ -91,7 +99,8 @@ struct ImageTile: View {
         .onTapGesture {
             guard image != nil else { return }
             let messages = run.isEmpty ? [message] : run
-            viewing = ImageViewerRequest(messages: messages, start: messages.firstIndex { $0.id == message.id } ?? 0)
+            viewing = ImageViewerRequest(messages: messages, start: messages.firstIndex { $0.id == message.id } ?? 0,
+                                         placeholder: image)
         }
         .fullScreenCover(item: $viewing) { ImageViewer(request: $0) }
         // Again once an upload of ours is done (the Mac's `AutoDownload`).

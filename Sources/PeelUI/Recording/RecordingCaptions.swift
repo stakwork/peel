@@ -127,18 +127,19 @@ public enum RecordingCaptions {
         return pieces
     }
 
-    /// "Peel Recording 2026-10-28 at 14.03.07": a name Finder sorts by time,
+    /// "Peel Segment 2026-10-28 at 14.03.07": a name Finder sorts by time,
     /// and by which Peel finds its own among the other downloads.
     public static func fileName(at date: Date, calendar: Calendar = .current) -> String {
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
         return String(
-            format: "Peel Recording %04d-%02d-%02d at %02d.%02d.%02d",
+            format: "Peel Segment %04d-%02d-%02d at %02d.%02d.%02d",
             parts.year ?? 0, parts.month ?? 0, parts.day ?? 0, parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0
         )
     }
 
-    /// Whether a file name is one `fileName` made, numbered or not ("… 2.mp4").
+    /// Whether a file name is one `fileName` made, numbered or not ("… 2.mp4"),
+    /// or one from before segments were named so ("Peel Recording …").
     public static func isRecordingName(_ name: String) -> Bool {
-        name.wholeMatch(of: /Peel Recording \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}( \d{1,2})?\.mp4/) != nil
+        name.wholeMatch(of: /Peel (Segment|Recording) \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}( \d{1,2})?\.mp4/) != nil
     }
 }

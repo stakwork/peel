@@ -116,7 +116,7 @@ extension AccountPage {
         case .brain: "Always on"
         case .connections: "Connections"
         case .dictation: "Dictation"
-        case .recording: "Recording"
+        case .recording: "Segments"
         case .notifications: "Notifications"
         case .security: "Privacy and security"
         }

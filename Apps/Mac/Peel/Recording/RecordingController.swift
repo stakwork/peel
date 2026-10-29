@@ -197,9 +197,9 @@ final class RecordingController {
         elapsed = recorder.duration
         let left = TimeInterval(longest * 60) - elapsed
         if left <= 0 {
-            problem = "The recording stopped at \(longest) minutes, your recording limit."
+            problem = "The segment stopped at \(longest) minutes, your segment limit."
             stop()
-            notice.show(.message("Stopped at \(longest) minutes. Saved to Downloads"))
+            notice.show(.message("Segment saved to Downloads. It stopped at \(longest) minutes"))
             return
         }
         let before = (timeLeft == nil, micNote)
@@ -230,7 +230,7 @@ final class RecordingController {
                 log.error("recording failed: \(String(describing: error), privacy: .public)")
                 guard (try? await AVURLAsset(url: url).load(.isPlayable)) == true else {
                     try? FileManager.default.removeItem(at: url)
-                    problem = "The recording couldn't be saved."
+                    problem = "The segment couldn't be saved."
                     return
                 }
             }
@@ -244,7 +244,7 @@ final class RecordingController {
                 log.error("recording not kept in Downloads: \(String(describing: error), privacy: .public)")
                 guard let target = FilePanels().saveLocation(named: name + ".mp4"), (try? FileManager.default.moveItem(at: url, to: target)) != nil else {
                     try? FileManager.default.removeItem(at: url)
-                    problem = "The recording couldn't be saved."
+                    problem = "The segment couldn't be saved."
                     return
                 }
                 problem = "Saved where you chose, not in Downloads, so it isn't listed here."
@@ -331,7 +331,7 @@ final class RecordingController {
         guard let folder = Self.folder else { return }
         // Names only, then Peel's own by their name: Downloads can hold thousands.
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-        recordings = names.filter { $0.hasPrefix("Peel Recording ") && RecordingCaptions.isRecordingName($0) }.compactMap { name in
+        recordings = names.filter { $0.hasPrefix("Peel ") && RecordingCaptions.isRecordingName($0) }.compactMap { name in
             let url = folder.appendingPathComponent(name)
             // A plain file only: a link planted under a recording's name is
             // not one, and dragged into a chat would send what it points to.

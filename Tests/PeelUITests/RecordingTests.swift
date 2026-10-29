@@ -77,10 +77,11 @@ struct RecordingCaptionsTests {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 14, minute: 3, second: 7)))
-        #expect(RecordingCaptions.fileName(at: date, calendar: calendar) == "Peel Recording 2026-10-28 at 14.03.07")
+        #expect(RecordingCaptions.fileName(at: date, calendar: calendar) == "Peel Segment 2026-10-28 at 14.03.07")
+        #expect(RecordingCaptions.isRecordingName("Peel Segment 2026-10-28 at 14.03.07.mp4"))
         #expect(RecordingCaptions.isRecordingName("Peel Recording 2026-10-28 at 14.03.07.mp4"))
-        #expect(RecordingCaptions.isRecordingName("Peel Recording 2026-10-28 at 14.03.07 2.mp4"))
-        #expect(!RecordingCaptions.isRecordingName("Peel Recording 2026-10-28 at 14.03.07.mov"))
+        #expect(RecordingCaptions.isRecordingName("Peel Segment 2026-10-28 at 14.03.07 2.mp4"))
+        #expect(!RecordingCaptions.isRecordingName("Peel Segment 2026-10-28 at 14.03.07.mov"))
         #expect(!RecordingCaptions.isRecordingName("holiday.mp4"))
     }
 }

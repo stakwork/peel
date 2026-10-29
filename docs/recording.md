@@ -9,6 +9,10 @@ bubble on this Mac; Peel's own strut transcribes it, and the result is a
 file in Downloads you send as an attachment like any other. Nothing leaves the Mac
 until you send it.
 
+Its name in Peel is **Segment** (Tom, 2026-10-29): an orange's segment, and
+a clip. A segment is what you make; recording stays the action (the bar's
+Record, "Recording…").
+
 ## Decided (Tom, 2026-10-28)
 
 1. **No sharing links in v1.** A hosted link needs a host (Hive, or a strut
@@ -40,7 +44,7 @@ until you send it.
   fps, in the encoder's pixel format (`SCStreamConfiguration.fitting`,
   shared with a call's share), the cursor, and the microphone (`captureMicrophone`, bound to the
   default input, as dictation learned to). No system audio in v1. The
-  recording runs up to Account › Recording's Recording limit (5, 15, 30 or 60
+  recording runs up to Account › Segments' Segment limit (5, 15, 30 or 60
   minutes; 30 by default), only so a forgotten one cannot fill the disk:
   H.264 at this size is about 1 MB every 2 s, so 30 minutes is about
   800 MB. The Ready bar says "Up to 30 min"; in the last minute the bar
@@ -51,7 +55,7 @@ until you send it.
 - **Sending.** The hosted memes server takes about 25 MB (Tom,
   2026-10-29; `RecordingController.sendLimit`), about a minute of
   recording. A recording over it says "Too large to send in Peel" in
-  Account › Recording, and is shared from Finder (Drive, Dropbox): it
+  Account › Segments, and is shared from Finder (Drive, Dropbox): it
   still drags out, to a browser's upload or Finder.
 - **The mic** is macOS's default input at Record, for the whole
   recording. Any `updateConfiguration` mid-recording, another mic or the
@@ -74,7 +78,8 @@ until you send it.
   dot and the time, Discard (X) and Stop (tick). macOS's own menu bar Stop ends it too, and keeps
   the file.
 - **After Stop** (`RecordingController`). The file moves to
-  `~/Downloads/Peel Recording <date> at <time>.mp4`, numbered if that is
+  `~/Downloads/Peel Segment <date> at <time>.mp4` (ones named "Peel
+  Recording …" before the name are still listed), numbered if that is
   taken; if Downloads can't have it, a save panel asks where, and it is
   never deleted for that. What a quit or crash leaves in the temp folder
   is swept at launch. Its audio is read out as
@@ -98,7 +103,7 @@ until you send it.
   passthrough remux, nothing re-encoded). With no
   strut, or no speech heard, the video is kept without captions and the
   row says why.
-- **Account › Recording** lists Peel's recordings in Downloads (plain
+- **Account › Segments** lists Peel's segments in Downloads (plain
   files by their name, never a link planted under one), newest first:
   the name, date and size, each row draggable into a chat, with Show in
   Finder. A row being transcribed says so.

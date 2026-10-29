@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import PeelUI
 
-/// Account › Recording: record your screen, the camera switch, and the
+/// Account › Segments: record your screen, the camera switch, and the
 /// recordings made, each dragged into a chat to send it (docs/recording.md).
 struct RecordingSettingsSection: View {
     private var recording: RecordingController { .shared }
@@ -10,19 +10,19 @@ struct RecordingSettingsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection {
-                Fact("Record") {
+                Fact("New segment") {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(stateText)
-                        Text("Saved to Downloads, with captions. Recorded and transcribed privately, on this Mac.").muted()
+                        Text("Saved to Downloads. Recorded and captioned on this Mac, never uploaded.").muted()
                         if let problem = recording.problem { Text(problem).muted() }
                     }
                     .fixedSize(horizontal: false, vertical: true)
                 } trailing: {
-                    Button(recording.phase == .idle ? "New recording" : "Recording…", action: recording.start)
+                    Button(recording.phase == .idle ? "New segment" : "Recording…", action: recording.start)
                         .buttonStyle(.peel(.primary))
                         .disabled(recording.phase != .idle)
                 }
-                Fact("Recording limit") {
+                Fact("Segment limit") {
                     Text("Stops on its own after this long")
                 } trailing: {
                     SegmentedChoice(
@@ -41,9 +41,9 @@ struct RecordingSettingsSection: View {
                         .accessibilityLabel("Camera")
                 }
             }
-            SettingsSection("Recordings") {
+            SettingsSection("Your segments") {
                 if recording.recordings.isEmpty {
-                    Text("No recordings yet. Ones you make appear here: drag one into a chat to send it.").muted()
+                    Text("No segments yet. Drag one into a chat to send it.").muted()
                         .padding(.horizontal, Theme.Space.md)
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -57,7 +57,7 @@ struct RecordingSettingsSection: View {
 
     private var stateText: String {
         switch recording.phase {
-        case .idle: "Record your screen"
+        case .idle: "Record your screen, with captions"
         case .starting: "Choose a screen to record"
         case .ready: "Press Record on the bar at the bottom of the screen"
         case .recording: "Recording: stop it from the bar at the bottom of the screen"

@@ -1,6 +1,6 @@
 # Screen recording
 
-Last updated 2026-10-28. **v1 built** on `screen-recording`, reviewed
+Last updated 2026-10-29. **v1 built** on `screen-recording`, reviewed
 (code review, simplify, security review), and tried end to end by
 Tom on 2026-10-28: the camera bubble, Record, captions.
 
@@ -38,29 +38,46 @@ Record, "Recording…").
   to keep Peel in the picture (`includePeel`). A window alone is
   v2: the bubble is a window on the display, so it is only in a display's
   picture (a window recording would need it composited afterwards).
-- **Capture** (`ScreenRecorder`). An `SCStream` on the picked filter with
-  `SCRecordingOutput` (macOS 15) writing H.264 and AAC to an `.mp4` in
-  Peel's temp folder: the screen at up to 1920 px on its longest side, 30
-  fps, in the encoder's pixel format (`SCStreamConfiguration.fitting`,
-  shared with a call's share), the cursor, and the microphone (`captureMicrophone`, bound to the
-  default input, as dictation learned to). No system audio in v1. The
-  recording runs up to Account › Segments' Segment limit (5, 15, 30 or 60
-  minutes; 30 by default), only so a forgotten one cannot fill the disk:
-  H.264 at this size is about 1 MB every 2 s, so 30 minutes is about
-  800 MB. The Ready bar says "Up to 30 min"; in the last minute the bar
+- **Capture** (`ScreenRecorder`). An `SCStream` on the picked filter: the
+  screen at up to 1920 px on its longest side, 30 fps, in the encoder's
+  pixel format (`SCStreamConfiguration.fitting`, shared with a call's
+  share), the cursor, and the microphone (`captureMicrophone`, bound to the
+  default input, as dictation learned to). No system audio in v1. Peel
+  writes the `.mp4` in its temp folder itself
+  (`RecordingMedia.recordingWriter`, since 2026-10-29; before, ScreenCaptureKit's
+  `SCRecordingOutput`, which has no size setting and wrote 25 MB a
+  minute): H.264 at constant quality 0.75, a keyframe at most every 10 s,
+  the mic as mono AAC at 64 kbit/s, about 4 MB a minute on a screen like
+  Tom's test (Loom's is about 2; a video playing full screen costs far
+  more). Constant quality, not a bitrate: a still screen costs almost
+  nothing and text stays sharp when it moves; at the same size a fixed
+  bitrate's worst frame is far softer, and a cap on top starves the
+  keyframes (measured on Tom's recording; the comparison encodes are in
+  `~/Downloads/Peel bitrate test 2026-10-29`). An encoder that refuses
+  quality mode (an Intel Mac, not checked) gets a fixed 800 kbit/s. The
+  file is written in 2 s fragments, so a quit or crash mid-recording
+  leaves what was written playable; after Stop it is written again
+  whole, index first, captions or not, so a chat's player starts before
+  the download ends. The file starts at the first whole frame;
+  sound before it is dropped. A Mac with no mic records the picture alone.
+  The recording runs up to Account › Segments' Segment limit (5, 15, 30
+  or 60 minutes; 30 by default), only so a forgotten one cannot fill the
+  disk. The Ready bar says "Up to 30 min"; in the last minute the bar
   counts down the time left, and at the end the dictation HUD says
   "Stopped at 30 minutes. Saved to Downloads" (board: option A, Tom,
   2026-10-28). H.264, not HEVC: a recording over what a chat takes is
   shared outside Peel, to any device (Tom, 2026-10-29).
-- **Sending.** The hosted memes server takes about 25 MB (Tom,
-  2026-10-29; `RecordingController.sendLimit`), about a minute of
-  recording. A recording over it says "Too large to send in Peel" in
+- **Sending.** Peel sends up to 32 MB (`Engine.sendLimit`, what the
+  hosted memes server takes), about 8 minutes of a typical segment. A recording over it says "Too large to send in Peel" in
   Account › Segments, and is shared from Finder (Drive, Dropbox): it
   still drags out, to a browser's upload or Finder.
 - **The mic** is macOS's default input at Record, for the whole
-  recording. Any `updateConfiguration` mid-recording, another mic or the
-  same one reopened, makes `SCRecordingOutput` finish its file there
-  (AirPods connecting, Tom, 2026-10-29), so the mic is never moved. A mic
+  recording. With `SCRecordingOutput`, any `updateConfiguration`
+  mid-recording, another mic or the same one reopened, finished its file
+  there (AirPods connecting, Tom, 2026-10-29); Peel's own writer has no
+  such rule, but following the default mid-recording is not built yet.
+  The mic's first sample time is logged beside the first frame's, to
+  check they are on one clock. A mic
   that sends only zeros for 2 s is deaf (a Bluetooth headset dropped its
   voice link, Tom's recording of 2026-10-28: silence from 0:03 to the
   end); the bar says "No sound from your mic" until it is back.
@@ -148,7 +165,8 @@ and anything but a plain file under a recording's name are not listed.
 
 Risk: high when reviewed (`Sources/PeelCore/Engine.swift`, `attachmentLimit`
 made public; 1575 lines). Since 2026-10-29 that change is gone: the
-recording's limit is its own (`longest`, `sendLimit`).
+recording's limit is its own (`longest`), and sending uses
+`Engine.sendLimit`.
 
 Independent review (high tier, an agent that did not write it): fixed a
 recording deleted when Downloads refused it; the camera and bar left up when

@@ -41,5 +41,7 @@ struct EngineFailureTests {
             == "this tribe now charges more per message; send it as a new message")
         #expect(Engine.Failure.noMemesServer.description == "this account has no memes server for attachments")
         #expect(Engine.Failure.noCallServer.description == "this account has no call server")
+        #expect(PeelError.readable(Engine.Failure.tooLargeToSend("big.mov"))
+            == "big.mov is larger than 32 MB, the most Peel can send")
     }
 }

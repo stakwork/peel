@@ -157,9 +157,11 @@ one.
 From stakwork/sphinx-meme `router.go`, read 2026-10-13:
 
 - `POST /file` (signed in, multipart, `name` field) stores an encrypted
-  file and returns a `muid`. Default limit 32 MB per upload
-  (`lsat/size.go`); lower when the server sets `RESTRICT_UPLOAD_SIZE`
-  and `MAX_FREE_UPLOAD_SIZE_MB`. Larger files go to `POST /largefile`,
+  file and returns a `muid`. Default limit 32 MiB and 512 bytes per
+  upload, the whole multipart body (`lsat/size.go`), answered with 413
+  "File too big"; lower when the server sets `RESTRICT_UPLOAD_SIZE`
+  and `MAX_FREE_UPLOAD_SIZE_MB`. The hosted server runs the default
+  (see open question 5). Larger files go to `POST /largefile`,
   which needs a paid LSAT.
 - `GET /mymedia` lists the owner's media; `GET /mymedia/{muid}` one item;
   `GET /file/{token}` downloads with a media token, as attachments do.
@@ -274,7 +276,14 @@ server away from home. Not decided. Options:
    workspace snapshot?
 4. Should a home server hold only the derived backup key, or the
    agent's own account (agent-native.md), with backups under that?
-5. Is the 32 MB default limit what the hosted memes server runs?
+5. ~~Is the 32 MB default limit what the hosted memes server runs?~~
+   Answered 2026-10-29: yes, by its deploy config. sphinx-meme's
+   `prod.yaml` (memes.sphinx.chat) sets neither `RESTRICT_UPLOAD_SIZE`
+   nor `MAX_FREE_UPLOAD_SIZE_MB`, and its Caddy proxy and the older
+   nginx config (`client_max_body_size 0`) add no body limit. So a
+   snapshot over about 32 MB needs `/largefile` (a paid LSAT) or
+   splitting. Not confirmed by an upload to the hosted server; Peel
+   sends at most 32 MB (`Engine.sendLimit`).
 
 ## Phases
 

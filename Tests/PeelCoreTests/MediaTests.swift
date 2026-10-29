@@ -182,6 +182,18 @@ struct AttachmentKindTests {
         _ = try MemesServer(host: "memes.sphinx.chat")
         _ = try MemesServer(host: "127.0.0.1:8857")
     }
+
+    /// The server's 413 past its size limit reads as the file being too
+    /// large, not as an HTTP status.
+    @Test func anUploadOverTheServersLimitSaysTheFileIsTooLarge() async throws {
+        let stub = try await HTTPStub(status: 413) { _ in #""File too big""# }
+        defer { stub.stop() }
+        let memes = try MemesServer(host: "127.0.0.1:\(stub.port)")
+        let error = await #expect(throws: MemesServer.Failure.self) {
+            try await memes.upload(Data(count: 10), as: OutgoingFile(name: "big.mov", data: Data()), token: .init("t"))
+        }
+        #expect(error.map(PeelError.readable) == "the file is too large for Peel to send")
+    }
 }
 
 struct MediaStoreTests {
@@ -218,6 +230,22 @@ struct AttachmentStorageTests {
         message.fileSize = 70
         message.upload = Message.Upload.pending.rawValue
         return message
+    }
+
+    /// A file over the memes server's limit is refused before a row is
+    /// stored or anything uploads; one at the limit goes on to its upload.
+    @Test func aFileOverTheSendLimitIsRefusedBeforeItIsStored() async throws {
+        let storage = try registeredStorage(profile, contact: keyG)
+        try storage.set("127.0.0.1:9", for: .memesHost)
+        let engine = try testEngine(storage)
+        let big = try sparseFile(profile.url.appendingPathComponent("big.mov"), size: Engine.sendLimit + 1)
+        await #expect(throws: Engine.Failure.tooLargeToSend("big.mov")) { try await engine.sendAttachment(big, to: keyG) }
+        #expect(try rows(profile, "SELECT id FROM message").isEmpty)
+
+        _ = try await engine.sendAttachment(try sparseFile(profile.url.appendingPathComponent("fits.mov"), size: Engine.sendLimit), to: keyG)
+        let row = try #require(try rows(profile, "SELECT upload FROM message").first)
+        // Nothing listens on port 9: stored, then its upload failed.
+        #expect(row["upload"] == Message.Upload.failed.rawValue)
     }
 
     private func store(_ message: Message, in storage: Storage) throws -> Message {

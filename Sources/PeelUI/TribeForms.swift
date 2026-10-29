@@ -277,13 +277,15 @@ public final class TribeJamiePicker {
         }
     }
 
-    /// The line under the row: who answers `@jamie` here and as whom, or
-    /// what a pick does.
+    /// The line under the row: which org Jamie answers `@jamie` from here,
+    /// and that its turns use the person's access there (they run as the
+    /// person who linked the tribe); or what a pick does. Jamie itself
+    /// always posts the reply.
     public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum) -> String {
         guard !pick.isEmpty else {
-            return "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there, as you."
+            return "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it."
         }
-        return "Anyone in #\(tribe.displayName) can ask @jamie. \(stadeum.workspaceName(pick)) answers, as you."
+        return "Anyone in #\(tribe.displayName) can ask @jamie. Jamie answers from \(stadeum.workspaceName(pick)), using your access to it."
     }
 }
 

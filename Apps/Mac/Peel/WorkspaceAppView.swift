@@ -42,11 +42,12 @@ struct WorkspaceAppView: View {
                 AppPreviewBar(shown: previewing, live: versions.active) { self.previewing = nil }
             }
             if let server = model.memoryServer, let page = server.page(of: app, version: previewing) {
-                AppPage(page: StrutPage(url: page, server: server, name: app.title))
+                let id = AppPageID(app: app.id, previewing: previewing, server: server, loads: loads)
+                AppPage(page: StrutPage(url: page, server: server, name: app.title), id: id, pages: model.appPages)
                     // Another app, a preview, strut started again (a new port and key), Reload, or
                     // a change of what is live made here: a new page; not a publish or the workspace
                     // renaming it, which would lose what the page holds.
-                    .id(PageID(app: app.id, previewing: previewing, server: server, loads: loads))
+                    .id(id)
             } else {
                 EmptyState("Apps open on Peel's own strut, which is not running.")
             }
@@ -90,13 +91,6 @@ struct WorkspaceAppView: View {
         }
     }
 
-    private struct PageID: Hashable {
-        let app: String
-        let previewing: String?
-        let server: MemoryServer
-        let loads: Int
-    }
-
     private struct VersionsID: Hashable {
         let app: String
         let live: String?
@@ -129,6 +123,31 @@ struct AppPinButton: View {
     }
 }
 
+/// Which page of an app a web view shows: another of any of these is another page.
+struct AppPageID: Hashable {
+    let app: String
+    let previewing: String?
+    let server: MemoryServer
+    let loads: Int
+}
+
+/// The web views of the apps shown lately, kept while the person is in
+/// another destination so the page keeps what it holds (`AppModel.appPages`).
+/// A view's coordinator is its delegate, which a web view holds weakly, so
+/// it is kept with it.
+typealias AppPages = KeepAlive<AppPageID, (view: InputWebView, coordinator: AppPage.Coordinator)>
+
+extension AppPages {
+    /// Three apps at most: the one shown longest ago is closed.
+    static func make() -> AppPages {
+        KeepAlive(limit: 3) { kept in
+            kept.view.stopLoading()
+            kept.view.navigationDelegate = nil
+            kept.view.uiDelegate = nil
+        }
+    }
+}
+
 /// The web view under an app: strut's UI from Peel's own strut, on a store
 /// that keeps nothing (the key it is handed lives in the tab's session
 /// storage, and goes with the view), limited as the web pane is
@@ -136,8 +155,10 @@ struct AppPinButton: View {
 /// opens beside it as a message's link does, only right after the person
 /// clicked or typed in it, since the page's scripts are the workspace's. No
 /// download, camera or microphone.
-private struct AppPage: NSViewRepresentable {
+struct AppPage: NSViewRepresentable {
     let page: StrutPage
+    let id: AppPageID
+    let pages: AppPages
     @Environment(\.openURL) private var openURL
 
     func makeCoordinator() -> Coordinator {
@@ -145,25 +166,27 @@ private struct AppPage: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> InputWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        WebPane.limit(configuration)
-        let view = InputWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = context.coordinator
-        view.uiDelegate = context.coordinator
-        // A force click's preview would load a link outside these rules.
-        view.allowsLinkPreview = false
-        view.load(URLRequest(url: page.url))
-        return view
+        let kept = pages.value(for: id, owner: id.app) {
+            let configuration = WKWebViewConfiguration()
+            configuration.websiteDataStore = .nonPersistent()
+            WebPane.limit(configuration)
+            let view = InputWebView(frame: .zero, configuration: configuration)
+            view.navigationDelegate = context.coordinator
+            view.uiDelegate = context.coordinator
+            // A force click's preview would load a link outside these rules.
+            view.allowsLinkPreview = false
+            view.load(URLRequest(url: page.url))
+            return (view, context.coordinator)
+        }
+        // Kept from a time it was shown before: it is put in the new place.
+        kept.view.removeFromSuperview()
+        return kept.view
     }
 
     func updateNSView(_ view: InputWebView, context: Context) {}
 
-    static func dismantleNSView(_ view: InputWebView, coordinator: Coordinator) {
-        view.stopLoading()
-        view.navigationDelegate = nil
-        view.uiDelegate = nil
-    }
+    /// The view stays in `pages`, which closes it when it is no longer wanted.
+    static func dismantleNSView(_ view: InputWebView, coordinator: Coordinator) {}
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {

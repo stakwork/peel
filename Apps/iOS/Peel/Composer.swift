@@ -211,8 +211,19 @@ private struct AttachButton: View {
             Task { add(await Task.detached { PickedFiles.copies(of: urls) }.value) }
         }
         .fullScreenCover(isPresented: binding(.camera)) {
-            CameraPicker { image in
-                Task { add(await Task.detached { PickedFiles.photo(image) }.value) }
+            CameraPicker { captured in
+                switch captured {
+                case .photo(let image):
+                    Task { add(await Task.detached { PickedFiles.photo(image) }.value) }
+                case .video(let url):
+                    // The camera's temp recording is copied into Peel's attachment folder, then removed.
+                    Task {
+                        add(await Task.detached {
+                            defer { try? FileManager.default.removeItem(at: url) }
+                            return PickedFiles.copies(of: [url])
+                        }.value)
+                    }
+                }
             }
             .ignoresSafeArea()
         }
@@ -305,14 +316,20 @@ enum PickedFiles {
     }
 }
 
-/// The system camera, for a photo to attach.
+/// The system camera, for a photo or a video to attach. The user switches
+/// between the two with the camera's own controls.
 private struct CameraPicker: UIViewControllerRepresentable {
-    let take: (UIImage) -> Void
+    enum Captured { case photo(UIImage), video(URL) }
+
+    let take: (Captured) -> Void
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.sourceType = .camera
+        picker.mediaTypes = UIImagePickerController.availableMediaTypes(for: .camera) ?? [UTType.image.identifier, UTType.movie.identifier]
+        picker.videoQuality = .typeHigh
+        picker.allowsEditing = false
         picker.delegate = context.coordinator
         return picker
     }
@@ -327,7 +344,8 @@ private struct CameraPicker: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage { parent.take(image) }
+            if let url = info[.mediaURL] as? URL { parent.take(.video(url)) }
+            else if let image = info[.originalImage] as? UIImage { parent.take(.photo(image)) }
             parent.dismiss()
         }
 

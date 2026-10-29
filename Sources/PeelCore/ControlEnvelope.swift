@@ -317,6 +317,16 @@ extension AgentArtifact {
             }
         }
 
+        /// An app's name on its strut and the version it names, if any
+        /// (`@acme/board@v3` is `board`, `v3`); nil for a file.
+        public var app: (name: String, version: String?)? {
+            guard case .app(let app) = self else { return nil }
+            var name = Substring(app)
+            if app.hasPrefix("@"), let slash = app.firstIndex(of: "/") { name = app[app.index(after: slash)...] }
+            guard let at = name.lastIndex(of: "@") else { return (String(name), nil) }
+            return (String(name[..<at]), String(name[name.index(after: at)...]))
+        }
+
         /// A file's handle, if `path` is exactly one of those shapes: a path's
         /// characters only, no `.` or `..` segment however it is written, a
         /// run id with no `/` (only a job's holds one), and no escaped `/`,

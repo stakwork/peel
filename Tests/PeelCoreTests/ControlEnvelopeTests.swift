@@ -301,6 +301,14 @@ struct DeviceRequestRuleTests {
         #expect(handle == .app(app) && handle?.peer == peer)
     }
 
+    @Test func namesTheAppAndItsVersion() {
+        let named = AgentArtifact.Handle(app: "@acme/hive/board@v12")?.app
+        #expect(named?.name == "hive/board" && named?.version == "v12")
+        let live = AgentArtifact.Handle(app: "visits")?.app
+        #expect(live?.name == "visits" && live?.version == nil)
+        #expect(AgentArtifact.Handle(path: "/artifacts/r7/x.md")?.app == nil)
+    }
+
     @Test(arguments: ["", "@acme", "@acme/", "@/visits", "@a b/visits", "@acme/@b/x", "../x", "visits@", "visits@2", "visits@v2@v3",
                       "@acme/x@latest", "@acme/@b/x@v1", "a//b", "/a", "a b",
                       "v2", "x/v2", "@acme/x/v12", "data.db", "x/data.db"])

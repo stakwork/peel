@@ -216,7 +216,7 @@ extension AgentArtifact {
     }
 
     /// Where Peel's own strut shows the entry, through `/peers/<workspace>`:
-    /// an app by name (and version); a peer's file by its peer, `via` and
+    /// an app by name (and version), or by its document link; a peer's file by its peer, `via` and
     /// job; a strut-relative url behind the workspace. Nil for a peer's app,
     /// two hops off, which strut's `?app=` cannot name.
     private static func handle(of fields: [String: JSONValue], on workspace: String) -> Handle? {
@@ -237,9 +237,21 @@ extension AgentArtifact {
             return Handle(path: hops.map { "/peers/\($0)" }.joined() + "/jobs/\(encoded(job))/files/" + file)
         }
         if let url = text("url"), url.hasPrefix("/"), !url.hasPrefix("//") {
+            if let app = appOfDocument(url) { return Handle(app: "@\(workspace)/\(app)") }
             return Handle(path: "/peers/\(workspace)" + url)
         }
         return nil
+    }
+
+    /// An app's document link (`/apps/<name>/<vN>/files/dist/index.html`,
+    /// strut's `appDocumentUrl`) as the app, `name[@vN]`, as Hive reads it
+    /// (`workspaceAppOfKey`): an entry may name an app by it, with no `app`.
+    private static func appOfDocument(_ url: String) -> String? {
+        guard let match = url.firstMatch(of: #/^/apps/(.+?)(?:/(v\d{1,6}))?/files/dist/index\.html$/#) else { return nil }
+        let segments = match.1.split(separator: "/", omittingEmptySubsequences: false).map { $0.removingPercentEncoding }
+        guard segments.allSatisfy({ $0 != nil }) else { return nil }
+        let name = segments.compactMap { $0 }.joined(separator: "/")
+        return match.2.map { "\(name)@\($0)" } ?? name
     }
 
     /// `value` as one path segment, as `encodeURIComponent` writes it.

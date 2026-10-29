@@ -136,6 +136,16 @@ struct CallChatWireTests {
         #expect(artifacts(reply(#"{"id":"x","title":"X","url":"/jobs/j/files/x"}"#, workspace: "../x")).first?.handle == nil)
     }
 
+    @Test func readsAnAppByItsDocumentLink() {
+        let read = artifacts(reply(#"""
+            {"id":"a","kind":"app","title":"Canvas","url":"/apps/infinite-canvas/v21/files/dist/index.html"},
+            {"id":"b","kind":"app","title":"Active","url":"/apps/tools%2Fboard/files/dist/index.html"},
+            {"id":"c","kind":"app","title":"Other file","url":"/apps/infinite-canvas/v21/files/data.json"},
+            {"id":"d","kind":"app","title":"Bad name","url":"/apps/bad%20name/v1/files/dist/index.html"}
+            """#, workspace: "hive"))
+        #expect(read.map(\.handle) == [.app("@hive/infinite-canvas@v21"), .app("@hive/tools/board"), nil, nil])
+    }
+
     @Test func readsStrutOnlyFromJamieAndNeverLosesTheMessage() {
         let entry = #"{"id":"plan","title":"Plan","url":"/jobs/j/files/plan.md"}"#
         #expect(artifacts(reply(entry)).count == 1)

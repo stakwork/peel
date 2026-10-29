@@ -33,6 +33,9 @@ enum Theme {
     static let buttonText = Color(light: 0xFFFFFF, dark: 0x0E1620)
     /// PrimaryRed: only for actions that destroy something.
     static let destructive = Color(light: 0xED7474, dark: 0xED7474)
+    /// A warning on a HUD's dark pill, in either mode: a recording's time
+    /// left, or its mic lost.
+    static let hudWarning = Color(light: 0xEF9F27, dark: 0xEF9F27)
     /// Links in messages.
     static let link = Color(light: 0x3F68E0, dark: 0x8FB0FF)
     /// An @mention: a soft chip.

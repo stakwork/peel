@@ -90,7 +90,7 @@ public final class AppModel {
 
     /// Account's categories, listed where the sidebar was while it is open.
     public enum AccountPage: Hashable, Sendable, CaseIterable {
-        case profile, payments, assistant, brain, connections, dictation, notifications, security
+        case profile, payments, assistant, brain, connections, dictation, recording, notifications, security
     }
 
     public var phase: Phase = .loading {

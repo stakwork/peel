@@ -69,13 +69,62 @@ public struct StrutSpeech: Sendable {
     /// recogniser wrote, only when the vocabulary changed it. Empty text
     /// when nothing was heard. Read here, off the main thread.
     public func transcribe(wavAt file: URL) async throws -> (text: String, heard: String?) {
-        let wav = try Data(contentsOf: file)
-        // No `model`: strut uses the user's pick (`dictation/use`) once it is
-        // installed, its default until then; a model named here would win.
-        let reply = try await call("POST", "audio/transcribe", body: (wav, "audio/wav"))
+        let reply = try await transcription(of: file)
         guard let text = reply["text"]?.string else { throw Failure.refused("its reply had no text") }
         let heard = reply["heard"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (text.trimmingCharacters(in: .whitespacesAndNewlines), heard)
+    }
+
+    /// The WAV at `file` for a screen recording's captions
+    /// (docs/recording.md): what was said, with the user's vocabulary in
+    /// place ("stack work" → "Stakwork") and nothing else of the fixer's
+    /// (`swapped`); each word as heard with when it starts, in seconds,
+    /// strut leaving the timed words as heard; and whether the fixer ran,
+    /// which it does not while its model loads. Empty when nothing was heard.
+    public func words(wavAt file: URL) async throws -> (text: String, heard: [(text: String, start: Double)], fixed: Bool) {
+        let reply = try await transcription(of: file)
+        guard let text = reply["text"]?.string, let segments = reply["segments"]?.array else {
+            throw Failure.refused("its reply had no text")
+        }
+        let heard: [(text: String, start: Double)] = segments.flatMap { segment in
+            (segment["words"]?.array ?? []).compactMap { word in
+                guard let text = word["text"]?.string, case .number(let start)? = word["start"] else { return nil }
+                return (text, start)
+            }
+        }
+        let said = reply["heard"]?.string.map { Self.swapped($0, reply["changes"]?.array ?? []) } ?? text
+        return (said.trimmingCharacters(in: .whitespacesAndNewlines), heard, reply["fixer"]?.string != nil)
+    }
+
+    /// `transcript` with only the fixer's changes that write a word where
+    /// another was heard: the vocabulary. Never one that leaves words out (a
+    /// filler, or words it took for taken back, which for dictation is
+    /// clean-up but in captions loses what was said). `at` counts UTF-16
+    /// units, as strut's JavaScript does; a change that does not match the
+    /// transcript there is left out.
+    static func swapped(_ transcript: String, _ changes: [AgentKit.JSONValue]) -> String {
+        let text = NSMutableString(string: transcript)
+        let swaps: [(at: Int, heard: String, written: String)] = changes.compactMap { change in
+            guard case .number(let at)? = change["at"], let heard = change["heard"]?.string,
+                  let written = change["written"]?.string, !written.trimmingCharacters(in: .whitespaces).isEmpty
+            else { return nil }
+            return (Int(at), heard, written)
+        }
+        // From the end, so each one's place is as strut counted it.
+        for swap in swaps.sorted(by: { $0.at > $1.at }) {
+            let range = NSRange(location: swap.at, length: (swap.heard as NSString).length)
+            guard swap.at >= 0, NSMaxRange(range) <= text.length, text.substring(with: range) == swap.heard else { continue }
+            text.replaceCharacters(in: range, with: swap.written)
+        }
+        return text as String
+    }
+
+    private func transcription(of file: URL) async throws -> AgentKit.JSONValue {
+        // Mapped, not read in: a screen recording's sound is tens of MB.
+        let wav = try Data(contentsOf: file, options: .alwaysMapped)
+        // No `model`: strut uses the user's pick (`dictation/use`) once it is
+        // installed, its default until then; a model named here would win.
+        return try await call("POST", "audio/transcribe", body: (wav, "audio/wav"))
     }
 
     // MARK: HTTP

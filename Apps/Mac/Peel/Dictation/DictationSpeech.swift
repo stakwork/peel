@@ -75,13 +75,25 @@ final class DictationSpeech {
 
     /// The recording's text.
     func transcribe(_ wav: URL) async throws -> DictationTranscript {
+        let reply = try await ready().transcribe(wavAt: wav)
+        return DictationTranscript(text: reply.text, heard: reply.heard)
+    }
+
+    /// A screen recording's words, with the user's vocabulary, and when
+    /// each starts; and whether strut's fixer ran to put the vocabulary in.
+    func words(_ wav: URL) async throws -> (words: [TimedWord], fixed: Bool) {
+        let reply = try await ready().words(wavAt: wav)
+        return (RecordingCaptions.retimed(reply.heard.map { TimedWord(text: $0.text, start: $0.start) }, as: reply.text), reply.fixed)
+    }
+
+    /// Speech on Peel's strut once it is up and has the model.
+    private func ready() async throws -> StrutSpeech {
         let server = try await strut()
         waiting += 1
         defer { waiting -= 1 }
         if model == .downloading { onDownloadWait() }
         try await ensureModel()
-        let reply = try await StrutSpeech(server: server).transcribe(wavAt: wav)
-        return DictationTranscript(text: reply.text, heard: reply.heard)
+        return StrutSpeech(server: server)
     }
 
     /// Peel's strut, waiting a little if it is still starting.

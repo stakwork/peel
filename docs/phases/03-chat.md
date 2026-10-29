@@ -17,7 +17,8 @@ message (#23, in `02-messaging.md` item 7).
 
 **Decided:** no auto-join of the invite's tribe; delete sends only
 `delete_tribe`; one Reply, threads grow from replies, no Copy link; files
-only from the account's own memes host, at most 100 MB, never opened for
+only from the account's own memes host, sent up to 32 MB (the memes
+server's limit, 2026-10-29) and downloaded up to 100 MB, never opened for
 you. Paid attachments came later, in phase 4.
 
 **Connection control (2026-10-15):** built and verified, ready for review. A
@@ -1083,8 +1084,19 @@ The reference client (`wasm/test/auto/sendAttachment.ts`) only sends
   for images, container signatures for video and audio, `%PDF-` for PDFs);
   a mismatch is reported as a plain file, which nothing renders. Peel never
   opens or executes a file; `download` writes it where it is told and stops.
-- Size cap 100 MB for sending and downloading (a `Content-Length` over it is
-  refused before reading; a body that grows past it is cut off). The
+- Size cap 100 MB for downloading (a `Content-Length` over it is
+  refused before reading; a body that grows past it is cut off). Sending
+  is capped at 32 MB (`Engine.sendLimit`, 2026-10-29): the memes server
+  answers 413 past 32 MiB and 512 bytes per upload, so a larger file is
+  refused when it joins the composer, and again by `sendAttachment`,
+  before anything is stored or uploaded. A 413 still reads "the file is
+  too large for Peel to send". Review findings not applied: the server
+  may drop the connection mid-body instead of answering 413 (a local
+  copy of its check answered 413; through the hosted proxy unverified),
+  which reads as a lost connection; a drop that mixes an oversized
+  Finder file with a failed promise shows only the second notice
+  (`PasteboardFiles.attach` sets its own after `addFiles`); a 413 on a
+  profile photo uses the same "send" words. The
   decrypted cache lives in `<profile>/media/cache`, one file per muid, and is
   trimmed to 500 MB, oldest first.
 - The encrypted upload waits in `<profile>/media/outbox/<row id>` until the
@@ -1233,7 +1245,7 @@ Not applied, with reasons:
   stored: one column less, and a cached file is re-checked as it is now.
 - The cache is trimmed on every store, not by a running total: a directory
   listing per download is small next to the download.
-- Uploads are built in memory, not streamed from a file: 100 MB cap.
+- Uploads are built in memory, not streamed from a file: 32 MB cap.
 - The transfer's own redirect handler is kept although the session has one:
   it is the security path, so it does not rely on delegate fallback.
 - The app hides attachments in the view only; unread and the sidebar count
@@ -1662,7 +1674,7 @@ Built:
   only a link beside it (Copy Image) is the image. Image bytes are written to
   `$TMPDIR/Peel Attachments/<uuid>/Image 2026-10-08 at 14.05.png` (TIFF
   converted to PNG; " (2)" and on for more in one paste), over
-  `Engine.attachmentLimit` refused before decoding. A promised file is
+  `Engine.sendLimit` refused before decoding. A promised file is
   accepted only as a plain file (no link, no folder) directly in the folder
   Peel gave it and within the limit; anything else is removed and refused.
   `discard` removes only Peel's own files.

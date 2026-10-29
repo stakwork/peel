@@ -204,7 +204,26 @@ struct RunHeaderLine: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.quietText(on: surface))
                 .fixedSize()
+            if row.message.fromMe, row.message.delivery == .delivered {
+                DeliveredBolt()
+            }
         }
+    }
+}
+
+/// The green bolt after the time on a delivered message of ours, in a
+/// `.firstTextBaseline` row. Its centre goes to the middle of the time's
+/// capitals and digits, from that font's own metrics.
+struct DeliveredBolt: View {
+    /// The time's font beside it, `PhoneTheme`'s `.time` (12).
+    private static let timeCapHeight = UIFont.systemFont(ofSize: 12).capHeight
+
+    var body: some View {
+        Image(systemName: "bolt.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(Theme.confirmed)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Self.timeCapHeight / 2 }
+            .accessibilityLabel("Delivered")
     }
 }
 

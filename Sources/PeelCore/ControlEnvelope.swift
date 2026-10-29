@@ -296,10 +296,12 @@ extension AgentArtifact {
     /// loaded with strut's key.
     public enum Handle: Sendable, Equatable {
         /// A file strut serves: `/jobs/<job>/files/<file>` or
-        /// `/artifacts/<run>/<file>`, behind at most two `/peers/<id>` (an
-        /// org's, through strut's read-through), each segment percent-encoded.
+        /// `/artifacts/<run>/<file>`, behind at most three `/peers/<id>` (an
+        /// org's, through strut's read-through: the org, its peer and that
+        /// peer's `via`), each segment percent-encoded.
         case file(String)
-        /// An app: `<name>`, or `@<id>/<name>` for an org's.
+        /// An app: `<name>`, or `@<id>/<name>` for an org's, with `@vN`
+        /// after it to show that version rather than the live one.
         case app(String)
 
         /// The org it lives on, which the person reads as `@<id>`: the first
@@ -315,6 +317,16 @@ extension AgentArtifact {
             }
         }
 
+        /// An app's name on its strut and the version it names, if any
+        /// (`@acme/board@v3` is `board`, `v3`); nil for a file.
+        public var app: (name: String, version: String?)? {
+            guard case .app(let app) = self else { return nil }
+            var name = Substring(app)
+            if app.hasPrefix("@"), let slash = app.firstIndex(of: "/") { name = app[app.index(after: slash)...] }
+            guard let at = name.lastIndex(of: "@") else { return (String(name), nil) }
+            return (String(name[..<at]), String(name[name.index(after: at)...]))
+        }
+
         /// A file's handle, if `path` is exactly one of those shapes: a path's
         /// characters only, no `.` or `..` segment however it is written, a
         /// run id with no `/` (only a job's holds one), and no escaped `/`,
@@ -326,7 +338,7 @@ extension AgentArtifact {
             var segments = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false).map(String.init)[...]
             var hops = 0
             while segments.first == "peers" {
-                guard hops < 2, segments.count > 1, Self.isPeerID(segments[segments.startIndex + 1]) else { return nil }
+                guard hops < 3, segments.count > 1, Self.isPeerID(segments[segments.startIndex + 1]) else { return nil }
                 segments = segments.dropFirst(2)
                 hops += 1
             }
@@ -350,7 +362,9 @@ extension AgentArtifact {
             self = .file(path)
         }
 
-        /// An app's handle, if `app` is a strut app name, behind `@<id>/` for an org's.
+        /// An app's handle, if `app` is a strut app name, behind `@<id>/` for
+        /// an org's, and pinned to a version by `@vN` after it (strut's solo
+        /// page shows that version, specs/API.md §14.3).
         public init?(app: String) {
             var name = Substring(app)
             if app.hasPrefix("@") {
@@ -358,6 +372,10 @@ extension AgentArtifact {
                     return nil
                 }
                 name = app[app.index(after: slash)...]
+            }
+            if let at = name.lastIndex(of: "@") {
+                guard name[name.index(after: at)...].range(of: #"^v[0-9]+$"#, options: .regularExpression) != nil else { return nil }
+                name = name[..<at]
             }
             guard Self.isAppName(String(name)) else { return nil }
             self = .app(app)

@@ -44,6 +44,13 @@ public final class WAVFileWriter {
         sampleCount += samples.count
     }
 
+    /// Samples already as little-endian PCM16 bytes, written as they are.
+    public func append(_ bytes: UnsafeRawBufferPointer) throws {
+        guard let handle, !bytes.isEmpty else { return }
+        try handle.write(contentsOf: bytes)
+        sampleCount += bytes.count / 2
+    }
+
     /// Closes the file with its real length in the header.
     public func finish() throws {
         guard let handle else { return }

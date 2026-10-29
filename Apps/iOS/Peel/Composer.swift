@@ -287,7 +287,7 @@ enum PickedFiles {
     }
 
     /// Copies of files picked in Files, each in its own folder of Peel's;
-    /// one over the attachment limit, or not a plain file, is removed and
+    /// one over the send limit, or not a plain file, is removed and
     /// refused (`IncomingFiles.accept`).
     static func copies(of urls: [URL]) -> (files: [URL], refused: [String]) {
         var files: [URL] = [], refused: [String] = []

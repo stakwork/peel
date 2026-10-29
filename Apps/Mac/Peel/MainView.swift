@@ -229,6 +229,10 @@ struct Detail: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background.ignoresSafeArea())
+        // An app no longer listed keeps no page.
+        .onChange(of: model.stadeum.apps.map(\.id)) { _, listed in
+            model.appPages.evict(owners: { !listed.contains($0) })
+        }
     }
 
     /// No chat open: the app's name over what to do.

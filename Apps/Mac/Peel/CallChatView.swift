@@ -155,11 +155,23 @@ private struct ChatRowView: View {
                     .font(Theme.font(11))
                     .foregroundStyle(Theme.tertiaryText)
             }
-            Text(Self.body(message.text, highlightingJamie: call.jamieInCall))
-                .font(Theme.font(13))
-                .textSelection(.enabled)
-                .multilineTextAlignment(row.isMine ? .trailing : .leading)
-                .frame(maxWidth: .infinity, alignment: row.isMine ? .trailing : .leading)
+            let text = message.shownText
+            if !text.isEmpty {
+                Text(Self.body(text, highlightingJamie: call.jamieInCall))
+                    .font(Theme.font(13))
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(row.isMine ? .trailing : .leading)
+                    .frame(maxWidth: .infinity, alignment: row.isMine ? .trailing : .leading)
+            }
+            if !message.artifacts.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    // By position: two entries may share an id.
+                    ForEach(Array(message.artifacts.enumerated()), id: \.offset) { _, artifact in
+                        AgentArtifactLine(artifact: artifact, stacked: true)
+                    }
+                }
+                .padding(.top, Theme.Space.xs)
+            }
             if row.failed {
                 HStack(spacing: Theme.Space.xs) {
                     Text("Not sent").foregroundStyle(Theme.attention)

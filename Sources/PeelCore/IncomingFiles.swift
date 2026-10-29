@@ -72,22 +72,18 @@ public enum IncomingFiles {
     }
 
     /// Writes image bytes as a file to attach, a TIFF as PNG (smaller, and
-    /// what every client draws). Refuses bytes over the attachment limit
+    /// what every client draws). Refuses bytes over the send limit
     /// (before any conversion, so nothing larger is decoded) and a TIFF that
     /// does not decode; the engine checks every file's kind by its bytes
     /// when it sends.
     public static func write(
         _ data: Data, type: UTType, index: Int = 0, date: Date = Date(), in root: URL = defaultRoot
     ) throws -> URL {
-        let limit = Engine.attachmentLimit
-        guard data.count <= limit else { throw TooLarge(limit: limit) }
-        var bytes = data, type = type
-        if type == .tiff {
-            bytes = try png(fromTIFF: data)
-            type = .png
-        }
-        let file = try newFolder(in: root)
-            .appendingPathComponent(imageName(at: date, index: index, ext: type.preferredFilenameExtension ?? "png"))
+        let written = type == .tiff ? UTType.png : type
+        let name = imageName(at: date, index: index, ext: written.preferredFilenameExtension ?? "png")
+        try Engine.checkSendable(name, size: data.count)
+        let bytes = type == .tiff ? try png(fromTIFF: data) : data
+        let file = try newFolder(in: root).appendingPathComponent(name)
         try bytes.write(to: file, options: .atomic)
         return file
     }
@@ -108,7 +104,7 @@ public enum IncomingFiles {
 
     /// A promised file the source says it wrote: only a plain file (no
     /// link, no folder) directly in the folder Peel gave it, and within the
-    /// attachment limit. Anything else is removed if it is ours and refused.
+    /// send limit. Anything else is removed if it is ours and refused.
     public static func accept(_ file: URL, in folder: URL) throws -> URL {
         let name = file.lastPathComponent
         let inside = file.deletingLastPathComponent().resolvingSymlinksInPath().path
@@ -119,9 +115,7 @@ public enum IncomingFiles {
             guard values.isSymbolicLink != true, values.isRegularFile == true else {
                 throw PeelError("\(name) is not a file")
             }
-            guard (values.fileSize ?? 0) <= Engine.attachmentLimit else {
-                throw TooLarge(limit: Engine.attachmentLimit)
-            }
+            try Engine.checkSendable(name, size: values.fileSize ?? 0)
             return file
         } catch {
             try? FileManager.default.removeItem(at: file)

@@ -198,7 +198,7 @@ playback"), and playback pauses when you change chats. LiveKit
 (phase 6) already adds the microphone usage string and entitlement.
 
 **Open:** send WAV for compatibility, which is about 5 MB a minute,
-against the 100 MB attachment limit. Check what iOS and Android send and
+against the 32 MB send limit. Check what iOS and Android send and
 play before choosing anything else. Also open: a waveform or a plain
 progress bar, and whether playback continues when you change chats.
 

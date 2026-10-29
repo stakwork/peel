@@ -180,8 +180,13 @@ public actor Engine {
     var preferencesWork = PreferencesWork()
     /// The call server's ticket endpoint and presence feed; see `callConnection`.
     var calls: CallServer?
-    /// Largest attachment sent or downloaded, and the most the cache keeps.
+    /// Largest attachment downloaded, and the most the cache keeps.
     static let attachmentLimit = 100_000_000
+    /// Largest file sent. The memes server takes at most 32 MiB and 512
+    /// bytes per upload, multipart framing included (sphinx-meme
+    /// `lsat/size.go`, unchanged on memes.sphinx.chat), and answers 413
+    /// past it; 32 MB leaves room for the encryption and the framing.
+    public static let sendLimit = 32_000_000
     static let mediaCacheLimit = 500_000_000
     /// Videos and recordings up to this size download as they show; larger
     /// ones wait to be asked for (images have no such rule: they are small).

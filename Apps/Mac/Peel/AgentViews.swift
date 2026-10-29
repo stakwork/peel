@@ -267,41 +267,91 @@ private struct AgentJobLine: View {
 /// what is in it, and Open: a deliverable Peel's own strut shows (its
 /// handle; an org's file or app, read through to it) in the web pane beside
 /// the chat, with the org it lives on, or else an https link as any link.
-private struct AgentArtifactLine: View {
+/// Under the agent's DM replies and Jamie's in a call's chat.
+struct AgentArtifactLine: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    @Environment(\.openWindow) private var openWindow
     let artifact: AgentArtifact
+    /// Title, then Open on a line of its own, for a narrow panel (the
+    /// call's chat); the summary only on hover.
+    var stacked = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 11))
-                .accessibilityHidden(true)
-            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
-                .foregroundStyle(Theme.text)
-                .lineLimit(1)
-            if let summary = artifact.summary {
-                Text("· " + summary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(summary)
-            }
-            if let handle = artifact.handle, let name = strutPage(handle)?.name {
-                // Made again on the click: strut may have started again on another port and key.
-                Button("Open") { if let page = strutPage(handle) { model.web.open(page) } }
-                    .buttonStyle(.peel(.link))
-                    .help(name)
-                if let peer = handle.peer { Text("@\(peer)").fixedSize() }
-            } else if let url = artifact.url {
-                // Where it goes, beside the agent's words for it.
-                Button("Open") { openURL(url) }
-                    .buttonStyle(.peel(.link))
-                    .help(url.absoluteString)
-                if let host = url.host() { Text(host).fixedSize() }
+        Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        icon
+                        title.lineLimit(2)
+                    }
+                    .help(artifact.summary ?? "")
+                    HStack(spacing: 6) { open }
+                        .padding(.leading, 17)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    icon
+                    title.lineLimit(1)
+                    if let summary = artifact.summary {
+                        Text("· " + summary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(summary)
+                    }
+                    open
+                }
             }
         }
         .font(Theme.font(13))
         .foregroundStyle(Theme.secondaryText)
+    }
+
+    private var icon: some View {
+        Image(systemName: "doc.text")
+            .font(.system(size: 11))
+            .accessibilityHidden(true)
+    }
+
+    private var title: some View {
+        Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+            .foregroundStyle(Theme.text)
+    }
+
+    @ViewBuilder private var open: some View {
+        if let handle = artifact.handle, let name = strutPage(handle)?.name {
+            // Made again on the click: strut may have started again on another port and key.
+            // An app the Apps list has opens there, as from the sidebar; else
+            // the page, in the web pane. Both are the main window's: from the
+            // call's chat, that window comes to the front (opened again if closed).
+            Button("Open") {
+                if let app = listedApp(handle) {
+                    model.destination = .app(peer: app.peer, name: app.name)
+                } else if let page = strutPage(handle) {
+                    model.web.open(page)
+                } else {
+                    return
+                }
+                openWindow(id: MainWindow.id, value: MainWindow.Key.main)
+            }
+                .buttonStyle(.peel(.link))
+                .help(name)
+            if let peer = handle.peer { Text("@\(peer)").fixedSize() }
+        } else if let url = artifact.url {
+            // Where it goes, beside the agent's words for it.
+            Button("Open") { openURL(url) }
+                .buttonStyle(.peel(.link))
+                .help(url.absoluteString)
+            if let host = url.host() { Text(host).fixedSize() }
+        }
+    }
+
+    /// The listed app `handle` names, when the Apps page shows what it
+    /// names: no version, or the live one (the page shows the live version).
+    private func listedApp(_ handle: AgentArtifact.Handle) -> WorkspaceApp? {
+        guard let named = handle.app, let app = model.app(peer: handle.peer, name: named.name),
+              named.version == nil || named.version == app.version else { return nil }
+        return app
     }
 
     /// The deliverable on Peel's own strut; nil while it is not running.

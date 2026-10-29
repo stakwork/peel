@@ -11,17 +11,31 @@ public struct CallChatMessage: Sendable, Equatable, Identifiable {
     public let sender: String?
     /// A person's spoken command, echoed by Jamie as their row.
     public let isVoice: Bool
+    /// What a reply of Jamie's points to, from strut's own entries beside it
+    /// (`strut`); the same deliverables are links in `text` too (`shownText`).
+    public let artifacts: [AgentArtifact]
 
-    public init(id: String, timestamp: Date, text: String, sender: String?, isVoice: Bool = false) {
+    public init(id: String, timestamp: Date, text: String, sender: String?, isVoice: Bool = false,
+                artifacts: [AgentArtifact] = []) {
         self.id = id
         self.timestamp = timestamp
         self.text = text
         self.sender = sender
         self.isVoice = isVoice
+        self.artifacts = artifacts
     }
 
     /// Jamie's messages carry no sender.
     public var isFromJamie: Bool { sender?.isEmpty ?? true }
+
+    /// The text to show: with `artifacts` under it, without the list of
+    /// links (`- [Title](url)` lines) that names the same deliverables.
+    public var shownText: String {
+        guard !artifacts.isEmpty else { return text }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.range(of: #"^\s*[-*]\s+\[[^\]]*\]\([^)\s]+\)\s*$"#, options: .regularExpression) == nil }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 /// The call chat's wire format, the same one Sphinx Mac and Hive's voice
@@ -47,6 +61,10 @@ public enum CallChatWire {
         var sender: String?
         var status: String?
         var voice: Bool?
+        /// strut's entries for a reply and the workspace whose strut ran it:
+        /// `{workspace, artifacts}` (sphinx-voice plans/call-artifacts.md).
+        /// Any JSON, so a bad one never costs the message.
+        var strut: JSONValue?
     }
 
     /// What Peel sends. The timestamp is a whole number of milliseconds.
@@ -67,8 +85,9 @@ public enum CallChatWire {
 
     /// Nil for anything that is not a chat message or a status row: other
     /// payloads on the topic (`{"type":"tts-toggle"}`), malformed JSON and
-    /// empty or whitespace-only text.
-    public static func decode(_ data: Data) -> Incoming? {
+    /// empty or whitespace-only text. A message's `strut` is read only
+    /// `fromJamie`: what it names opens with this person's own access.
+    public static func decode(_ data: Data, fromJamie: Bool = false) -> Incoming? {
         guard let payload = try? JSONDecoder().decode(Payload.self, from: data),
               let id = payload.id, !id.isEmpty
         else { return nil }
@@ -80,8 +99,15 @@ public enum CallChatWire {
         let sender = payload.sender?.trimmingCharacters(in: .whitespacesAndNewlines)
         return .message(CallChatMessage(
             id: id, timestamp: time, text: text, sender: sender?.isEmpty == false ? sender : nil,
-            isVoice: payload.voice == true
+            isVoice: payload.voice == true, artifacts: fromJamie ? artifacts(payload.strut) : []
         ))
+    }
+
+    /// strut's entries in `strut`, each resolved against its workspace.
+    static func artifacts(_ strut: JSONValue?) -> [AgentArtifact] {
+        guard case .object(let fields)? = strut, case .string(let workspace)? = fields["workspace"],
+              case .array(let entries)? = fields["artifacts"] else { return [] }
+        return entries.prefix(AgentArtifact.most).compactMap { AgentArtifact(strutEntry: $0, workspace: workspace) }
     }
 
     /// `text` with its last word, an `@` or the start of `@jamie` in any
@@ -174,5 +200,63 @@ public struct CallChatLog: Sendable, Equatable {
         rows.append(row)
         if rows.count > Self.cap { rows.removeFirst(rows.count - Self.cap) }
         return true
+    }
+}
+
+extension AgentArtifact {
+    /// One of strut's own entries (`GET …/runs/:runId/artifacts`, strut's
+    /// specs/CALLBACKS.md §4) as a call's chat carries it, beside the
+    /// workspace whose strut answered: its handle is resolved against that
+    /// workspace, as strut's UI resolves a peer's (`linkOf`,
+    /// `peerArtifactPath`). Nil for an entry with no title.
+    init?(strutEntry value: JSONValue, workspace: String) {
+        guard case .object(let fields) = value, let read = AgentArtifact(value) else { return nil }
+        self.init(id: read.id, title: read.title, label: read.label, summary: read.summary, url: read.url,
+                  handle: Handle.isPeerID(workspace) ? Self.handle(of: fields, on: workspace) : nil)
+    }
+
+    /// Where Peel's own strut shows the entry, through `/peers/<workspace>`:
+    /// an app by name (and version), or by its document link; a peer's file by its peer, `via` and
+    /// job; a strut-relative url behind the workspace. Nil for a peer's app,
+    /// two hops off, which strut's `?app=` cannot name.
+    private static func handle(of fields: [String: JSONValue], on workspace: String) -> Handle? {
+        func text(_ key: String) -> String? {
+            if case .string(let text)? = fields[key], !text.isEmpty { text } else { nil }
+        }
+        if case .object(let app)? = fields["app"] {
+            guard text("peer") == nil, case .string(let name)? = app["name"] else { return nil }
+            var pinned = ""
+            if case .string(let version)? = app["version"], !version.isEmpty { pinned = "@" + version }
+            return Handle(app: "@\(workspace)/\(name)\(pinned)")
+        }
+        if let peer = text("peer") {
+            guard let job = text("job"), let path = text("path") else { return nil }
+            let hops = [workspace, peer] + [text("via")].compactMap { $0 }
+            guard hops.allSatisfy(Handle.isPeerID) else { return nil }
+            let file = path.split(separator: "/").map { encoded(String($0)) }.joined(separator: "/")
+            return Handle(path: hops.map { "/peers/\($0)" }.joined() + "/jobs/\(encoded(job))/files/" + file)
+        }
+        if let url = text("url"), url.hasPrefix("/"), !url.hasPrefix("//") {
+            if let app = appOfDocument(url) { return Handle(app: "@\(workspace)/\(app)") }
+            return Handle(path: "/peers/\(workspace)" + url)
+        }
+        return nil
+    }
+
+    /// An app's document link (`/apps/<name>/<vN>/files/dist/index.html`,
+    /// strut's `appDocumentUrl`) as the app, `name[@vN]`, as Hive reads it
+    /// (`workspaceAppOfKey`): an entry may name an app by it, with no `app`.
+    private static func appOfDocument(_ url: String) -> String? {
+        guard let match = url.firstMatch(of: #/^/apps/(.+?)(?:/(v\d{1,6}))?/files/dist/index\.html$/#) else { return nil }
+        let segments = match.1.split(separator: "/", omittingEmptySubsequences: false).map { $0.removingPercentEncoding }
+        guard segments.allSatisfy({ $0 != nil }) else { return nil }
+        let name = segments.compactMap { $0 }.joined(separator: "/")
+        return match.2.map { "\(name)@\($0)" } ?? name
+    }
+
+    /// `value` as one path segment, as `encodeURIComponent` writes it.
+    private static func encoded(_ value: String) -> String {
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+        return value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
     }
 }

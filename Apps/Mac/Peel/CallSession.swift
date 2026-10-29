@@ -504,10 +504,7 @@ final class CallSession {
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
         if room.isRecording != isRecording { isRecording = room.isRecording }
-        let jamie = others.contains {
-            $0.name?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Jamie") == .orderedSame
-                && $0.attributes["tts"] != nil
-        }
+        let jamie = others.contains(where: Self.isJamie)
         if jamie != jamieInCall {
             jamieInCall = jamie
             // Jamie left: nothing is coming.
@@ -638,6 +635,13 @@ extension CallSession {
         }
     }
 
+    /// Jamie, the call's voice agent: named Jamie, with the `tts` attribute
+    /// its token gives it.
+    nonisolated static func isJamie(_ participant: Participant) -> Bool {
+        participant.name?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Jamie") == .orderedSame
+            && participant.attributes["tts"] != nil
+    }
+
     fileprivate func receiveChat(_ incoming: CallChatWire.Incoming) {
         guard !leaving else { return }
         let added = log.receive(incoming)
@@ -659,7 +663,8 @@ extension CallSession: RoomDelegate {
         _ room: Room, participant: RemoteParticipant?, didReceiveData data: Data, forTopic topic: String,
         encryptionType: EncryptionType
     ) {
-        guard topic == CallChatWire.topic, let incoming = CallChatWire.decode(data) else { return }
+        guard topic == CallChatWire.topic,
+              let incoming = CallChatWire.decode(data, fromJamie: participant.map(Self.isJamie) ?? false) else { return }
         Task { @MainActor [weak self] in self?.receiveChat(incoming) }
     }
 }

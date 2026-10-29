@@ -272,6 +272,7 @@ struct DeviceRequestRuleTests {
         ("/artifacts/1792155720000/shots/001.png", nil),
         ("/peers/stakwork/jobs/peer%2Fj-1/files/docs/Lisbon%20plan.md", "stakwork"),
         ("/peers/acme/peers/billing/artifacts/r7/100%25.md", "acme"),
+        ("/peers/a/peers/b/peers/c/jobs/j/files/x", "a"),
     ])
     func keepsAFileStrutServes(path: String, peer: String?) {
         let handle = AgentArtifact.Handle(path: path)
@@ -285,7 +286,7 @@ struct DeviceRequestRuleTests {
         "/jobs/j/files", "/jobs/j/files/", "/jobs/j/files//x", "/jobs/-j/files/x", "jobs/j/files/x",
         "//evil.example/jobs/j/files/x", "https://example.com/jobs/j/files/x", "javascript:alert(1)",
         "/apps/visits/v2/files/dist/index.html", "/workflows/job/runs/r1", "/peers/acme",
-        "/peers/a/peers/b/peers/c/jobs/j/files/x", "/peers/../jobs/j/files/x", "/peers/a%2Fb/jobs/j/files/x",
+        "/peers/a/peers/b/peers/c/peers/d/jobs/j/files/x", "/peers/../jobs/j/files/x", "/peers/a%2Fb/jobs/j/files/x",
         "/artifacts/r7", "/artifacts/a%2Fb/x", "/jobs/j/x/files/y", "/jobs/j/files/a%00b", "/jobs/j/files/a%0Ab",
         "/jobs/j/files/" + String(repeating: "a", count: 500),
     ])
@@ -293,13 +294,15 @@ struct DeviceRequestRuleTests {
         #expect(AgentArtifact.Handle(path: path) == nil)
     }
 
-    @Test(arguments: [("visits", nil as String?), ("strut/views", nil), ("@stakwork/visits", "stakwork"), ("@acme/hive/board", "acme")])
+    @Test(arguments: [("visits", nil as String?), ("strut/views", nil), ("@stakwork/visits", "stakwork"), ("@acme/hive/board", "acme"),
+                      ("visits@v2", nil), ("@acme/hive/board@v12", "acme")])
     func keepsAnAppStrutNames(app: String, peer: String?) {
         let handle = AgentArtifact.Handle(app: app)
         #expect(handle == .app(app) && handle?.peer == peer)
     }
 
-    @Test(arguments: ["", "@acme", "@acme/", "@/visits", "@a b/visits", "@acme/@b/x", "../x", "visits@v2", "a//b", "/a", "a b",
+    @Test(arguments: ["", "@acme", "@acme/", "@/visits", "@a b/visits", "@acme/@b/x", "../x", "visits@", "visits@2", "visits@v2@v3",
+                      "@acme/x@latest", "@acme/@b/x@v1", "a//b", "/a", "a b",
                       "v2", "x/v2", "@acme/x/v12", "data.db", "x/data.db"])
     func dropsAnyOtherApp(app: String) {
         #expect(AgentArtifact.Handle(app: app) == nil)

@@ -90,7 +90,7 @@ public final class AppModel {
 
     /// Account's categories, listed where the sidebar was while it is open.
     public enum AccountPage: Hashable, Sendable, CaseIterable {
-        case profile, payments, assistant, brain, connections, dictation, notifications, security
+        case profile, payments, assistant, brain, connections, dictation, recording, notifications, security
     }
 
     public var phase: Phase = .loading {
@@ -131,6 +131,7 @@ public final class AppModel {
                 newestLimit = Storage.pageSize
                 loadingOlder = false
                 observeMessages()
+                checkOwnMessageStatus()
                 if openThread?.chat != selectedChat { openThread = nil }
                 if search?.chat != selectedChat { search = nil }
             }
@@ -657,7 +658,8 @@ public final class AppModel {
         ChatRow.People(
             me: me(in: chat),
             contact: Sender(alias: conversation?.name, photoURL: conversation?.photoURL,
-                            hue: hue(pubkey: chat, alias: nil, inTribe: false))
+                            hue: hue(pubkey: chat, alias: nil, inTribe: false)),
+            colours: syncedColours
         )
     }
 
@@ -733,6 +735,14 @@ public final class AppModel {
         }
         Task { await engine?.refreshPreferences() }
         Task { await notifier.refreshPermission() }
+        checkOwnMessageStatus()
+    }
+
+    /// Asks the server, in the background, what became of the open chat's own
+    /// messages it has not confirmed, so their bolts settle (rate-limited by the engine).
+    private func checkOwnMessageStatus() {
+        guard let chat = selectedChat else { return }
+        Task { await engine?.checkOwnMessageStatus(in: chat) }
     }
 
     public func lockIfDue() {
@@ -1252,6 +1262,15 @@ public final class AppModel {
     /// Yours, by your key everywhere, as the official apps key their own
     /// messages. Every other colour comes from `hue(pubkey:alias:inTribe:)`.
     public private(set) var myHue = PersonHue(pubkey: "", alias: nil, inTribe: false)
+    /// The colours other devices gave people and chats, by colour key, as
+    /// `#rrggbb` (`Engine.syncedColours`).
+    public private(set) var syncedColours: [String: String] = [:]
+    /// The file says Face ID is on on another device and it is off here:
+    /// You offers to turn it on, through the PIN (`turnOnBiometrics`).
+    public internal(set) var biometricsOffered = false
+    /// The file holds an agent key that differs from the one connected
+    /// here; the connect panel offers it (`adoptSyncedAgentKey`).
+    public private(set) var agentKeyAvailable = false
 
     /// Someone in a boost, a thread or a call: you, or who they said they
     /// are (a tribe member by alias, or the contact, whose key is the chat's).
@@ -1269,9 +1288,61 @@ public final class AppModel {
     }
 
     /// Someone known by their key: a contact, or a tribe member (by alias).
+    /// The colour another device gave them (`syncedColours`) if it did, else the hash.
     public func hue(pubkey: String?, alias: String?, inTribe: Bool) -> PersonHue {
         if let pubkey, pubkey == myPubkey { return myHue }
-        return PersonHue(pubkey: pubkey ?? "", alias: alias, inTribe: inTribe)
+        return PersonHue(pubkey: pubkey ?? "", alias: alias, inTribe: inTribe, synced: syncedColours)
+    }
+
+    /// What this account's preferences file gives the app beyond the
+    /// settings it reads from `settings()`: the colours other devices gave
+    /// (`chat_color`, import-only), what Face ID's choice elsewhere asks
+    /// of this device, and whether the file holds a different agent key.
+    /// Read when an account opens and on every `.preferencesChanged`.
+    private func refreshSyncedPreferences(_ engine: Engine) async {
+        let colours = (try? await engine.syncedColours()) ?? [:]
+        let wish = try? await engine.biometricWish()
+        let adoptable = await engine.agentCredentialAdoptable
+        guard self.engine === engine else { return }
+        if colours != syncedColours { syncedColours = colours }
+        agentKeyAvailable = adoptable
+        guard let biometrics = profile?.biometrics, let wish else {
+            biometricsOffered = false
+            return
+        }
+        let on = await Task.detached { biometrics.isOn }.value
+        guard self.engine === engine else { return }
+        if wish {
+            // Never turned on from the file: Face ID needs the PIN typed.
+            biometricsOffered = !on && BiometricUnlock.available != nil
+        } else {
+            biometricsOffered = false
+            // Turning it off is the safe direction; and it writes nothing back.
+            if on { _ = try? await Task.detached { try biometrics.turnOff() }.value }
+        }
+    }
+
+    /// Takes the agent key the file holds in place of the one connected
+    /// here, after the person confirmed (`agentKeyAvailable`). The running
+    /// agent is handed it as a manual connect would be.
+    public func adoptSyncedAgentKey() async throws {
+        let engine = try signedIn()
+        try await engine.adoptSyncedAgentCredential()
+        agentKeyAvailable = await engine.agentCredentialAdoptable
+    }
+
+    /// What this device adds to the account's synced preferences: Face ID
+    /// where the platform syncs it and the account has a PIN, the agent's
+    /// credential where there is an agent.
+    private func preferenceCapabilities(for profile: Profile?) -> PreferenceCapabilities {
+        let agentCredential = agentHost == nil ? nil : profile.map { profile in
+            AgentCredentialSync(item: profile.agentCredential) { [weak self] in
+                Task { @MainActor in self?.agent?.reloadConnection() }
+            }
+        }
+        return PreferenceCapabilities(
+            biometrics: platform.syncsBiometrics && profile?.biometrics != nil, agentCredential: agentCredential
+        )
     }
 
     public func signedIn() throws -> Engine {
@@ -1347,6 +1418,9 @@ public final class AppModel {
         savedLayout = ChatSections.Layout()
         sidebarLayout = savedLayout
         senderZoneCache = [:]
+        syncedColours = [:]
+        biometricsOffered = false
+        agentKeyAvailable = false
         lastActiveAt = nil
         notifier.reset()
     }
@@ -1380,6 +1454,9 @@ public final class AppModel {
         // chat: the agent is this account's own, from the same words.
         if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
         if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
+        await engine.configurePreferences(preferenceCapabilities(for: profile))
+        await refreshSyncedPreferences(engine)
+        guard self.engine === engine else { return }
         notifier.style = settings.notificationStyle ?? .default
         notifier.sound = settings.notificationSound ?? ""
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
@@ -1436,6 +1513,7 @@ public final class AppModel {
                 case .contacts: restoreProgress.contacts = .init(reached: reached, end: end)
                 case .messages: restoreProgress.messages = .init(reached: reached, end: end)
                 }
+                checkOwnMessageStatus()
             case .historyResumed(let restart):
                 if restoreProgress.paused != nil { restoreProgress.outcome = nil }
                 if restart { (restoreProgress.contacts, restoreProgress.messages) = (nil, nil) }
@@ -1478,6 +1556,7 @@ public final class AppModel {
                 guard self.engine === engine else { break }
                 paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
                 boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+                await refreshSyncedPreferences(engine)
             case .sendStatus:
                 break
             }

@@ -177,8 +177,24 @@ public final class AgentSession {
 
     /// Keeps `credential` in the Keychain, for strut to answer with.
     public func connect(_ credential: AgentCredential) throws {
+        // The name another device gave stays with the key, so a key changed
+        // here goes back to the preferences file under it.
+        var credential = credential
+        if credential.agentName == nil { credential.agentName = (try? credentials.read())?.agentName }
         try credentials.write(credential)
         connection = Connection(credential)
+    }
+
+    /// Reads the connected model again, after the preferences sync kept a
+    /// key from another device in the Keychain: the app then hands it to
+    /// strut as a manual connect would (`credentialChanged`).
+    public func reloadConnection() {
+        do {
+            connection = try credentials.read().map(Connection.init)
+        } catch {
+            Diagnostics.note(errorKind: .other)
+            notice = "Could not read the connected model's key: \(error.localizedDescription)"
+        }
     }
 
     /// Changes the model the connected key uses.

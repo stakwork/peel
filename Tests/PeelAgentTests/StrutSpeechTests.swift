@@ -36,6 +36,38 @@ struct StrutSpeechTests {
         #expect(request.hasSuffix("RIFF-wav-bytes"))
     }
 
+    @Test func aScreenRecordingsWordsComeBackWithTheirTimes() async throws {
+        let stub = try await HTTPStub { _ in
+            #"{"text":"Hello there. Next","segments":[{"text":"Hello there.","words":[{"text":"Hello","start":0.42},{"text":"there.","start":0.8}]},{"text":"Next","words":[{"text":"Next","start":4},{"start":5}]}]}"#
+        }
+        defer { stub.stop() }
+        let file = try wav("RIFF-wav-bytes")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let reply = try await speech(stub).words(wavAt: file)
+        #expect(reply.text == "Hello there. Next")
+        // A word without its text is left out.
+        #expect(reply.heard.map(\.text) == ["Hello", "there.", "Next"])
+        #expect(reply.heard.map(\.start) == [0.42, 0.8, 4])
+        #expect(!reply.fixed)
+        #expect(try #require(stub.requests.first).hasPrefix("POST /audio/transcribe "))
+    }
+
+    @Test func aRecordingKeepsWhatWasSaidWithOnlyTheVocabularyPutRight() async throws {
+        // The fixer swapped a word and left out a filler and words it took
+        // for taken back; captions keep all that was said. 🎬 is two UTF-16
+        // units, as strut counts.
+        let stub = try await HTTPStub { _ in
+            #"{"text":"🎬 I work at Stakwork.","heard":"🎬 um I work at Friday, sorry, at Stackwork.","fixer":"qwen3-1.7b-q4","changes":[{"heard":"um","written":"","at":3},{"heard":"at Friday, sorry,","written":"","at":13},{"heard":"Stackwork","written":"Stakwork","at":34},{"heard":"Hive","written":"Stadeum","at":2}],"segments":[]}"#
+        }
+        defer { stub.stop() }
+        let file = try wav("RIFF-wav-bytes")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let reply = try await speech(stub).words(wavAt: file)
+        // The last change does not match the transcript where it says: left out.
+        #expect(reply.text == "🎬 um I work at Friday, sorry, at Stakwork.")
+        #expect(reply.fixed)
+    }
+
     @Test(arguments: [
         // A strut built without the speech engine.
         (501, #"{"error":"stt not available"}"#, StrutSpeech.Failure.noEngine),

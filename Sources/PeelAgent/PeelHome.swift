@@ -510,7 +510,7 @@ public struct PeelHomeMove {
             restoreKey()
             local.startClient()
             return .stillAway("Peel Home came back, but Peel's strut couldn't start with it. Your home server kept what it sent "
-                + "in its data folder. To carry on here as of the move, turn off Peel Home.")
+                + "in its data folder. To carry on here as of the move, choose Restore.")
         }
         // The client's folder goes only once what it learned is in Peel Home's memory; else it stays, and its next
         // push (a move out again) replays it.

@@ -409,11 +409,18 @@ Threads list's rows were not drawn (`ThreadSummary` has no public init).
 - **Calls** ask `CallProvider.unavailable` first, so the phone says calls
   aren't here yet before posting a call message.
 
+**Later (video and files):** received video plays in its row
+(`VideoTile`, `VideoPlayback`: auto-download up to `Engine.autoDownloadLimit`,
+a tap loads a larger one), PDFs and other files are a `FileCard` that
+previews in Quick Look and shares through the share sheet (`FileCopy` names
+the cached file). `AttachmentFormat` moved to PeelUI for both apps. Not
+built: paid attachments still say "Buy it on the Mac"; Photos does not
+offer video; not built or run on a device yet.
+
 **Not built, and why:** voice messages (the mic says they are coming);
 the send-sats bolt in a DM says sending from a chat is coming (no phone
 send sheet yet, F2c); link cards (the Mac's are AppKit forms; the link
-stays in the text); members and details under More; playing video and
-audio, saving and buying attachments, the full-size viewer; GIFs do not
+stays in the text); members and details under More; buying attachments, the full-size viewer (video and files: see Later above); GIFs do not
 animate; the agent DM has `isAgent` (AGENT, "Ask Peel", no bolt) but
 nothing passes it until the model knows the agent's chat.
 

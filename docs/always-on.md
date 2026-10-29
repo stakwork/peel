@@ -20,8 +20,10 @@ Devices reach the agent over Sphinx, as they do today.
 ## Naming (Tom, 2026-10-25)
 
 What the docs and code call "the brain" is **Peel Home** in everything
-new, always in full, never a bare "Home": Account › Peel Home, set to
-This Mac or a home server. New work uses `home`: the `home/` bundle,
+new, always in full, never a bare "Home". In Peel's own settings the
+feature is **Always on** (Tom, 2026-10-28): Account › Always on, Off on
+this Mac or On from a home server, with Set up…, Turn off… and Server
+gone? › Restore…. Peel Home stays the name of what runs on the box. New work uses `home`: the `home/` bundle,
 `peel://home-setup` links and `home.env`. Existing names (`Profile.brain`,
 `peel://brain` links, Account › Brain, the old `brain/` folder, which
 `home/` replaces) are renamed in a PR of their own (A7).
@@ -119,7 +121,7 @@ versions.
 
 **Out (Mac to box).** The box runs `strut move serve` (setup mode) and
 shows a pairing link, `peel://home-setup?host=<box>&code=<code>`, and a
-QR code. In Account › Peel Home › "Move to a home server", the user opens
+QR code. Account › Always on › "Set up…" lists the steps; the user opens
 the link on the Mac. Then:
 
 1. Peel's bundled strut checks the code with the box (`move check`) and
@@ -143,9 +145,10 @@ up but its answer was missed, two bridges could be on the broker. The
 guard is that Peel keeps its own stopped until the user chooses, and says
 so.
 
-**Back (box to Mac).** From a "Send Peel Home back" button on the box's
-page, which shows a fresh code, the user opens the send-back link in
-Account › Peel Home › "Move back to this Mac". Then:
+**Back (box to Mac).** Account › Always on › "Turn off…" gives the box's
+`setup.sh send-back <host>` command (a "Send Peel Home back" button on the
+box's page is planned, not built); the user opens the link it prints on
+the Mac. Then:
 
 1. The box stops strut and the bridge, and packs.
 2. Peel's bundled strut runs `move fetch <link>` and unpacks into Peel's
@@ -263,7 +266,7 @@ lid closed:
 - "what did I miss?" says "Waiting for your Mac", and is answered once the
   Mac wakes.
 
-Then, after "Move back to this Mac", the same session and memory carry on
+Then, after "Turn off", the same session and memory carry on
 on the Mac, and nothing is answered twice. This is checked on a Pi (arm64)
 and on a linux amd64 box.
 
@@ -284,6 +287,7 @@ stacks).
 | A6 | peel | The old "Home server" mode removed (`MemoryServer` to a remote strut, `MemoryMove`, `MemoryBackup`) | In stakwork/peel#396 |
 | A7 | peel | Rename "brain" to Peel Home in existing code and copy: `Profile.brain`, `peel://brain`, Account › Brain (its label and icon done with the sync fixes); remove the old `brain/` bundle (done in #396) | Later |
 | A8 | strut | Ladybug reserves 64 GiB per graph instead of 1 TiB, so strut runs on a Raspberry Pi kernel | Merged: stakwork/strut#338 |
+| A9 | peel | Account › Always on (Tom, 2026-10-28): Off/On row, Set up… lists the box steps (generic, linking `home/README.md` on main for now), Turn off… gives the box's `send-back` command, Server gone? › Restore… for the lossy way back. Not applied from review: the link isn't pinned to this build's release (no release download yet); Turn off shows before the box answers, as Move back did | PR open |
 
 A3's Go setup is replaced, but its README's spec (pairing code, HKDF and
 AES-GCM chunks, the routes, the test vector) is A2c's starting point.
@@ -296,14 +300,14 @@ still need a portable format.
 
 v1 is the core only: install `home/` on Umbrel, a VPS or a Pi, open its
 link on the Mac, and Peel Home moves there. The agent answers from the box,
-with everything stored there. "Move back to this Mac" ships with it,
+with everything stored there. "Turn off" (the move back) ships with it,
 because it is the same code.
 
 Everything else is an improvement on the same pieces, after v1:
 
 - **v1.1**:
   - the box follows an update channel published with each Peel release;
-  - Account › Peel Home shows when the box last answered ("offline");
+  - Account › Always on shows when the box last answered ("offline");
   - pairing by scanning the box's QR code with the phone, which hands the
     link to the Mac over Sphinx;
   - a second Mac or a reinstalled Peel pings the agent before starting its
@@ -339,7 +343,7 @@ changed.
   - **No changes to dictation:** transcription, the fixer and
     `dictation/*` run as today against the Mac's own memory graph.
   - **Its folder:** a fresh `Strut.client`, never the set-aside agent folder
-    (that holds the agent's secrets and is what "Turn off Peel Home"
+    (that holds the agent's secrets and is what "Server gone? › Restore…"
     restores). The dictation model picks are copied across; the speech
     models stay where they are.
 - **The box is the one writer of memory.** The Mac's copy is replaced on
@@ -348,7 +352,7 @@ changed.
 - **Sync = push, then pull.** It runs at launch, on a timer, on wake, on a
   network change, and after a correction. A failed one is tried again a few
   times over the next couple of minutes, since the box's strut is still
-  starting right after a move. Account › Peel Home says when it last synced, or
+  starting right after a move. Account › Always on says when it last synced, or
   that the last try didn't reach the box:
   - **Push:** what dictation learned or undid on the Mac since the last
     sync. strut finds these in the graph itself: mishearing facts with
@@ -405,7 +409,7 @@ started the move back, a correction made after the last good sync survives.
 **Learned, live on an Umbrel (2026-10-27):** the first sync after a move
 always failed (502: the box's strut not up yet) and nothing retried for up
 to 15 minutes; the move back's push after the link always failed; and
-failures were silent in Account › Brain (now Account › Peel Home). All three fixed as above. macOS
+failures were silent in Account › Brain (now Account › Always on). All three fixed as above. macOS
 Local Network privacy keys an app by its main executable's UUID, so every
 rebuild of Peel needs it allowed again (System Settings › Privacy & Security
 › Local Network); until then the move fails and every sync reads as not

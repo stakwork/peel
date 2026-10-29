@@ -40,7 +40,8 @@ struct MenuItem {
     var checked = false
     var destructive = false
     /// What the row says once clicked, waiting for a second click, for
-    /// what deletes, discards or leaves ("Delete for everyone").
+    /// what deletes, discards or leaves ("Delete for everyone"), or changes
+    /// what everyone sees ("Everyone opens v5").
     var confirm: String?
     /// Shown at the bottom of the window when `action` says it did its job
     /// ("Copied"), since the menu has gone by then.
@@ -200,6 +201,12 @@ final class MenuAnchor {
 
     /// The scroll view it moves in, if any.
     var scrollView: NSScrollView? { view?.enclosingScrollView }
+
+    /// A mouse event landed on the part of it that shows.
+    func contains(_ event: NSEvent) -> Bool {
+        guard let view, event.window === view.window else { return false }
+        return view.visibleRect.contains(view.convert(event.locationInWindow, from: nil))
+    }
     #else
     var window: NSWindowRef { nil }
     var screenRect: CGRect { .zero }
@@ -365,6 +372,13 @@ final class KeyMonitor {
     }
 }
 
+extension NSEvent {
+    /// A right-click or Control-click: one that opens a context menu.
+    var isMenuClick: Bool {
+        type == .rightMouseDown || (type == .leftMouseDown && modifierFlags.contains(.control))
+    }
+}
+
 /// Takes right-clicks and Control-clicks over a view and lets everything
 /// else (clicks, hovers, text selection, scrolling) through to it.
 private struct RightClickCatcher: NSViewRepresentable {
@@ -382,18 +396,14 @@ private struct RightClickCatcher: NSViewRepresentable {
         var action: ((CGPoint, NSWindow?) -> Void)?
 
         override func hitTest(_ point: NSPoint) -> NSView? {
-            guard let event = NSApp.currentEvent, Self.isMenuClick(event) else { return nil }
+            guard let event = NSApp.currentEvent, event.isMenuClick else { return nil }
             return super.hitTest(point)
         }
 
         override func rightMouseDown(with event: NSEvent) { report(event) }
 
         override func mouseDown(with event: NSEvent) {
-            if Self.isMenuClick(event) { report(event) } else { super.mouseDown(with: event) }
-        }
-
-        private static func isMenuClick(_ event: NSEvent) -> Bool {
-            event.type == .rightMouseDown || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
+            if event.isMenuClick { report(event) } else { super.mouseDown(with: event) }
         }
 
         /// The click on the screen.

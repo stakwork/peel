@@ -89,10 +89,10 @@ extension AppModel {
             return AgentSetUp(line: "Connect a model first: your assistant answers with it.")
         }
         if brain?.moved != nil {
-            return AgentSetUp(line: "Your assistant runs in Peel Home on your home server. Message it in Direct messages.")
+            return AgentSetUp(line: "Your assistant runs on your home server. Message it in Direct messages.")
         }
         guard brain == .thisMac else {
-            return AgentSetUp(line: "Peel couldn't read where Peel Home is. Choose This Mac under Peel Home to use it.")
+            return AgentSetUp(line: "Peel couldn't tell where your assistant runs. Choose Use this Mac under Always on to use it.")
         }
         guard hasOwnStrut else {
             return AgentSetUp(line: profile?.kind == .development

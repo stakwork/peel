@@ -18,6 +18,8 @@ public struct ChatSections: Equatable, Sendable {
         /// or the name alone for the person's own);
         /// none until the person pins one (Tom, 2026-10-26).
         public var pinnedApps: [String] = []
+        /// The pinned apps show under the Apps row (Tom, 2026-10-28).
+        public var appsOpen = true
 
         public init() {}
 
@@ -30,6 +32,7 @@ public struct ChatSections: Equatable, Sendable {
             allTribes = try values.decodeIfPresent(Bool.self, forKey: .allTribes) ?? false
             allDirect = try values.decodeIfPresent(Bool.self, forKey: .allDirect) ?? false
             pinnedApps = try values.decodeIfPresent([String].self, forKey: .pinnedApps) ?? []
+            appsOpen = try values.decodeIfPresent(Bool.self, forKey: .appsOpen) ?? true
         }
     }
 

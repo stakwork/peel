@@ -35,7 +35,11 @@ on this Mac, turns it into text: nothing leaves it.
   another mic chosen): on macOS's notice that the default input changed, on
   the engine's that its configuration did (one new engine per burst, as a
   Bluetooth headset switches profile when its mic opens). A recording under
-  way carries on into the new engine.
+  way carries on into the new engine. The engine's input is set to the
+  default input device itself, not left to follow the default: an engine
+  that follows it opens the device macOS makes for the app's default
+  input and output, and that device goes deaf for the rest of the run once
+  a Peel call's voice processing has run beside another engine.
 - **HUD** (`DictationHUDPanel`): non-activating panel, never key or main,
   bottom centre of the screen the pointer is on; takes the mouse only when locked.
   A small dark pill: 24 pt with a live waveform (the last eight levels) while
@@ -81,7 +85,8 @@ on this Mac, turns it into text: nothing leaves it.
   while the account is locked (`AppModel.unlockedStorage` is nil: locking
   leaves the engine open, so the engine alone is not the test) or with History off (Account › Dictation › History). The
   window (app menu › Dictation History…, or Open in Settings) lists the
-  newest 500 by day with Copy and Clear History; opening it also drops what
+  newest 500 by day with Copy and Clear History; a row clean-up changed
+  says "Cleaned up", and shows what was heard once opened. Opening it also drops what
   is past 30 days. Clear overwrites the text in the file (`secure_delete`)
   and folds in the log. A "Copied: press ⌘V" note adds "(also in History)"
   only when it was kept. Time and account are taken when the key is let go.
@@ -125,8 +130,14 @@ on this Mac, turns it into text: nothing leaves it.
     the vocabulary read for Settings and the window), in Peel's own fields
     too (its text view read directly, not through Accessibility, which
     would wait on Peel's own main thread), and elsewhere only where
-    Accessibility can read the field (not most Electron apps; the rewrite
-    still works there). Why a watch ended, or never started, is logged
+    Accessibility can read the field. Chromium and the Electron apps built
+    on it (Claude, Slack, Notion) show Accessibility no text until asked,
+    so at key-down, with a fixer in use, Peel asks an app with a Chromium
+    framework once per process: `AXManualAccessibility` (Electron), else
+    `AXEnhancedUserInterface` (Chrome's browsers), asked again while the
+    app does not answer; other apps, and code editors on Electron (VS Code,
+    Cursor, Windsurf: asked, they offer their screen-reader mode), are never
+    touched. Why a watch ended, or never started, is logged
     (`log show --predicate 'subsystem == "dev.peel.mac"'`), never the text.
   - **The Vocabulary window** (Account › Dictation › Vocabulary › Open): each
     word with how it is misheard (`memory/lexicon`), Remove
@@ -253,6 +264,40 @@ desktops and input methods for non-Latin scripts, untried;
 macOS 13+ is already the minimum (the project targets 15.6).
 
 ## Journal
+
+- 2026-10-28: after a Peel call, every dictation in the same run said
+  "Nothing was heard": the engine started but its tap got no buffers.
+  Cause: LiveKit runs a voice-processing engine on the mic. If any other
+  AVAudioEngine input that follows the default is open while it runs, the
+  app's default-device aggregate (`CADefaultDeviceAggregate-<pid>-0`) is
+  left deaf when the call ends. The other engine can be dictation's last
+  engine, stopped but kept until the next press, or dictation during the
+  call. Every engine on that aggregate then gets nothing until relaunch.
+  Fixed by setting the input unit to the default input device
+  (`kAudioOutputUnitProperty_CurrentDevice`), which skips the aggregate.
+  The default-input listener already makes a new engine when the default
+  changes. Shown outside Peel with a harness on LiveKit 2.10.2
+  (`AudioManager.startLocalRecording()`, then stop, then a fresh engine
+  with a tap). Following the default: 0 buffers after, both with a
+  kept engine and with one opened during the call. That held in all but
+  one of about a dozen runs. Bound to the device: 19 buffers in two
+  seconds every time. Voice messages (`AVAudioRecorder`) still record
+  while the aggregate is deaf. No unit test, since the fault needs a
+  real mic and LiveKit's engine. Manual check: dictate once, join and
+  leave a call, dictate again, and the level moves and the text arrives.
+  Still open: dictating *during* a call, which was broken before this fix
+  as well. While voice processing runs, the input is 3 discrete channels.
+  They are near-silent with `say` playing (echo cancellation would remove
+  that anyway), and the 3→1 `AVAudioConverter` turns them into all
+  zeros. It needs its own fix and a person speaking to judge it.
+  Also open: voice processing in *another* process on the same mic
+  silences dictation while it runs. On 2026-10-28 between 11:17 and
+  11:25, the test harness's runs did this to Peel with no call in Peel,
+  and dictation came back on its own when they stopped. A Zoom or Meet
+  call likely does the same. It has not been checked whether binding to
+  the device helps, or whether this is macOS behaviour to document.
+  Checking it means running voice processing against the real mic, so
+  only do it with Tom's go-ahead or on a virtual input.
 
 - 2026-10-26: after the key is let go, the pill stays with a spinner while
   strut transcribes, until the text is typed or a message takes its place;

@@ -3,7 +3,7 @@ import PeelCore
 import PeelUI
 
 /// The account screen: who others see, how to be added, money, the agent,
-/// dictation, notifications, the words and PIN that guard the account on
+/// dictation, screen recording, notifications, the words and PIN that guard the account on
 /// this Mac, and leaving it. Opened from the top of the sidebar or with ⌘,;
 /// its categories (`AccountCategories`, in `SidebarColumn`) stand where the
 /// chats were, and the chosen one fills the detail. Every change is an `AppModel` operation.
@@ -75,6 +75,8 @@ struct AccountView: View {
             ConnectionsSection()
         case .dictation:
             DictationSettingsSection()
+        case .recording:
+            RecordingSettingsSection()
         case .notifications:
             SettingsSection {
                 NotificationsRow()
@@ -94,8 +96,8 @@ struct AccountView: View {
             ForgetAccountControl(
                 trigger: "Forget this account on this Mac…",
                 explanation: model.brain?.moved != nil
-                    ? "Removes the account and its messages from this Mac. Your assistant still runs in Peel Home on your home server: "
-                        + "move it back first, or wipe that box, before you sign in with your twelve words anywhere."
+                    ? "Removes the account and its messages from this Mac. Your assistant still runs on your home server: "
+                        + "turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere."
                     : "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
                 section: true
             )
@@ -111,9 +113,10 @@ extension AccountPage {
         case .profile: "Profile"
         case .payments: "Payments"
         case .assistant: "Assistant"
-        case .brain: "Peel Home"
+        case .brain: "Always on"
         case .connections: "Connections"
         case .dictation: "Dictation"
+        case .recording: "Segments"
         case .notifications: "Notifications"
         case .security: "Privacy and security"
         }
@@ -127,6 +130,7 @@ extension AccountPage {
         case .brain: "house"
         case .connections: "powerplug"
         case .dictation: "mic"
+        case .recording: "record.circle"
         case .notifications: "bell"
         case .security: "lock"
         }
@@ -135,9 +139,10 @@ extension AccountPage {
     /// The agent's own: listed only while there is one.
     private var needsAgent: Bool { [.assistant, .brain, .connections].contains(self) }
 
-    /// The categories this account has, in the order listed.
+    /// The categories this account has, by title as listed.
     @MainActor static func listed(in model: AppModel) -> [AccountPage] {
         allCases.filter { model.agent != nil || !$0.needsAgent }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     /// What each category holds, for the search: the labels of its rows.
@@ -147,9 +152,10 @@ extension AccountPage {
         case .payments: ["balance", "sats", "confirm payments", "boost amount"]
         case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
                           "revoke", "old assistant chats"]
-        case .brain: ["brain", "home server", "this Mac", "move", "sync"]
+        case .brain: ["Peel Home", "brain", "home server", "this Mac", "move", "turn off", "restore", "sync"]
         case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
+        case .recording: ["screen recording", "record screen", "camera", "video", "captions", "transcript", "Loom"]
         case .notifications: ["message text", "alerts"]
         case .security: ["PIN", "lock", "twelve words", "recovery", "website data", "forget account", "sign out"]
         }

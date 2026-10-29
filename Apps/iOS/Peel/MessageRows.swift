@@ -62,10 +62,26 @@ struct ConversationRow: View, Equatable {
 
 // MARK: - A message
 
+/// Tap a row that has a thread (a summary, 3+ messages) to open the thread.
+private struct OpensThread: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let summary: ThreadSummary?
+
+    func body(content: Content) -> some View {
+        if let summary {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }
+        } else {
+            content
+        }
+    }
+}
+
 /// A message as a flat row: on a run's first row the photo, the name in
 /// the sender's colour and the time; the rest of the run under it. Yours
-/// on a faint accent tint. Long press for its menu, swipe right to reply in
-/// its thread; for VoiceOver, one element with the menu as its actions.
+/// on a faint accent tint. Long press for its menu, swipe right to reply; a
+/// row with a thread summary opens the thread on tap; for VoiceOver, one element with the menu as its actions.
 struct MessageRowView: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
@@ -111,6 +127,7 @@ struct MessageRowView: View {
             }
         }
         .messageActions(actions, spoken: spoken)
+        .modifier(OpensThread(summary: row.summary))
     }
 
     /// One VoiceOver element: who, when, what, then boosts and replies.
@@ -187,7 +204,26 @@ struct RunHeaderLine: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.quietText(on: surface))
                 .fixedSize()
+            if row.message.fromMe, row.message.delivery == .delivered {
+                DeliveredBolt()
+            }
         }
+    }
+}
+
+/// The green bolt after the time on a delivered message of ours, in a
+/// `.firstTextBaseline` row. Its centre goes to the middle of the time's
+/// capitals and digits, from that font's own metrics.
+struct DeliveredBolt: View {
+    /// The time's font beside it, `PhoneTheme`'s `.time` (12).
+    private static let timeCapHeight = UIFont.systemFont(ofSize: 12).capHeight
+
+    var body: some View {
+        Image(systemName: "bolt.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(Theme.confirmed)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Self.timeCapHeight / 2 }
+            .accessibilityLabel("Delivered")
     }
 }
 
@@ -511,7 +547,7 @@ struct ThreadSummaryButton: View {
                         .foregroundStyle(Theme.text)
                 }
                 if let last = summary.lastDate {
-                    Text("Last reply \(Formatting.time(last))")
+                    Text(Formatting.time(last))
                         .phoneFont(.time)
                         .monospacedDigit()
                         .foregroundStyle(Theme.quietText(on: surface))
@@ -520,15 +556,11 @@ struct ThreadSummaryButton: View {
             }
             if let latest = summary.latest {
                 let sender = model.sender(of: latest)
-                HStack(alignment: .top, spacing: 6) {
-                    Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.xs, hue: sender.hue)
-                    (Text(sender.label + " ").fontWeight(.semibold).foregroundColor(sender.hue.name)
-                        + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
-                        .phoneFont(.time)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.leading, Theme.Space.lg)
+                (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
+                    + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
+                    .phoneFont(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             }
             .frame(minHeight: Theme.touchTarget)
@@ -737,8 +769,8 @@ private struct AgentArtifactLine: View {
     /// How it opens here, if it does: on its org's strut, else its link.
     /// Made again on the tap: the tokens may have been renewed since.
     private var open: (() -> Void)? {
-        if let handle = artifact.handle, case .page = model.stadeum.opening(handle) {
-            return { if case .page(let page) = model.stadeum.opening(handle) { router.orgPage = page } }
+        if let handle = artifact.handle, case .page = model.stadeum.opening(handle, title: artifact.title) {
+            return { if case .page(let page) = model.stadeum.opening(handle, title: artifact.title) { router.orgPage = page } }
         }
         return artifact.url.map { url in { openURL(url) } }
     }

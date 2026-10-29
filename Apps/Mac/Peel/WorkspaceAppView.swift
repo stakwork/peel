@@ -16,63 +16,88 @@ struct WorkspaceAppView: View {
     let app: WorkspaceApp
     /// Bumped by Reload: a new web view loads the page again.
     @State private var loads = 0
+    /// The person's own app's versions (`AppVersionsControl`); a
+    /// workspace's are its own to change, so none.
+    @State private var versions: AppVersions?
+    /// The version shown in this window instead of the live one.
+    @State private var previewing: String?
+    /// A change of what is live is under way: none other until strut answers.
+    @State private var changing = false
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: app.title, subtitle: app.caption(showsSource: model.showsAppSources)) {
+            DetailHeader(title: app.title, subtitle: subtitle) {
                 WorkspaceApp.headerIcon(app.iconSymbol)
             } trailing: {
-                AppStatus(app: app)
+                // The chip says what the status would, but problems.
+                if versions == nil || app.problems > 0 { AppStatus(app: app) }
+                if let versions {
+                    AppVersionsControl(title: app.title, versions: versions, previewing: $previewing, busy: changing,
+                                       change: change)
+                }
                 AppPinButton(app: app)
                 IconButton("arrow.clockwise", help: "Reload") { loads += 1 }
             }
-            if let server = model.memoryServer, let page = server.page(of: app) {
-                AppPage(page: StrutPage(url: page, server: server, name: app.title))
-                    // Another app, strut started again (a new port and key), or Reload: a new
-                    // page; not the workspace renaming it, which would lose what the page holds.
-                    .id(PageID(app: app.id, server: server, loads: loads))
+            if let previewing, let versions {
+                AppPreviewBar(shown: previewing, live: versions.active) { self.previewing = nil }
+            }
+            if let server = model.memoryServer, let page = server.page(of: app, version: previewing) {
+                let id = AppPageID(app: app.id, previewing: previewing, server: server, loads: loads)
+                AppPage(page: StrutPage(url: page, server: server, name: app.title), id: id, pages: model.appPages)
+                    // Another app, a preview, strut started again (a new port and key), Reload, or
+                    // a change of what is live made here: a new page; not a publish or the workspace
+                    // renaming it, which would lose what the page holds.
+                    .id(id)
             } else {
                 EmptyState("Apps open on Peel's own strut, which is not running.")
             }
         }
-    }
-
-    private struct PageID: Hashable {
-        let app: String
-        let server: MemoryServer
-        let loads: Int
-    }
-}
-
-extension WorkspaceApp {
-    /// A header's icon: Apps' and an app's.
-    static func headerIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 18))
-            .foregroundStyle(Theme.secondaryText)
-            .frame(width: Theme.AvatarSize.lg, height: Theme.AvatarSize.lg)
-    }
-}
-
-/// What an app's page needs looked at, else the release its workspace holds
-/// it at: one of them, on its card and in its header.
-struct AppStatus: View {
-    let app: WorkspaceApp
-
-    var body: some View {
-        if app.problems > 0 {
-            HStack(spacing: 5) {
-                OnlineDot(color: Theme.attention)
-                Text(Formatting.count(app.problems, "problem"))
-            }
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.attention)
-            .help("Strut's monitor flagged how its page uses the workspace")
-        } else if let release = app.release {
-            Chip("Release \(release)")
-                .fixedSize()
-                .help("Its workspace holds it at release \(release) while newer versions wait")
+        // Read again when the listing says something moved (a new version, a new live one or
+        // release), and on Reload: what the live release locked moves on without the listing.
+        .task(id: VersionsID(app: app.id, live: app.version, newest: app.newest, release: app.release,
+                             server: model.memoryServer, loads: loads)) {
+            await readVersions()
         }
+    }
+
+    /// The source when several are listed; the version is the chip's to show.
+    private var subtitle: String? {
+        versions == nil ? app.caption(showsSource: model.showsAppSources) : model.showsAppSources ? app.source : nil
+    }
+
+    private func readVersions() async {
+        guard app.peer == nil, let server = model.memoryServer else {
+            versions = nil
+            return
+        }
+        // A read that fails keeps what was read: the chip stays as it was.
+        guard let read = try? await AutomationsClient(server: server).versions(of: app.name), !Task.isCancelled else { return }
+        versions = read
+        // The version shown here went live elsewhere: it is everyone's page now.
+        if previewing == read.active { previewing = nil }
+    }
+
+    /// Asks strut to change what everyone opens; once it has, the live page
+    /// and its versions, read here rather than waiting for the listing.
+    private func change(_ target: AppLiveTarget, done: String) {
+        guard !changing else { return }
+        changing = true
+        Task {
+            if await model.makeLive(app, target, done: done) {
+                previewing = nil
+                loads += 1
+            }
+            changing = false
+        }
+    }
+
+    private struct VersionsID: Hashable {
+        let app: String
+        let live: String?
+        let newest: String?
+        let release: String?
+        let server: MemoryServer?
+        let loads: Int
     }
 }
 
@@ -98,6 +123,31 @@ struct AppPinButton: View {
     }
 }
 
+/// Which page of an app a web view shows: another of any of these is another page.
+struct AppPageID: Hashable {
+    let app: String
+    let previewing: String?
+    let server: MemoryServer
+    let loads: Int
+}
+
+/// The web views of the apps shown lately, kept while the person is in
+/// another destination so the page keeps what it holds (`AppModel.appPages`).
+/// A view's coordinator is its delegate, which a web view holds weakly, so
+/// it is kept with it.
+typealias AppPages = KeepAlive<AppPageID, (view: InputWebView, coordinator: AppPage.Coordinator)>
+
+extension AppPages {
+    /// Three apps at most: the one shown longest ago is closed.
+    static func make() -> AppPages {
+        KeepAlive(limit: 3) { kept in
+            kept.view.stopLoading()
+            kept.view.navigationDelegate = nil
+            kept.view.uiDelegate = nil
+        }
+    }
+}
+
 /// The web view under an app: strut's UI from Peel's own strut, on a store
 /// that keeps nothing (the key it is handed lives in the tab's session
 /// storage, and goes with the view), limited as the web pane is
@@ -105,8 +155,10 @@ struct AppPinButton: View {
 /// opens beside it as a message's link does, only right after the person
 /// clicked or typed in it, since the page's scripts are the workspace's. No
 /// download, camera or microphone.
-private struct AppPage: NSViewRepresentable {
+struct AppPage: NSViewRepresentable {
     let page: StrutPage
+    let id: AppPageID
+    let pages: AppPages
     @Environment(\.openURL) private var openURL
 
     func makeCoordinator() -> Coordinator {
@@ -114,25 +166,27 @@ private struct AppPage: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> InputWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        WebPane.limit(configuration)
-        let view = InputWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = context.coordinator
-        view.uiDelegate = context.coordinator
-        // A force click's preview would load a link outside these rules.
-        view.allowsLinkPreview = false
-        view.load(URLRequest(url: page.url))
-        return view
+        let kept = pages.value(for: id, owner: id.app) {
+            let configuration = WKWebViewConfiguration()
+            configuration.websiteDataStore = .nonPersistent()
+            WebPane.limit(configuration)
+            let view = InputWebView(frame: .zero, configuration: configuration)
+            view.navigationDelegate = context.coordinator
+            view.uiDelegate = context.coordinator
+            // A force click's preview would load a link outside these rules.
+            view.allowsLinkPreview = false
+            view.load(URLRequest(url: page.url))
+            return (view, context.coordinator)
+        }
+        // Kept from a time it was shown before: it is put in the new place.
+        kept.view.removeFromSuperview()
+        return kept.view
     }
 
     func updateNSView(_ view: InputWebView, context: Context) {}
 
-    static func dismantleNSView(_ view: InputWebView, coordinator: Coordinator) {
-        view.stopLoading()
-        view.navigationDelegate = nil
-        view.uiDelegate = nil
-    }
+    /// The view stays in `pages`, which closes it when it is no longer wanted.
+    static func dismantleNSView(_ view: InputWebView, coordinator: Coordinator) {}
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {

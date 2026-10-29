@@ -134,8 +134,8 @@ struct ChatSectionsTests {
         let layout = try JSONDecoder().decode(ChatSections.Layout.self, from: Data(#"{"allTribes":true}"#.utf8))
         #expect(layout.allTribes)
         #expect(layout.tribesOpen && layout.directOpen && !layout.allDirect)
-        // A layout from before pins: none pinned.
-        #expect(layout.pinnedApps.isEmpty)
+        // A layout from before pins: none pinned, and the Apps row open.
+        #expect(layout.pinnedApps.isEmpty && layout.appsOpen)
         var changed = ChatSections.Layout()
         changed.directOpen = false
         let back = try JSONDecoder().decode(ChatSections.Layout.self, from: JSONEncoder().encode(changed))

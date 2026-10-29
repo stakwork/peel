@@ -11,6 +11,9 @@ import SwiftUI
 struct AppsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
+    @State private var query = ""
+    /// A source (`@workspace`) the list is kept to; nil for all.
+    @State private var source: String?
 
     var body: some View {
         let stadeum = model.stadeum
@@ -19,10 +22,14 @@ struct AppsScreen: View {
         let apps = stadeum.apps.filter { $0.peer.map(live.contains) ?? false }
         // The workspace on each row only when there are several.
         let several = Set(apps.compactMap(\.peer)).count > 1
+        let sources = WorkspaceApp.sources(of: apps)
+        // A source no longer listed, or the only one: all of them.
+        let shownSource = sources.count > 1 && sources.contains(source ?? "") ? source : nil
+        let shown = WorkspaceApp.filter(apps, query: query, source: shownSource)
         let unread = stadeum.unreadApps.compactMap { id in stadeum.live.first { $0.id == id }?.name }
         List {
             Section {
-                ForEach(apps) { app in
+                ForEach(shown) { app in
                     Button {
                         if case .page(let page) = stadeum.opening(app) { router.orgPage = page }
                     } label: {
@@ -39,8 +46,26 @@ struct AppsScreen: View {
         }
         .phoneList()
         .scrollEdges()
+        .searchable(text: $query, prompt: "Search apps")
+        .toolbar {
+            if sources.count > 1 {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Source", selection: Binding(get: { shownSource }, set: { source = $0 })) {
+                            Text("All").tag(String?.none)
+                            ForEach(sources, id: \.self) { Text($0).tag(String?.some($0)) }
+                        }
+                    } label: {
+                        Label("Filter by source", systemImage: shownSource == nil
+                              ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                    }
+                }
+            }
+        }
         .overlay {
-            if apps.isEmpty {
+            if !apps.isEmpty, shown.isEmpty {
+                ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
+            } else if apps.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
                         Label("No Stadeum here yet", systemImage: WorkspaceApp.symbol)
@@ -102,6 +127,7 @@ private struct AppRow: View {
                         .foregroundStyle(Theme.tertiaryText)
                         .lineLimit(1)
                 }
+                AppStatus(app: app)
             }
             Spacer(minLength: 0)
         }

@@ -16,7 +16,9 @@ extension Platform {
             presence: PhonePresence(), files: PhoneFiles(), pasteboard: ClipboardPasteboard(),
             playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: LiveKitCalls(), agent: nil,
             // Chats is a list to come back to, not a pane to fill.
-            opensFirstChat: false
+            opensFirstChat: false,
+            // Face ID's on/off follows the account, as in the official iOS app.
+            syncsBiometrics: true
         )
     }
 }
@@ -53,11 +55,12 @@ struct PhoneFiles: FilePicking {
     func reveal(_ file: URL) {}
 }
 
-/// Nothing plays yet: the read-only conversation shows no media (I3).
+/// Video opens in the full-screen `VideoViewer` (`VideoPlayback`); closing
+/// one is the viewer's own dismissal.
 struct PhonePlayback: Playback {
-    func play(_ id: Int64, file: URL) {}
-    func closeFullScreen() {}
-    func stop() {}
+    func play(_ id: Int64, file: URL) { VideoPlayback.shared.play(id, file: file) }
+    func closeFullScreen() { VideoPlayback.shared.stop() }
+    func stop() { VideoPlayback.shared.stop() }
 }
 
 /// No web pane yet; an HTML attachment says so where it was opened.

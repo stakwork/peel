@@ -6,9 +6,12 @@ struct MemesServer: Sendable {
         case unreadableHost(String)
         case refused(String, Int)
         case unreadableReply(String)
+        /// An upload over the server's size limit (HTTP 413).
+        case tooLarge
 
         var description: String {
             switch self {
+            case .tooLarge: "the file is too large for Peel to send"
             case .unreadableHost(let host): "unreadable memes host \(host)"
             case .refused(let what, let status): "the memes server refused \(what) (HTTP \(status))"
             case .unreadableReply(let what): "the memes server's reply to \(what) was unreadable"
@@ -109,7 +112,12 @@ struct MemesServer: Sendable {
             route, token: token, field: ("name", file.field), file: sealed, fileName: file.fileName, type: file.mediaType
         )
         let transfer = Web.Transfer(limit: 1_000_000, what: "the upload", progress: progress)
-        let (data, _) = try await Self.run(transfer, Self.session.uploadTask(with: request, from: body))
+        let data: Data
+        do {
+            (data, _) = try await Self.run(transfer, Self.session.uploadTask(with: request, from: body))
+        } catch Failure.refused(_, 413) {
+            throw Failure.tooLarge
+        }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let muid = json["muid"] as? String, MediaToken.isSafeMUID(muid)
         else {

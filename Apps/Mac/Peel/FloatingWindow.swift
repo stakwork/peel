@@ -25,6 +25,9 @@ final class FloatingWindow: NSPanel {
     private var following: (anchor: MenuAnchor, lost: (@MainActor () -> Void)?)?
     private var watches: [any NSObjectProtocol] = []
 
+    /// What it opened from and moves with, while it is up.
+    var trigger: MenuAnchor? { following?.anchor }
+
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: true)
         isOpaque = false

@@ -360,6 +360,33 @@ struct HiveTests {
         let page = try #require(server.page(of: apps[1]))
         #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
                 == "key=k&app=tools%2Fboard&solo=1")
+        // Another version, previewed: `name@vN`, as strut's UI reads it.
+        let preview = try #require(server.page(of: apps[1], version: "v9"))
+        #expect(URLComponents(url: preview, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+                == "key=k&app=tools%2Fboard%40v9&solo=1")
+    }
+
+    /// An app's versions are read, and what is live changed, on Peel's own
+    /// strut with its key, the app's `/` escaped so it stays one segment.
+    @Test func yourOwnAppsVersionsAreReadAndMadeLiveByName() async throws {
+        let strut = try await HTTPStub { _, request in
+            guard request.contains("Authorization: Bearer k") else { return (401, "{}") }
+            switch (request.split(separator: " ").first.map(String.init), path(request)) {
+            case ("GET", "/apps/tools%2Fboard/versions"):
+                return (200, #"{"active":"v7","live":"r3","versions":{"v7":{},"v9":{}},"releases":[],"behind":[]}"#)
+            case ("PUT", "/apps/tools%2Fboard/active"):
+                return (200, #"{"ok":true,"name":"tools/board","active":"v9","live":"r4"}"#)
+            default:
+                return (404, #"{"error":"no such route"}"#)
+            }
+        }
+        defer { strut.stop() }
+        let client = AutomationsClient(server: try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k")))
+        let versions = try await client.versions(of: "tools/board")
+        #expect(versions.newestWaiting == "v9")
+        try await client.makeLive("tools/board", .version("v9"))
+        let sent = try #require(strut.requests.last)
+        #expect(sent.hasPrefix("PUT ") && sent.hasSuffix(#"{"version":"v9"}"#))
     }
 
     /// A deliverable from the agent's DM opens as an app does, strut's UI

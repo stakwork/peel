@@ -1548,6 +1548,38 @@ Peel checks against its call server (`CallLink.hive`), posts and joins.
   the route; a Hive without it turns the device away with a 401, as for a
   revoked device.
 
+## Jamie's deliverables in the call's chat (2026-10-29)
+
+The plan is sphinx-voice `plans/call-artifacts.md`; Hive (stakwork/hive#5659)
+and voice (stakwork/sphinx-voice#20) put strut's own entries on a reply's
+chat payload as `strut: { workspace, artifacts }`, beside the markdown links.
+
+- `CallChatWire.decode(_:fromJamie:)` reads `strut` only from the
+  participant `CallSession.isJamie` names, so another person in the room
+  cannot hand you something that opens on your strut. A malformed `strut`
+  never costs the message.
+- `AgentArtifact(strutEntry:workspace:)` resolves each entry as strut's UI
+  does (`peerArtifactPath`): a peer's file to
+  `/peers/<workspace>/peers/<peer>[/peers/<via>]/jobs/<job>/files/<path>`, a
+  strut-relative url behind `/peers/<workspace>`, an app to
+  `@<workspace>/<name>[@vN]`; an https url stays a link.
+- `Handle` now takes three `/peers` hops and a version pin on an app
+  (`?app=` reads `name@vN`). A peer's app, two hops off, has no `?app=`
+  form and opens nothing; its link is still in the text.
+- The Mac's call chat shows `AgentArtifactLine` under Jamie's message,
+  opened in the main window's web pane on Peel's own strut, as from the
+  DM. The iPhone has no call chat yet.
+- First live call (2026-10-29): plans, pages, notes, a screenshot and a
+  PR opened; an app did not. Jamie named it by its document link
+  (`/apps/<name>/<vN>/files/dist/index.html`) with no `app`, which strut
+  passes on as a url and Hive's canvas shows as "Unavailable (bad url)".
+  Peel now reads that link as the app, as Hive's `workspaceAppOfKey` does;
+  strut turning it into an `app` entry is strut's to do.
+- An app the Apps list has opens on its page there (`.app(peer:name:)`),
+  as from the sidebar, in the call's chat and the agent's DM alike; one
+  not listed, or pinned to a version that is not live, opens in the web
+  pane as before (the page shows the live version).
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

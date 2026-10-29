@@ -20,7 +20,7 @@ struct StadeumSection: View {
                 case .off:
                     Fact("Stadeum") {
                         Text(model.brain?.moved != nil
-                             ? "Peel Home is on your home server. Move it back to this Mac to connect Stadeum."
+                             ? "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
                              : "Let your assistant ask your team's workspaces and run their workflows.")
                             .muted()
                             .fixedSize(horizontal: false, vertical: true)

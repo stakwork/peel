@@ -56,6 +56,15 @@ struct AgentConnectPanel: View {
                     }
                     .buttonStyle(.peel(.link, size: .sm))
                 }
+                if model.agentKeyAvailable {
+                    // The preferences file holds a different key from your
+                    // other device; never taken over this one unasked.
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("A different agent key from your other device is available.")
+                        Button("Use that key instead") { adopt() }
+                            .buttonStyle(.peel(.link, size: .sm))
+                    }
+                }
                 FormItem(label: "Model") {
                     PeelDropdown(
                         selection: modelID,
@@ -83,9 +92,24 @@ struct AgentConnectPanel: View {
         guard !key.isEmpty else { return }
         do {
             try agent.connect(AgentCredential(provider: provider, model: modelID, apiKey: key))
+            // Chosen here, so it follows the account: dated and synced shortly.
+            Task { try? await model.engine?.agentCredentialConnected() }
             done()
         } catch {
             problem = PeelError.problem(error, couldNot: "keep the key")
+        }
+    }
+
+    /// The key the file holds, after the person asked for it: kept in the
+    /// Keychain and handed to strut as a manual connect would be.
+    private func adopt() {
+        Task {
+            do {
+                try await model.adoptSyncedAgentKey()
+                done()
+            } catch {
+                problem = PeelError.problem(error, couldNot: "take the key from your other device")
+            }
         }
     }
 }

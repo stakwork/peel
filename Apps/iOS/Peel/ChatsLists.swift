@@ -46,8 +46,8 @@ struct ThreadsScreen: View {
 }
 
 /// One thread: its chat and when it last moved, who started it and what
-/// they said, then "2 new · 4 replies" and the newest reply's writer. New
-/// replies make it bold, with the count in blue.
+/// they said, then "2 new · 4 replies" and the newest reply's sender and
+/// text. New replies make it bold, with the count in blue.
 private struct ThreadListRow: View {
     @Environment(AppModel.self) private var model
     let summary: ThreadSummary
@@ -94,6 +94,14 @@ private struct ThreadListRow: View {
                             .foregroundStyle(Theme.tertiaryText)
                     }
                     .phoneFont(.secondary)
+                    if let latest = summary.latest {
+                        let sender = model.sender(of: latest)
+                        (Text(sender.label + ": ").foregroundColor(sender.hue.name).fontWeight(.semibold)
+                            + Text(latest.threadReplyPreview).foregroundColor(Theme.tertiaryText))
+                            .phoneFont(.reply)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .padding(.vertical, 7)
@@ -121,12 +129,15 @@ private struct ThreadListRow: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// "2 new, 4 replies, 5 minutes ago".
+    /// "2 new, 4 replies, 5 minutes ago, latest from Ann: on my way".
     private var spoken: String {
         var parts: [String] = []
         if summary.unread > 0 { parts.append("\(summary.unread) new") }
         parts.append(Formatting.replies(summary.count))
         if let lastDate = summary.lastDate { parts.append(Formatting.relative(lastDate)) }
+        if let latest = summary.latest {
+            parts.append("latest from \(model.sender(of: latest).label): \(latest.threadReplyPreview)")
+        }
         return parts.joined(separator: ", ")
     }
 

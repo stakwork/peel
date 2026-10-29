@@ -267,7 +267,8 @@ private struct AgentJobLine: View {
 /// what is in it, and Open: a deliverable Peel's own strut shows (its
 /// handle; an org's file or app, read through to it) in the web pane beside
 /// the chat, with the org it lives on, or else an https link as any link.
-private struct AgentArtifactLine: View {
+/// Under the agent's DM replies and Jamie's in a call's chat.
+struct AgentArtifactLine: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     let artifact: AgentArtifact

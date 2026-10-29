@@ -160,6 +160,15 @@ private struct ChatRowView: View {
                 .textSelection(.enabled)
                 .multilineTextAlignment(row.isMine ? .trailing : .leading)
                 .frame(maxWidth: .infinity, alignment: row.isMine ? .trailing : .leading)
+            if !message.artifacts.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    // By position: two entries may share an id.
+                    ForEach(Array(message.artifacts.enumerated()), id: \.offset) { _, artifact in
+                        AgentArtifactLine(artifact: artifact)
+                    }
+                }
+                .padding(.top, Theme.Space.xs)
+            }
             if row.failed {
                 HStack(spacing: Theme.Space.xs) {
                     Text("Not sent").foregroundStyle(Theme.attention)

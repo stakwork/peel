@@ -271,6 +271,7 @@ private struct AgentJobLine: View {
 struct AgentArtifactLine: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    @Environment(\.openWindow) private var openWindow
     let artifact: AgentArtifact
     /// Title, then Open on a line of its own, for a narrow panel (the
     /// call's chat); the summary only on hover.
@@ -320,7 +321,13 @@ struct AgentArtifactLine: View {
     @ViewBuilder private var open: some View {
         if let handle = artifact.handle, let name = strutPage(handle)?.name {
             // Made again on the click: strut may have started again on another port and key.
-            Button("Open") { if let page = strutPage(handle) { model.web.open(page) } }
+            // The pane is the main window's: from the call's chat, that window
+            // comes to the front (opened again if it was closed).
+            Button("Open") {
+                guard let page = strutPage(handle) else { return }
+                model.web.open(page)
+                openWindow(id: MainWindow.id, value: MainWindow.Key.main)
+            }
                 .buttonStyle(.peel(.link))
                 .help(name)
             if let peer = handle.peer { Text("@\(peer)").fixedSize() }

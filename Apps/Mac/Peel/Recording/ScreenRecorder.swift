@@ -104,8 +104,6 @@ final class ScreenRecorder {
         return recorder
     }
 
-    /// How much has been written, for the attachment limit.
-    var bytes: Int { output.recordedFileSize }
     var duration: TimeInterval { output.recordedDuration.seconds.isFinite ? output.recordedDuration.seconds : 0 }
 
     /// How long the mic has sent nothing but zeros: a live mic always

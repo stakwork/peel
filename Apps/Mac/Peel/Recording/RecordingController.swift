@@ -39,8 +39,8 @@ final class RecordingController {
     private(set) var phase: Phase = .idle
     /// Seconds recorded, while recording.
     private(set) var elapsed: TimeInterval = 0
-    /// About how long until the recording is too large to send, once that
-    /// is under a minute (`warning`): shown on the bar.
+    /// How long until the recording reaches `longest`, once that is under a
+    /// minute (`warning`): shown on the bar.
     private(set) var timeLeft: TimeInterval?
     /// The mic went quiet: the one now recorded, for a moment, or that
     /// none is heard. Shown on the bar.
@@ -54,6 +54,12 @@ final class RecordingController {
     private(set) var captions: [URL: String] = [:]
 
     /// The camera bubble is in the next recording.
+    /// The longest a recording runs, in minutes, before it stops itself:
+    /// one of `lengths`. Only so a forgotten one cannot fill the disk; how
+    /// it is sent is the person's, Peel sending what fits (`sendLimit`).
+    var longest: Int {
+        didSet { UserDefaults.standard.set(longest, forKey: Self.longestKey) }
+    }
     var cameraOn: Bool {
         didSet { UserDefaults.standard.set(cameraOn, forKey: Self.cameraKey) }
     }
@@ -71,9 +77,14 @@ final class RecordingController {
     @ObservationIgnored private let log = Logger(subsystem: "dev.peel.mac", category: "recording")
 
     private static let cameraKey = "recordingCamera"
-    /// Under the attachment limit, with room for the captions.
-    private static let maxBytes = Engine.attachmentLimit - 5_000_000
-    /// How near the size limit the bar counts down.
+    private static let longestKey = "recordingLongest"
+    /// The choices for `longest`, in minutes, and the one it starts on.
+    static let lengths = [5, 15, 30, 60]
+    private static let defaultLongest = 30
+    /// The most a recording can be to send in a chat: what the hosted memes
+    /// server takes (Tom, 2026-10-29), short of Peel's own attachment limit.
+    static let sendLimit = 25_000_000
+    /// How near `longest` the bar counts down.
     private static let warning: TimeInterval = 60
     /// This long with nothing at all from the mic, not even its hiss, it is deaf.
     private static let deaf: TimeInterval = 2
@@ -85,6 +96,8 @@ final class RecordingController {
 
     private init() {
         cameraOn = UserDefaults.standard.object(forKey: Self.cameraKey) as? Bool ?? true
+        let saved = UserDefaults.standard.integer(forKey: Self.longestKey)
+        longest = Self.lengths.contains(saved) ? saved : Self.defaultLongest
     }
 
     /// Downloads, where the recordings go.
@@ -186,18 +199,15 @@ final class RecordingController {
     private func tick() {
         guard let recorder else { return }
         elapsed = recorder.duration
-        if recorder.bytes >= Self.maxBytes {
-            problem = "The recording stopped at \(MediaInfo.format(duration: elapsed)): any longer and it would be too large to send."
+        let left = TimeInterval(longest * 60) - elapsed
+        if left <= 0 {
+            problem = "The recording stopped at \(longest) minutes, the longest you chose."
             stop()
-            notice.show(.message("Stopped at the size limit. Saved to Downloads"))
+            notice.show(.message("Stopped at \(longest) minutes. Saved to Downloads"))
             return
         }
         let before = (timeLeft == nil, micNote)
-        // At the rate so far, a moving picture's being larger than a still one's.
-        if elapsed >= 5, recorder.bytes > 0 {
-            let left = Double(Self.maxBytes - recorder.bytes) / (Double(recorder.bytes) / elapsed)
-            timeLeft = left <= Self.warning ? left : nil
-        }
+        timeLeft = left <= Self.warning ? left : nil
         if recorder.micSilence >= Self.deaf {
             // Gone deaf (a headset's mic dropped): the default input again.
             micNote = "No sound from your mic"

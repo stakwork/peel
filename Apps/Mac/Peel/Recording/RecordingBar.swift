@@ -6,8 +6,8 @@ import PeelUI
 /// The control bar of a screen recording, the dictation HUD's pill: before
 /// it starts, Cancel and Record; while it runs, a red dot and the time
 /// between Discard and Stop; in its last minute how long is left before it
-/// is too large to send, and what became of a mic that went quiet. Never in
-/// the recording.
+/// stops itself (Account › Recording's Longest), and what became of a mic
+/// that went quiet. Never in the recording.
 struct RecordingBarView: View {
     let controller: RecordingController
 
@@ -28,6 +28,9 @@ struct RecordingBarView: View {
             Text("Ready")
                 .font(Theme.font(12, .semibold))
                 .foregroundStyle(.white)
+            Text("Up to \(controller.longest) min")
+                .font(Theme.font(12, .semibold))
+                .foregroundStyle(.white.opacity(0.62))
             HUDButton(.text("Record"), label: "Start recording", filled: true, action: controller.record)
         }
         .padding(.horizontal, Theme.Space.xs)
@@ -55,7 +58,7 @@ struct RecordingBarView: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.hudWarning)
                     .frame(minWidth: 52, alignment: .leading)
-                    .accessibilityLabel("\(shown) left before it is too large to send")
+                    .accessibilityLabel("\(shown) left before the recording stops")
             }
             if let mic = controller.micNote {
                 Text(mic)

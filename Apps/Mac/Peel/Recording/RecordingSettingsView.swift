@@ -22,6 +22,19 @@ struct RecordingSettingsSection: View {
                         .buttonStyle(.peel(.primary))
                         .disabled(recording.phase != .idle)
                 }
+                Fact("Longest") {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Stops on its own after this long")
+                        Text("Under about a minute fits in a chat; share longer ones from Finder.").muted()
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                } trailing: {
+                    SegmentedChoice(
+                        selection: Binding(get: { recording.longest }, set: { recording.longest = $0 }),
+                        options: RecordingController.lengths.map { ($0, "\($0) min") }
+                    )
+                    .disabled(recording.phase != .idle)
+                }
                 Fact("Camera") {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Show your camera")
@@ -75,12 +88,15 @@ private struct RecordingRow: View {
             IconButton("folder", help: "Show in Finder", size: .sm) { controller.showInFinder(recording) }
         }
         .onDrag { NSItemProvider(contentsOf: recording.url) ?? NSItemProvider() }
-        .help("Drag into a chat to send it")
+        .help(sendable ? "Drag into a chat to send it" : "Too large to send in Peel: drag it to Drive or Dropbox, or share it from Finder")
     }
+
+    private var sendable: Bool { recording.bytes <= RecordingController.sendLimit }
 
     private var detail: String {
         let size = AttachmentFormat.size(Int64(recording.bytes))
         let captions = controller.captions[recording.url]
-        return [Formatting.dateAndTime(recording.created), size, captions].compactMap { $0 }.joined(separator: " · ")
+        let fits = sendable ? nil : "Too large to send in Peel"
+        return [Formatting.dateAndTime(recording.created), size, captions, fits].compactMap { $0 }.joined(separator: " · ")
     }
 }

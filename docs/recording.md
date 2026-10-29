@@ -40,11 +40,19 @@ until you send it.
   fps, in the encoder's pixel format (`SCStreamConfiguration.fitting`,
   shared with a call's share), the cursor, and the microphone (`captureMicrophone`, bound to the
   default input, as dictation learned to). No system audio in v1. The
-  attachment limit is 100 MB: the recording stops itself at 95 MB (about
-  3½ minutes of a busy screen). In its last minute the bar counts down the
-  time left, at the rate so far, and at the limit the dictation HUD says
-  "Stopped at the size limit. Saved to Downloads" (board: option A, Tom,
-  2026-10-28).
+  recording runs up to Account › Recording's Longest (5, 15, 30 or 60
+  minutes; 30 by default), only so a forgotten one cannot fill the disk:
+  H.264 at this size is about 1 MB every 2 s, so 30 minutes is about
+  800 MB. The Ready bar says "Up to 30 min"; in the last minute the bar
+  counts down the time left, and at the end the dictation HUD says
+  "Stopped at 30 minutes. Saved to Downloads" (board: option A, Tom,
+  2026-10-28). H.264, not HEVC: a recording over what a chat takes is
+  shared outside Peel, to any device (Tom, 2026-10-29).
+- **Sending.** The hosted memes server takes about 25 MB (Tom,
+  2026-10-29; `RecordingController.sendLimit`), about a minute of
+  recording. A recording over it says "Too large to send in Peel" in
+  Account › Recording, and is shared from Finder (Drive, Dropbox): it
+  still drags out, to a browser's upload or Finder.
 - **The mic** follows macOS's default input, as dictation's does: when it
   changes, the stream is moved to it (`updateConfiguration`) and the bar
   says "Now using …" for 5 s. A mic that sends only zeros for 2 s is deaf
@@ -132,8 +140,9 @@ Not applied, with the reason:
 `/security-review`: no findings over the bar. Applied its hardening: links
 and anything but a plain file under a recording's name are not listed.
 
-Risk: high (`Sources/PeelCore/Engine.swift`, `attachmentLimit` made public;
-1575 lines). Needs an independent review, and Tom's sign-off.
+Risk: high when reviewed (`Sources/PeelCore/Engine.swift`, `attachmentLimit`
+made public; 1575 lines). Since 2026-10-29 that change is gone: the
+recording's limit is its own (`longest`, `sendLimit`).
 
 Independent review (high tier, an agent that did not write it): fixed a
 recording deleted when Downloads refused it; the camera and bar left up when

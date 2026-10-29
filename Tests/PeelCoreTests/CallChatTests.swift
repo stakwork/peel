@@ -146,6 +146,15 @@ struct CallChatWireTests {
             #expect(message.text == "Here." && message.artifacts.isEmpty)
         }
     }
+
+    @Test func showsTheLinkListOnlyWhenNoArtifactLinesStandForIt() {
+        let text = "Here's the plan.\n\n- [Plan](https://hive.example/p)\n* [Fix](https://github.com/a/b/pull/1)\n- not a link\n- [Inline](https://x.example) and more"
+        let plan = AgentArtifact(id: "plan", title: "Plan")
+        let with = CallChatMessage(id: "r", timestamp: .now, text: text, sender: nil, artifacts: [plan])
+        #expect(with.shownText == "Here's the plan.\n\n- not a link\n- [Inline](https://x.example) and more")
+        #expect(CallChatMessage(id: "r", timestamp: .now, text: text, sender: nil).shownText == text)
+        #expect(CallChatMessage(id: "r", timestamp: .now, text: "- [Plan](https://hive.example/p)", sender: nil, artifacts: [plan]).shownText.isEmpty)
+    }
 }
 
 struct CallChatLogTests {

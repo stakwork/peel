@@ -272,37 +272,65 @@ struct AgentArtifactLine: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     let artifact: AgentArtifact
+    /// Title, then Open on a line of its own, for a narrow panel (the
+    /// call's chat); the summary only on hover.
+    var stacked = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 11))
-                .accessibilityHidden(true)
-            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
-                .foregroundStyle(Theme.text)
-                .lineLimit(1)
-            if let summary = artifact.summary {
-                Text("· " + summary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(summary)
-            }
-            if let handle = artifact.handle, let name = strutPage(handle)?.name {
-                // Made again on the click: strut may have started again on another port and key.
-                Button("Open") { if let page = strutPage(handle) { model.web.open(page) } }
-                    .buttonStyle(.peel(.link))
-                    .help(name)
-                if let peer = handle.peer { Text("@\(peer)").fixedSize() }
-            } else if let url = artifact.url {
-                // Where it goes, beside the agent's words for it.
-                Button("Open") { openURL(url) }
-                    .buttonStyle(.peel(.link))
-                    .help(url.absoluteString)
-                if let host = url.host() { Text(host).fixedSize() }
+        Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        icon
+                        title.lineLimit(2)
+                    }
+                    .help(artifact.summary ?? "")
+                    HStack(spacing: 6) { open }
+                        .padding(.leading, 17)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    icon
+                    title.lineLimit(1)
+                    if let summary = artifact.summary {
+                        Text("· " + summary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(summary)
+                    }
+                    open
+                }
             }
         }
         .font(Theme.font(13))
         .foregroundStyle(Theme.secondaryText)
+    }
+
+    private var icon: some View {
+        Image(systemName: "doc.text")
+            .font(.system(size: 11))
+            .accessibilityHidden(true)
+    }
+
+    private var title: some View {
+        Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+            .foregroundStyle(Theme.text)
+    }
+
+    @ViewBuilder private var open: some View {
+        if let handle = artifact.handle, let name = strutPage(handle)?.name {
+            // Made again on the click: strut may have started again on another port and key.
+            Button("Open") { if let page = strutPage(handle) { model.web.open(page) } }
+                .buttonStyle(.peel(.link))
+                .help(name)
+            if let peer = handle.peer { Text("@\(peer)").fixedSize() }
+        } else if let url = artifact.url {
+            // Where it goes, beside the agent's words for it.
+            Button("Open") { openURL(url) }
+                .buttonStyle(.peel(.link))
+                .help(url.absoluteString)
+            if let host = url.host() { Text(host).fixedSize() }
+        }
     }
 
     /// The deliverable on Peel's own strut; nil while it is not running.

@@ -12,7 +12,7 @@ public struct CallChatMessage: Sendable, Equatable, Identifiable {
     /// A person's spoken command, echoed by Jamie as their row.
     public let isVoice: Bool
     /// What a reply of Jamie's points to, from strut's own entries beside it
-    /// (`strut`); the same deliverables are links in `text` too.
+    /// (`strut`); the same deliverables are links in `text` too (`shownText`).
     public let artifacts: [AgentArtifact]
 
     public init(id: String, timestamp: Date, text: String, sender: String?, isVoice: Bool = false,
@@ -27,6 +27,15 @@ public struct CallChatMessage: Sendable, Equatable, Identifiable {
 
     /// Jamie's messages carry no sender.
     public var isFromJamie: Bool { sender?.isEmpty ?? true }
+
+    /// The text to show: with `artifacts` under it, without the list of
+    /// links (`- [Title](url)` lines) that names the same deliverables.
+    public var shownText: String {
+        guard !artifacts.isEmpty else { return text }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.range(of: #"^\s*[-*]\s+\[[^\]]*\]\([^)\s]+\)\s*$"#, options: .regularExpression) == nil }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 /// The call chat's wire format, the same one Sphinx Mac and Hive's voice

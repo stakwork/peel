@@ -199,3 +199,19 @@ extension Conversation {
         !isTribe || tribe?.isPrivate == true
     }
 }
+
+extension AgentArtifact {
+    /// Whether opening it asks first: an app sent in a tribe, where anyone
+    /// could have sent it, and which runs with the reader's own access to
+    /// its workspace (docs/hive-tribes.md, "Deliverables").
+    public func asksBeforeOpening(inTribe: Bool) -> Bool {
+        inTribe && handle?.app != nil
+    }
+
+    /// What that asks: the app and version the link really opens (its
+    /// title is the sender's words), and the workspace as the person reads it.
+    public func tribeAppQuestion(on workspace: String) -> String {
+        let app = handle?.app.map { "“\($0.name)”" + ($0.version.map { " \($0)" } ?? "") } ?? "this app"
+        return "Open the app \(app) from \(workspace)? Anyone in the tribe could have sent this link."
+    }
+}

@@ -198,6 +198,19 @@ extension Message {
         return artifacts.prefix(AgentArtifact.most).compactMap(AgentArtifact.init)
     }
 
+    /// What a message points to from strut's own entries in its metadata,
+    /// `metadata.strut` (`{ workspace, artifacts }`): Jamie's replies in a
+    /// tribe carry them (docs/hive-tribes.md), and each is resolved against
+    /// that workspace as a call's chat resolves Jamie's
+    /// (`AgentArtifact(strutEntry:workspace:)`). Whoever sent the message
+    /// wrote them, and in a tribe that is anyone: an entry opens only
+    /// against the reader's own pairing with that workspace, never by itself.
+    public var strutArtifacts: [AgentArtifact] {
+        guard type == MessageType.text, !deleted, let body, body.contains("strut") || body.contains(#"\u"#),
+              let metadata = MessageMetadata.string(in: body), case .object(let fields)? = JSONValue(text: metadata) else { return [] }
+        return CallChatWire.artifacts(fields["strut"])
+    }
+
     /// `key` in a talk message's extras: `metadata.peel` with no `op`.
     private func talkExtra(_ key: String) -> JSONValue? {
         guard type == MessageType.text, !deleted, let body, body.contains(key),

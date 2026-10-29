@@ -539,7 +539,7 @@ struct ThreadSummaryButton: View {
                 let sender = model.sender(of: latest)
                 (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
                     + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
-                    .phoneFont(.time)
+                    .phoneFont(.secondary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -23,11 +23,7 @@ struct RecordingSettingsSection: View {
                         .disabled(recording.phase != .idle)
                 }
                 Fact("Recording limit") {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Stops on its own after this long")
-                        Text("Under about a minute fits in a chat; share longer ones from Finder.").muted()
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("Stops on its own after this long")
                 } trailing: {
                     SegmentedChoice(
                         selection: Binding(get: { recording.longest }, set: { recording.longest = $0 }),

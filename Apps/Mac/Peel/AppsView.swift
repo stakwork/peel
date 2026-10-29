@@ -20,6 +20,12 @@ struct AppsView: View {
         VStack(spacing: 0) {
             DetailHeader(title: "Apps", subtitle: apps.isEmpty ? nil : Formatting.count(apps.count, "app")) {
                 WorkspaceApp.headerIcon(WorkspaceApp.symbol)
+            } trailing: {
+                // The person's own and the workspaces' now, not at the sidebar's next read.
+                IconButton("arrow.clockwise", help: "Refresh", working: model.stadeum.readingApps) {
+                    model.refreshApps()
+                }
+                .disabled(model.stadeum.readingApps)
             }
             if !apps.isEmpty {
                 list(apps)

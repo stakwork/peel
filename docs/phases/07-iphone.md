@@ -1174,6 +1174,11 @@ Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
   stack of your own: the server keeps one token per account, so on a real
   account it would take the official app's notifications away.
 
+Reading the token while debugging: a Debug build prints `[Peel push] APNs
+device token (<environment>, app <id>): <hex>` to Xcode's console and asks for
+notification permission at launch, without turning the hub flag on. Release
+builds print and ask nothing. The push key is never printed.
+
 Not verified here (a Linux pod with no Swift or Xcode): none of this was
 compiled. In particular `decryptChildIndex(encryptedChild:pushKey:)` and
 `setPushToken(... pushToken:pushKey:)` follow sphinx-ios-v2's call sites, and

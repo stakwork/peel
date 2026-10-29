@@ -6,7 +6,7 @@ import PeelUI
 /// The control bar of a screen recording, the dictation HUD's pill: before
 /// it starts, Cancel and Record; while it runs, a red dot and the time
 /// between Discard and Stop; in its last minute how long is left before it
-/// stops itself (Account › Recording's Longest), and what became of a mic
+/// stops itself (Account › Recording's Recording limit), and what became of a mic
 /// that went quiet. Never in the recording.
 struct RecordingBarView: View {
     let controller: RecordingController

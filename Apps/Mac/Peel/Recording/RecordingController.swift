@@ -201,7 +201,7 @@ final class RecordingController {
         elapsed = recorder.duration
         let left = TimeInterval(longest * 60) - elapsed
         if left <= 0 {
-            problem = "The recording stopped at \(longest) minutes, the longest you chose."
+            problem = "The recording stopped at \(longest) minutes, your recording limit."
             stop()
             notice.show(.message("Stopped at \(longest) minutes. Saved to Downloads"))
             return

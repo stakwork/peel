@@ -40,7 +40,7 @@ until you send it.
   fps, in the encoder's pixel format (`SCStreamConfiguration.fitting`,
   shared with a call's share), the cursor, and the microphone (`captureMicrophone`, bound to the
   default input, as dictation learned to). No system audio in v1. The
-  recording runs up to Account › Recording's Longest (5, 15, 30 or 60
+  recording runs up to Account › Recording's Recording limit (5, 15, 30 or 60
   minutes; 30 by default), only so a forgotten one cannot fill the disk:
   H.264 at this size is about 1 MB every 2 s, so 30 minutes is about
   800 MB. The Ready bar says "Up to 30 min"; in the last minute the bar

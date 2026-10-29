@@ -22,7 +22,7 @@ struct RecordingSettingsSection: View {
                         .buttonStyle(.peel(.primary))
                         .disabled(recording.phase != .idle)
                 }
-                Fact("Longest") {
+                Fact("Recording limit") {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Stops on its own after this long")
                         Text("Under about a minute fits in a chat; share longer ones from Finder.").muted()

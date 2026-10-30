@@ -351,7 +351,7 @@ final class CallSession {
         share = started
         if leaving || started.ended { return await stopSharing() }
         do {
-            let publication = try await room.localParticipant.publish(videoTrack: started.track)
+            let publication = try await room.localParticipant.publish(videoTrack: started.track, options: ScreenShare.publishOptions)
             // Stopped while it was being published.
             guard share === started else {
                 try? await room.localParticipant.unpublish(publication: publication)

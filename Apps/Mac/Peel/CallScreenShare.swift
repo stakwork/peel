@@ -98,6 +98,12 @@ final class ScreenShare {
     private static let maxSide: CGFloat = 1920
     private static let fps: Int32 = 15
 
+    /// One layer, the full picture, for every viewer: simulcast's low
+    /// layer is picked by a view's size in points, so a laptop-sized call
+    /// window got a soft, 3 fps share (docs/phases/06-calls.md, "Shared
+    /// screen at full size"). Dynacast still pauses it while nobody watches.
+    static let publishOptions = VideoPublishOptions(simulcast: false)
+
     /// Starts capturing `filter`, after hiding Peel's windows from capture,
     /// unless `includePeel`.
     /// `stopped` runs when macOS ends the capture (the menu bar's Stop, a

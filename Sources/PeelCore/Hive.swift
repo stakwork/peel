@@ -47,6 +47,67 @@ public struct HivePeer: Codable, Sendable, Equatable {
     }
 }
 
+/// Jamie in Sphinx tribes (docs/hive-tribes.md): the one Sphinx account
+/// Hive runs in every tribe linked to an org (stakwork/sphinx `wasm/daemon`).
+public struct JamieAccount: Codable, Sendable, Equatable {
+    /// Its key: a private tribe's request to join from it is approved unasked.
+    public var pubkey: String
+    public var alias: String
+
+    public init(pubkey: String, alias: String) {
+        self.pubkey = pubkey
+        self.alias = alias
+    }
+
+    /// Its key in lower case and its alias cleaned; nil for a key that is not one.
+    var checked: JamieAccount? {
+        guard pubkey.isPubkey else { return nil }
+        let alias = TextLine.clean(alias, max: TextLine.maxName)
+        return JamieAccount(pubkey: pubkey.lowercased(), alias: alias.isEmpty ? "Jamie" : alias)
+    }
+}
+
+/// A tribe the person linked to one of their orgs: `@jamie` there is a turn
+/// of that org's assistant, run as them, answered in the tribe.
+public struct JamieLink: Codable, Sendable, Equatable {
+    /// The tribe's key.
+    public var pubkey: String
+    /// Its tribes server, `host[:port]`.
+    public var host: String
+    public var name: String?
+    /// The workspace whose org answers: a `HivePeer.id`.
+    public var workspace: String
+    /// The org's GitHub login.
+    public var org: String?
+
+    public init(pubkey: String, host: String, name: String? = nil, workspace: String, org: String? = nil) {
+        self.pubkey = pubkey
+        self.host = host
+        self.name = name
+        self.workspace = workspace
+        self.org = org
+    }
+
+    /// Its keys as Peel holds them; nil for one it could not use.
+    var checked: JamieLink? {
+        guard pubkey.isPubkey, AgentArtifact.Handle.isPeerID(workspace) else { return nil }
+        var link = self
+        link.pubkey = pubkey.lowercased()
+        return link
+    }
+}
+
+/// Every tribe the person linked, and Jamie's account.
+public struct JamieLinks: Codable, Sendable, Equatable {
+    public var jamie: JamieAccount
+    public var tribes: [JamieLink]
+
+    public init(jamie: JamieAccount, tribes: [JamieLink]) {
+        self.jamie = jamie
+        self.tribes = tribes
+    }
+}
+
 /// An org Hive gave no record for this time, and why, in Hive's words.
 public struct HiveOrgError: Codable, Sendable, Equatable {
     public var org: String
@@ -254,6 +315,78 @@ public struct HiveClient: Sendable {
         }
     }
 
+    // MARK: - Jamie in tribes
+
+    /// The tribes `link`'s person linked to their orgs, and Jamie's account
+    /// (docs/hive-tribes.md): read from Hive, so their Mac and iPhone agree.
+    public func jamieLinks(_ link: HiveLink) async throws -> JamieLinks {
+        let (status, data) = try await request("GET", "api/strut-devices/tribes", nil, bearer: link.credential)
+        guard status == 200 else { throw Self.tribeFailure(status, data, couldNot: "read which tribes have Jamie") }
+        guard let answer = try? JSONDecoder.hive.decode(JamieAnswer.self, from: data), let jamie = answer.jamie.checked,
+              let tribes = answer.tribes else {
+            throw PeelError("Stadeum's answer about Jamie could not be read.")
+        }
+        // A link Peel could not use (not a tribe's key, a workspace id strut would not take) is left out.
+        return JamieLinks(jamie: jamie, tribes: tribes.compactMap(\.checked))
+    }
+
+    /// Links `tribe` (a tribe the person owns, on its tribes server `host`)
+    /// to `workspace` (a peer's id): from now on `@jamie` there is a turn
+    /// of that org's assistant, run as the person, and Jamie is told to
+    /// join. Answers Jamie's account and the link as Hive keeps it.
+    public func linkTribe(
+        _ link: HiveLink, workspace: String, tribe: String, host: String, name: String?
+    ) async throws -> (jamie: JamieAccount, tribe: JamieLink) {
+        struct Body: Encodable {
+            struct Tribe: Encodable {
+                let pubkey: String
+                let host: String
+                let name: String?
+            }
+
+            let workspace: String
+            let tribe: Tribe
+        }
+        let body = Body(workspace: workspace, tribe: Body.Tribe(pubkey: tribe, host: host, name: name))
+        let (status, data) = try await request("POST", "api/strut-devices/tribes", json: try JSONEncoder.hive.encode(body),
+                                               bearer: link.credential)
+        guard status == 200 else { throw Self.tribeFailure(status, data, couldNot: "add Jamie") }
+        guard let answer = try? JSONDecoder.hive.decode(JamieAnswer.self, from: data),
+              let jamie = answer.jamie.checked, let linked = answer.tribe?.checked, linked.pubkey == tribe.lowercased() else {
+            throw PeelError("Stadeum's answer about Jamie could not be read.")
+        }
+        return (jamie, linked)
+    }
+
+    /// Unlinks `tribe` (its pubkey): Hive refuses its mentions from now on
+    /// and tells Jamie to leave. One Hive says it no longer has (unlinked
+    /// from the person's other device) is unlinked already; any other 404
+    /// (a proxy's, a Hive without the route) is not.
+    public func unlinkTribe(_ link: HiveLink, tribe: String) async throws {
+        guard tribe.isPubkey else { throw PeelError("That isn't a tribe's key.") }
+        let (status, data) = try await request("DELETE", "api/strut-devices/tribes/\(tribe.lowercased())", nil,
+                                               bearer: link.credential)
+        if status == 200 { return }
+        if status == 404, (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"] == Self.notLinked { return }
+        throw Self.tribeFailure(status, data, couldNot: "remove Jamie")
+    }
+
+    /// Hive's answer to unlinking a tribe the person has no link for.
+    static let notLinked = "Tribe not linked"
+
+    /// What Hive answers instead, in words: the refusals a person can act
+    /// on said as such (docs/hive-tribes.md), the rest in Hive's words.
+    private static func tribeFailure(_ status: Int, _ data: Data, couldNot what: String) -> PeelError {
+        switch status {
+        // A revoked device, and a Hive from before the routes alike (its
+        // middleware turns the device credential away on a path it does not know).
+        case 401: PeelError("Stadeum didn't accept this device for Jamie. If it was disconnected in Stadeum, connect it again.")
+        case 409: PeelError("Someone else already linked this tribe to an org.")
+        case 503: PeelError("Jamie isn't switched on in Stadeum yet.")
+        default: failure(status, data, couldNot: what)
+        }
+    }
+
     // MARK: - Hive's answers
 
     private struct Paired: Decodable {
@@ -275,6 +408,13 @@ public struct HiveClient: Sendable {
         let peers: [HivePeer]
         let expiresAt: Date?
         let errors: [HiveOrgError]?
+    }
+
+    /// `GET /api/strut-devices/tribes` (`tribes`) and its `POST` (`tribe`).
+    private struct JamieAnswer: Decodable {
+        let jamie: JamieAccount
+        let tribes: [JamieLink]?
+        let tribe: JamieLink?
     }
 
     /// The person's actor: the first part of a strut session id, so plain.
@@ -315,9 +455,12 @@ public struct HiveClient: Sendable {
     private func request(
         _ method: String, _ path: String, _ body: [String: String]?, bearer: String? = nil
     ) async throws -> (Int, Data) {
-        let json = try body.map { try JSONEncoder.hive.encode($0) }
-        return try await Web.requestStrut(method, hive.appending(path: path), json: json,
-                                          bearer: bearer, limit: Self.limit, what: "Stadeum", timeout: 30)
+        try await request(method, path, json: try body.map { try JSONEncoder.hive.encode($0) }, bearer: bearer)
+    }
+
+    private func request(_ method: String, _ path: String, json: Data?, bearer: String?) async throws -> (Int, Data) {
+        try await Web.requestStrut(method, hive.appending(path: path), json: json,
+                                   bearer: bearer, limit: Self.limit, what: "Stadeum", timeout: 30)
     }
 
     private static func failure(_ status: Int, _ data: Data, couldNot what: String) -> PeelError {

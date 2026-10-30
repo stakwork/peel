@@ -215,12 +215,19 @@ struct AgentDMRow: View {
     }
 
     /// What it points to: a job's deliverables, a page, a link.
-    private var artifacts: AnyView? {
-        guard !row.agentArtifacts.isEmpty else { return nil }
-        return agentNoteLines {
-            ForEach(Array(row.agentArtifacts.enumerated()), id: \.offset) { _, artifact in
-                AgentArtifactLine(artifact: artifact)
-            }
+    private var artifacts: AnyView? { agentArtifactLines(row.agentArtifacts) }
+}
+
+/// What a message points to, a quiet line each under it: the agent's DM
+/// replies, and in a tribe a member's (Jamie's) deliverables (`inTribe`:
+/// opened only on your own Stadeum workspaces, an app after a confirm).
+/// Nil for none.
+@MainActor func agentArtifactLines(_ artifacts: [AgentArtifact], inTribe: Bool = false) -> AnyView? {
+    guard !artifacts.isEmpty else { return nil }
+    return agentNoteLines {
+        // By position: a reply may name one thing twice.
+        ForEach(Array(artifacts.enumerated()), id: \.offset) { _, artifact in
+            AgentArtifactLine(artifact: artifact, inTribe: inTribe)
         }
     }
 }
@@ -267,7 +274,8 @@ private struct AgentJobLine: View {
 /// what is in it, and Open: a deliverable Peel's own strut shows (its
 /// handle; an org's file or app, read through to it) in the web pane beside
 /// the chat, with the org it lives on, or else an https link as any link.
-/// Under the agent's DM replies and Jamie's in a call's chat.
+/// Under the agent's DM replies, Jamie's in a call's chat, and a member's
+/// in a tribe (`inTribe`).
 struct AgentArtifactLine: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -276,6 +284,10 @@ struct AgentArtifactLine: View {
     /// Title, then Open on a line of its own, for a narrow panel (the
     /// call's chat); the summary only on hover.
     var stacked = false
+    /// Sent in a tribe, where anyone could have written it
+    /// (docs/hive-tribes.md): a handle opens only on one of your own live
+    /// Stadeum workspaces, and an app only after a confirm.
+    var inTribe = false
 
     var body: some View {
         Group {
@@ -319,23 +331,25 @@ struct AgentArtifactLine: View {
     }
 
     @ViewBuilder private var open: some View {
-        if let handle = artifact.handle, let name = strutPage(handle)?.name {
+        if let handle = artifact.handle, model.memoryServer != nil, !inTribe || model.stadeum.opensFromTribe(handle) {
             // Made again on the click: strut may have started again on another port and key.
             // An app the Apps list has opens there, as from the sidebar; else
-            // the page, in the web pane. Both are the main window's: from the
+            // the page, in the web pane (`AppModel.open`). Both are the main window's: from the
             // call's chat, that window comes to the front (opened again if closed).
-            Button("Open") {
-                if let app = listedApp(handle) {
-                    model.destination = .app(peer: app.peer, name: app.name)
-                } else if let page = strutPage(handle) {
-                    model.web.open(page)
-                } else {
-                    return
-                }
+            let openIt = {
+                guard model.open(handle, title: artifact.title) else { return }
                 openWindow(id: MainWindow.id, value: MainWindow.Key.main)
             }
-                .buttonStyle(.peel(.link))
-                .help(name)
+            if artifact.asksBeforeOpening(inTribe: inTribe) {
+                InlineConfirm(trigger: "Open", prompt: artifact.tribeAppQuestion(on: model.stadeum.workspaceName(handle.peer ?? "")),
+                              confirm: "Open app", confirmKind: .primary, style: .text) { openIt() }
+                    .foregroundStyle(Theme.link)
+                    .help(StrutPage.name(artifact.title, on: handle.peer))
+            } else {
+                Button("Open", action: openIt)
+                    .buttonStyle(.peel(.link))
+                    .help(StrutPage.name(artifact.title, on: handle.peer))
+            }
             if let peer = handle.peer { Text("@\(peer)").fixedSize() }
         } else if let url = artifact.url {
             // Where it goes, beside the agent's words for it.
@@ -343,21 +357,10 @@ struct AgentArtifactLine: View {
                 .buttonStyle(.peel(.link))
                 .help(url.absoluteString)
             if let host = url.host() { Text(host).fixedSize() }
+        } else if inTribe, let handle = artifact.handle, let peer = handle.peer, !model.stadeum.opensFromTribe(handle) {
+            // Someone else's workspace, or one not connected here: the title only.
+            Text("@\(peer) isn't connected here").fixedSize()
         }
-    }
-
-    /// The listed app `handle` names, when the Apps page shows what it
-    /// names: no version, or the live one (the page shows the live version).
-    private func listedApp(_ handle: AgentArtifact.Handle) -> WorkspaceApp? {
-        guard let named = handle.app, let app = model.app(peer: handle.peer, name: named.name),
-              named.version == nil || named.version == app.version else { return nil }
-        return app
-    }
-
-    /// The deliverable on Peel's own strut; nil while it is not running.
-    private func strutPage(_ handle: AgentArtifact.Handle) -> StrutPage? {
-        guard let server = model.memoryServer, let url = server.page(showing: handle) else { return nil }
-        return StrutPage(url: url, server: server, name: handle.peer.map { "\(artifact.title) · @\($0)" } ?? artifact.title)
     }
 }
 

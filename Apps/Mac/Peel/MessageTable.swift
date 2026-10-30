@@ -1286,6 +1286,7 @@ extension ChatRow: TableRow {
             height += CGFloat(lines) * 18 + (startsRun ? 30 : 6)
             if message.attachmentKind != nil { height += 220 }
             if summary != nil { height += 28 }
+            height += CGFloat(agentArtifacts.count) * 24
         default:
             height += 28
         }
@@ -1293,7 +1294,9 @@ extension ChatRow: TableRow {
     }
 
     func content(in list: ComposerID, canAnswer: Bool) -> AnyView {
-        AnyView(ListRowContent(row: self, composer: list, canAnswer: canAnswer))
+        // A tribe member's deliverables (Jamie's), under the message.
+        AnyView(ListRowContent(row: self, composer: list, canAnswer: canAnswer,
+                               below: inTribe ? agentArtifactLines(agentArtifacts, inTribe: true) : nil))
     }
 
     func hoverBar(in list: ComposerID) -> AnyView? {

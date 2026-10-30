@@ -23,6 +23,8 @@ final class RecordingController {
         /// The screen picked, the camera bubble and the bar up: waiting for Record.
         case ready
         case recording
+        /// Nothing being written, the capture still running.
+        case paused
         /// Stopped, the file being finished.
         case stopping
     }
@@ -55,7 +57,7 @@ final class RecordingController {
     /// The camera bubble is in the next recording.
     /// The longest a recording runs, in minutes, before it stops itself:
     /// one of `lengths`. Only so a forgotten one cannot fill the disk; how
-    /// it is sent is the person's, Peel sending what fits (`sendLimit`).
+    /// it is sent is the person's, Peel sending what fits (`Engine.sendLimit`).
     var longest: Int {
         didSet { UserDefaults.standard.set(longest, forKey: Self.longestKey) }
     }
@@ -79,9 +81,6 @@ final class RecordingController {
     /// The choices for `longest`, in minutes, and the one it starts on.
     static let lengths = [5, 15, 30, 60]
     private static let defaultLongest = 30
-    /// The most a recording can be to send in a chat: what the hosted memes
-    /// server takes (Tom, 2026-10-29), short of Peel's own attachment limit.
-    static let sendLimit = 25_000_000
     /// How near `longest` the bar counts down.
     private static let warning: TimeInterval = 60
     /// This long with nothing at all from the mic, not even its hiss, it is deaf.
@@ -160,9 +159,27 @@ final class RecordingController {
         }
     }
 
+    /// Holds the recording: paused time is not in the file, and not counted
+    /// toward `longest`.
+    func pause() {
+        guard phase == .recording, let recorder else { return }
+        recorder.pause()
+        phase = .paused
+        elapsed = recorder.duration
+        micNote = nil
+        bar.refit()
+    }
+
+    func resume() {
+        guard phase == .paused, let recorder else { return }
+        recorder.resume()
+        phase = .recording
+        bar.refit()
+    }
+
     /// Ends the recording and keeps it.
     func stop() {
-        guard phase == .recording, let recorder else { return }
+        guard phase == .recording || phase == .paused, let recorder else { return }
         phase = .stopping
         putAway()
         Task { await recorder.stop() }
@@ -175,7 +192,7 @@ final class RecordingController {
         case .ready:
             putAway()
             phase = .idle
-        case .recording:
+        case .recording, .paused:
             discarding = true
             stop()
         case .idle, .starting, .stopping:
@@ -193,7 +210,7 @@ final class RecordingController {
     }
 
     private func tick() {
-        guard let recorder else { return }
+        guard let recorder, phase != .paused else { return }
         elapsed = recorder.duration
         let left = TimeInterval(longest * 60) - elapsed
         if left <= 0 {
@@ -204,8 +221,8 @@ final class RecordingController {
         }
         let before = (timeLeft == nil, micNote)
         timeLeft = left <= Self.warning ? left : nil
-        // Gone deaf (a headset's mic dropped): said, as moving to another
-        // mic would end the recording (`ScreenRecorder`).
+        // Gone deaf (a headset's mic dropped): said, as the mic picked at
+        // Record stays for the recording (`ScreenRecorder`).
         micNote = recorder.micSilence >= Self.deaf ? "No sound from your mic" : nil
         if before != (timeLeft == nil, micNote) { bar.refit() }
     }
@@ -278,8 +295,9 @@ final class RecordingController {
 
     // MARK: Captions
 
-    /// The recording's words from Peel's strut, as captions in the file.
-    /// Without them the video stays as it is.
+    /// The recording's words from Peel's strut, as captions in the file,
+    /// then the file written whole with its index first, captions or not:
+    /// a chat's player starts before the download ends.
     private func addCaptions(to video: URL) async {
         captions[video] = "Adding captions…"
         let temp = FileManager.default.temporaryDirectory
@@ -289,6 +307,8 @@ final class RecordingController {
         defer {
             for leftover in [wav, pieces, captioned] { try? FileManager.default.removeItem(at: leftover) }
         }
+        var cues: [CaptionCue] = []
+        var status: String
         do {
             let duration = try await RecordingMedia.extractAudio(from: video, to: wav)
             try FileManager.default.createDirectory(at: pieces, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -308,19 +328,23 @@ final class RecordingController {
                 }
                 words += reply.words.map { TimedWord(text: $0.text, start: $0.start + piece.start) }
             }
-            guard !words.isEmpty else {
-                captions[video] = "No speech was heard"
-                return
-            }
-            try await RecordingMedia.addCaptions(RecordingCaptions.cues(from: words, duration: duration), to: video, writingTo: captioned)
-            _ = try FileManager.default.replaceItemAt(video, withItemAt: captioned)
-            captions[video] = "Captioned"
+            cues = RecordingCaptions.cues(from: words, duration: duration)
+            status = words.isEmpty ? "No speech was heard" : "Captioned"
         } catch let failure as StrutSpeech.Failure {
-            captions[video] = "No captions: \(failure)"
+            status = "No captions: \(failure)"
         } catch {
             log.error("captions failed: \(String(describing: error), privacy: .public)")
-            captions[video] = "No captions: they couldn't be made"
+            status = "No captions: they couldn't be made"
         }
+        do {
+            try await RecordingMedia.addCaptions(cues, to: video, writingTo: captioned)
+            _ = try FileManager.default.replaceItemAt(video, withItemAt: captioned)
+        } catch {
+            // The recording as written still plays, only not before it is all downloaded.
+            log.error("recording not rewritten: \(String(describing: error), privacy: .public)")
+            if !cues.isEmpty { status = "No captions: they couldn't be made" }
+        }
+        captions[video] = status
         refresh()
     }
 

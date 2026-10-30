@@ -387,7 +387,7 @@ final class OffscreenDriver {
     /// `home-move`, `home-ping`, `home-copy`, its Peel Home moves; `account-<category>`, that row in Account's
     /// categories (`account-dictation`); `connection`, the sidebar bolt’s status panel;
     /// `connection-check`, its check/reconnect action; `apps`, the sidebar's
-    /// Apps; `apps-seed`, sample workspace apps in memory; `apps-fold`, the
+    /// Apps; `apps-refresh`, its header's Refresh; `apps-seed`, sample workspace apps in memory; `apps-fold`, the
     /// Apps row's chevron; `app-pin`, the open app's pin; `app-versions`, the
     /// open app's version chip (its menu); `app-make-live`, Make live for the
     /// newest version waiting, as its panel's button.
@@ -422,6 +422,9 @@ final class OffscreenDriver {
         case "apps":
             // What the sidebar's Apps row sets.
             model.destination = .apps
+        case "apps-refresh":
+            // Apps' header Refresh: the person's own and every workspace's.
+            model.refreshApps()
         case "apps-seed":
             // Workspaces' apps in memory, read as a listing through strut is;
             // strut and Stadeum untouched.

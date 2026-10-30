@@ -6,8 +6,8 @@ import SwiftUI
 /// tabs, A–Z, each read and opened on its workspace's own strut with the
 /// person's token (`Stadeum.readApps`, `Stadeum.opening`; strut's
 /// specs/DESKTOP.md, "A device with no strut of its own"). A tap opens one
-/// in the org page sheet; pulling reads them again. The Mac's twin is
-/// `AppsView`, which also lists the person's own, on its strut.
+/// in the org page sheet; pulling or Refresh reads them again. The Mac's
+/// twin is `AppsView`, which also lists the person's own, on its strut.
 struct AppsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
@@ -48,6 +48,11 @@ struct AppsScreen: View {
         .scrollEdges()
         .searchable(text: $query, prompt: "Search apps")
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                // Off while a read is under way: another would cut it short.
+                Button("Refresh", systemImage: "arrow.clockwise") { stadeum.readWorkspaceApps() }
+                    .disabled(stadeum.live.isEmpty || stadeum.readingApps)
+            }
             if sources.count > 1 {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -68,7 +73,7 @@ struct AppsScreen: View {
             } else if apps.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
-                        Label("No Stadeum here yet", systemImage: WorkspaceApp.symbol)
+                        Label { Text("No Stadeum here yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
                         Text("Connect Stadeum under You to open the apps your workspaces pin.")
                     }
@@ -76,13 +81,13 @@ struct AppsScreen: View {
                     ProgressView()
                 } else if !unread.isEmpty {
                     ContentUnavailableView {
-                        Label("Couldn't read the apps", systemImage: WorkspaceApp.symbol)
+                        Label { Text("Couldn't read the apps") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
                         Text("\(unread.joined(separator: ", ")) did not answer. Pull to try again.")
                     }
                 } else {
                     ContentUnavailableView {
-                        Label("No apps yet", systemImage: WorkspaceApp.symbol)
+                        Label { Text("No apps yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
                         Text("Apps your Stadeum workspaces pin show here.")
                     }
@@ -105,8 +110,7 @@ private struct AppRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.md) {
-            Image(systemName: app.iconSymbol)
-                .font(.system(size: 19))
+            WorkspaceAppIcon(app, size: 20)
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: 30, height: 30)
                 .accessibilityHidden(true)

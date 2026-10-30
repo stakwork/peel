@@ -155,6 +155,90 @@ struct RecordingMediaTests {
         #expect(sizes == [15 * 16000 * 2, 15 * 16000 * 2])
     }
 
+    @Test func withoutCaptionsTheCopyHasNoSubtitlesAndItsIndexFirst() async throws {
+        let video = try await SyntheticVideo.make(at: temp("in.mp4"), seconds: 2)
+        let out = temp("out.mp4")
+        defer { try? FileManager.default.removeItem(at: video); try? FileManager.default.removeItem(at: out) }
+        try await RecordingMedia.addCaptions([], to: video, writingTo: out)
+
+        let asset = AVURLAsset(url: out)
+        #expect(try await asset.loadTracks(withMediaType: .subtitle).isEmpty)
+        #expect(try await asset.loadTracks(withMediaType: .video).count == 1)
+        // The top-level boxes: the index (`moov`) before the media (`mdat`).
+        let data = try Data(contentsOf: out)
+        var boxes: [String] = []
+        var at = 0
+        while at + 8 <= data.count {
+            var size = data[at..<(at + 4)].reduce(0) { $0 << 8 | Int($1) }
+            boxes.append(String(decoding: data[(at + 4)..<(at + 8)], as: UTF8.self))
+            // 1: the size is the 8 bytes after the name.
+            if size == 1, at + 16 <= data.count { size = data[(at + 8)..<(at + 16)].reduce(0) { $0 << 8 | Int($1) } }
+            guard size >= 8 else { break }
+            at += size
+        }
+        let index = try #require(boxes.firstIndex(of: "moov"))
+        let media = try #require(boxes.firstIndex(of: "mdat"))
+        #expect(index < media)
+    }
+
+    @Test func aRecordingKeysEveryTenSecondsAndPlaysIfCutShort() async throws {
+        let url = temp("rec.mp4")
+        let cut = temp("cut.mp4")
+        defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: cut) }
+        let (width, height, fps) = (320, 180, 30)
+        let file = try RecordingMedia.recordingWriter(at: url, width: width, height: height)
+        let pixels = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: file.video, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
+        ])
+        #expect(file.writer.startWriting())
+        file.writer.startSession(atSourceTime: .zero)
+        // No sound here: a writer waiting for some would hold the picture back.
+        file.audio.markAsFinished()
+        // 22 s of a bar moving down the screen, fed as a live capture is.
+        for frame in 0..<(22 * fps) {
+            while !file.video.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            let pool = try #require(pixels.pixelBufferPool)
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            let pixel = try #require(buffer)
+            CVPixelBufferLockBaseAddress(pixel, [])
+            let base = try #require(CVPixelBufferGetBaseAddress(pixel))
+            let row = CVPixelBufferGetBytesPerRow(pixel)
+            memset(base, 200, row * height)
+            memset(base + row * (frame % (height - 10)), 20, row * 10)
+            CVPixelBufferUnlockBaseAddress(pixel, [])
+            #expect(pixels.append(pixel, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))))
+            // What a crash at 15 s leaves: the file as it is on disk.
+            if frame == 15 * fps { try FileManager.default.copyItem(at: url, to: cut) }
+        }
+        file.video.markAsFinished()
+        await file.writer.finishWriting()
+        #expect(file.writer.status == .completed)
+
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let format = try #require(try await track.load(.formatDescriptions).first)
+        #expect(CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_H264)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        reader.add(output)
+        #expect(reader.startReading())
+        var keys: [Double] = []
+        while let sample = output.copyNextSampleBuffer() {
+            guard CMSampleBufferGetNumSamples(sample) > 0 else { continue }
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]]
+            if attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool != true { keys.append(sample.presentationTimeStamp.seconds) }
+        }
+        #expect(keys == [0, 10, 20])
+
+        let left = AVURLAsset(url: cut)
+        #expect(try await left.load(.isPlayable))
+        // The fragments written by then: fed this fast, the encoder is a few
+        // behind.
+        #expect(try await left.load(.duration).seconds >= 2)
+    }
+
     @Test func aVideoWithoutSoundHasNoAudio() async throws {
         let video = try await SyntheticVideo.make(at: temp("in.mp4"), seconds: 1, sound: false)
         defer { try? FileManager.default.removeItem(at: video) }
@@ -266,5 +350,125 @@ private enum SyntheticVideo {
                 }
             }
         }
+    }
+}
+
+/// A pause leaves nothing in the file and no hole in its clock (docs/recording.md).
+struct RecordingPausesTests {
+    private func at(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: 600) }
+
+    @Test func samplesBeforeAPauseKeepTheirTimes() throws {
+        var pauses = RecordingPauses()
+        let result = pauses.fileTime(of: at(5), after: at(4.9))
+        let placed = try #require(result)
+        #expect(placed.time == at(5))
+        #expect(!placed.rejoined)
+    }
+
+    @Test func nothingIsWrittenWhilePaused() {
+        var pauses = RecordingPauses()
+        pauses.pause()
+        let dropped = pauses.fileTime(of: at(6), after: at(5))
+        #expect(dropped == nil)
+    }
+
+    @Test func theFileCarriesOnFromThePauseWithTimesAlwaysRising() throws {
+        var pauses = RecordingPauses()
+        pauses.pause()
+        pauses.resume()
+        _ = pauses.fileTime(of: at(125), after: at(5))
+        let firstPlaced = pauses.fileTime(of: at(125.2), after: at(5))
+        let first = try #require(firstPlaced)
+        #expect(first.rejoined)
+        #expect(first.time > at(5))
+        #expect(first.time <= at(5.1))
+        let nextPlaced = pauses.fileTime(of: at(126.2), after: first.time)
+        let next = try #require(nextPlaced)
+        #expect(!next.rejoined)
+        #expect(next.time == first.time + at(1))
+    }
+
+    @Test func aSecondPauseIsTakenOutToo() throws {
+        var pauses = RecordingPauses()
+        pauses.pause()
+        pauses.resume()
+        _ = pauses.fileTime(of: at(100), after: at(5))
+        let firstPlaced = pauses.fileTime(of: at(100.2), after: at(5))
+        let first = try #require(firstPlaced)
+        pauses.pause()
+        pauses.resume()
+        _ = pauses.fileTime(of: at(200), after: first.time)
+        let secondPlaced = pauses.fileTime(of: at(200.2), after: first.time)
+        let second = try #require(secondPlaced)
+        #expect(second.time > first.time)
+        #expect(second.time <= first.time + at(0.1))
+    }
+
+    @Test func theFirstMomentAfterResumeIsDropped() {
+        var pauses = RecordingPauses()
+        pauses.pause()
+        pauses.resume()
+        let first = pauses.fileTime(of: at(100), after: at(5))
+        let inTheSettle = pauses.fileTime(of: at(100.1), after: at(5))
+        #expect(first == nil)
+        #expect(inTheSettle == nil)
+    }
+
+    @Test func aMovedSampleKeepsItsLengthAtTheNewTime() throws {
+        var sample: CMSampleBuffer?
+        var timing = CMSampleTimingInfo(duration: at(0.02), presentationTimeStamp: at(100), decodeTimeStamp: .invalid)
+        CMSampleBufferCreate(
+            allocator: nil, dataBuffer: nil, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: nil,
+            sampleCount: 1, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil,
+            sampleBufferOut: &sample)
+        let original = try #require(sample)
+        let moved = try #require(RecordingMedia.shifted(original, by: at(-95)))
+        #expect(moved.presentationTimeStamp == at(5))
+        #expect(moved.duration == at(0.02))
+    }
+
+    /// Real frames through the real writer, a two minute pause in the middle.
+    @Test func aPausedRecordingWritesAFileWithoutTheGap() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("peel-pause-test-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = try RecordingMedia.recordingWriter(at: url, width: 1280, height: 720)
+        #expect(file.writer.startWriting())
+        var pauses = RecordingPauses()
+        var pixels: CVPixelBuffer?
+        CVPixelBufferCreate(
+            nil, 1280, 720, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &pixels)
+        var format: CMVideoFormatDescription?
+        CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: try #require(pixels), formatDescriptionOut: &format)
+        var latest: CMTime?
+        let arrivals = (0..<30).map { at(100 + Double($0) / 30) } + (0..<30).map { at(220 + Double($0) / 30) }
+        for (index, time) in arrivals.enumerated() {
+            if index == 30 {
+                pauses.pause()
+                pauses.resume()
+            }
+            guard let place = pauses.fileTime(of: time, after: latest) else { continue }
+            if latest == nil {
+                file.writer.startSession(atSourceTime: place.time)
+                file.audio.markAsFinished()
+            }
+            var sample: CMSampleBuffer?
+            var timing = CMSampleTimingInfo(duration: at(1.0 / 30), presentationTimeStamp: time, decodeTimeStamp: .invalid)
+            CMSampleBufferCreateReadyWithImageBuffer(
+                allocator: nil, imageBuffer: try #require(pixels), formatDescription: try #require(format),
+                sampleTiming: &timing, sampleBufferOut: &sample)
+            let original = try #require(sample)
+            let moved = try #require(RecordingMedia.shifted(original, by: place.time - time))
+            while !file.video.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
+            let appended = file.video.append(moved)
+            #expect(appended, "\(String(describing: file.writer.error))")
+            latest = place.time
+        }
+        file.video.markAsFinished()
+        file.writer.endSession(atSourceTime: try #require(latest))
+        await file.writer.finishWriting()
+        #expect(file.writer.status == .completed)
+        let seconds = try await AVURLAsset(url: url).load(.duration).seconds
+        #expect(seconds > 1.7 && seconds < 2.1)
     }
 }

@@ -247,6 +247,48 @@ public final class TribeIdentityDraft {
     }
 }
 
+/// A tribe's Jamie row, on the Mac and the iPhone (docs/hive-tribes.md):
+/// which of the owner's Stadeum orgs answers `@jamie` in the tribe, as
+/// them, or none. What is linked is Hive's, read through Stadeum
+/// (`jamiePick`), so the owner's devices agree; a pick links or unlinks
+/// at once, and Hive's refusal is said in place.
+@MainActor @Observable
+public final class TribeJamiePicker {
+    public private(set) var working = false
+    public private(set) var problem: String?
+
+    public init() {}
+
+    /// `id` picked: a live workspace's peer id, or "" for No Jamie.
+    public func pick(_ id: String, for tribe: Tribe, with model: AppModel) async {
+        let stadeum = model.stadeum
+        guard !working, id != stadeum.jamiePick(of: tribe.pubkey) else { return }
+        working = true
+        problem = nil
+        defer { working = false }
+        do {
+            let peer = stadeum.live.first { $0.id == id }
+            if !id.isEmpty, peer == nil {
+                throw PeelError("Connect Stadeum to add Jamie from \(stadeum.workspaceName(id)).")
+            }
+            try await stadeum.setJamie(peer, for: tribe)
+        } catch {
+            problem = PeelError.noted(error, couldNot: id.isEmpty ? "remove Jamie" : "add Jamie")
+        }
+    }
+
+    /// The line under the row: which org Jamie answers `@jamie` from here,
+    /// and that its turns use the person's access there (they run as the
+    /// person who linked the tribe); or what a pick does. Jamie itself
+    /// always posts the reply.
+    public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum) -> String {
+        guard !pick.isEmpty else {
+            return "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it."
+        }
+        return "Anyone in #\(tribe.displayName) can ask @jamie. Jamie answers from \(stadeum.workspaceName(pick)), using your access to it."
+    }
+}
+
 /// A chat's time zone switch, on the Mac and the iPhone: whether your
 /// offset goes with what you send there. Set at once, put back if the
 /// change is refused.

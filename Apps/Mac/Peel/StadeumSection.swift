@@ -32,16 +32,7 @@ struct StadeumSection: View {
                     }
                 case .pairing(let pairing):
                     Fact("Pair this Mac") {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Approve this Mac in Stadeum. Check the code matches:").muted()
-                            Text(pairing.userCode)
-                                .font(Theme.font(20, .semibold))
-                                .monospaced()
-                                .textSelection(.enabled)
-                            QRCodeTile(text: pairing.verificationUriComplete.absoluteString, label: "QR code of Stadeum's pairing page")
-                            Link("Open in Stadeum", destination: pairing.verificationUriComplete)
-                                .font(Theme.font(12))
-                        }
+                        StadeumPairingCode(pairing: pairing)
                     } trailing: {
                         Button("Cancel") { model.cancelHivePairing() }
                             .buttonStyle(.peel(.ghost))
@@ -92,6 +83,25 @@ struct StadeumSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
+        }
+    }
+}
+
+/// A Stadeum pairing waiting for the person's yes there: the code to check,
+/// its QR and a link to the page. Here and in a tribe's Jamie row.
+struct StadeumPairingCode: View {
+    let pairing: HiveClient.Pairing
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Approve this Mac in Stadeum. Check the code matches:").muted()
+            Text(pairing.userCode)
+                .font(Theme.font(20, .semibold))
+                .monospaced()
+                .textSelection(.enabled)
+            QRCodeTile(text: pairing.verificationUriComplete.absoluteString, label: "QR code of Stadeum's pairing page")
+            Link("Open in Stadeum", destination: pairing.verificationUriComplete)
+                .font(Theme.font(12))
         }
     }
 }

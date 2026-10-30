@@ -196,6 +196,86 @@ struct StadeumTests {
         stadeum.close()
     }
 
+    /// A tribe's Jamie as Hive keeps it (docs/hive-tribes.md): unknown
+    /// until read, read again at most once a minute for an approval,
+    /// offered with the org it is linked to even when this device no longer
+    /// pairs that org (the row says what is true), linked and unlinked
+    /// through Hive, and let go with the account. A deliverable sent in a
+    /// tribe opens only on an org this device pairs.
+    @Test func aTribesJamieIsHivesAndItsDeliverablesOpenOnlyOnAPairedOrg() async throws {
+        let tribe = String(repeating: "ab", count: 33), jamie = String(repeating: "0c", count: 33)
+        let reads = Mutex(0)
+        let hive = try await HTTPStub { _, request in
+            let line = request.prefix { $0 != "\r" }
+            if line.hasPrefix("GET /api/strut-devices/tribes ") {
+                reads.withLock { $0 += 1 }
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribes":[{"pubkey":"\#(tribe)","host":"h","workspace":"initech"}]}"#)
+            }
+            if line.hasPrefix("POST /api/strut-devices/tribes ") {
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribe":{"pubkey":"\#(tribe)","host":"h","workspace":"acme"}}"#)
+            }
+            if line.hasPrefix("DELETE /api/strut-devices/tribes/\(tribe) ") { return (200, #"{"unlinked":true}"#) }
+            return (404, "{}")
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile, renewNow: false)
+        #expect(stadeum.jamiePick(of: tribe) == nil)
+
+        await stadeum.readJamieLinks()
+        #expect(stadeum.jamiePick(of: tribe.uppercased()) == "initech")
+        #expect(stadeum.jamieOptions(for: tribe).map(\.name) == ["Acme", "@initech", "No Jamie"])
+        await stadeum.readJamieLinks(ifOlderThan: 60)
+        #expect(reads.withLock { $0 } == 1)
+
+        let record = Tribe(pubkey: tribe, host: "tribes.v2.sphinx.chat", isPrivate: true, isOwner: true)
+        try await stadeum.setJamie(stadeum.live.first, for: record)
+        #expect(stadeum.jamiePick(of: tribe) == "acme" && stadeum.jamieLinks?.jamie.pubkey == jamie)
+        try await stadeum.setJamie(nil, for: record)
+        #expect(stadeum.jamiePick(of: tribe) == "" && stadeum.jamieOptions(for: tribe).map(\.id) == ["acme", ""])
+
+        #expect(stadeum.opensFromTribe(try #require(AgentArtifact.Handle(app: "@acme/board"))))
+        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/peers/initech/jobs/j/files/a.md"))))
+        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))))
+        stadeum.close()
+        #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
+    }
+
+    /// A read of the links that Hive answers after this device linked the
+    /// tribe does not take the link back, and the next read asks again.
+    @Test func aReadAnsweredAfterALinkDoesNotTakeItBack() async throws {
+        let tribe = String(repeating: "ab", count: 33), jamie = String(repeating: "0c", count: 33)
+        let asked = DispatchSemaphore(value: 0), answer = DispatchSemaphore(value: 0)
+        let reads = Mutex(0)
+        let hive = try await HTTPStub { _, request in
+            if request.hasPrefix("GET /api/strut-devices/tribes ") {
+                // The first read waits until the link has been made.
+                if reads.withLock({ $0 += 1; return $0 }) == 1 {
+                    asked.signal()
+                    answer.wait()
+                }
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribes":[]}"#)
+            }
+            return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribe":{"pubkey":"\#(tribe)","host":"h","workspace":"acme"}}"#)
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile, renewNow: false)
+        let reading = Task { await stadeum.readJamieLinks() }
+        await withCheckedContinuation { done in DispatchQueue.global().async { asked.wait(); done.resume() } }
+        try await stadeum.setJamie(stadeum.live.first, for: Tribe(pubkey: tribe, host: "h", isOwner: true))
+        answer.signal()
+        _ = await reading.value
+        #expect(stadeum.jamiePick(of: tribe) == "acme")
+        await stadeum.readJamieLinks(ifOlderThan: 60)
+        #expect(reads.withLock { $0 } == 2 && stadeum.jamiePick(of: tribe) == "")
+        stadeum.close()
+    }
+
     @Test func theWorkspacesAppsAreReadAtOnceAndOneThatCannotBeKeepsItsLast() async throws {
         let profile = try profile()
         try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme"), Self.peer("globex", "Globex")])
@@ -230,5 +310,29 @@ struct StadeumTests {
         // The token rides as a JSON literal, checked against the origin and the folder before it is set.
         #expect(request.handOver.contains(#"["\#(origin)","\#(folder)","t\"</script>"]"#))
         #expect(request.handOver.contains("location.origin === origin && location.pathname.startsWith(folder)"))
+    }
+
+    /// On the iPhone a page's link to another app opens that app alone on
+    /// the org's strut, at the view it names, with the token; a page loaded
+    /// again goes where it moved to, with the token, while that is strut's UI.
+    @Test func aLinkToAnotherAppOpensItAloneOnTheOrgsStrutWithTheToken() throws {
+        let request = OrgPageRequest(url: URL(string: "https://acme.sphinx.chat/lab/?app=x&solo=1")!, token: "t", peer: "acme", workspace: "Acme")
+        let board = URL(string: "https://acme.sphinx.chat/lab/?app=board&input=v%3D1")!
+        let link = try #require(request.appLink(board, from: request.url))
+        let there = try #require(request.request(for: link))
+        #expect(there.url?.absoluteString == "https://acme.sphinx.chat/lab/?app=board&input=v%3D1&solo=1")
+        #expect(there.value(forHTTPHeaderField: "Authorization") == "Bearer t")
+        // From a file (words an org or a model wrote), none.
+        #expect(request.appLink(board, from: URL(string: "https://acme.sphinx.chat/lab/?artifact=%2Fjobs%2Fj%2Ffiles%2Fr.md&solo=1")!) == nil)
+        // Another service on the host, no app, or the org's own peer's app: no link.
+        #expect(request.appLink(URL(string: "https://acme.sphinx.chat/other/?app=board")!, from: request.url) == nil)
+        #expect(request.appLink(URL(string: "https://acme.sphinx.chat/lab/?wf=clip&run=1")!, from: request.url) == nil)
+        #expect(request.appLink(URL(string: "https://acme.sphinx.chat/lab/?app=%40globex%2Fx")!, from: request.url) == nil)
+        let moved = URL(string: "https://acme.sphinx.chat/lab/?app=x&input=v%3D2&solo=1")!
+        #expect(request.request(at: moved)?.url == moved)
+        #expect(request.request(at: moved)?.value(forHTTPHeaderField: "Authorization") == "Bearer t")
+        // A file opened in place, or anywhere else: not this.
+        #expect(request.request(at: URL(string: "https://acme.sphinx.chat/lab/jobs/j/files/a.pdf?t=1")!) == nil)
+        #expect(request.request(at: URL(string: "https://evil.example/lab/?app=x")!) == nil)
     }
 }

@@ -187,6 +187,22 @@ extension Engine {
         }
     }
 
+    /// The owner approves `member` (a key), if the tribes server lists them
+    /// waiting to join private tribe `pubkey`: Jamie, in a tribe the owner
+    /// linked to an org (docs/hive-tribes.md). The server's list is the one
+    /// place a request names its key; the request itself carries an alias.
+    /// False when they are not waiting.
+    @discardableResult
+    public func approveWaitingMember(_ member: String, in pubkey: String) async throws -> Bool {
+        guard member.isPubkey else { throw Failure.notAMemberKey }
+        _ = try ownedTribe(pubkey)
+        let key = member.lowercased()
+        guard let waiting = try await tribeMembers(pubkey).members.first(where: { $0.pending && $0.pubkey?.lowercased() == key }),
+              let listed = waiting.pubkey else { return false }
+        try await answerJoinRequest(in: pubkey, .member(pubkey: listed, alias: waiting.alias), approve: true)
+        return true
+    }
+
     /// The owner removes a member, named by the key on the owner's member
     /// list. The tribes server tells only that member and the owner, and
     /// refuses to remove the owner.

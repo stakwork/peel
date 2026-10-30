@@ -189,6 +189,38 @@ extension AppModel {
         stadeum.apps.first { $0.peer == peer && $0.name == name }
     }
 
+    /// Opens an app a deliverable names, as its page was left. `title` is
+    /// its name in the web pane. False while Peel's own strut is not running.
+    @discardableResult
+    func open(_ app: AgentArtifact.Handle, title: String) -> Bool {
+        open(app, title: title, link: nil)
+    }
+
+    /// Opens the app a page links to, at the view the link names (its first
+    /// with none).
+    @discardableResult
+    func open(_ link: StrutAppLink) -> Bool {
+        open(link.app, title: link.app.app?.name ?? "App", link: link)
+    }
+
+    /// One the Apps list has opens where its sidebar row opens it, when the
+    /// list shows what it names (no version, or the live one); any other,
+    /// its page alone in the web pane beside the chat. With `link`, at the
+    /// view it names, its page made again there; else as it was left.
+    private func open(_ app: AgentArtifact.Handle, title: String, link: StrutAppLink?) -> Bool {
+        if let named = app.app, let listed = self.app(peer: app.peer, name: named.name),
+           named.version == nil || named.version == listed.version {
+            if let link { appPlaces[listed.id, default: AppPlace()].open(at: link.input) }
+            destination = .app(peer: listed.peer, name: listed.name)
+            return true
+        }
+        guard let server = memoryServer, let url = server.page(showing: app, input: link?.input) else { return false }
+        web.open(StrutPage(url: url, server: server, name: StrutPage.name(title, on: app.peer))) { [weak self] in
+            self?.open($0)
+        }
+        return true
+    }
+
     /// Where the listed apps come from, as the person reads them: Yours
     /// first, then the workspaces A–Z (`WorkspaceApp.source`).
     var appSources: [String] {

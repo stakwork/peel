@@ -10,7 +10,6 @@ import UIKit
 /// (strut's specs/DESKTOP.md, "A device with no strut of its own").
 struct StadeumSection: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
         let stadeum = model.stadeum
@@ -23,20 +22,7 @@ struct StadeumSection: View {
                 Button("Connect Stadeum") { stadeum.connect(as: UIDevice.current.name) }
                     .buttonStyle(.peel(.outline, size: .touch))
             case .pairing(let pairing):
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text("Approve this iPhone in Stadeum. Check the code matches:")
-                        .foregroundStyle(Theme.quietText(on: .raised))
-                    Text(pairing.userCode)
-                        .phoneFont(.title)
-                        .monospaced()
-                        .textSelection(.enabled)
-                        .accessibilityLabel("Code \(pairing.userCode)")
-                }
-                .padding(.vertical, Theme.Space.xs)
-                Button("Open Stadeum") { openURL(pairing.verificationUriComplete) }
-                    .buttonStyle(.peel(.primary, size: .touch))
-                Button("Cancel") { stadeum.cancelPairing() }
-                    .buttonStyle(.peel(.ghost, size: .touch))
+                StadeumPairingCode(pairing: pairing)
             case .connected, .needsPairing:
                 if stadeum.status == .needsPairing {
                     Text("Stadeum no longer knows this iPhone. Connect it again to open your workspaces' work here.")
@@ -67,6 +53,33 @@ struct StadeumSection: View {
         }
         .phoneRows(.grouped)
         .environment(\.surface, .raised)
+    }
+}
+
+/// A Stadeum pairing waiting for the person's yes there: the code to
+/// check, Open Stadeum and Cancel, each a row of its own in a list. In You ›
+/// Stadeum and a tribe's Jamie row.
+struct StadeumPairingCode: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    @Environment(\.surface) private var surface
+    let pairing: HiveClient.Pairing
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            Text("Approve this iPhone in Stadeum. Check the code matches:")
+                .foregroundStyle(Theme.quietText(on: surface))
+            Text(pairing.userCode)
+                .phoneFont(.title)
+                .monospaced()
+                .textSelection(.enabled)
+                .accessibilityLabel("Code \(pairing.userCode)")
+        }
+        .padding(.vertical, Theme.Space.xs)
+        Button("Open Stadeum") { openURL(pairing.verificationUriComplete) }
+            .buttonStyle(.peel(.primary, size: .touch))
+        Button("Cancel") { model.stadeum.cancelPairing() }
+            .buttonStyle(.peel(.ghost, size: .touch))
     }
 }
 

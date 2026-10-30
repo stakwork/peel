@@ -3,11 +3,111 @@ import CoreMedia
 import Foundation
 import Synchronization
 
-/// What a finished recording's file goes through (docs/recording.md): its
-/// audio read out for strut, and its captions written into it. Nothing is
-/// re-encoded but that audio.
+/// Where a recording's samples go in its file, around pauses
+/// (docs/recording.md): dropped while paused, then moved back by all the
+/// time paused, so the file carries straight on.
+public struct RecordingPauses: Sendable {
+    /// Between the last sample before a pause and the first after: longer
+    /// than a mic's buffer, or the sound either side would overlap.
+    static let seam = CMTime(value: 1, timescale: 10)
+    /// Dropped after the first sample since Resume. A sample comes a moment
+    /// after it was captured, so the first ones hold what was said in the pause.
+    static let settle = CMTime(value: 1, timescale: 5)
+
+    public private(set) var paused = false
+    private var rejoining = false
+    private var joining = false
+    private var resumedAt: CMTime?
+    private var gap = CMTime.zero
+
+    public init() {}
+
+    public mutating func pause() { paused = true }
+
+    public mutating func resume() {
+        guard paused else { return }
+        paused = false
+        rejoining = true
+    }
+
+    /// Where the sample at `time` goes in the file, and whether it is the
+    /// first since a pause; nil to drop it. `latest` is the file's latest time.
+    public mutating func fileTime(of time: CMTime, after latest: CMTime?) -> (time: CMTime, rejoined: Bool)? {
+        guard !paused else { return nil }
+        if rejoining {
+            rejoining = false
+            joining = true
+            resumedAt = time + Self.settle
+        }
+        if let resumedAt, time < resumedAt { return nil }
+        let rejoined = joining
+        if joining {
+            joining = false
+            if let latest { gap = time - latest - Self.seam }
+        }
+        return (time - gap, rejoined)
+    }
+}
+
+/// A recording's file (docs/recording.md): how it is written, then its
+/// audio read out for strut and its captions written into it. Nothing is
+/// re-encoded after it is written but that audio.
 public enum RecordingMedia {
     public enum Failure: Error, Equatable { case noAudio, unreadable, unwritable }
+
+    /// A new recording's writer at `url`, its picture `width` by `height`:
+    /// H.264 at constant quality, so a still screen costs almost nothing and
+    /// text stays sharp when it moves (about 4 MB a minute against 25 from
+    /// ScreenCaptureKit's own output), a keyframe at most every 10 s, the
+    /// mic as mono AAC, in 2 s fragments so a quit or crash leaves what was
+    /// written playable. Where the encoder refuses quality mode (an Intel
+    /// Mac), a fixed 800 kbit/s.
+    public static func recordingWriter(at url: URL, width: Int, height: Int) throws -> (writer: AVAssetWriter, video: AVAssetWriterInput, audio: AVAssetWriterInput) {
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        writer.movieFragmentInterval = CMTime(value: 2, timescale: 1)
+        func settings(_ rate: [String: Any]) -> [String: Any] {
+            [
+                AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
+                AVVideoCompressionPropertiesKey: rate.merging([
+                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+                    AVVideoH264EntropyModeKey: AVVideoH264EntropyModeCABAC,
+                    AVVideoMaxKeyFrameIntervalDurationKey: 10,
+                    AVVideoMaxKeyFrameIntervalKey: 300,
+                    AVVideoAllowFrameReorderingKey: false,
+                    AVVideoExpectedSourceFrameRateKey: 30,
+                ]) { $1 },
+            ]
+        }
+        let quality = settings([AVVideoQualityKey: 0.75])
+        let video = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: writer.canApply(outputSettings: quality, forMediaType: .video) ? quality : settings([AVVideoAverageBitRateKey: 800_000])
+        )
+        var mono = AudioChannelLayout()
+        mono.mChannelLayoutTag = kAudioChannelLayoutTag_Mono
+        let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48000, AVNumberOfChannelsKey: 1,
+            AVChannelLayoutKey: Data(bytes: &mono, count: MemoryLayout<AudioChannelLayout>.size),
+            AVEncoderBitRateKey: 64000,
+        ])
+        for input in [video, audio] {
+            input.expectsMediaDataInRealTime = true
+            guard writer.canAdd(input) else { throw Failure.unwritable }
+            writer.add(input)
+        }
+        return (writer, video, audio)
+    }
+
+    /// `sample` moved `offset` along the file's clock.
+    public static func shifted(_ sample: CMSampleBuffer, by offset: CMTime) -> CMSampleBuffer? {
+        guard offset != .zero else { return sample }
+        guard var timing = try? sample.sampleTimingInfos() else { return nil }
+        for index in timing.indices {
+            timing[index].presentationTimeStamp = timing[index].presentationTimeStamp + offset
+            if timing[index].decodeTimeStamp.isValid { timing[index].decodeTimeStamp = timing[index].decodeTimeStamp + offset }
+        }
+        return try? CMSampleBuffer(copying: sample, withNewTiming: timing)
+    }
 
     /// The recording's sound as 16 kHz mono PCM16 in a WAV at `wav`, as
     /// dictation sends it; its length in seconds.
@@ -86,9 +186,10 @@ public enum RecordingMedia {
         }.value
     }
 
-    /// A copy of `video` at `destination` with `cues` as an English subtitle
-    /// track (3GPP timed text, which QuickTime and AVPlayer show as
-    /// captions); its picture and sound are copied as they are.
+    /// A copy of `video` at `destination`, whole and index first, with `cues`
+    /// as an English subtitle track (3GPP timed text, which QuickTime and
+    /// AVPlayer show as captions), none without cues; its picture and sound
+    /// are copied as they are.
     public static func addCaptions(_ cues: [CaptionCue], to video: URL, writingTo destination: URL) async throws {
         let asset = AVURLAsset(url: video)
         let tracks = try await asset.loadTracks(withMediaType: .video) + asset.loadTracks(withMediaType: .audio)
@@ -97,6 +198,8 @@ public enum RecordingMedia {
         let reader = try AVAssetReader(asset: asset)
         try? FileManager.default.removeItem(at: destination)
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mp4)
+        // Index first: a chat's player starts before the download ends.
+        writer.shouldOptimizeForNetworkUse = true
         for track in tracks {
             let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
             let hint = try await track.load(.formatDescriptions).first
@@ -108,19 +211,21 @@ public enum RecordingMedia {
             writer.add(input)
             copies.append((output, input))
         }
-        let format = try TimedText.format()
-        let text = AVAssetWriterInput(mediaType: .subtitle, outputSettings: nil, sourceFormatHint: format)
-        text.languageCode = "eng"
-        text.extendedLanguageTag = "en"
-        text.expectsMediaDataInRealTime = false
-        guard writer.canAdd(text) else { throw Failure.unwritable }
-        writer.add(text)
-        let samples = try TimedText.samples(cues, until: duration, format: format)
+        var all = copies.map { output, input in Feed(input: input) { output.copyNextSampleBuffer() } }
+        if !cues.isEmpty {
+            let format = try TimedText.format()
+            let text = AVAssetWriterInput(mediaType: .subtitle, outputSettings: nil, sourceFormatHint: format)
+            text.languageCode = "eng"
+            text.extendedLanguageTag = "en"
+            text.expectsMediaDataInRealTime = false
+            guard writer.canAdd(text) else { throw Failure.unwritable }
+            writer.add(text)
+            all.append(Feed(input: text, samples: try TimedText.samples(cues, until: duration, format: format)))
+        }
 
+        let feeds = all
         guard reader.startReading(), writer.startWriting() else { throw Failure.unwritable }
         writer.startSession(atSourceTime: .zero)
-        let feeds = copies.map { output, input in Feed(input: input) { output.copyNextSampleBuffer() } }
-            + [Feed(input: text, samples: samples)]
         await withTaskGroup(of: Void.self) { group in
             for feed in feeds { group.addTask { await feed.run() } }
             // A writer or reader that fails stops asking for data: the feeds

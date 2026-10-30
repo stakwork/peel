@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import PeelCore
 import PeelUI
 
 /// Account › Segments: record your screen, the camera switch, and the
@@ -61,6 +62,7 @@ struct RecordingSettingsSection: View {
         case .starting: "Choose a screen to record"
         case .ready: "Press Record on the bar at the bottom of the screen"
         case .recording: "Recording: stop it from the bar at the bottom of the screen"
+        case .paused: "Paused: resume or stop it from the bar at the bottom of the screen"
         case .stopping: "Saving…"
         }
     }
@@ -87,7 +89,7 @@ private struct RecordingRow: View {
         .help(sendable ? "Drag into a chat to send it" : "Too large to send in Peel: drag it to Drive or Dropbox, or share it from Finder")
     }
 
-    private var sendable: Bool { recording.bytes <= RecordingController.sendLimit }
+    private var sendable: Bool { recording.bytes <= Engine.sendLimit }
 
     private var detail: String {
         let size = AttachmentFormat.size(Int64(recording.bytes))

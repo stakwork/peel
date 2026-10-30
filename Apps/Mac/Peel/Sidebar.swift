@@ -32,7 +32,7 @@ struct Sidebar: View {
                         // A–Z (Tom, 2026-10-26).
                         VStack(spacing: 1) {
                             SidebarLink("Apps", to: .apps) {
-                                Image(systemName: WorkspaceApp.symbol).font(.system(size: 13))
+                                WorkspaceAppIcon(nil, size: 14)
                             }
                             .overlay(alignment: .trailing) {
                                 // Searching shows every match: no chevron, as for a section.
@@ -812,8 +812,7 @@ private struct WorkspaceAppLink: View {
 
     var body: some View {
         SidebarLink(app.title, to: .app(peer: app.peer, name: app.name)) {
-            Image(systemName: app.iconSymbol)
-                .font(.system(size: 11))
+            WorkspaceAppIcon(app, size: 12)
                 .foregroundStyle(Theme.secondaryText)
         }
         .help(app.about ?? app.title)

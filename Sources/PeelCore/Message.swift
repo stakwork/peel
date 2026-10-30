@@ -342,8 +342,8 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
 }
 
 extension Message {
-    /// The newest reply as a thread's row shows it: its complete text (never
-    /// cut), or for a message with no words what it is ("Photo", "Video", "Voice message", "File", "Payment"…).
+    /// The newest reply as a thread's row shows it: its complete text (the
+    /// string itself is never cut; the row clamps it to two lines), or for a message with no words what it is ("Photo", "Video", "Voice message", "File", "Payment"…).
     public var threadReplyPreview: String {
         if deleted { return "Message deleted" }
         if giphy == nil, let text = content.map(MessageMarkup.plainText), !text.isEmpty {

@@ -100,6 +100,8 @@ private struct ThreadListRow: View {
                             + Text(latest.threadReplyPreview).foregroundColor(Theme.tertiaryText))
                             .phoneFont(.reply)
                             .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

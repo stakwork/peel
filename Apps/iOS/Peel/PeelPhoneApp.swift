@@ -71,6 +71,10 @@ struct PeelPhoneApp: App {
                         model.stadeum.open(profile, renewNow: false)
                         PushCoordinator.shared.accountOpened(model)
                     } else {
+                        // An account exists but is locked, or failed to open:
+                        // the launch-time question is not held back. With
+                        // none, it waits for the account to open.
+                        if phase == .locked || model.profile?.hasAccount == true { PushCoordinator.shared.requestLaunchPermission() }
                         PushCoordinator.shared.accountClosed()
                         model.stadeum.close()
                         router.orgPage = nil

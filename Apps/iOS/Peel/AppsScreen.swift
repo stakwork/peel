@@ -6,8 +6,8 @@ import SwiftUI
 /// tabs, A–Z, each read and opened on its workspace's own strut with the
 /// person's token (`Stadeum.readApps`, `Stadeum.opening`; strut's
 /// specs/DESKTOP.md, "A device with no strut of its own"). A tap opens one
-/// in the org page sheet; pulling reads them again. The Mac's twin is
-/// `AppsView`, which also lists the person's own, on its strut.
+/// in the org page sheet; pulling or Refresh reads them again. The Mac's
+/// twin is `AppsView`, which also lists the person's own, on its strut.
 struct AppsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
@@ -48,6 +48,11 @@ struct AppsScreen: View {
         .scrollEdges()
         .searchable(text: $query, prompt: "Search apps")
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                // Off while a read is under way: another would cut it short.
+                Button("Refresh", systemImage: "arrow.clockwise") { stadeum.readWorkspaceApps() }
+                    .disabled(stadeum.live.isEmpty || stadeum.readingApps)
+            }
             if sources.count > 1 {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {

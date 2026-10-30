@@ -1,5 +1,6 @@
 import AppKit
 import PeelAgent
+import PeelCore
 import SwiftUI
 import WebKit
 
@@ -18,6 +19,11 @@ struct StrutPage: Equatable, CustomStringConvertible, CustomDebugStringConvertib
     let server: MemoryServer
     /// What the person reads in the address's place.
     let name: String
+
+    /// A deliverable's `name`: its title, and `@<id>` for an org's.
+    static func name(_ title: String, on peer: String?) -> String {
+        peer.map { "\(title) · @\($0)" } ?? title
+    }
 
     var description: String { "strut page \(name)" }
     var debugDescription: String { description }
@@ -59,19 +65,41 @@ struct StrutPage: Equatable, CustomStringConvertible, CustomDebugStringConvertib
     }
 
     /// `target=_blank` and `window.open`, never a window: a link to anywhere
-    /// but strut goes out to `open`; one to a file strut serves (its
-    /// viewer's "open in a new tab", for a file it has no view of) is saved
-    /// with `download` where the host keeps downloads. Both only on the
-    /// person's own click.
+    /// but strut goes out to `open`; one from an app's page to another app
+    /// (strut's page alone follows a link to its own app in place, and
+    /// hands any other to its host this way) goes to `openApp`, as the app
+    /// it names where this page lives (`StrutAppLink`) — never from a file,
+    /// whose links an org or a model wrote and which is no app's; one to a
+    /// file strut serves (its viewer's "open in a new tab", for a file it
+    /// has no view of) is saved with `download` where the host keeps
+    /// downloads; anything else of strut's UI (a run, a job: Peel has no
+    /// view of them) nowhere. All only on the person's own click: WebKit
+    /// lets the page's script open one only then, and the page is an org's
+    /// or a model's.
     @MainActor func newWindow(
-        for action: WKNavigationAction, from webView: WKWebView, open: OpenURLAction, download: ((URLRequest) -> Void)?
+        for action: WKNavigationAction, from webView: WKWebView, open: OpenURLAction, download: ((URLRequest) -> Void)?,
+        openApp: (StrutAppLink) -> Void
     ) {
         guard let url = action.request.url else { return }
         if !server.serves(url) {
             follow(url, from: webView, open: open)
+        } else if server.servesPage(url) {
+            if Self.personActed(in: webView), let shown = shownApp, let link = server.appLink(url, from: shown.peer) { openApp(link) }
         } else if let download, Self.personActed(in: webView) {
             download(action.request)
         }
+    }
+
+    /// The app this page shows, as its address names it; nil for a file.
+    var shownApp: AgentArtifact.Handle? { server.appLink(url, from: nil)?.app }
+
+    /// The address to load this page again at, after its web content
+    /// process ended: where `current` (the web view's address) says the app
+    /// had moved to, strut keeping the view the page opened in its address
+    /// (`?input=`); with the key, which strut's UI took out of it.
+    func url(at current: URL?) -> URL {
+        guard let current, let shown = shownApp, let there = server.appLink(current, from: nil), there.app == shown else { return url }
+        return StrutUI.page(url, input: there.input)
     }
 
     /// Only on the person's own click or key: a script's `click()` is

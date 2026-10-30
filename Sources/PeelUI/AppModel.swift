@@ -90,7 +90,7 @@ public final class AppModel {
 
     /// Account's categories, listed where the sidebar was while it is open.
     public enum AccountPage: Hashable, Sendable, CaseIterable {
-        case profile, payments, assistant, brain, connections, dictation, notifications, security
+        case profile, payments, assistant, brain, connections, dictation, recording, notifications, security
     }
 
     public var phase: Phase = .loading {
@@ -522,6 +522,8 @@ public final class AppModel {
     /// shown outside the Members panel (`TribeMembers.countLabel`).
     public private(set) var knownMembers: [String: TribeMembers] = [:]
     @ObservationIgnored private var readingMembers: Set<String> = []
+    /// Jamie's approvals this session (`approveJamie`).
+    @ObservationIgnored var jamieApprovals = JamieApprovals()
     /// The open tribe's pinned message, read from storage however old.
     public private(set) var pinnedMessage: Message?
     /// Invites made here by code, and those still waiting to be used,
@@ -1544,6 +1546,7 @@ public final class AppModel {
                 if let id = row.id { attachmentHandles[id] = nil }
             case .message(let message, let arrival):
                 notifier.received(message, arrival)
+                approveJamie(asking: message)
             case .moneyReceived(let message):
                 money.received(Receipt(message))
             case .invoicePaid(let invoice):

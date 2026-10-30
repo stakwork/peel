@@ -98,8 +98,9 @@ private struct ThreadListRow: View {
                         let sender = model.sender(of: latest)
                         (Text(sender.label + ": ").foregroundColor(sender.hue.name).fontWeight(.semibold)
                             + Text(latest.threadReplyPreview).foregroundColor(Theme.tertiaryText))
-                            .phoneFont(.secondary)
-                            .lineLimit(1)
+                            .phoneFont(.reply)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

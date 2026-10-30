@@ -55,11 +55,11 @@ struct PhoneFiles: FilePicking {
     func reveal(_ file: URL) {}
 }
 
-/// Video plays in its row (`VideoPlayback`); there is no full-screen viewer
-/// of ours, so closing one has nothing to do.
+/// Video opens in the full-screen `VideoViewer` (`VideoPlayback`); closing
+/// one is the viewer's own dismissal.
 struct PhonePlayback: Playback {
     func play(_ id: Int64, file: URL) { VideoPlayback.shared.play(id, file: file) }
-    func closeFullScreen() {}
+    func closeFullScreen() { VideoPlayback.shared.stop() }
     func stop() { VideoPlayback.shared.stop() }
 }
 

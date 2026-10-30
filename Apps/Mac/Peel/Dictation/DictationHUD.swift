@@ -144,21 +144,6 @@ struct DictationHUDView: View {
     }
 }
 
-/// The system-overlay look: always dark, whatever the app's appearance, so
-/// its own near-black and white hairline rather than `menuBoxed`'s navy.
-private extension View {
-    func hudCapsule() -> some View {
-        // The shadow is on the shape alone: the bars move without re-blurring it.
-        background {
-            Capsule()
-                .fill(Color(white: 0.06).opacity(0.94))
-                .shadow(color: Theme.menuShadow, radius: 1, y: 0.5)
-                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
-        }
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
-    }
-}
-
 /// Its child at its own width up to `maxWidth`, then wrapped to that width:
 /// a short message hugs its words, a long one goes onto a second line.
 private struct HugUpTo: Layout {
@@ -197,63 +182,11 @@ private struct DictationWaveform: View {
     }
 }
 
-/// A 20 pt button: round with a symbol (grey for X, white for the tick),
-/// or a capsule with a word (Undo).
-private struct HUDButton: View {
-    enum Content {
-        case symbol(String)
-        case text(String)
-    }
-
-    let content: Content
-    let label: String
-    let filled: Bool
-    let action: () -> Void
-
-    init(_ content: Content, label: String, filled: Bool, action: @escaping () -> Void) {
-        self.content = content
-        self.label = label
-        self.filled = filled
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            face
-                .foregroundStyle(filled ? Color.black : .white)
-                .frame(height: 20)
-                .background(filled ? Color.white : Color.white.opacity(0.22), in: Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(HUDPress())
-        .accessibilityLabel(label)
-    }
-
-    @ViewBuilder private var face: some View {
-        switch content {
-        case .symbol(let name):
-            Image(systemName: name)
-                .font(.system(size: 9, weight: .bold))
-                .frame(width: 20)
-        case .text(let text):
-            Text(text)
-                .font(Theme.font(12, .semibold))
-                .padding(.horizontal, Theme.Space.sm)
-        }
-    }
-}
-
-private struct HUDPress: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.scaleEffect(configuration.isPressed ? 0.94 : 1)
-    }
-}
-
 /// The HUD's window: a panel that never becomes key or main, so the app you
 /// are typing in keeps the keyboard. It takes the mouse only while locked,
 /// for the X and the tick.
 @MainActor
-final class DictationHUDPanel: NSPanel {
+final class DictationHUDPanel: HUDPanel {
     let model = DictationHUDModel()
     private let host: NSHostingView<DictationHUDView>
     private var hideTask: Task<Void, Never>?
@@ -264,23 +197,10 @@ final class DictationHUDPanel: NSPanel {
     private static let fadeIn: TimeInterval = 0.15
     private static let fadeOut: TimeInterval = 0.11
 
-    init() {
+    override init() {
         host = NSHostingView(rootView: DictationHUDView(model: model))
-        super.init(
-            contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true
-        )
+        super.init()
         contentView = host
-        isOpaque = false
-        backgroundColor = .clear
-        // The pill draws its own soft shadow.
-        hasShadow = false
-        isReleasedWhenClosed = false
-        hidesOnDeactivate = false
-        level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        isFloatingPanel = true
-        becomesKeyOnlyIfNeeded = true
-        appearance = NSAppearance(named: .darkAqua)
         ignoresMouseEvents = true
         alphaValue = 0
         model.resized = { [weak self] in
@@ -288,9 +208,6 @@ final class DictationHUDPanel: NSPanel {
             self.place()
         }
     }
-
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
 
     func show(_ mode: DictationHUDModel.Mode) {
         hideTask?.cancel()

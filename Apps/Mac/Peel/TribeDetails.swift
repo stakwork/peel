@@ -4,7 +4,8 @@ import PeelUI
 
 /// A tribe's details (the header's Tribe details, ⌘I, or a click on its
 /// name): what it is, who owns it, what it costs, its link with a QR, its
-/// app and second brain, how you appear in it, and the time zone switch.
+/// app and second brain, for its owner its Jamie, how you appear in it,
+/// and the time zone switch.
 /// What only the registry knows (owner, created, price to join, tags)
 /// arrives when the tribes server answers, the member count with the
 /// Members panel's list (`TribeMembers.countLabel`); the rest is stored.
@@ -36,6 +37,10 @@ struct TribeDetailsPanel: View {
                     }
                     if let link = tribe.link {
                         share(link)
+                    }
+                    if model.offersJamie(in: tribe) {
+                        TribeJamieSection(tribe: tribe)
+                            .padding(.top, 18)
                     }
                     if tribe.canPost {
                         TribeIdentitySection(tribe: tribe)
@@ -197,6 +202,80 @@ struct TribeDetailsPanel: View {
             problem = nil
         } catch {
             problem = PeelError.problem(error, couldNot: "load tribe details")
+        }
+    }
+}
+
+/// "Jamie", for the tribe's owner (docs/hive-tribes.md): which of your
+/// Stadeum orgs answers `@jamie` here, as you: one of them or No Jamie,
+/// as Hive has it (`TribeJamiePicker`), and with no Jamie yet the org the
+/// tribe's app or second brain is on, in one click. Unpaired, Connect
+/// Stadeum pairs this Mac from here.
+private struct TribeJamieSection: View {
+    @Environment(AppModel.self) private var model
+    let tribe: Tribe
+
+    @State private var picker = TribeJamiePicker()
+
+    var body: some View {
+        let stadeum = model.stadeum
+        let connected = stadeum.status == .connected
+        FormSection("Jamie") {
+            switch stadeum.status {
+            case .off, .needsPairing:
+                FormItem(label: "Stadeum", helper: model.brain == .thisMac
+                         ? "Connect Stadeum to let one of your orgs answer @jamie here."
+                         : "Your assistant runs on your home server. Turn off Always on to connect Stadeum.",
+                         problem: stadeum.problem) {
+                    if model.brain == .thisMac {
+                        Button(stadeum.status == .off ? "Connect Stadeum" : "Connect again") { model.connectHive() }
+                            .buttonStyle(.peel(.outline))
+                    }
+                }
+            case .pairing(let pairing):
+                FormItem(label: "Pair this Mac") {
+                    HStack(alignment: .top) {
+                        StadeumPairingCode(pairing: pairing)
+                        Spacer(minLength: 0)
+                        Button("Cancel") { model.cancelHivePairing() }
+                            .buttonStyle(.peel(.ghost))
+                    }
+                }
+            case .connected:
+                if let pick = stadeum.jamiePick(of: tribe.pubkey) {
+                    FormItem(label: "Answers from", helper: TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum),
+                             problem: picker.problem ?? model.othersJamie(in: tribe.pubkey)) {
+                        HStack(spacing: Theme.Space.sm) {
+                            PeelDropdown(selection: pick, options: stadeum.jamieOptions(for: tribe.pubkey).map { (value: $0.id, label: $0.name) }) { id in
+                                Task { await picker.pick(id, for: tribe, with: model) }
+                            }
+                            .fixedSize()
+                            .disabled(picker.working)
+                            if let suggested = model.jamieSuggestion(for: tribe) {
+                                Button { Task { await picker.pick(suggested.id, for: tribe, with: model) } } label: {
+                                    Text("Add Jamie from \(suggested.name)").buttonProgress(picker.working)
+                                }
+                                .buttonStyle(.peel(.outline))
+                                .disabled(picker.working)
+                            } else if picker.working {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                    }
+                } else {
+                    FormItem(label: "Answers from", helper: stadeum.jamieProblem == nil ? "Asking Stadeum…" : nil,
+                             problem: stadeum.jamieProblem) {
+                        if stadeum.jamieProblem != nil {
+                            Button("Try again") { Task { await stadeum.readJamieLinks() } }
+                                .buttonStyle(.peel(.outline))
+                        }
+                    }
+                }
+            }
+        }
+        // Read again each time the details open (the other device may have changed it), and once paired.
+        .task(id: connected) {
+            if connected { await stadeum.readJamieLinks() }
         }
     }
 }

@@ -4,9 +4,8 @@ import SwiftUI
 
 extension WorkspaceApp {
     /// A header's icon: Apps' and an app's.
-    static func headerIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 18))
+    static func headerIcon(_ icon: String?) -> some View {
+        WorkspaceAppIcon(icon, size: 19)
             .foregroundStyle(Theme.secondaryText)
             .frame(width: Theme.AvatarSize.lg, height: Theme.AvatarSize.lg)
     }

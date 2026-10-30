@@ -32,7 +32,7 @@ struct ConversationRow: View, Equatable {
             VStack(spacing: 0) {
                 if !row.agentTools.isEmpty { AgentToolLines(tools: row.agentTools) }
                 MessageRowView(row: row, composer: composer, flashed: flashed)
-                if !row.agentArtifacts.isEmpty { AgentArtifactLines(artifacts: row.agentArtifacts) }
+                if !row.agentArtifacts.isEmpty { AgentArtifactLines(artifacts: row.agentArtifacts, inTribe: row.inTribe) }
             }
         case .payment:
             PaymentRowView(row: row, composer: composer, flashed: flashed)
@@ -204,7 +204,26 @@ struct RunHeaderLine: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.quietText(on: surface))
                 .fixedSize()
+            if row.message.fromMe, row.message.delivery == .delivered {
+                DeliveredBolt()
+            }
         }
+    }
+}
+
+/// The green bolt after the time on a delivered message of ours, in a
+/// `.firstTextBaseline` row. Its centre goes to the middle of the time's
+/// capitals and digits, from that font's own metrics.
+struct DeliveredBolt: View {
+    /// The time's font beside it, `PhoneTheme`'s `.time` (12).
+    private static let timeCapHeight = UIFont.systemFont(ofSize: 12).capHeight
+
+    var body: some View {
+        Image(systemName: "bolt.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(Theme.confirmed)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Self.timeCapHeight / 2 }
+            .accessibilityLabel("Delivered")
     }
 }
 
@@ -539,9 +558,9 @@ struct ThreadSummaryButton: View {
                 let sender = model.sender(of: latest)
                 (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
                     + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
-                    .phoneFont(.time)
-                    .lineLimit(1)
+                    .phoneFont(.secondary)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             }
             .frame(minHeight: Theme.touchTarget)
@@ -693,15 +712,19 @@ struct AgentToolLines: View {
 /// label and title, and where it opens. An org's file or app opens on that
 /// org's own strut in a sheet (`Stadeum.opening`, `OrgPageSheet`), else its
 /// https link in the system's browser; with neither, the line says why (one
-/// on the Mac's own strut, which only the Mac reaches).
+/// on the Mac's own strut, which only the Mac reaches). In a tribe
+/// (`inTribe`, Jamie's deliverables, docs/hive-tribes.md) the same, but
+/// anyone could have sent it: `Stadeum.opening` already opens only your
+/// own workspaces', and an app asks first.
 struct AgentArtifactLines: View {
     let artifacts: [AgentArtifact]
+    var inTribe = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             // By position: a reply may name one thing twice.
             ForEach(Array(artifacts.enumerated()), id: \.offset) { _, artifact in
-                AgentArtifactLine(artifact: artifact)
+                AgentArtifactLine(artifact: artifact, inTribe: inTribe)
             }
         }
         .agentLine()
@@ -713,15 +736,31 @@ private struct AgentArtifactLine: View {
     @Environment(PhoneRouter.self) private var router
     @Environment(\.openURL) private var openURL
     let artifact: AgentArtifact
+    let inTribe: Bool
+
+    /// An app sent in a tribe, asking before it opens.
+    @State private var asking = false
 
     var body: some View {
         if let open {
-            Button(action: open) { line(where: whereTo, opens: true) }
+            Button(action: asksFirst ? { asking = true } : open) { line(where: whereTo, opens: true) }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens it")
+                .confirmationDialog(artifact.tribeAppQuestion(on: whereTo ?? ""), isPresented: $asking,
+                                    titleVisibility: .visible) {
+                    Button("Open app", action: open)
+                    Button("Cancel", role: .cancel) {}
+                }
         } else {
             line(where: whereTo, opens: false)
         }
+    }
+
+    /// Whether it opens on its org's strut as an app sent in a tribe: asked first.
+    private var asksFirst: Bool {
+        guard artifact.asksBeforeOpening(inTribe: inTribe), let handle = artifact.handle,
+              case .page = model.stadeum.opening(handle) else { return false }
+        return true
     }
 
     private func line(where place: String?, opens: Bool) -> some View {

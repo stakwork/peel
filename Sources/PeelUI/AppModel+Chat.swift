@@ -340,8 +340,24 @@ extension AppModel {
         return .chat(message.chat)
     }
 
+    /// Files into the tray; one over the send limit is refused here, with
+    /// the reason in the conversation, rather than after its upload fails.
     public func addFiles(_ urls: [URL], to composer: ComposerID) {
-        let files = urls.filter(\.isFileURL)
+        var refused: [String] = []
+        let files = urls.filter { file in
+            guard file.isFileURL else { return false }
+            do {
+                try Engine.checkSendable(file)
+                return true
+            } catch {
+                refused.append(PeelError.noted(error))
+                IncomingFiles.discard(file)
+                return false
+            }
+        }
+        if !refused.isEmpty, let chat = composer.chat {
+            conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
+        }
         guard !files.isEmpty else { return }
         pendingFiles[composer, default: []].append(contentsOf: files)
         composerFocus[composer, default: 0] += 1

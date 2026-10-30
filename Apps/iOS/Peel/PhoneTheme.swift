@@ -33,6 +33,8 @@ struct PhoneFont {
     static let name = PhoneFont(size: 14, weight: .semibold, style: .subheadline)
     /// 13: a second line, a note under a title.
     static let secondary = PhoneFont(size: 13, style: .footnote)
+    /// 14: the newest reply under a thread row.
+    static let reply = PhoneFont(size: 14, style: .subheadline)
     /// 13 semibold: a section's header.
     static let sectionHeader = PhoneFont(size: 13, weight: .semibold, style: .footnote)
     /// 12: a time.

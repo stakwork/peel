@@ -87,6 +87,84 @@ struct CallChatWireTests {
     func tabLeavesOtherTextAlone(text: String) {
         #expect(CallChatWire.completingJamie(text) == nil)
     }
+
+    // MARK: strut's entries (sphinx-voice plans/call-artifacts.md)
+
+    private func reply(_ entries: String, workspace: String = "acme") -> String {
+        #"{"id":"r1","timestamp":1730000000000,"message":"Here.","strut":{"workspace":""# + workspace
+            + #"","artifacts":["# + entries + "]}}"
+    }
+
+    private func artifacts(_ json: String, fromJamie: Bool = true) -> [AgentArtifact] {
+        guard case .message(let message)? = CallChatWire.decode(Data(json.utf8), fromJamie: fromJamie) else { return [] }
+        return message.artifacts
+    }
+
+    @Test func resolvesEachEntryAgainstTheWorkspace() {
+        let read = artifacts(reply(#"""
+            {"id":"plan","kind":"markdown","title":"Plan","label":"Plan","url":"/jobs/j-41/files/plan.md"},
+            {"id":"ui","kind":"app","title":"Bench","url":"/apps/bench/v3/files/dist/index.html","app":{"name":"bench","version":"v3"}},
+            {"id":"live","kind":"app","title":"Board","app":{"name":"hive/board"}},
+            {"id":"shot","kind":"image","title":"Shot","peer":"web","job":"peer/j-7","path":"shots/a b.png"},
+            {"id":"far","title":"Far","peer":"web","via":"billing","job":"j-9","path":"/r.md"},
+            {"id":"pr","kind":"pull_request","title":"Fix login","url":"https://github.com/acme/web/pull/12"}
+            """#))
+        #expect(read.map(\.handle) == [
+            .file("/peers/acme/jobs/j-41/files/plan.md"),
+            .app("@acme/bench@v3"),
+            .app("@acme/hive/board"),
+            .file("/peers/acme/peers/web/jobs/peer%2Fj-7/files/shots/a%20b.png"),
+            .file("/peers/acme/peers/web/peers/billing/jobs/j-9/files/r.md"),
+            nil,
+        ])
+        #expect(read.first?.label == "Plan" && read.first?.url == nil)
+        #expect(read.last?.url == URL(string: "https://github.com/acme/web/pull/12"))
+        // The org's own strut is one hop nearer.
+        #expect(read[4].handle?.onOrg?.value == "/peers/web/peers/billing/jobs/j-9/files/r.md")
+    }
+
+    @Test func opensNothingItCannotName() {
+        let read = artifacts(reply(#"""
+            {"id":"up","title":"Up","peer":"web","job":"j","path":"../secrets.json"},
+            {"id":"bad","title":"Bad","peer":"a/b","job":"j","path":"x.md"},
+            {"id":"peerapp","kind":"app","title":"Peer app","peer":"web","app":{"name":"bench"}},
+            {"id":"host","title":"Host","url":"//evil.example/jobs/j/files/x"},
+            {"id":"route","title":"Route","url":"/workflows/job/runs/r1"}
+            """#))
+        #expect(read.map(\.title) == ["Up", "Bad", "Peer app", "Host", "Route"])
+        #expect(read.allSatisfy { $0.handle == nil && $0.url == nil })
+        #expect(artifacts(reply(#"{"id":"x","title":"X","url":"/jobs/j/files/x"}"#, workspace: "../x")).first?.handle == nil)
+    }
+
+    @Test func readsAnAppByItsDocumentLink() {
+        let read = artifacts(reply(#"""
+            {"id":"a","kind":"app","title":"Canvas","url":"/apps/infinite-canvas/v21/files/dist/index.html"},
+            {"id":"b","kind":"app","title":"Active","url":"/apps/tools%2Fboard/files/dist/index.html"},
+            {"id":"c","kind":"app","title":"Other file","url":"/apps/infinite-canvas/v21/files/data.json"},
+            {"id":"d","kind":"app","title":"Bad name","url":"/apps/bad%20name/v1/files/dist/index.html"}
+            """#, workspace: "hive"))
+        #expect(read.map(\.handle) == [.app("@hive/infinite-canvas@v21"), .app("@hive/tools/board"), nil, nil])
+    }
+
+    @Test func readsStrutOnlyFromJamieAndNeverLosesTheMessage() {
+        let entry = #"{"id":"plan","title":"Plan","url":"/jobs/j/files/plan.md"}"#
+        #expect(artifacts(reply(entry)).count == 1)
+        #expect(artifacts(reply(entry), fromJamie: false).isEmpty)
+        for strut in [#""x""#, "{}", #"{"workspace":"acme","artifacts":"x"}"#, #"{"workspace":"acme","artifacts":[{"id":"no-title"}]}"#] {
+            let json = #"{"id":"r1","timestamp":1730000000000,"message":"Here.","strut":"# + strut + "}"
+            guard case .message(let message)? = incoming(json) else { Issue.record(Comment(rawValue: strut)); continue }
+            #expect(message.text == "Here." && message.artifacts.isEmpty)
+        }
+    }
+
+    @Test func showsTheLinkListOnlyWhenNoArtifactLinesStandForIt() {
+        let text = "Here's the plan.\n\n- [Plan](https://hive.example/p)\n* [Fix](https://github.com/a/b/pull/1)\n- not a link\n- [Inline](https://x.example) and more"
+        let plan = AgentArtifact(id: "plan", title: "Plan")
+        let with = CallChatMessage(id: "r", timestamp: .now, text: text, sender: nil, artifacts: [plan])
+        #expect(with.shownText == "Here's the plan.\n\n- not a link\n- [Inline](https://x.example) and more")
+        #expect(CallChatMessage(id: "r", timestamp: .now, text: text, sender: nil).shownText == text)
+        #expect(CallChatMessage(id: "r", timestamp: .now, text: "- [Plan](https://hive.example/p)", sender: nil, artifacts: [plan]).shownText.isEmpty)
+    }
 }
 
 struct CallChatLogTests {

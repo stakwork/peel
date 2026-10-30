@@ -14,7 +14,7 @@
     <key>com.apple.security.device.camera</key><true/>
     <!-- The assistant's Calendar and Reminders requests (EventKit): hardened runtime and the sandbox block them without it. -->
     <key>com.apple.security.personal-information.calendars</key><true/>
-    <!-- Attach and save: the open and save panels, and Downloads (Files.swift). -->
+    <!-- Attach and save: the open and save panels, and Downloads (Files.swift, and screen recordings). -->
     <key>com.apple.security.files.user-selected.read-write</key><true/>
     <key>com.apple.security.files.downloads.read-write</key><true/>
 </dict>

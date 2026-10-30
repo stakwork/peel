@@ -73,7 +73,7 @@ struct AppsScreen: View {
             } else if apps.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
-                        Label("No Stadeum here yet", systemImage: WorkspaceApp.symbol)
+                        Label { Text("No Stadeum here yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
                         Text("Connect Stadeum under You to open the apps your workspaces pin.")
                     }
@@ -81,13 +81,13 @@ struct AppsScreen: View {
                     ProgressView()
                 } else if !unread.isEmpty {
                     ContentUnavailableView {
-                        Label("Couldn't read the apps", systemImage: WorkspaceApp.symbol)
+                        Label { Text("Couldn't read the apps") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
                         Text("\(unread.joined(separator: ", ")) did not answer. Pull to try again.")
                     }
                 } else {
                     ContentUnavailableView {
-                        Label("No apps yet", systemImage: WorkspaceApp.symbol)
+                        Label { Text("No apps yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
                         Text("Apps your Stadeum workspaces pin show here.")
                     }
@@ -110,8 +110,7 @@ private struct AppRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.md) {
-            Image(systemName: app.iconSymbol)
-                .font(.system(size: 19))
+            WorkspaceAppIcon(app, size: 20)
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: 30, height: 30)
                 .accessibilityHidden(true)

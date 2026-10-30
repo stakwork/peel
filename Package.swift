@@ -19,6 +19,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.0.0"),
         // On-device crash reports (PeelDiagnostics); no upload, see docs/diagnostics.md.
         .package(url: "https://github.com/microsoft/plcrashreporter.git", exact: "1.12.2"),
+        // The lucide icons (ISC) an app's manifest names, drawn as vector shapes (PeelUI's WorkspaceAppIcon).
+        .package(url: "https://github.com/ajaxjiang96/lucide-swift.git", exact: "0.9.22"),
     ],
     targets: [
         // On-device crash and memory diagnostics: the crash reporter, the event
@@ -66,7 +68,10 @@ let package = Package(
         // themselves are in Apps/, in Apps/Peel.xcodeproj; the Mac and
         // iPhone apps are the only ones that link LiveKit and WebRTC (its
         // package reference is the project's, not this package's).
-        .target(name: "PeelUI", dependencies: ["PeelCore", "AgentKit", "PeelDiagnostics"]),
+        .target(
+            name: "PeelUI",
+            dependencies: ["PeelCore", "AgentKit", "PeelDiagnostics", .product(name: "LucideSwift", package: "lucide-swift")]
+        ),
         // The storage and engine fixtures the test targets below share; a
         // test target cannot depend on another, so they live in a library.
         .target(

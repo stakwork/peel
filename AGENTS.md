@@ -317,6 +317,11 @@ is a short plan. Update the status and the journal when you finish something.
     shows as pages (`WebPage.isHTML`) and each profile's website data
     store identifier
 - `Sources/PeelUI/` — the app's model, shared by the Mac and the iPhone
+  (`WorkspaceAppIcon.swift` here too: an app's lucide icon, drawn from the
+  `lucide-swift` package, ISC, pinned in `Package.swift` and both
+  `Package.resolved` files; `LucideNames.resolve` is the name lookup, with
+  lucide's renamed-icon aliases; the apps use `WorkspaceAppIcon(name, size:)`
+  or `Image.workspaceApp`, and never import LucideSwift)
   (phase 7, batch 17): PeelCore and AgentKit, SwiftUI and Observation, no
   AppKit, UIKit, LiveKit or PeelAgent; builds for the iOS Simulator
   (`xcodebuild -scheme PeelUI -destination 'generic/platform=iOS Simulator'`,
@@ -606,7 +611,7 @@ is a short plan. Update the status and the journal when you finish something.
   `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
   `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
-  `WorkspaceAppIcon` (an app's lucide icon as an SF Symbol);
+  `AppStatus`'s header icon (over PeelUI's `WorkspaceAppIcon`);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
   `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the

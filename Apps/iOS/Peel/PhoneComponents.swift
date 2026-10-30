@@ -78,16 +78,23 @@ struct PhoneSectionHeader: View {
 /// Mentions): a 19 pt symbol in the avatars' 30 pt column, then the name,
 /// bold with a count when there is something new, `secondaryText` when
 /// not. The caller wraps it in its `NavigationLink`.
-struct NavRow: View {
+struct NavRow<Icon: View>: View {
     let title: String
-    let systemImage: String
+    let icon: Icon
     var count = 0
     var countStyle = Badge.Style.default
+
+    init(title: String, icon: Icon, count: Int = 0, countStyle: Badge.Style = .default) {
+        self.title = title
+        self.icon = icon
+        self.count = count
+        self.countStyle = countStyle
+    }
 
     var body: some View {
         let lit = count > 0
         RowLayout {
-            Image(systemName: systemImage)
+            icon
                 .font(.system(size: 19))
                 .frame(width: 30)
                 .accessibilityHidden(true)
@@ -99,6 +106,13 @@ struct NavRow: View {
         .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
         .accessibilityElement(children: .combine)
         .accessibilityValue(lit ? "\(count) new" : "")
+    }
+}
+
+extension NavRow where Icon == Image {
+    /// A row with an SF Symbol.
+    init(title: String, systemImage: String, count: Int = 0, countStyle: Badge.Style = .default) {
+        self.init(title: title, icon: Image(systemName: systemImage), count: count, countStyle: countStyle)
     }
 }
 

@@ -118,10 +118,11 @@ own authoring UI. Your chat with Peel is the way in:
   (Open Account), none pinned yet, a home server, and no matches.
 - The app's header gains the same pin.
 - Cards v1 (Tom, 2026-10-26, the canvas's "App cards v1"): only what
-  strut's list carries. The manifest's lucide `icon` as the closest SF
-  Symbol (`WorkspaceApp.iconSymbol`, a table of common names; the grid
-  for the template's `layout-dashboard`, an unknown name or one this
-  macOS lacks); titles on two lines, descriptions on three; at the foot
+  strut's list carries. The manifest's lucide `icon` drawn as that
+  lucide icon (PeelUI's `WorkspaceAppIcon`, over the `lucide-swift`
+  package's vector shapes; any lucide name, its old aliases too, through
+  `LucideNames.resolve`; the grid, lucide's `layout-grid`, only for no icon
+  or a name lucide does not have); titles on two lines, descriptions on three; at the foot
   `@workspace · v14` (`activeVersion`; the workspace only when there are several) and at most one status
   (`AppStatus`): "2 problems" in the attention colour while `warnings`
   (strut's usage monitor, on the live version) is above 0, else "Release r3" while a release is held (`live`). The

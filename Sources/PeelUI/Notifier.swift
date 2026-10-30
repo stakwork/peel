@@ -4,8 +4,13 @@ import PeelCore
 import UserNotifications
 
 /// Local notifications for messages that arrive while Peel runs, and the Dock
-/// badge. Remote push is not an option: the server keeps one push token per
-/// account and it belongs to the official app.
+/// badge. Remote push is separate and off: the phone's app delegate collects
+/// the APNs token and its notification extension is built, but registering
+/// the token with the account's server is behind `PeelPushFlags.registerWithHub`
+/// (default off), because the server keeps one push token per account and
+/// it belongs to the official app until the hub routes by app ID for Peel
+/// (docs/phases/07-iphone.md, "Push: what is built"). This type keeps
+/// working as it does and posts nothing on the phone.
 ///
 /// What notifies is PeelCore's `NotificationPolicy`: messages and payment
 /// requests from others past the chat's read marker, a request to join a

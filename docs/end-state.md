@@ -140,7 +140,7 @@ What gates the start of each phase:
 | Five foundation decisions | Answered, Evan's parts included | [foundation.md](foundation.md), #301, #302 |
 | Ladybug snapshot round trip | Proven: memory and workspace graphs round-trip losslessly; a whole-brain snapshot needs format 2 | stakwork/strut#193 |
 | The bridge | Merged: runner is the bridge (inbox, turns, sessions with `/new`, device requests, cancel, chunking) | stakwork/sphinx#382 |
-| The agent's seed | Merged: `agent_seed` in the core with test vectors; in sphinx-ffi from v0.8.39, which Peel pins | stakwork/sphinx#383, stakwork/sphinx-rs#100 |
+| The agent's seed | Merged: `agent_seed` in the core with test vectors; in sphinx-ffi from v0.8.39; Peel pins v0.8.40 | stakwork/sphinx#383, stakwork/sphinx-rs#100 |
 | S1: the agent step's gaps | Merged: `withStop()`, `retain`, automation callbacks; `systemAtCompaction` deferred | stakwork/strut#198 |
 | S2: `job/start`, `job/continue` | Merged | stakwork/strut#195 |
 | The generic orchestrator | Merged, with the automation steps | stakwork/strut#196, stakwork/strut#213 |

@@ -42,8 +42,16 @@ struct PeelPhoneApp: App {
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { model.becameActive() }
+                    if phase == .active {
+                        model.becameActive()
+                        PushCoordinator.shared.refreshNames()
+                    }
                     if phase == .background { model.leftForeground() }
+                }
+                // The names a push shows follow the chats and their names, not
+                // every new message.
+                .onChange(of: PushNames.signature(model.conversations)) { _, _ in
+                    PushCoordinator.shared.refreshNames()
                 }
                 // The PIN timeout counts the time Peel is away: in front is
                 // in use (the phone locks itself when it is not), noted as

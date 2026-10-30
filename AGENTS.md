@@ -747,7 +747,8 @@ is a short plan. Update the status and the journal when you finish something.
   the phase file), `PushNotificationResolver`) and `PeelPushCrypto` (the core's
   `decryptChildIndex`), both linked by the notification extension
   `Apps/iOS/NotificationService/`; `Engine+Push.swift` registers behind the
-  flag; the phone's `PushRegistration.swift` is its app delegate. Tested in
+  flag; `PushNameDirectoryWriter` and the phone's `PushCoordinator.refreshNames`
+  keep the names map the extension reads (`PushNames`, PeelCore); the phone's `PushRegistration.swift` is its app delegate. Tested in
   `PeelPushTests` (also on Linux) and `PushRegistrationTests`
 - `Sources/PeelDiagnostics/` — on-device crash and memory diagnostics, the
   record, uploaded nowhere; the agent reads it redacted when asked

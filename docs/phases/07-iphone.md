@@ -1200,6 +1200,65 @@ registration (0.8.40); the mixer keeps one registration per app; the hub's
 routing is a Strut workflow (the mixer's `PUSH_WORKFLOW_URL` and
 `PUSH_WORKFLOW_KEY`), not AWS SNS platform apps.
 
+### The names map (what a push shows)
+
+A push carries no text, only `aps.custom_data.child`, the child index encrypted
+under the push key; the extension decrypts it (`decryptChildIndex`) and names
+the chat from a map the app keeps, as sphinx-ios-v2 does.
+
+- **Format, as Sphinx's** (`SphinxOnionManager.swift:1060-1099`,
+  `saveContactsToSharedUserDefaults`; `SymmetricEncryptionManager.swift:21-27`):
+  a JSON object `{"contact-<n>": name, "tribe-<n>": name}`, sealed with
+  RNCryptor v3 under the push key as the password, base64, in the app group's
+  UserDefaults under `childIndexesStorageKey` (Peel's own group,
+  `group.com.sphinx.peel`). Sphinx's extension reads it the same way
+  (`NotificationService.swift:102-129`) and words the body "You have new
+  messages from <contact>" / "in <tribe>", title "Sphinx"; Peel's title is "Peel".
+  Peel does not copy Sphinx's sound key, and nothing mutes or hides a push
+  there. The decrypted child is only the index: no sender, no text.
+- **Peel:** `PeelPush` has `PushNameDirectory` (the reader and the map),
+  `PushNameDirectoryWriter` (seal and keep, skipping a write when the names
+  have not changed; `clear`), `RNCryptorSealer` (the same scheme as PeelCore's
+  `MediaCrypto`, Apple platforms only) and `UserDefaultsPushNameStore`; the
+  extension reads with the same `PushNameDirectory.read`. Names are cleaned to
+  one line of at most 100 characters; a blob that does not open under the
+  push key, a missing key or map, or any failure gives the generic line.
+- **When:** `PushCoordinator.refreshNames` runs when an account opens (phase
+  ready), when the app comes to the front, and when a chat appears or goes or
+  a name changes (`PushNames.signature`, not on every message). It is
+  cleared (`accountClosed`) when the phase leaves ready: locked, forgotten.
+  A locked phone-app therefore shows the generic line until unlocked. It
+  needs the push key and the app group and does not depend on the hub flag
+  and never registers anything.
+- **The id mapping.** Sphinx: `my_idx` of the core's `listContacts` JSON is
+  the index, its `pubkey` is matched to a contact's key or a tribe's owner key
+  (`SphinxOnionManager.swift:1055-1085`). Peel: `Engine.Contact.childIndex` is
+  that same `my_idx` from the same call (`EngineTypes.swift:391-399`,
+  `Engine+Account.swift:54-57`), and its `pubkey` is the `chat` of a stored
+  `Conversation`, whose `isTribe` tells a tribe from a contact
+  (`PushNames.entries`). *Verified in code:* that Peel reads the same field
+  from the same core call and that `chat` equals the core contact's key
+  (tests use tribe keys in `c/<pubkey>` core entries). *Inferred, not
+  verified:* that the child in a push decrypts to this `my_idx` (it does in
+  Sphinx, which uses the same core and push key); to be confirmed on a device.
+- Tests: `PushNamesTests` in PeelPushTests (round trip with a fake sealer, a
+  contact and a tribe with one index, wrong or missing key, a corrupt blob,
+  clearing, cleaning, the real cipher against an independent RNCryptor
+  vector) and PeelCoreTests (the mapping from contacts and chats).
+
+Device check, with the hub registration on (a development stack):
+
+1. Add a contact (with a name) and join a tribe; open Peel once so the map is
+   written; background the app.
+2. Receive a direct message: the notification reads "You have new messages
+   from <contact>". Receive a tribe message: "... in <tribe>".
+3. Rename the contact (or have them change their alias), come to the front,
+   background, receive again: the new name.
+4. Forget the account (or let the PIN lock the app) and receive a message: the
+   generic "You have new messages". Reopen: names are back.
+5. A message from someone not yet a contact, or any push that fails to
+   decrypt, shows the generic line and never crashes the extension.
+
 ### Turning registration on
 
 The flag stays off until all of these are in place, in this order:
@@ -1221,9 +1280,7 @@ a Release one, and must equal the token's real environment.
 Left to do:
 
 1. **Apple portal and Strut setup** as above (nothing here can do it).
-2. **The names map:** the app does not yet write `PushNameDirectory` into the
-   app group (`PushNameDirectory.defaultsKey`), so a push shows the generic
-   line; and it should be sealed under the push key as sphinx-ios-v2 does.
+2. **Device check of the names map** (below).
 3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (13): move
    them together. The project's `DEVELOPMENT_TEAM` is `8297M44YTW` (shared
    with Sphinx); the Personal Team is only for the Mac's local signing.

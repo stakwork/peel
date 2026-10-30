@@ -46,6 +46,9 @@ final class PushCoordinator {
     private var token: String?
     private weak var model: AppModel?
     private var registered: String?
+    /// The names map being written; the next write waits for it, so the last
+    /// one started is the last one kept.
+    private var namesTask: Task<Void, Never>?
 
     /// An account is open: ask permission (only if pushes can come), and
     /// register if the token is already here.
@@ -56,11 +59,42 @@ final class PushCoordinator {
             Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
         }
         Task { await registerIfReady() }
+        refreshNames()
     }
 
     func accountClosed() {
         model = nil
         registered = nil
+        // The names go with the account: a push shows the generic line until
+        // the next account opens. Pending writes are not waited for, but
+        // each checks again that an account is open before it keeps anything.
+        namesTask?.cancel()
+        namesTask = nil
+        if let config { PushNameDirectoryWriter.clear(store: UserDefaultsPushNameStore(suiteName: config.appGroup)) }
+    }
+
+    /// Keeps the names the notification extension shows (sphinx-ios-v2's
+    /// childIndexes map, `PushNameDirectoryWriter`): on opening an account, on
+    /// coming to the front and when a chat or its name changes. It stores
+    /// local names only and does not depend on, or call, the hub registration.
+    /// Needs the push key and the app group; without them nothing is written.
+    func refreshNames() {
+        guard let config, let model, model.phase == .ready, let engine = model.engine,
+              let key = PushKey.loadOrCreate(in: KeychainPushKeyStore(accessGroup: config.keychainGroup))
+        else { return }
+        let chats = model.conversations
+        let previous = namesTask
+        namesTask = Task {
+            await previous?.value
+            await Task.detached { () -> Void in
+                guard !Task.isCancelled, let contacts = try? await engine.contacts() else { return }
+                PushNameDirectoryWriter.write(
+                    PushNames.entries(contacts: contacts, chats: chats), pushKey: key, sealer: RNCryptorSealer(),
+                    store: UserDefaultsPushNameStore(suiteName: config.appGroup))
+            }.value
+            // An account that closed meanwhile has its names cleared, not kept.
+            if self.model == nil { PushNameDirectoryWriter.clear(store: UserDefaultsPushNameStore(suiteName: config.appGroup)) }
+        }
     }
 
     func received(token data: Data) {

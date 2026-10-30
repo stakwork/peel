@@ -5,7 +5,8 @@ import UserNotifications
 /// Words a push before it shows. The server sends no message text, only the
 /// encrypted index of the chat (`aps.custom_data.child`); this decrypts it
 /// with the push key from the shared Keychain group and names the chat from
-/// the app group's map. Whatever goes wrong, the push shows as "Peel" /
+/// the app group's map (sealed under the push key by the app,
+/// `PushNameDirectoryWriter`). Whatever goes wrong, the push shows as "Peel" /
 /// "You have new messages". The logic is PeelPush's `PushNotificationResolver`.
 final class NotificationService: UNNotificationServiceExtension {
     private var contentHandler: ((UNNotificationContent) -> Void)?
@@ -28,10 +29,12 @@ final class NotificationService: UNNotificationServiceExtension {
 
         let config = PushConfig.current
         let pushKey = config.flatMap { PushKey.existing(in: KeychainPushKeyStore(accessGroup: $0.keychainGroup)) }
-        let names = config
-            .flatMap { UserDefaults(suiteName: $0.appGroup) }
-            .flatMap { $0.data(forKey: PushNameDirectory.defaultsKey) }
-            .flatMap { PushNameDirectory(json: $0) }
+        // Any failure here (no group, no map, a blob that does not open under
+        // this key) leaves no names: the generic line. Nothing is logged.
+        let names = config.flatMap {
+            PushNameDirectory.read(
+                from: UserDefaultsPushNameStore(suiteName: $0.appGroup), pushKey: pushKey, sealer: RNCryptorSealer())
+        }
 
         switch PushNotificationResolver.resolve(
             userInfo: request.content.userInfo, pushKey: pushKey, decryptor: SphinxChildDecryptor(), names: names

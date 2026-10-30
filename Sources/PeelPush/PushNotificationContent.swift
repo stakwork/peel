@@ -7,11 +7,14 @@ public protocol ChildIndexDecrypting: Sendable {
 }
 
 /// Names for the child indexes, kept by the app in the shared app group for
-/// the extension to read: `contact-<index>` and `tribe-<index>`, as in
-/// sphinx-ios-v2, but plain JSON in the group's UserDefaults.
-/// TODO: seal it under the push key as sphinx-ios-v2 does (RNCryptor).
+/// the extension to read, in sphinx-ios-v2's format: a JSON object of
+/// `contact-<index>` and `tribe-<index>` to a name, sealed under the push key
+/// (RNCryptor v3, base64; `PushNameDirectoryWriter`, `RNCryptorSealer`) and
+/// kept in the group's UserDefaults under `defaultsKey`. `<index>` is the
+/// core's `my_idx`, the child key this account uses for a contact or tribe.
 public struct PushNameDirectory: Equatable, Sendable {
-    public static let defaultsKey = "peelPushChildNames"
+    /// sphinx-ios-v2's key (`kChildIndexesStorageKey`); the group is Peel's own.
+    public static let defaultsKey = "childIndexesStorageKey"
     private static let longest = 100
 
     public let contacts: [UInt64: String]
@@ -22,11 +25,28 @@ public struct PushNameDirectory: Equatable, Sendable {
         self.tribes = tribes
     }
 
+    /// Entries as the writer is given them; names are cleaned here, and one
+    /// left with nothing is dropped. The last of a kind and index wins.
+    public init(entries: [PushNameEntry]) {
+        var contacts: [UInt64: String] = [:], tribes: [UInt64: String] = [:]
+        for entry in entries {
+            guard let name = Self.clean(entry.name) else { continue }
+            switch entry.kind {
+            case .contact: contacts[entry.index] = name
+            case .tribe: tribes[entry.index] = name
+            }
+        }
+        self.init(contacts: contacts, tribes: tribes)
+    }
+
+    /// The JSON object, keys sorted so the same names give the same text.
     public func encoded() -> Data? {
         var map: [String: String] = [:]
         for (index, name) in contacts { map["contact-\(index)"] = name }
         for (index, name) in tribes { map["tribe-\(index)"] = name }
-        return try? JSONEncoder().encode(map)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(map)
     }
 
     /// Nil for anything that is not a JSON object of strings.

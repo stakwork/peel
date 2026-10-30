@@ -15,11 +15,8 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate {
         // A token needs no permission, so it is asked for at every launch
         // (Apple advises it: the token can change).
         application.registerForRemoteNotifications()
-        #if DEBUG
-        // So a test push can be shown. Debug builds only; it touches neither
-        // the hub flag nor any registration.
-        Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
-        #endif
+        // The permission question is not asked here: with no account yet it
+        // waits for the account to open (`PushCoordinator.requestLaunchPermission`).
         return true
     }
 
@@ -50,10 +47,25 @@ final class PushCoordinator {
     /// one started is the last one kept.
     private var namesTask: Task<Void, Never>?
 
+    private var launchPermissionAsked = false
+
+    /// So a test push can be shown. Debug builds only; it touches neither the
+    /// hub flag nor any registration. Asked at most once per launch: at
+    /// launch when an account exists (locked, or open), otherwise when the
+    /// account first opens after onboarding (a new account or a restore).
+    func requestLaunchPermission() {
+        #if DEBUG
+        guard !launchPermissionAsked else { return }
+        launchPermissionAsked = true
+        Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
+        #endif
+    }
+
     /// An account is open: ask permission (only if pushes can come), and
     /// register if the token is already here.
     func accountOpened(_ model: AppModel) {
         self.model = model
+        requestLaunchPermission()
         if PeelPushFlags.registerWithHub() {
             // The system asks once; later calls return the answer.
             Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }

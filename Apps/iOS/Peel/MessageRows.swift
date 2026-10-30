@@ -560,6 +560,8 @@ struct ThreadSummaryButton: View {
                     + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
                     .phoneFont(.secondary)
                     .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
             }
             }

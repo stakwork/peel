@@ -62,6 +62,7 @@ struct RecordingSettingsSection: View {
         case .starting: "Choose a screen to record"
         case .ready: "Press Record on the bar at the bottom of the screen"
         case .recording: "Recording: stop it from the bar at the bottom of the screen"
+        case .paused: "Paused: resume or stop it from the bar at the bottom of the screen"
         case .stopping: "Saving…"
         }
     }

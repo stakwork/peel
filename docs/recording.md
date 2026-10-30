@@ -92,8 +92,19 @@ Record, "Recording…").
 - **Control bar** (`RecordingBarPanel`). The dictation HUD's pill, at the
   bottom centre of the recorded display. Once a screen is picked: Cancel
   and Record, with the camera bubble already up to place. Recording: a red
-  dot and the time, Discard (X) and Stop (tick). macOS's own menu bar Stop ends it too, and keeps
+  dot and the time, Discard (X), Pause and Stop (tick). macOS's own menu bar Stop ends it too, and keeps
   the file.
+- **Pause** (board: option A, Tom, 2026-10-30). For a wait mid-recording:
+  Pause swaps to Play in place, the bar keeping its size, the time held
+  and dimmed and the dot a ring. The capture keeps running so Resume is
+  instant, so macOS's screen and mic indicators stay on, but nothing is
+  written (`RecordingPauses`): on Resume the later samples are moved back by the time paused and the
+  file joins with a hard cut, captions following it. Paused time is not in
+  the file or counted toward the Segment limit, and a pause lasts until
+  you end it. A still screen sends no frames, so the last one seen while
+  paused is written at Resume, or the file would show the screen as it was
+  before the pause. The first 0.2 s after Resume is dropped: samples arrive
+  a moment after they are captured, so these hold the end of the pause.
 - **After Stop** (`RecordingController`). The file moves to
   `~/Downloads/Peel Segment <date> at <time>.mp4` (ones named "Peel
   Recording …" before the name are still listed), numbered if that is
@@ -127,8 +138,18 @@ Record, "Recording…").
 
 ## Not in v1
 
-Sharing links, a window or app alone, system audio, pause, trimming, a
+Sharing links, a window or app alone, system audio, trimming, a
 title or summary from the agent, the iPhone.
+
+## Review of pause (2026-10-30)
+
+`/code-review`, then one independent agent for `/simplify` and
+`/security-review` together. Fixed: the last moments of a pause reaching the
+file on Resume (now the settle), the seam shorter than a long mic buffer, a
+frame held past the end, and the bar's two near-copies made one. A test writes
+a file through the real writer with a two minute pause in it. Not applied:
+the `state.done` guards in the stream callback are redundant now but older
+than this change. Not tried yet in a real recording.
 
 ## Review (2026-10-28)
 

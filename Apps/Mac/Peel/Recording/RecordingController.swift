@@ -23,6 +23,8 @@ final class RecordingController {
         /// The screen picked, the camera bubble and the bar up: waiting for Record.
         case ready
         case recording
+        /// Nothing being written, the capture still running.
+        case paused
         /// Stopped, the file being finished.
         case stopping
     }
@@ -157,9 +159,27 @@ final class RecordingController {
         }
     }
 
+    /// Holds the recording: paused time is not in the file, and not counted
+    /// toward `longest`.
+    func pause() {
+        guard phase == .recording, let recorder else { return }
+        recorder.pause()
+        phase = .paused
+        elapsed = recorder.duration
+        micNote = nil
+        bar.refit()
+    }
+
+    func resume() {
+        guard phase == .paused, let recorder else { return }
+        recorder.resume()
+        phase = .recording
+        bar.refit()
+    }
+
     /// Ends the recording and keeps it.
     func stop() {
-        guard phase == .recording, let recorder else { return }
+        guard phase == .recording || phase == .paused, let recorder else { return }
         phase = .stopping
         putAway()
         Task { await recorder.stop() }
@@ -172,7 +192,7 @@ final class RecordingController {
         case .ready:
             putAway()
             phase = .idle
-        case .recording:
+        case .recording, .paused:
             discarding = true
             stop()
         case .idle, .starting, .stopping:
@@ -190,7 +210,7 @@ final class RecordingController {
     }
 
     private func tick() {
-        guard let recorder else { return }
+        guard let recorder, phase != .paused else { return }
         elapsed = recorder.duration
         let left = TimeInterval(longest * 60) - elapsed
         if left <= 0 {

@@ -51,7 +51,7 @@ public enum PeelPushFlags {
     /// Info.plist key and UserDefaults key for `registerWithHub`.
     public static let registerWithHubKey = "PeelPushRegisterWithHub"
 
-    /// Whether Peel may call the core's `setPushToken` for an account.
+    /// Whether Peel may register a push token with the core for an account.
     ///
     /// **Keep this off until the hub can route by `app_id` for Peel.** The
     /// server keeps one push token per account, so registering from Peel on

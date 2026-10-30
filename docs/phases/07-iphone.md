@@ -1154,8 +1154,8 @@ Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
   `swift test --filter PeelPushTests`): `PushToken.hex`, `PushKey` (32 random
   bytes as hex, made once by the app in the shared Keychain group; the
   extension only reads it), `PushConfig`, `PeelPushFlags`,
-  `PushRegistration` (token, app ID, environment) with the
-  `PushRegistrationEncoding` seam, and `PushNotificationResolver` (child
+  `PushRegistration` (token, app ID, environment) and its
+  `coreArguments` (what the core is given beside the token), and `PushNotificationResolver` (child
   from `aps.custom_data.child`, a Hive link left as the server sent it,
   decrypt through `ChildIndexDecrypting`, a name from `PushNameDirectory`,
   generic "Peel" / "You have new messages" on any failure).
@@ -1164,15 +1164,24 @@ Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
 - **The app.** `PeelAppDelegate` (via `@UIApplicationDelegateAdaptor`) calls
   `registerForRemoteNotifications` and hands the token to `PushCoordinator`,
   which makes the push key and calls `Engine.registerPushToken`
-  (`Engine+Push.swift`, `setPushToken` as `registerDeviceID` does). The
+  (`Engine+Push.swift`: the core's `setPushTokenForApp`, sphinx-rs 0.8.40,
+  with `app_id` = `com.sphinx.peel` and `push_environment`; the older
+  `setPushToken` carries neither and is never used). The
   notification permission is asked for only when the flag is on, since
   nothing would come otherwise. `Notifier` is unchanged.
 - **The flag.** `PeelPushFlags.registerWithHub` (Info.plist
   `PeelPushRegisterWithHub`, a UserDefaults value wins), **off by default**.
-  `registerPushToken` sends nothing while it is off, when not connected, or with
-  a key that is not a push key (`PushRegistrationTests`). Turn it on only on a
-  stack of your own: the server keeps one token per account, so on a real
-  account it would take the official app's notifications away.
+  `registerPushToken` sends nothing while it is off, when not connected, with
+  an empty token, or with a key that is not a push key
+  (`PushRegistrationTests`, which also asserts the app ID and environment the
+  core is given).
+- **The environment** is one build setting, `PEEL_APS_ENVIRONMENT`
+  (`Apps/Config/Peel.xcconfig`: development, production for Release). The
+  entitlement's `aps-environment` and Info.plist's `PeelPushEnvironment` (what
+  is reported as `push_environment`) both read it; no `#if DEBUG` decides it.
+  The mixer deletes a registration whose environment is not the token's, so
+  they must stay equal: any Release build, archive or Ad Hoc, is signed
+  production and reports production.
 
 Reading the token while debugging: a Debug build prints `[Peel push] APNs
 device token (<environment>, app <id>): <hex>` to Xcode's console and asks for
@@ -1180,29 +1189,44 @@ notification permission at launch, without turning the hub flag on. Release
 builds print and ask nothing. The push key is never printed.
 
 Not verified here (a Linux pod with no Swift or Xcode): none of this was
-compiled. In particular `decryptChildIndex(encryptedChild:pushKey:)` and
-`setPushToken(... pushToken:pushKey:)` follow sphinx-ios-v2's call sites, and
-`project.pbxproj` was only checked for balanced syntax and that every id it
-uses is defined. Build `Peel iOS` once in Xcode and run `swift test`.
+compiled. In particular `decryptChildIndex(encryptedChild:pushKey:)` follows
+sphinx-ios-v2's call site and `setPushTokenForApp(... appId:pushEnvironment:)`
+follows sphinx-rs 0.8.40's UDL, and `project.pbxproj` was only checked for
+balanced syntax and that every id it uses is defined. Build `Peel iOS` once
+in Xcode and run `swift test`.
+
+Done since: sphinx-rs carries `app_id` and `push_environment` on the
+registration (0.8.40); the mixer keeps one registration per app; the hub's
+routing is a Strut workflow (the mixer's `PUSH_WORKFLOW_URL` and
+`PUSH_WORKFLOW_KEY`), not AWS SNS platform apps.
+
+### Turning registration on
+
+The flag stays off until all of these are in place, in this order:
+
+1. The mixer is deployed with `PUSH_WORKFLOW_URL` and `PUSH_WORKFLOW_KEY` set.
+2. Strut secrets: `APNS_BUNDLE_ID=com.sphinx.peel`, `APNS_TEAM_ID=8297M44YTW`,
+   and the APNs key id `VF3D2FPXST` (its key file secret is already configured).
+3. Apple portal: the Push Notifications capability on `com.sphinx.peel` and
+   on `com.sphinx.peel.NotificationService`, and the app group on both.
+4. Build `Peel iOS`.
+5. Turn it on: Info.plist `PeelPushRegisterWithHub` to true, or for a
+   development run the UserDefaults key `PeelPushRegisterWithHub` (a launch
+   argument `-PeelPushRegisterWithHub YES`, or `defaults write` for the
+   simulator). A UserDefaults value wins. The default stays off.
+
+The environment reported is development for a Debug build and production for
+a Release one, and must equal the token's real environment.
 
 Left to do:
 
-1. **Hub routing by `app_id`** for Peel (AWS SNS platform applications for
-   `com.sphinx.peel`, its APNs key and both gateways).
-2. **Mixer: one registration per app** rather than one token per account root.
-3. **sphinx-rs: `app_id` and environment on `setPushToken`**; then write the
-   encoding in `PlainTokenEncoding`'s place (`PushRegistrationEncoding`) and
-   only then turn the flag on.
-4. **Apple portal:** the Push Notifications capability on `com.sphinx.peel`
-   and on the extension's App ID (`com.sphinx.peel.NotificationService`), the
-   app group `group.com.sphinx.peel` on both, and an APNs key for the team
-   that ships it. The project's `DEVELOPMENT_TEAM` is `8297M44YTW`, not the
-   Personal Team `T3M78XC3UV` (a free team has no push).
-5. **The names map:** the app does not yet write `PushNameDirectory` into the
+1. **Apple portal and Strut setup** as above (nothing here can do it).
+2. **The names map:** the app does not yet write `PushNameDirectory` into the
    app group (`PushNameDirectory.defaultsKey`), so a push shows the generic
    line; and it should be sealed under the push key as sphinx-ios-v2 does.
-6. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (13): move
-   them together.
+3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (13): move
+   them together. The project's `DEVELOPMENT_TEAM` is `8297M44YTW` (shared
+   with Sphinx); the Personal Team is only for the Mac's local signing.
 
 ### I6: calls
 

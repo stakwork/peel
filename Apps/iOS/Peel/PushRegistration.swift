@@ -17,7 +17,7 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate {
         application.registerForRemoteNotifications()
         #if DEBUG
         // So a test push can be shown. Debug builds only; it touches neither
-        // the hub flag nor `setPushToken`.
+        // the hub flag nor any registration.
         Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
         #endif
         return true

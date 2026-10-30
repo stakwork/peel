@@ -23,24 +23,33 @@ public struct PushRegistration: Equatable, Sendable {
 
 public enum PushToken {
     /// The device token as lowercase hex, which is how Sphinx hands it to
-    /// `setPushToken` (`registerDeviceID`).
+    /// the core's push registration (`registerDeviceID`).
     public static func hex(_ token: Data) -> String {
         token.map { String(format: "%02x", $0) }.joined()
     }
 }
 
-/// How a registration is put into the one string the core's `setPushToken`
-/// takes. The core knows nothing of an app ID or a gateway.
-///
-/// TODO: when sphinx-rs and the mixer carry an `app_id` and an environment
-/// with the token (hub routing for Peel, one registration per app), write the
-/// encoding here and nowhere else. Until then the token goes as Sphinx sends
-/// it, and the registration's app and environment go nowhere.
-public protocol PushRegistrationEncoding: Sendable {
-    func coreToken(for registration: PushRegistration) -> String
+/// What the core's push registration is given beside the token: the app it
+/// is for and the APNs gateway the token works on, which the mixer routes by.
+/// A registration whose environment is not the token's own is undeliverable
+/// and the mixer deletes it, so `pushEnvironment` is the one value the build
+/// also signs into `aps-environment` (`PEEL_APS_ENVIRONMENT`, read back as
+/// `PeelPushEnvironment`; `PushConfig`) and is never decided in code.
+public struct PushCoreArguments: Equatable, Sendable {
+    public let pushToken: String
+    public let appId: String?
+    public let pushEnvironment: String?
+
+    public init(pushToken: String, appId: String?, pushEnvironment: String?) {
+        self.pushToken = pushToken
+        self.appId = appId
+        self.pushEnvironment = pushEnvironment
+    }
 }
 
-public struct PlainTokenEncoding: PushRegistrationEncoding {
-    public init() {}
-    public func coreToken(for registration: PushRegistration) -> String { registration.token }
+extension PushRegistration {
+    /// The arguments for the core's app-aware registration.
+    public var coreArguments: PushCoreArguments {
+        PushCoreArguments(pushToken: token, appId: appID, pushEnvironment: environment.rawValue)
+    }
 }

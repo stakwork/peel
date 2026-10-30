@@ -55,25 +55,25 @@ struct PushKeyTests {
 }
 
 struct PushConfigTests {
-    private let info: [String: Any] = [
+    private let infoDictionary: [String: Any] = [
         "PeelAppID": "com.sphinx.peel", "PeelAppGroup": "group.com.sphinx.peel",
         "PeelKeychainGroup": "ABCDE12345.com.sphinx.peel.shared", "PeelPushEnvironment": "development",
     ]
 
     @Test func readsTheBuildsKeys() {
-        #expect(PushConfig(info: info) == PushConfig(
+        #expect(PushConfig(info: infoDictionary) == PushConfig(
             appID: "com.sphinx.peel", appGroup: "group.com.sphinx.peel",
             keychainGroup: "ABCDE12345.com.sphinx.peel.shared", environment: .development))
     }
 
     @Test func missingOrUnexpandedValuesGiveNone() {
-        var broken = info
+        var broken = infoDictionary
         broken["PeelAppGroup"] = "$(PEEL_APP_GROUP)"
         #expect(PushConfig(info: broken) == nil)
-        broken = info
+        broken = infoDictionary
         broken["PeelPushEnvironment"] = "staging"
         #expect(PushConfig(info: broken) == nil)
-        broken = info
+        broken = infoDictionary
         broken.removeValue(forKey: "PeelKeychainGroup")
         #expect(PushConfig(info: broken) == nil)
     }
@@ -86,9 +86,19 @@ struct PushConfigTests {
         #expect(!PeelPushFlags.registerWithHub(info: [PeelPushFlags.registerWithHubKey: true], defaults: defaults))
     }
 
-    @Test func plainEncodingSendsTheTokenAlone() {
-        let registration = PushRegistration(token: "abcd", appID: "com.sphinx.peel", environment: .production)
-        #expect(PlainTokenEncoding().coreToken(for: registration) == "abcd")
+    @Test func coreArgumentsCarryTheAppAndEnvironment() {
+        let debug = PushRegistration(token: "abcd", appID: "com.sphinx.peel", environment: .development)
+        #expect(debug.coreArguments == PushCoreArguments(pushToken: "abcd", appId: "com.sphinx.peel", pushEnvironment: "development"))
+        let release = PushRegistration(token: "abcd", appID: "com.sphinx.peel", environment: .production)
+        #expect(release.coreArguments.pushEnvironment == "production")
+    }
+
+    @Test func theEnvironmentIsTheBuildsAndNothingElse() throws {
+        for word in ["development", "production"] {
+            var info = infoDictionary
+            info["PeelPushEnvironment"] = word
+            #expect(PushConfig(info: info)?.environment.rawValue == word)
+        }
     }
 }
 

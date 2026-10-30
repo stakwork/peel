@@ -315,7 +315,7 @@ struct HiveTests {
         let rules = ApprovalRules(store: try SQLiteAgentStore.inMemory(device: "mac"))
         let cards = DeviceActionsTests.Cards()
         try await withTestEngine(storage, on: Transport(publishing: { _, _ in })) { engine in
-            let actions = DeviceActions(engine: engine, rules: rules, peerRequest: { id in
+            let actions = DeviceActions(engine: engine, rules: rules, calendar: StandInCalendar(), peerRequest: { id in
                 switch id {
                 case "triage": return PeerRequest(peer: "acme", name: "Acme", workflow: "triage", prompt: "Look at bug 12")
                 case "more": return PeerRequest(peer: "acme", name: "Acme", workflow: "orchestrator", prompt: "Hi", more: true)

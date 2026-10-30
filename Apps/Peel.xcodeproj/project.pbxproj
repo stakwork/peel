@@ -415,6 +415,8 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, and for the camera bubble in a screen recording.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Your assistant reads your calendar when you ask it, and adds or changes events only after you allow each one.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Your assistant reads your reminders when you ask it, and adds or completes one only after you allow it.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and for your voice in a screen recording.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -450,6 +452,8 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, and for the camera bubble in a screen recording.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Your assistant reads your calendar when you ask it, and adds or changes events only after you allow each one.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Your assistant reads your reminders when you ask it, and adds or completes one only after you allow it.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and for your voice in a screen recording.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -349,6 +349,11 @@ public struct SphinxTools: Sendable {
 /// A tool's failure, as the model is told it.
 struct ToolFailure: LocalizedError {
     let errorDescription: String?
+
+    /// No event (or reminder) with the id the agent gave.
+    static func noItem(_ what: String) -> ToolFailure {
+        ToolFailure(errorDescription: "No \(what) with that id: list them again for its id.")
+    }
 }
 
 /// The first value of a live read: the one-off read the tools need.

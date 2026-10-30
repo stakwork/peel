@@ -17,6 +17,9 @@ struct TouchPayButton: View {
     let attempt: PaymentAttempt
     let send: (_ confirmedMsat: UInt64?) async -> PaymentOutcome
     var sent: () -> Void = {}
+    /// False while what is shown is being checked again: Pay and the armed
+    /// confirmation wait; Cancel does not.
+    var canPay = true
 
     /// The armed button takes taps only once this has passed.
     static let settle: Duration = .milliseconds(700)
@@ -35,6 +38,7 @@ struct TouchPayButton: View {
                 HStack(spacing: Theme.Space.md) {
                     Button { attempt.armed = nil } label: { Text("Cancel").frame(maxWidth: .infinity) }
                         .buttonStyle(.peel(.outline, size: .touch))
+                        // Once the payment is on its way there is nothing left to cancel.
                         .disabled(attempt.working)
                     Button { run() } label: {
                         Text("\(verb) \(Sats.format(msat: armed))")
@@ -43,7 +47,7 @@ struct TouchPayButton: View {
                             .buttonProgress(attempt.working)
                     }
                     .buttonStyle(.peel(.primary, size: .touch, fill: Theme.attention))
-                    .disabled(!ready)
+                    .disabled(!ready || !canPay)
                     .accessibilityHint("Sends \(Sats.format(msat: armed))")
                 }
             } else {
@@ -53,7 +57,7 @@ struct TouchPayButton: View {
                 .buttonStyle(.peel(.primary, size: .touch))
                 // Not off while it sends, so it keeps its fill under the
                 // spinner; `PaymentAttempt.run` ignores a second tap.
-                .disabled(totalMsat == nil)
+                .disabled(totalMsat == nil || !canPay)
             }
             if let problem = attempt.problem { ProblemText(problem) }
         }

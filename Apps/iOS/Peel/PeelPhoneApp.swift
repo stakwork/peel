@@ -44,16 +44,13 @@ struct PeelPhoneApp: App {
                     if phase == .active { model.becameActive() }
                     if phase == .background { model.leftForeground() }
                 }
-                // The PIN timeout counts the time Peel is away: in front is
-                // in use (the phone locks itself when it is not), noted as
-                // it comes back, every half minute, and as it leaves; on
-                // coming back `becameActive` locks first if it is due.
-                .task(id: scenePhase == .active) {
-                    model.noteActivity()
-                    while scenePhase == .active, (try? await Task.sleep(for: .seconds(30))) != nil {
-                        model.noteActivity()
-                    }
-                }
+                // The PIN timeout, as on the Mac: from the last touch, in
+                // front or away. Each touch in Peel's window is use
+                // (`TouchWatch`); idle in front, it locks within half a
+                // minute of the timeout, and coming back after it locks
+                // first (`becameActive`).
+                .background(TouchWatch { model.noteActivity() })
+                .task { await model.lockWhenIdle() }
                 // Stadeum opens with the account; locked or forgotten, its
                 // tokens and an open org page go, read again when it opens.
                 .onChange(of: model.phase) { _, phase in

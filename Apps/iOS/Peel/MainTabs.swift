@@ -10,6 +10,13 @@ struct MainTabs: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
 
+    /// Sats received and not yet seen, "+350", until Payments is opened
+    /// (`PaymentsFeed.seeArrivals` takes them).
+    private var unseenText: Text? {
+        let msat = Receipt.totalMsat(model.money.unseen)
+        return msat > 0 ? Text(Sats.signed(msat: msat, incoming: true)) : nil
+    }
+
     var body: some View {
         @Bindable var router = router
         TabView(selection: $router.tab) {
@@ -19,10 +26,9 @@ struct MainTabs: View {
             // The Dock badge's count; blue (the tab bar appearance, `PeelPhoneApp`).
             .badge(model.unreadCount)
             Tab("Payments", systemImage: "bolt", value: PhoneTab.payments) {
-                PaymentsTab(model: model)
+                PaymentsTab()
             }
-            // Sats just received, "+350", as the Mac's Payments row shows them.
-            .badge(model.money.recentMsat > 0 ? Text(Sats.signed(msat: model.money.recentMsat, incoming: true)) : nil)
+            .badge(unseenText)
             Tab(value: PhoneTab.you) {
                 YouTab()
             } label: {

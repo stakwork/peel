@@ -20,7 +20,8 @@ struct CallWindow: View {
                 Color.clear
             }
         }
-        .frame(minWidth: 560, minHeight: 400)
+        // The chat panel takes its own width, so the stage keeps 560.
+        .frame(minWidth: 560 + (model.calls.session?.chatOpen == true ? CallChatView.width : 0), minHeight: 400)
         .background(Theme.callBackground)
         .foregroundStyle(Theme.text)
         .ignoresSafeArea(edges: .top)
@@ -63,10 +64,16 @@ private struct CallRoomView: View {
     @State private var bar = CallFloatingBar()
 
     var body: some View {
-        VStack(spacing: 0) {
-            titleBar
-            CallStage(call: call)
-            CallControls(call: call)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                titleBar
+                CallStage(call: call)
+                CallControls(call: call)
+            }
+            if call.chatOpen {
+                Theme.callDivider.frame(width: 1)
+                CallChatView(call: call)
+            }
         }
         .background(WindowReader { window = $0 })
         .onChange(of: window) {
@@ -307,6 +314,7 @@ private struct CallControls: View {
                     refused: call.cameraAccess == .refused, action: call.toggleCamera
                 )
                 share
+                chat
                 Button {
                     model.calls.leave()
                 } label: {
@@ -321,6 +329,23 @@ private struct CallControls: View {
         .padding(.horizontal, Theme.Space.lg)
         .padding(.top, Theme.Space.xs)
         .padding(.bottom, 18)
+    }
+
+    /// Opens or closes the chat panel; the unread count shows while it is closed.
+    private var chat: some View {
+        let open = call.chatOpen
+        return Button { call.setChatOpen(!open) } label: {
+            pill(open ? "bubble.left.fill" : "bubble.left", "Chat", weight: .medium, text: Theme.text, fill: Theme.hover)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("c", modifiers: [.command, .shift])
+        .help(open ? "Hide chat (⌘⇧C)" : "Show chat (⌘⇧C)")
+        .accessibilityLabel(call.chatUnread > 0 && !open ? "Chat, \(call.chatUnread) unread" : "Chat")
+        .overlay(alignment: .topTrailing) {
+            if call.chatUnread > 0, !open {
+                Badge(count: call.chatUnread).offset(x: 6, y: -6).allowsHitTesting(false)
+            }
+        }
     }
 
     /// Share starts on the entire screen, its chevron offers a window or an

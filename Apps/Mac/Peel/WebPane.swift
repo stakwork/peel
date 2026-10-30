@@ -82,6 +82,8 @@ final class WebPane: NSObject, Identifiable {
     /// The deliverable on show (`open(_ page:)`): Peel's own strut's page,
     /// whose address carries strut's key, and the name the address field shows.
     @ObservationIgnored private var strut: StrutPage?
+    /// Where a link from it to another app goes (`open(_ page:)`).
+    @ObservationIgnored private var strutOpensApp: ((StrutAppLink) -> Void)?
 
     /// An HTML attachment or a deliverable is on show: no web address to
     /// show, copy, or offer to try again.
@@ -138,10 +140,12 @@ final class WebPane: NSObject, Identifiable {
     /// view of its own on a store that keeps nothing, so the key the page is
     /// handed goes when it does. The address field shows its name, never its
     /// address. A link clicked in it opens here as a page of the web, ending
-    /// it; a download comes only from strut's own page, never a frame in it.
-    func open(_ page: StrutPage) {
+    /// it, and one to another app goes to `openApp`; a download comes only
+    /// from strut's own page, never a frame in it.
+    func open(_ page: StrutPage, openApp: @escaping (StrutAppLink) -> Void) {
         endPage()
         strut = page
+        strutOpensApp = openApp
         let view = makeWebView(keepsNothing: true)
         isOpen = true
         problem = nil
@@ -189,6 +193,7 @@ final class WebPane: NSObject, Identifiable {
         if let document { IncomingFiles.discard(document.file, root: Self.pagesRoot) }
         document = nil
         strut = nil
+        strutOpensApp = nil
     }
 
     /// Peel's strut started again (on another port, with another key) or
@@ -458,7 +463,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
             problem = Problem(url: showsNoAddress ? nil : webView.url ?? page.url, message: "The page stopped working.")
             return
         }
-        if let strut { webView.load(URLRequest(url: strut.url)) } else { webView.reload() }
+        if let strut { webView.load(URLRequest(url: strut.url(at: webView.url))) } else { webView.reload() }
     }
 
     /// `target=_blank` and `window.open`: the pane is the one window.
@@ -467,9 +472,9 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         for action: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let strut {
-            strut.newWindow(for: action, from: webView, open: linkAction) { request in
+            strut.newWindow(for: action, from: webView, open: linkAction, download: { request in
                 webView.startDownload(using: request) { $0.delegate = self }
-            }
+            }, openApp: { [strutOpensApp] in strutOpensApp?($0) })
             return nil
         }
         guard let url = action.request.url, WebPage.address(url) != nil else { return nil }

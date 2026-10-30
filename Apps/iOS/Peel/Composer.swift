@@ -211,8 +211,13 @@ private struct AttachButton: View {
             Task { add(await Task.detached { PickedFiles.copies(of: urls) }.value) }
         }
         .fullScreenCover(isPresented: binding(.camera)) {
-            CameraPicker { image in
-                Task { add(await Task.detached { PickedFiles.photo(image) }.value) }
+            CameraPicker { shot in
+                Task {
+                    switch shot {
+                    case .photo(let image): add(await Task.detached { PickedFiles.photo(image) }.value)
+                    case .video(let url): add(await Task.detached { PickedFiles.video(url) }.value)
+                    }
+                }
             }
             .ignoresSafeArea()
         }
@@ -261,8 +266,28 @@ enum PickedFiles {
         }
     }
 
+    /// A video the camera recorded: copied into its own folder of Peel's,
+    /// keeping its extension (.mov or .mp4) so it is sent as a video, then
+    /// the camera's temporary file is deleted. One over the attachment
+    /// limit is removed and refused (`IncomingFiles.accept`).
+    static func video(_ url: URL) -> (files: [URL], refused: [String]) {
+        defer { try? FileManager.default.removeItem(at: url) }
+        var copy: URL?
+        do {
+            let folder = try IncomingFiles.newFolder()
+            let ext = url.pathExtension.lowercased()
+            let target = folder.appendingPathComponent("Video.\(["mov", "mp4"].contains(ext) ? ext : "mov")")
+            copy = target
+            try FileManager.default.copyItem(at: url, to: target)
+            return ([try IncomingFiles.accept(target, in: folder)], [])
+        } catch {
+            if let copy { IncomingFiles.discard(copy) }
+            return ([], ["The video: \(PeelError.readable(error))."])
+        }
+    }
+
     /// Copies of files picked in Files, each in its own folder of Peel's;
-    /// one over the attachment limit, or not a plain file, is removed and
+    /// one over the send limit, or not a plain file, is removed and
     /// refused (`IncomingFiles.accept`).
     static func copies(of urls: [URL]) -> (files: [URL], refused: [String]) {
         var files: [URL] = [], refused: [String] = []
@@ -305,14 +330,28 @@ enum PickedFiles {
     }
 }
 
-/// The system camera, for a photo to attach.
+/// What the camera made.
+private enum CameraShot {
+    case photo(UIImage)
+    /// The recording, in the camera's temporary folder.
+    case video(URL)
+}
+
+/// The system camera, as the Camera app has it (Photo and Video modes),
+/// for a photo or video to attach.
 private struct CameraPicker: UIViewControllerRepresentable {
-    let take: (UIImage) -> Void
+    let take: (CameraShot) -> Void
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.sourceType = .camera
+        let wanted = [UTType.image.identifier, UTType.movie.identifier]
+        let available = (UIImagePickerController.availableMediaTypes(for: .camera) ?? [UTType.image.identifier])
+            .filter { wanted.contains($0) }
+        picker.mediaTypes = available.isEmpty ? [UTType.image.identifier] : available
+        picker.videoQuality = .typeHigh
+        picker.allowsEditing = false
         picker.delegate = context.coordinator
         return picker
     }
@@ -327,7 +366,11 @@ private struct CameraPicker: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage { parent.take(image) }
+            if info[.mediaType] as? String == UTType.movie.identifier {
+                if let url = info[.mediaURL] as? URL { parent.take(.video(url)) }
+            } else if let image = info[.originalImage] as? UIImage {
+                parent.take(.photo(image))
+            }
             parent.dismiss()
         }
 

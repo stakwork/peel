@@ -387,8 +387,10 @@ final class OffscreenDriver {
     /// `home-move`, `home-ping`, `home-copy`, its Peel Home moves; `account-<category>`, that row in Account's
     /// categories (`account-dictation`); `connection`, the sidebar bolt’s status panel;
     /// `connection-check`, its check/reconnect action; `apps`, the sidebar's
-    /// Apps; `apps-seed`, sample workspace apps in memory; `app-pin`, the open
-    /// app's pin.
+    /// Apps; `apps-refresh`, its header's Refresh; `apps-seed`, sample workspace apps in memory; `apps-fold`, the
+    /// Apps row's chevron; `app-pin`, the open app's pin; `app-versions`, the
+    /// open app's version chip (its menu); `app-make-live`, Make live for the
+    /// newest version waiting, as its panel's button.
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -420,12 +422,39 @@ final class OffscreenDriver {
         case "apps":
             // What the sidebar's Apps row sets.
             model.destination = .apps
+        case "apps-refresh":
+            // Apps' header Refresh: the person's own and every workspace's.
+            model.refreshApps()
         case "apps-seed":
             // Workspaces' apps in memory, read as a listing through strut is;
             // strut and Stadeum untouched.
             model.stadeum.apps = WorkspaceApp.byTitle(Self.sampleApps.compactMap { app in
                 WorkspaceApp(peer: app.peer, entry: Data(AgentKit.JSONValue.object(app.entry.merging(["pinned": .bool(true)]) { $1 }).jsonString.utf8))
             })
+        case "apps-fold":
+            // The Apps row's chevron.
+            model.sidebarLayout.appsOpen.toggle()
+        case "app-versions", "app-make-live":
+            // The open app's version chip: its menu, read from strut as the header reads it;
+            // or the Make live panel's button, for the newest version waiting.
+            guard case .app(nil, let appName) = model.destination, let app = model.app(peer: nil, name: appName),
+                  let server = model.memoryServer, let presenter = model.mainPresenter as? MenuPresenter, let window = main
+            else { throw Failure(description: "none of your apps open on a running strut") }
+            let opens = name == "app-versions"
+            Task {
+                guard let versions = try? await AutomationsClient(server: server).versions(of: appName) else {
+                    return Offscreen.log("drive: the app's versions could not be read")
+                }
+                if opens {
+                    let entries = AppVersionsControl.menu(versions, shown: versions.active, preview: { _ in }) { target, done in
+                        Task { await model.makeLive(app, target, done: done) }
+                    }
+                    presenter.show(entries, at: CGPoint(x: window.frame.maxX - 200, y: window.frame.maxY - 70), in: window,
+                                   source: AppVersionsControl.source)
+                } else if let waiting = versions.newestWaiting {
+                    await model.makeLive(app, .version(waiting), done: "\(waiting) is live")
+                }
+            }
         case "app-pin":
             // The open app's pin, in its header.
             guard case .app(let peer, let name) = model.destination,

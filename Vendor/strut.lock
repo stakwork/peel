@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #368 (the default orchestrator ships no memory/* steps; Peel grants them), after #350–#363 (package apps, app uploads, package updates and subscriptions).
-8b56eb7bd38eb10b3935e91438ddc68351e64b67
+# stakwork/strut main at the merge of #390 (live feeds: a job's updates kept for a reader with no callback, graph writes heard, job/status), after #392 (a host's quit closes the graph), #382–#391 (the package index, app frame downloads and mic, artifact link paths, the builder handover) and #370–#381.
+067a84eaa157fa731567abd0b46033e9050ae26a

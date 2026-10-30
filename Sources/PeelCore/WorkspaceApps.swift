@@ -29,6 +29,9 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     /// The release held live (`r3`) while the workspace holds one rather
     /// than following its latest version.
     public internal(set) var release: String? = nil
+    /// Its newest version (`v9`), which is newer than `version` while a
+    /// held app has one waiting to be made live.
+    public internal(set) var newest: String? = nil
     /// The warnings strut's monitor raised on its live version, about how
     /// its page uses the workspace (strut's `src/apps/monitor.ts`); 0 from
     /// a strut that does not count them.
@@ -68,7 +71,18 @@ extension WorkspaceApp {
         icon = text(json["icon"])
         version = text(json["activeVersion"])
         release = text(json["live"])
+        if case .array(let versions)? = json["versions"] {
+            newest = AppVersions.newestFirst(versions.compactMap(\.string)).first
+        }
         if case .int(let count)? = json["warnings"] { problems = Int(clamping: max(count, 0)) }
+    }
+
+    /// The newest version, while one of the person's own apps is held at an
+    /// older one: built, and waiting for them to make it live. A
+    /// workspace's waiting versions are its own to make live.
+    public var waiting: String? {
+        guard peer == nil, release != nil, let newest, let version, AppVersions.isNewer(newest, than: version) else { return nil }
+        return newest
     }
 
     /// The apps in strut's `GET /apps` answer (`{ apps: [...] }`), in its

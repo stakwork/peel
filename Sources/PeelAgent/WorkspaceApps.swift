@@ -27,30 +27,67 @@ extension AutomationsClient {
         let answer = try await call("GET", "apps", what: "your apps")
         return try WorkspaceApp.listing(Data(answer.jsonString.utf8), peer: nil)
     }
+
+    /// One of the person's own apps' versions and releases
+    /// (`GET /apps/:name/versions`). A workspace's are its own to change.
+    public func versions(of name: String) async throws -> AppVersions {
+        let answer = try await call("GET", "apps/\(Self.escaped(path: name))/versions", what: "the app's versions")
+        guard let versions = AppVersions(reply: Data(answer.jsonString.utf8)) else {
+            throw PeelError("strut's reply named no live version.")
+        }
+        return versions
+    }
+
+    /// Changes what everyone who opens the person's own app `name` gets
+    /// (`PUT /apps/:name/active`): strut takes the release and its lock.
+    public func makeLive(_ name: String, _ target: AppLiveTarget) async throws {
+        let body = AgentKit.JSONValue.object(target.body.mapValues { .string($0) })
+        _ = try await call("PUT", "apps/\(Self.escaped(path: name))/active", body, what: "the app's live version")
+    }
 }
 
 extension MemoryServer {
     /// strut's UI showing `app`'s page and nothing else, with this strut's
     /// key handed over as `?key=` (its UI keeps it for the tab and takes it
-    /// out of the address). Peel's own strut only. The address carries the key, so it is
+    /// out of the address), opened at the view `input` when there is one.
+    /// Peel's own strut only. The address carries the key, so it is
     /// handed to the web view and never shown, logged or kept.
-    public func page(of app: WorkspaceApp) -> URL? {
-        page("app", app.id)
+    public func page(of app: WorkspaceApp, version: String? = nil, input: String? = nil) -> URL? {
+        // `name@vN`: that version rather than the one everyone opens.
+        page("app", version.map { "\(app.id)@\($0)" } ?? app.id, input: input)
     }
 
     /// strut's UI showing a deliverable from the agent's DM alone, as for an
     /// app: a file through its viewer (`?artifact=`, stakwork/strut#314),
-    /// an app's page (`?app=`). An org's is read through to it with the
-    /// person's token, as an app is.
-    public func page(showing handle: AgentArtifact.Handle) -> URL? {
+    /// an app's page (`?app=`, at the view `input`). An org's is read
+    /// through to it with the person's token, as an app is.
+    public func page(showing handle: AgentArtifact.Handle, input: String? = nil) -> URL? {
         switch handle {
         case .file(let path): page("artifact", path)
-        case .app(let app): page("app", app)
+        case .app(let app): page("app", app, input: input)
         }
     }
 
-    private func page(_ name: String, _ value: String) -> URL? {
-        StrutUI.page(on: base, key: key, name, value)
+    private func page(_ name: String, _ value: String, input: String? = nil) -> URL? {
+        StrutUI.page(on: base, key: key, name, value, input: input)
+    }
+
+    /// The app a page of this strut's UI links to (`StrutAppLink`), from a
+    /// page of the org `peer`'s app or of one of this strut's own (nil);
+    /// nil for a link to anything else, or anywhere else.
+    public func appLink(_ url: URL, from peer: String?) -> StrutAppLink? {
+        servesPage(url) ? StrutAppLink(url, folder: uiFolder, from: peer.map { .peer($0) } ?? .own) : nil
+    }
+
+    /// Whether `url` is this strut's UI itself, not a file it serves.
+    public func servesPage(_ url: URL) -> Bool {
+        serves(url) && StrutUI.isPage(url, in: uiFolder)
+    }
+
+    /// The path strut's UI is served at, with its `/`.
+    private var uiFolder: String {
+        let path = base.path(percentEncoded: true)
+        return path.hasSuffix("/") ? path : path + "/"
     }
 
     /// Whether `url` is on this strut: same scheme, host and port.

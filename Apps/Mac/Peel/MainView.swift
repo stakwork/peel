@@ -218,7 +218,8 @@ struct Detail: View {
                 AppsView()
             case .app(let peer, let name):
                 if let app = model.app(peer: peer, name: name) {
-                    WorkspaceAppView(app: app)
+                    // One view per app: a version picked or read in one is not another's.
+                    WorkspaceAppView(app: app).id(app.id)
                 } else {
                     start("This app is no longer listed.")
                 }
@@ -228,6 +229,10 @@ struct Detail: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background.ignoresSafeArea())
+        // An app no longer listed keeps no page.
+        .onChange(of: model.stadeum.apps.map(\.id)) { _, listed in
+            model.appPages.evict(owners: { !listed.contains($0) })
+        }
     }
 
     /// No chat open: the app's name over what to do.

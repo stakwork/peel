@@ -64,7 +64,8 @@ is a short plan. Update the status and the journal when you finish something.
       send (`sendText(for:)`) is marked `sending`, with its uuid, in the
       commit that stores its message, so it goes at most once; one cut
       short there, or whose publish failed, answers `unknown`
-    - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals,
+    - `Engine+Tribes.swift` — join, leave, create, edit, members, approvals
+      (`approveWaitingMember`: Jamie, by its key, docs/hive-tribes.md),
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
     - `Engine+Preferences.swift` — `set`, every change to a user setting
@@ -156,6 +157,10 @@ is a short plan. Update the status and the journal when you finish something.
     the recent calls across chats whose presence the app keeps, and their
     live query (`Storage.recentCallMessages`, beside them as
     `PaymentHistory.swift` keeps its own)
+  - `CallChat.swift` — the call's chat without LiveKit: `CallChatMessage`,
+    `CallChatWire` (the `lk-chat-topic` JSON: messages, Jamie's status rows,
+    `mentionsJamie`) and `CallChatLog` (rows capped at 500, deduped, Jamie
+    thinking); tested in `CallChatTests`
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
@@ -214,7 +219,9 @@ is a short plan. Update the status and the journal when you finish something.
     and what it points to, `AgentArtifact`: an https link, or the handle
     the bridge adds, `AgentArtifact.Handle`, a file strut serves or an app,
     only in those shapes, with strut's peer id and app name rules that
-    `Hive` and `WorkspaceApp` use too) and `AgentDM` (your
+    `Hive` and `WorkspaceApp` use too), `Message.strutArtifacts` (strut's
+    entries in `metadata.strut`: Jamie's deliverables in a tribe,
+    docs/hive-tribes.md) and `AgentDM` (your
     message the agent is still answering in its DM)
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device
@@ -241,7 +248,9 @@ is a short plan. Update the status and the journal when you finish something.
     for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
     (polled until the person answers; a poll that reaches no one or gets a
     5xx is tried again until the code runs out), renew, `startCall`: a call with
-    Jamie in it for one workspace, docs/hive-calls.md), what is kept of a pairing
+    Jamie in it for one workspace, docs/hive-calls.md; `jamieLinks`,
+    `linkTribe`, `unlinkTribe`: a tribe's Jamie, docs/hive-tribes.md, with
+    `JamieAccount` and `JamieLink`), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
     one org's strut and the person's token for it, and `HivePeer.jamie`,
     who a call in a chat brings Jamie from), and the Hive a profile
@@ -250,13 +259,23 @@ is a short plan. Update the status and the journal when you finish something.
     pinned as a tab or one of the person's own: read from strut's `GET
     /apps` (`listing`, `init(peer:entry:)`), on a workspace's own strut
     with the person's token for the iPhone (`pinned(on:)`), and A–Z
-    (`byTitle`); its words for the person are PeelUI's
+    (`byTitle`), and the version a held app of the person's own has
+    waiting (`waiting`); its words for the person are PeelUI's
+  - `AppVersions.swift` — one of the person's own apps' versions and
+    releases as strut gives them (`GET /apps/:name/versions`, strut's
+    plans/app-releases.md): the live version, held or following latest,
+    which versions wait, what the live release locked that moved on; and
+    `AppLiveTarget`, what `PUT /apps/:name/active` is sent (tested in
+    `AppVersionsTests`)
   - `OrgPage.swift` — a deliverable from the agent's DM on its org's own
     strut, as the iPhone opens it (`AgentArtifact.Handle.onOrg`: the brain's
     `/peers/<org>` hop taken off; none for the brain's own), and
     `StrutUI.page`, the one address of strut's UI showing one thing alone
-    (`?artifact=` or `?app=`, `&solo=1`, the UI's folder with its `/`), with
-    strut's key in it only for Peel's own strut
+    (`?artifact=` or `?app=`, an app's view as `&input=`, `&solo=1`, the
+    UI's folder with its `/`), with strut's key in it only for Peel's own
+    strut; and `StrutAppLink`, a page's link to an app as strut's UI reads
+    it (strut's plans/apps.md §7.1, "Deep links": a workspace page's bare
+    name is that workspace's app)
   - `TextLine.swift` — `TextLine.clean`, words someone else wrote as one
     safe line (control and direction characters out, no `<<<` marker,
     capped): the one cleaner the agent's chat data, Stadeum and strut's
@@ -298,6 +317,11 @@ is a short plan. Update the status and the journal when you finish something.
     shows as pages (`WebPage.isHTML`) and each profile's website data
     store identifier
 - `Sources/PeelUI/` — the app's model, shared by the Mac and the iPhone
+  (`WorkspaceAppIcon.swift` here too: an app's lucide icon, drawn from the
+  `lucide-swift` package, ISC, pinned in `Package.swift` and both
+  `Package.resolved` files; `LucideNames.resolve` is the name lookup, with
+  lucide's renamed-icon aliases; the apps use `WorkspaceAppIcon(name, size:)`
+  or `Image.workspaceApp`, and never import LucideSwift)
   (phase 7, batch 17): PeelCore and AgentKit, SwiftUI and Observation, no
   AppKit, UIKit, LiveKit or PeelAgent; builds for the iOS Simulator
   (`xcodebuild -scheme PeelUI -destination 'generic/platform=iOS Simulator'`,
@@ -310,7 +334,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ThreadRef`, `AttachmentHandle`, `ListAnchor`), `AppModel+Calls` (a call's
   avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
-  `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Contacts`
+  `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Jamie`
+  (Jamie in tribes: who sees the row, the one-tap org, and approving
+  Jamie's request to join unasked, docs/hive-tribes.md), `AppModel+Contacts`
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
@@ -324,11 +350,15 @@ is a short plan. Update the status and the journal when you finish something.
   `readApps` (the Mac through its strut, the iPhone on each org's own;
   `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
   app's words for the person; `callLink(on:)`, a call with Jamie in it
-  for a live workspace (docs/hive-calls.md); `opening`, how a deliverable or a workspace's
+  for a live workspace (docs/hive-calls.md); a tribe's Jamie as Hive keeps
+  it, `jamieLinks`, `jamiePick`, `jamieOptions`, `setJamie`, and
+  `opensFromTribe`, which org a tribe's deliverable may open on
+  (docs/hive-tribes.md); `opening`, how a deliverable or a workspace's
   app opens on its org's own strut; `StadeumHost`, what a device does
   beyond it (the Mac's `MacStadeumHost`); and `OrgPageRequest`, such a page
-  with its token: its origin and folder, the token's hand-over script and
-  the first request, never described with the token);
+  with its token: its origin and folder, the token's hand-over script, the
+  first request, the request for another app a link in it names and for
+  loading it again where it moved to, never described with the token);
   `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
   the recent calls across chats watched while unlocked and the open chat's,
   the call you are on, join, start (with Jamie from a Stadeum workspace:
@@ -348,7 +378,8 @@ is a short plan. Update the status and the journal when you finish something.
   status, a tribe's details lines and price to join, what a contact code
   adds); `TribeForms` (`TribeSettingsDraft`, Create and Edit tribe's
   fields and their problems; `TribeLookup`, Join a tribe's link and
-  lookup; `TribeIdentityDraft`, how you appear in a tribe; `TimeZoneSharingSwitch`, a chat's time zone switch; the Mac's forms and the phone's share them); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
+  lookup; `TribeIdentityDraft`, how you appear in a tribe; `TribeJamiePicker`,
+  a tribe's Jamie row; `TimeZoneSharingSwitch`, a chat's time zone switch; the Mac's forms and the phone's share them); `WordCheck` (three of the twelve words asked back, and `WordBoxes`, the twelve boxes a paste spreads into); `MoneyArrivals` (`Receipt`, the
   balance's roll, what Payments has not shown); `Notifier` (local
   notifications by PeelCore's `NotificationPolicy`, the badge through
   `AppPresence`); `ImageCaches` (`ImageCache`, bounded: attachments, and
@@ -399,19 +430,28 @@ is a short plan. Update the status and the journal when you finish something.
   Peel's strut and those the workspaces pinned read through it,
   `refreshApps`, `appSources`; the person's pins under the
   sidebar's Apps row, `isPinned`, `setPinned`: none until the person
-  pins one, `ChatSections.Layout.pinnedApps`), `AppsView` (the sidebar's Apps row: every listed app
+  pins one, `ChatSections.Layout.pinnedApps`, folded by the row's chevron,
+  `appsOpen`; `makeLive`, what everyone opens of one of the person's own
+  apps), `AppsView` (the sidebar's Apps row: every listed app
   as a card, A–Z, its icon, version and status (`AppStatus`), with a
   search and the source to show, Yours or a workspace;
   `docs/apps-browser.md`), `WorkspaceAppView` (one of
   those apps alone in the detail column, opened from Apps or its pinned
   row: Peel's own strut's UI showing its page, in a `WKWebView` whose store
-  keeps nothing and which goes nowhere but that strut, and `AppPinButton`,
+  keeps nothing and which goes nowhere but that strut, opened at the view
+  it was last on (`AppPlace`, `AppModel.appPlaces`), and `AppPinButton`,
   its pin in the header and on its card; `docs/agent-on-strut.md`, "Built:
-  a workspace's apps"), `StrutPage` (a page of Peel's own strut's UI shown
+  a workspace's apps"), `AppVersionsViews` (the person's own app's version
+  chip in that header and its menu: the newest versions, one picked shown
+  in that window only under `AppPreviewBar`, History's releases to roll
+  back to, Follow latest; and Make vN live, asked once in its panel),
+  `StrutPage` (a page of Peel's own strut's UI shown
   alone with strut's key in its address, and the rules the app view and the
   web pane's deliverable both keep to: only that strut, its `srcdoc` and
   blob frames, a link out only on the person's own click, which
-  `InputWebView` knows of; "Built: a deliverable opens beside the chat");
+  `InputWebView` knows of, and a link to another app to `AppModel.open`;
+  "Built: a deliverable opens beside the chat", `docs/apps-browser.md`
+  "Built: deep links");
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -423,7 +463,7 @@ is a short plan. Update the status and the journal when you finish something.
   `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
-  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories` stands in the chats' place, in `Sidebar`'s `SidebarColumn`, while it is open, under the sidebar's search, which then searches them);
+  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, its Jamie for its owner, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories` stands in the chats' place, in `Sidebar`'s `SidebarColumn`, while it is open, under the sidebar's search, which then searches them);
   for the chat: `MessageViews` (`MessageList` with its pill and Page
   keys, `ListRowContent`, the rows), `MessageTable` (the Mac's list
   engine for the chat, a thread and the agent chat, over any `TableRow`: a non-flipped `NSTableView` of reused hosting
@@ -472,12 +512,14 @@ is a short plan. Update the status and the journal when you finish something.
   section, and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
-  and devices), `CallWindow` (the grid, the focus layout with its strip,
+  and devices, and the chat over the data channel), `CallChatView` (the chat panel beside the stage), `CallWindow` (the grid, the focus layout with its strip,
   keep on top, the recording indicator and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
   `UI/`, the component library over `Theme` and its tokens (`Theme.Radius`, `Space`, `AvatarSize`; `docs/design/README.md`,
-  "Component library"): `PeelButton`, shadcn's button (variants primary,
+  "Component library"): `HUDPanel` (the overlay over every app that
+  dictation's pill and a screen recording's bar and camera bubble are, with
+  `hudCapsule` and `HUDButton`); `PeelButton`, shadcn's button (variants primary,
   secondary, outline, ghost, destructive, link; sizes sm, md, lg, and
   `touch`, the iPhone's 44 pt one that grows with Dynamic Type;
   `.buttonStyle(.peel(...))`; every text button but the small ones inside
@@ -541,6 +583,12 @@ is a short plan. Update the status and the journal when you finish something.
   each dictation by day, with Copy and Clear History),
   `DictationPermissions`, and the Account section (with the Speech model
   and Fixer pickers), offer and menu item in `DictationSettingsView`; its pure parts are in `Sources/PeelUI/Dictation/`);
+  `Recording/` (screen recording, `docs/recording.md`: `RecordingController`
+  the glue, `ScreenRecorder` (ScreenCaptureKit's recording output, Peel's
+  own windows in the picture), `CameraBubblePanel`,
+  `RecordingBarPanel`, and Account › Recording in `RecordingSettingsView`;
+  its pure parts, the captions, the transcript and the file's audio and
+  caption track, are in `Sources/PeelUI/Recording/`);
   `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
   count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
@@ -563,7 +611,7 @@ is a short plan. Update the status and the journal when you finish something.
   `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
   `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
-  `WorkspaceAppIcon` (an app's lucide icon as an SF Symbol);
+  `AppStatus`'s header icon (over PeelUI's `WorkspaceAppIcon`);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
   `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the
@@ -601,7 +649,8 @@ is a short plan. Update the status and the journal when you finish something.
   `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
   request's bearer and handed to the page's storage before its script
   runs, never in an address; only that strut's UI folder, its `srcdoc` and blob
-  frames, a link out only from strut's own page on the person's own tap, `TouchWebView`; strut's
+  frames, a link out only from strut's own page on the person's own tap, `TouchWebView`, and a
+  link to another app as that app's page in place; strut's
   specs/DESKTOP.md, "A device with no strut of its own"), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,
@@ -624,8 +673,8 @@ is a short plan. Update the status and the journal when you finish something.
   code to copy and share), `ContactSheets` (`AddContactSheet`,
   `InviteSheet`, `InviteDetailScreen`), `TribeSheets` (`JoinTribeSheet`,
   `TribeSettingsSheet`: create and edit), `ChatDetails`
-  (`ChatDetailsScreen`: a contact's or a tribe's, how you appear in a
-  tribe, the time zone switch; `TribeMembersScreen`),
+  (`ChatDetailsScreen`: a contact's or a tribe's, a tribe's Jamie for its
+  owner, how you appear in a tribe, the time zone switch; `TribeMembersScreen`),
   `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
   now"),
   `ConversationScreen` (the header with Call and More in one capsule, the
@@ -885,7 +934,7 @@ is a short plan. Update the status and the journal when you finish something.
   library, produced by `scripts/build-ffi.sh`; not checked in
 - `Tests/PeelCoreTests/` — offline unit tests for PeelCore (see Tests below),
   a file per area: `StateCodecTests`, `StorageTests`, `MigrationTests`,
-  `ReadMarkerTests`, `ChatSectionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
+  `ReadMarkerTests`, `ChatSectionsTests`, `AppVersionsTests`, `ListBottomTests`, `RowIdTests`, `ThreadTests`, `SearchTests`, `MessageTests`,
   `MessageMarkupTests`, `MembershipTests`, `TribeTests`, `ContactsTests`,
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,

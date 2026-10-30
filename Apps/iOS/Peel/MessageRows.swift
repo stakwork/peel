@@ -32,7 +32,7 @@ struct ConversationRow: View, Equatable {
             VStack(spacing: 0) {
                 if !row.agentTools.isEmpty { AgentToolLines(tools: row.agentTools) }
                 MessageRowView(row: row, composer: composer, flashed: flashed)
-                if !row.agentArtifacts.isEmpty { AgentArtifactLines(artifacts: row.agentArtifacts) }
+                if !row.agentArtifacts.isEmpty { AgentArtifactLines(artifacts: row.agentArtifacts, inTribe: row.inTribe) }
             }
         case .payment:
             PaymentRowView(row: row, composer: composer, flashed: flashed)
@@ -62,10 +62,26 @@ struct ConversationRow: View, Equatable {
 
 // MARK: - A message
 
+/// Tap a row that has a thread (a summary, 3+ messages) to open the thread.
+private struct OpensThread: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let summary: ThreadSummary?
+
+    func body(content: Content) -> some View {
+        if let summary {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture { model.openThread(ThreadRef(chat: summary.chat, uuid: summary.uuid)) }
+        } else {
+            content
+        }
+    }
+}
+
 /// A message as a flat row: on a run's first row the photo, the name in
 /// the sender's colour and the time; the rest of the run under it. Yours
-/// on a faint accent tint. Long press for its menu, swipe right to reply in
-/// its thread; for VoiceOver, one element with the menu as its actions.
+/// on a faint accent tint. Long press for its menu, swipe right to reply; a
+/// row with a thread summary opens the thread on tap; for VoiceOver, one element with the menu as its actions.
 struct MessageRowView: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
@@ -111,6 +127,7 @@ struct MessageRowView: View {
             }
         }
         .messageActions(actions, spoken: spoken)
+        .modifier(OpensThread(summary: row.summary))
     }
 
     /// One VoiceOver element: who, when, what, then boosts and replies.
@@ -187,7 +204,26 @@ struct RunHeaderLine: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.quietText(on: surface))
                 .fixedSize()
+            if row.message.fromMe, row.message.delivery == .delivered {
+                DeliveredBolt()
+            }
         }
+    }
+}
+
+/// The green bolt after the time on a delivered message of ours, in a
+/// `.firstTextBaseline` row. Its centre goes to the middle of the time's
+/// capitals and digits, from that font's own metrics.
+struct DeliveredBolt: View {
+    /// The time's font beside it, `PhoneTheme`'s `.time` (12).
+    private static let timeCapHeight = UIFont.systemFont(ofSize: 12).capHeight
+
+    var body: some View {
+        Image(systemName: "bolt.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(Theme.confirmed)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Self.timeCapHeight / 2 }
+            .accessibilityLabel("Delivered")
     }
 }
 
@@ -511,7 +547,7 @@ struct ThreadSummaryButton: View {
                         .foregroundStyle(Theme.text)
                 }
                 if let last = summary.lastDate {
-                    Text("Last reply \(Formatting.time(last))")
+                    Text(Formatting.time(last))
                         .phoneFont(.time)
                         .monospacedDigit()
                         .foregroundStyle(Theme.quietText(on: surface))
@@ -520,15 +556,11 @@ struct ThreadSummaryButton: View {
             }
             if let latest = summary.latest {
                 let sender = model.sender(of: latest)
-                HStack(alignment: .top, spacing: 6) {
-                    Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.xs, hue: sender.hue)
-                    (Text(sender.label + " ").fontWeight(.semibold).foregroundColor(sender.hue.name)
-                        + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
-                        .phoneFont(.time)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.leading, Theme.Space.lg)
+                (Text(sender.label + ": ").fontWeight(.semibold).foregroundColor(sender.hue.name)
+                    + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
+                    .phoneFont(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             }
             .frame(minHeight: Theme.touchTarget)
@@ -680,15 +712,19 @@ struct AgentToolLines: View {
 /// label and title, and where it opens. An org's file or app opens on that
 /// org's own strut in a sheet (`Stadeum.opening`, `OrgPageSheet`), else its
 /// https link in the system's browser; with neither, the line says why (one
-/// on the Mac's own strut, which only the Mac reaches).
+/// on the Mac's own strut, which only the Mac reaches). In a tribe
+/// (`inTribe`, Jamie's deliverables, docs/hive-tribes.md) the same, but
+/// anyone could have sent it: `Stadeum.opening` already opens only your
+/// own workspaces', and an app asks first.
 struct AgentArtifactLines: View {
     let artifacts: [AgentArtifact]
+    var inTribe = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             // By position: a reply may name one thing twice.
             ForEach(Array(artifacts.enumerated()), id: \.offset) { _, artifact in
-                AgentArtifactLine(artifact: artifact)
+                AgentArtifactLine(artifact: artifact, inTribe: inTribe)
             }
         }
         .agentLine()
@@ -700,15 +736,31 @@ private struct AgentArtifactLine: View {
     @Environment(PhoneRouter.self) private var router
     @Environment(\.openURL) private var openURL
     let artifact: AgentArtifact
+    let inTribe: Bool
+
+    /// An app sent in a tribe, asking before it opens.
+    @State private var asking = false
 
     var body: some View {
         if let open {
-            Button(action: open) { line(where: whereTo, opens: true) }
+            Button(action: asksFirst ? { asking = true } : open) { line(where: whereTo, opens: true) }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens it")
+                .confirmationDialog(artifact.tribeAppQuestion(on: whereTo ?? ""), isPresented: $asking,
+                                    titleVisibility: .visible) {
+                    Button("Open app", action: open)
+                    Button("Cancel", role: .cancel) {}
+                }
         } else {
             line(where: whereTo, opens: false)
         }
+    }
+
+    /// Whether it opens on its org's strut as an app sent in a tribe: asked first.
+    private var asksFirst: Bool {
+        guard artifact.asksBeforeOpening(inTribe: inTribe), let handle = artifact.handle,
+              case .page = model.stadeum.opening(handle) else { return false }
+        return true
     }
 
     private func line(where place: String?, opens: Bool) -> some View {
@@ -737,8 +789,8 @@ private struct AgentArtifactLine: View {
     /// How it opens here, if it does: on its org's strut, else its link.
     /// Made again on the tap: the tokens may have been renewed since.
     private var open: (() -> Void)? {
-        if let handle = artifact.handle, case .page = model.stadeum.opening(handle) {
-            return { if case .page(let page) = model.stadeum.opening(handle) { router.orgPage = page } }
+        if let handle = artifact.handle, case .page = model.stadeum.opening(handle, title: artifact.title) {
+            return { if case .page(let page) = model.stadeum.opening(handle, title: artifact.title) { router.orgPage = page } }
         }
         return artifact.url.map { url in { openURL(url) } }
     }

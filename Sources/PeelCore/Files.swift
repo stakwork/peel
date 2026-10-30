@@ -174,8 +174,8 @@ public final class AnimationFrames: Sendable {
     public var cost: Int { frames.reduce(0) { $0 + $1.bytesPerRow * $1.height } }
 }
 
-/// Bytes over a size limit: a file picked to send or attach, or a download
-/// cut off. `size` is the whole size, when the server named it.
+/// Bytes over a size limit: a picture picked for a profile photo, or a
+/// download cut off (a file to send is `Engine.Failure.tooLargeToSend`). `size` is the whole size, when the server named it.
 struct TooLarge: Error, CustomStringConvertible {
     let limit: Int
     var size: Int64?

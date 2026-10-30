@@ -2,13 +2,16 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-// Pictures and files in a conversation on the phone: images (alone or a
-// run's grid) and GIFs drawn, downloaded through the model as on the Mac
-// (`AppModel.autoDownload`, `ImageCache`); other files named. Playing,
-// saving, buying and the full-size viewer are the Mac's for now.
+// Pictures, video and files in a conversation on the phone: images (alone
+// or a run's grid) and GIFs drawn, voice messages played, video as a poster
+// that opens full screen (`VideoTile`, `VideoViewer`), PDFs and other files as a card that previews and shares
+// (`FileCard`), all downloaded through the model as on the Mac
+// (`AppModel.autoDownload`, `ImageCache`). A tapped image opens full screen
+// (`ImageViewer`), as does a video; buying is the Mac's for now.
 
 /// A message's attachment: a run of images as a grid, one image, or a file.
 struct AttachmentBlock: View {
+    @Environment(AppModel.self) private var model
     let row: ChatRow
 
     var body: some View {
@@ -16,7 +19,7 @@ struct AttachmentBlock: View {
         if row.images.count > 1 {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)], spacing: 4) {
                 ForEach(row.images, id: \.id) { image in
-                    ImageTile(message: image, square: true)
+                    ImageTile(message: image, square: true, run: row.images)
                 }
             }
             .frame(maxWidth: ImageTile.side)
@@ -24,12 +27,14 @@ struct AttachmentBlock: View {
             .accessibilityLabel("\(row.images.count) images")
         } else if message.attachmentPriceMsat != nil, !message.fromMe {
             FileMark(message: message, note: "Paid. Buy it on the Mac for now.")
-        } else if message.attachmentKind == .image {
-            ImageTile(message: message)
-        } else if message.attachmentKind == .audio {
-            VoiceBubble(message: message)
         } else {
-            FileMark(message: message, note: message.uploadState == .pending ? "Uploading…" : "Opens on the Mac for now")
+            // What the bytes turned out to be once downloaded: a fake video is a file.
+            switch model.attachmentKind(of: message) {
+            case .image: ImageTile(message: message)
+            case .video: VideoTile(message: message)
+            case .audio: VoiceBubble(message: message)
+            case .pdf, .text, .file, nil: FileCard(message: message)
+            }
         }
     }
 }
@@ -41,15 +46,26 @@ struct ImageTile: View {
     let message: Message
     /// In a run's grid: cropped to a square.
     var square = false
+    /// The run's images the viewer pages through, this one among them; empty for one alone.
+    var run: [Message] = []
 
     @State private var image: CGImage?
+    @State private var viewing: ImageViewerRequest?
 
     static let side: CGFloat = 240
+
+    /// A picture's size fitted within the tile (`side` wide, 1.25 times that tall).
+    static func fitted(width: CGFloat, height: CGFloat) -> CGSize {
+        guard width > 0, height > 0 else { return CGSize(width: side, height: side) }
+        let scale = min(side / width, side * 1.25 / height)
+        return CGSize(width: width * scale, height: height * scale)
+    }
 
     var body: some View {
         let handle = message.id.map(model.attachment)
         let file = handle?.file
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        // The clip and border sit on the picture itself, so they hug it.
         Group {
             if let image {
                 let picture = Image(decorative: image, scale: 1).resizable()
@@ -57,8 +73,8 @@ struct ImageTile: View {
                     Color.clear.aspectRatio(1, contentMode: .fit)
                         .overlay { picture.scaledToFill() }
                 } else {
-                    picture.aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: Self.side, maxHeight: Self.side * 1.25, alignment: .leading)
+                    let fitted = Self.fitted(width: CGFloat(image.width), height: CGFloat(image.height))
+                    picture.frame(width: fitted.width, height: fitted.height)
                 }
             } else {
                 Theme.quote
@@ -77,7 +93,16 @@ struct ImageTile: View {
         .overlay(shape.strokeBorder(Theme.divider))
         .accessibilityElement()
         .accessibilityLabel("Image")
-        .accessibilityAddTraits(.isImage)
+        .accessibilityAddTraits([.isImage, .isButton])
+        .accessibilityHint("Opens the image full screen")
+        .contentShape(shape)
+        .onTapGesture {
+            guard image != nil else { return }
+            let messages = run.isEmpty ? [message] : run
+            viewing = ImageViewerRequest(messages: messages, start: messages.firstIndex { $0.id == message.id } ?? 0,
+                                         placeholder: image)
+        }
+        .fullScreenCover(item: $viewing) { ImageViewer(request: $0) }
         // Again once an upload of ours is done (the Mac's `AutoDownload`).
         .task(id: TileKey(file: file, upload: message.upload)) {
             if let file {
@@ -122,8 +147,8 @@ struct GiphyPicture: View {
     }
 }
 
-/// A file, video or recording: its kind's symbol, its name, and why it
-/// does not open here.
+/// A paid attachment of someone else's: its kind's symbol, its name, and
+/// why it does not open here.
 struct FileMark: View {
     let message: Message
     let note: String

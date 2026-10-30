@@ -118,10 +118,11 @@ own authoring UI. Your chat with Peel is the way in:
   (Open Account), none pinned yet, a home server, and no matches.
 - The app's header gains the same pin.
 - Cards v1 (Tom, 2026-10-26, the canvas's "App cards v1"): only what
-  strut's list carries. The manifest's lucide `icon` as the closest SF
-  Symbol (`WorkspaceApp.iconSymbol`, a table of common names; the grid
-  for the template's `layout-dashboard`, an unknown name or one this
-  macOS lacks); titles on two lines, descriptions on three; at the foot
+  strut's list carries. The manifest's lucide `icon` drawn as that
+  lucide icon (PeelUI's `WorkspaceAppIcon`, over the `lucide-swift`
+  package's vector shapes; any lucide name, its old aliases too, through
+  `LucideNames.resolve`; the grid, lucide's `layout-grid`, only for no icon
+  or a name lucide does not have); titles on two lines, descriptions on three; at the foot
   `@workspace · v14` (`activeVersion`; the workspace only when there are several) and at most one status
   (`AppStatus`): "2 problems" in the attention colour while `warnings`
   (strut's usage monitor, on the live version) is above 0, else "Release r3" while a release is held (`live`). The
@@ -159,6 +160,121 @@ own authoring UI. Your chat with Peel is the way in:
   a sample app of yours beside two workspaces' (choice, foot, header,
   pinned row, its page asked of strut by name), and the development
   profile's own strut listing nothing once its `strut/views` is left out.
+
+## Built: versions and releases (2026-10-28)
+
+Which version of one of your own apps everyone opens (strut's
+plans/app-releases.md, `GET /apps/:name/versions` and `PUT
+/apps/:name/active`; Tom's design board, "Strut App Versions"):
+
+- The app's header: a chip with the live version (a lock while held at a
+  release), opening its menu; beside it **Make vN live** while a newer
+  version waits or another is previewed, asked once in a panel. The menu
+  lists the newest six versions (waiting, live, when); a pick shows that
+  version in this window only (`?app=name@vN`), under a bar that says
+  everyone else opens the live one. History lists the releases to roll back
+  to, and what the live release locked that has moved on ("Use these with
+  v7"). Follow latest makes every publish live again. Rolling back, taking
+  the new workflows and following latest each ask for a second click.
+- A card and the iPhone's row say "v9 waiting" while one of yours is held
+  behind a newer version (`WorkspaceApp.waiting`, from `GET /apps`).
+- The sidebar: the pinned apps sit under the Apps row behind a hairline,
+  indented as shadcn's sub-menu, each with its own icon and title only
+  (where it comes from is on its card and header); the row's chevron folds them,
+  keeping the open one (`ChatSections.Layout.appsOpen`).
+- Not built: a workspace's versions (its own to change, still the `Release
+  rN` chip); the locks a promote would take, before it (strut has no dry
+  run); Undo in the toast (Peel's toasts have no action).
+- Checked: `AppVersionsTests`, `HiveTests.yourOwnAppsVersionsAreReadAndMadeLiveByName`;
+  offscreen against a development profile's own strut holding an app at v2
+  with v3 built (card, header, menu, History, the fold, Make live moving it
+  to v3), and the sidebar's nesting open and folded. Not driven: a preview's
+  pick and the confirm panel's button (no click step), the page itself in
+  the frame.
+- Review findings not applied, and why:
+  - Strut, not Peel, should say which versions wait (`waiting` on `GET
+    /apps` and per version on `/versions`): a strut change, next. Peel's
+    rule (`AppVersions.isNewer`) is kept in one place until then.
+  - The offscreen steps build the versions menu and call `makeLive`
+    themselves rather than open the header's chip and panel: the driver has
+    no click step, and a model-level request only for it would be a
+    test-only seam.
+  - The chip re-states `MenuButton`'s trigger (anchor, lit, gone) with a
+    `Chip` label; making `MenuButton` generic over its label reaches past
+    this change.
+  - Make live keeps its panel rather than `InlineConfirm`: Tom chose the
+    panel on the board.
+  - Previewing a version a release already names offers a new release of it
+    (today's workflows), not a roll back to that release; History has the
+    roll back.
+  - A publish to an app that follows latest does not reload an open page
+    (as before): only a change made in its window, Reload, or a preview does.
+
+## Built: deep links (2026-10-29)
+
+strut's app deep links (strut's plans/apps.md §7.1, stakwork/strut#357;
+hive's half is stakwork/hive#5649): a link to an app is
+`?app=<name>&input=<the app's own query>`, and the page is opened with that
+input as its `tool-input`. strut's page alone already follows a link to its
+own app in place, the address following (`?input=`); one to another app it
+hands to its host as a new window, which WebKit lets the page's script open
+only after the person's click (checked with a probe: a click forwarded from
+the sandboxed frame by `postMessage` and two awaits reaches
+`createWebViewWith` with `javaScriptCanOpenWindowsAutomatically` off; with
+no gesture, nothing does). Before this, Peel dropped that window (the
+app view), downloaded strut's UI page as a file (the web pane) or loaded
+strut's whole UI without the token (the iPhone).
+
+- **The address.** `StrutUI.page` takes `input`, encoded so strut's UI
+  reads it back exactly; `StrutUI.page(_:input:)` moves a page to another
+  view, the rest of its address (the key) kept as written.
+- **The link.** `StrutAppLink` reads a page's link as strut's UI reads its
+  own address (`URLSearchParams`: `+` a space), only in strut's UI folder,
+  the app name by strut's rules, an input at most 2 KB of UTF-8; an `app`
+  or `input` given twice or that does not decode is no link (strut keeps
+  the last of a name, `URLSearchParams.get` the first). A page names apps
+  where it lives (`StrutAppLink.Source`): a workspace page's bare name is
+  that workspace's (strut's `peerAppLink`), and a workspace's own peers'
+  apps are the workspace's to open, from Peel's strut and on the iPhone
+  alike. Only an app's page links to apps: a file (the DM's report, its
+  markdown an org's or a model's words) opens none, so a file from an org
+  cannot open one of yours at a view it chose.
+- **The Mac.** `StrutPage.newWindow` hands a link to another app, on the
+  person's click, to `AppModel.open(_ link:)`, which the DM's Open uses
+  too: an app the Apps list has opens where its sidebar row does, at the
+  link's view (a page made again there); any other, its page alone in the
+  web pane. Each app's view is kept on the model (`AppPlace`), told by the
+  web view's address as strut moves the page in place, so Reload, a page
+  closed by the keep-alive and shown again, a preview and a crash all open
+  where the app was. Cleared with the account.
+- **The iPhone.** `OrgPageSheet` opens a link to another app as that app's
+  page alone in place (Back returns), with the token, on the person's tap;
+  the title is the workspace's while it shows another app. Reload and a
+  crash load strut's UI where the page went, with the token, and Try again
+  the page that failed; a file opened in place reloads as before. Back
+  sends no request: in three WebKit probes (a plain page, one with an
+  `unload` handler, one holding requests open) Back was answered from
+  WebKit's cache, so it needs no token.
+- **Not here.** A link from a page to a run, a job or a workflow (Peel has
+  no view of them; still nothing). A link Peel is handed from outside
+  (hive's `/w/<slug>/apps/<name>?input=` as a universal link, or a
+  `peel://` one): `peel://` takes only home links. A link the agent's DM
+  carries with a view (strut's `kind: "app"` deliverable has no `input`).
+- **Checked.** `StrutAppLinkTests` (a link read as the kit makes it and
+  opened at its view; a workspace's bare name; `+`; no link for a run, an
+  empty or bad name, another path, a peer's own peer, a name given twice
+  or not decoding, an input past 2 KB in bytes; a page moved to another
+  view with its key's escapes kept),
+  `HiveTests.aPagesLinkToAnotherAppOpensAloneOnPeelsOwnStrut` (and none
+  from a file's page),
+  `StadeumTests.aLinkToAnotherAppOpensItAloneOnTheOrgsStrutWithTheToken`.
+  An independent review found a file's links opening your own apps, the
+  iPhone following an org's peer's app, repeated names, the limit in
+  characters and Try again going to the first page: all fixed above.
+  `swift test`: all pass but `BundledBridgeTests.theStagedRunnerExitsWhenPeelsPipeCloses`,
+  which needs a fresh bridge stage. The Mac and iPhone (simulator) apps
+  build. Not driven: the click itself in the app (no click step in
+  `check-app.sh`).
 
 ## PRs, in order
 

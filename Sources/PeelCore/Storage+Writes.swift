@@ -310,6 +310,12 @@ extension Storage {
                         THEN COALESCE(message.paymentHash, excluded.paymentHash)
                         ELSE COALESCE(excluded.paymentHash, message.paymentHash) END,
                     tag = COALESCE(message.tag, excluded.tag),
+                    -- Our own message coming back with a server index was taken by the
+                    -- server. A payment's status is the mixer's word alone (`applyStatus`).
+                    status = CASE WHEN message.fromMe = 1 AND excluded.serverIndex IS NOT NULL
+                            AND message.type NOT IN (\(MessageType.sqlList(MessageType.moneySends)))
+                            AND (message.status IS NULL OR message.status = 'PENDING')
+                        THEN '\(Message.Delivery.delivered.rawValue)' ELSE message.status END,
                     sender = COALESCE(message.sender, excluded.sender),
                     -- A deleted message stays empty whatever copy comes again.
                     body = CASE WHEN message.deleted THEN NULL ELSE COALESCE(message.body, excluded.body) END,

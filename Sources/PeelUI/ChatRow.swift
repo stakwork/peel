@@ -27,10 +27,10 @@ extension Sender {
     /// A tribe member as their message names them (decoded from it), for
     /// whatever names someone else in a tribe: the rows, notes, mentions,
     /// notifications. Never you: `People` names you.
-    public init(member message: Message) {
+    public init(member message: Message, colours: [String: String] = [:]) {
         let details = message.senderDetails
         self.init(alias: details.alias, photoURL: details.photoURL,
-                  hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true))
+                  hue: PersonHue(pubkey: message.chat, alias: details.alias, inTribe: true, synced: colours))
     }
 }
 
@@ -88,7 +88,11 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     public var byAgent = false
     /// In the agent's DM (`rows(agentDM:)`): the tools an agent's reply ran.
     public var agentTools: [AgentToolLine] = []
-    /// In the agent's DM: the job an agent's message is about, and what it points to.
+    /// In the agent's DM: the job an agent's message is about, and what it
+    /// points to. In a tribe, `agentArtifacts` is what a member's message
+    /// points to from strut's entries (Jamie's deliverables,
+    /// `Message.strutArtifacts`): anyone could have sent them, so they open
+    /// only on the reader's own Stadeum workspaces, an app after a confirm.
     public var agentJob: AgentJob?
     public var agentArtifacts: [AgentArtifact] = []
     /// In the agent's DM: a request to this Mac as one row, how it ended
@@ -146,12 +150,15 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     public struct People: Sendable {
         public var me: Sender
         public var contact: Sender
+        /// The colours other devices gave (`AppModel.syncedColours`), for a
+        /// tribe member's hue.
+        public var colours: [String: String] = [:]
 
         /// The one way a message's sender is named: you, in a tribe the
         /// member (decoded from the message), else the contact.
         public func sender(of message: Message, inTribe: Bool) -> Sender {
             if message.fromMe { return me }
-            return inTribe ? Sender(member: message) : contact
+            return inTribe ? Sender(member: message, colours: colours) : contact
         }
     }
 
@@ -253,6 +260,9 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 row.agentArtifacts = message.agentArtifacts
             } else if kind == .message {
                 row.quote = quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people)
+                // A tribe's one rule beside "no control lines": a member's deliverables
+                // (Jamie's replies, docs/hive-tribes.md), opened only on your own workspaces.
+                if inTribe, !message.fromMe { row.agentArtifacts = message.strutArtifacts }
             }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
             // One card per request, on its newest copy (the bridge may ask again).

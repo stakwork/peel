@@ -100,7 +100,8 @@ struct StorageTests {
         #expect(updated.content == "original")
         #expect(updated.body == #"{"content":"original"}"#)
         #expect(updated.tag == "tag-1")
-        #expect(updated.status == "PENDING")
+        // Our own copy coming back with an index: the server took it.
+        #expect(updated.status == "COMPLETE")
         #expect(try rows(profile, "SELECT * FROM message").count == 1)
         #expect(try storage.highestServerIndex() == 42)
     }

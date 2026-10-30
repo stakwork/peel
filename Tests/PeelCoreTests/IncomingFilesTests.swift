@@ -3,6 +3,7 @@ import ImageIO
 import Testing
 import UniformTypeIdentifiers
 @testable import PeelCore
+@testable import PeelTestSupport
 
 /// A 1×1 PNG.
 private let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
@@ -92,12 +93,29 @@ struct IncomingFilesTests {
         #expect(throws: (any Error).self) { try IncomingFiles.write(Data("nope".utf8), type: .tiff, in: root) }
     }
 
-    @Test func refusesOverTheAttachmentLimit() throws {
+    /// Pasted bytes and a promised file over the send limit are refused as
+    /// they arrive, by name, and nothing of theirs is kept.
+    @Test func refusesOverTheSendLimit() throws {
         let root = try scratch()
         defer { try? FileManager.default.removeItem(at: root) }
-        let big = Data(count: Engine.attachmentLimit + 1)
-        #expect(throws: (any Error).self) { try IncomingFiles.write(big, type: .png, in: root) }
+        let big = Data(count: Engine.sendLimit + 1)
+        let date = Date(timeIntervalSince1970: 0)
+        let name = IncomingFiles.imageName(at: date, ext: "png")
+        #expect(throws: Engine.Failure.tooLargeToSend(name)) {
+            try IncomingFiles.write(big, type: .png, date: date, in: root)
+        }
+        // A TIFF is refused before it is decoded, under the PNG name it would have.
+        #expect(throws: Engine.Failure.tooLargeToSend(name)) {
+            try IncomingFiles.write(big, type: .tiff, date: date, in: root)
+        }
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+
+        let folder = try IncomingFiles.newFolder(in: root)
+        let promised = try sparseFile(folder.appendingPathComponent("Recording.mov"), size: big.count)
+        #expect(throws: Engine.Failure.tooLargeToSend("Recording.mov")) {
+            try IncomingFiles.accept(promised, in: folder)
+        }
+        #expect(!FileManager.default.fileExists(atPath: promised.path))
     }
 
     @Test func acceptsOnlyAPlainFileInItsFolder() throws {

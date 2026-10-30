@@ -24,7 +24,7 @@ struct AutomationsView: View {
                     AgentConnectButton(source: .automations, title: "Set up", variant: .primary)
                 }
             } else if model.brain?.moved != nil {
-                EmptyState("They run in Peel Home on your home server, which this Mac doesn't read.",
+                EmptyState("They run on your home server, which this Mac doesn't read.",
                            title: "On your home server")
             } else if model.automationsClient == nil {
                 EmptyState(model.agentSetUp.line, title: "Peel's strut isn't running")

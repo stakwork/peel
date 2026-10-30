@@ -17,17 +17,183 @@ import WebKit
 struct OrgPageSheet: View {
     let page: OrgPageRequest
     @Environment(\.dismiss) private var dismiss
+    @State private var controller = OrgPageController()
 
     var body: some View {
         NavigationStack {
-            OrgWebView(page: page)
+            OrgWebView(page: page, controller: controller)
+                .overlay(alignment: .top) {
+                    if controller.isLoading {
+                        ProgressView(value: controller.progress)
+                            .progressViewStyle(.linear)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .overlay {
+                    if let problem = controller.problem {
+                        ContentUnavailableView {
+                            Label("Couldn't open it", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(problem)
+                        } actions: {
+                            Button("Try again") { controller.retry(page) }
+                        }
+                        .background(Theme.background)
+                    }
+                }
                 .ignoresSafeArea(edges: .bottom)
-                .navigationTitle(page.workspace)
+                // Another app a link opened here is named by its workspace: its title is not known here.
+                .navigationTitle(controller.showsAnotherApp ? page.workspace : page.title.flatMap { $0.isEmpty ? nil : $0 } ?? page.workspace)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    if controller.canGoBack {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Back", systemImage: "chevron.backward") { controller.goBack() }
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Reload", systemImage: "arrow.clockwise") { controller.reload(page) }
+                    }
                     ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
                 }
         }
+        .sheet(item: $controller.shared) { file in
+            ShareSheet(url: file.url).ignoresSafeArea()
+        }
+        .alert("Couldn't save it", isPresented: Binding(
+            get: { controller.notice != nil }, set: { if !$0 { controller.notice = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(controller.notice ?? "")
+        }
+    }
+}
+
+/// A file a page's own download saved, to hand to the share sheet.
+private struct OrgPageSharedFile: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+/// The iOS share sheet for one file.
+private struct ShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+/// What the sheet shows of its web view: whether it can go back, is loading
+/// (and how far), why a page did not open, and a download to share. Holds the
+/// web view weakly and sees it by KVO; owns the temporary folders downloads
+/// are saved in and removes them with the sheet.
+@MainActor @Observable
+private final class OrgPageController {
+    var canGoBack = false
+    var isLoading = false
+    var progress = 0.0
+    /// Why the page did not open, in the person's words; nil when it did.
+    var problem: String?
+    /// A download that finished, for the share sheet.
+    var shared: OrgPageSharedFile?
+    /// A download that failed.
+    var notice: String?
+    /// The page shows an app other than the one it opened with: a link in
+    /// it opened that one here.
+    var showsAnotherApp = false
+
+    @ObservationIgnored private var page: OrgPageRequest?
+    /// The address the last failure was at (`failed`), for Try again.
+    @ObservationIgnored private var failedURL: URL?
+    @ObservationIgnored private weak var webView: WKWebView?
+    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    @ObservationIgnored private var folders: [URL] = []
+
+    /// Where downloads wait, each in a folder of its own.
+    static let downloadsRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("Peel Org Downloads", isDirectory: true)
+
+    func attach(_ webView: WKWebView, showing page: OrgPageRequest) {
+        self.webView = webView
+        self.page = page
+        observations = [
+            webView.observe(\.url, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.sync() }
+            },
+            webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.sync() }
+            },
+            webView.observe(\.isLoading, options: [.initial, .new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.sync() }
+            },
+            webView.observe(\.estimatedProgress, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.sync() }
+            },
+        ]
+    }
+
+    private func sync() {
+        guard let webView else { return }
+        canGoBack = webView.canGoBack
+        isLoading = webView.isLoading
+        progress = webView.estimatedProgress
+        let shown = webView.url.flatMap { page?.shownApp($0) }
+        showsAnotherApp = shown != nil && shown != page.flatMap { $0.shownApp($0.url) }
+    }
+
+    func goBack() { webView?.goBack() }
+
+    /// Loads it again where the person went: strut's UI with the page's
+    /// bearer (an app at the view it moved to, or another app a link opened),
+    /// a file opened in place as it is, and the page's own request with no
+    /// address yet.
+    func reload(_ page: OrgPageRequest) {
+        guard let webView else { return }
+        problem = nil
+        if let again = page.request(at: webView.url) {
+            webView.load(again)
+        } else if webView.url != nil {
+            webView.reload()
+        } else {
+            webView.load(page.request)
+        }
+    }
+
+    /// The page did not open: why, and the address that failed.
+    func failed(_ problem: String, at url: URL?) {
+        self.problem = problem
+        failedURL = url
+    }
+
+    /// Loads again what failed, with the page's bearer, when that was strut's
+    /// UI (another app a link opened); else where the page is, or its own
+    /// request.
+    func retry(_ page: OrgPageRequest) {
+        problem = nil
+        webView?.load(page.request(at: failedURL) ?? page.request(at: webView?.url) ?? page.request)
+    }
+
+    /// A folder for one download, readable only by this user.
+    func newFolder() -> URL? {
+        guard let folder = try? IncomingFiles.newFolder(in: Self.downloadsRoot) else { return nil }
+        folders.append(folder)
+        return folder
+    }
+
+    func remove(_ folder: URL) {
+        folders.removeAll { $0 == folder }
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// The sheet is gone: nothing is kept.
+    func cleanUp() {
+        observations = []
+        for folder in folders { try? FileManager.default.removeItem(at: folder) }
+        folders = []
     }
 }
 
@@ -36,8 +202,9 @@ struct OrgPageSheet: View {
 /// org's strut (`Coordinator`).
 private struct OrgWebView: UIViewRepresentable {
     let page: OrgPageRequest
+    let controller: OrgPageController
 
-    func makeCoordinator() -> Coordinator { Coordinator(page: page) }
+    func makeCoordinator() -> Coordinator { Coordinator(page: page, controller: controller) }
 
     func makeUIView(context: Context) -> TouchWebView {
         let configuration = WKWebViewConfiguration()
@@ -50,6 +217,7 @@ private struct OrgWebView: UIViewRepresentable {
         webView.allowsLinkPreview = false
         // Back from a file strut's viewer opened in place (`createWebViewWith`).
         webView.allowsBackForwardNavigationGestures = true
+        controller.attach(webView, showing: page)
         webView.load(page.request)
         return webView
     }
@@ -59,18 +227,32 @@ private struct OrgWebView: UIViewRepresentable {
     static func dismantleUIView(_ webView: TouchWebView, coordinator: Coordinator) {
         webView.stopLoading()
         webView.configuration.userContentController.removeAllUserScripts()
+        coordinator.finish()
     }
 
     /// Where the page may go: anywhere in the org's strut's UI; its own
     /// frames (`srcdoc`, and a data or blob frame, never as the whole page);
     /// a link elsewhere out to the system, only from strut's own page (never
     /// from a frame in it, which is the org's or an agent's) and only on the
-    /// person's own tap; nothing downloaded, and no other scheme.
-    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    /// person's own tap; a download only of strut's own page, never of a
+    /// frame in it (`OrgPageRules.mayDownload`), saved in a folder of its own
+    /// and handed to the share sheet; and no other scheme.
+    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
         let page: OrgPageRequest
+        private let controller: OrgPageController
+        /// Downloads under way and the folder each saves in.
+        private var downloads: [ObjectIdentifier: (download: WKDownload, folder: URL, file: URL?)] = [:]
 
-        init(page: OrgPageRequest) {
+        init(page: OrgPageRequest, controller: OrgPageController) {
             self.page = page
+            self.controller = controller
+        }
+
+        /// The sheet is going: downloads stop and their folders go.
+        func finish() {
+            for entry in downloads.values { entry.download.cancel(nil) }
+            downloads = [:]
+            controller.cleanUp()
         }
 
         func webView(
@@ -80,8 +262,12 @@ private struct OrgWebView: UIViewRepresentable {
         }
 
         private func policy(for action: WKNavigationAction, in webView: WKWebView) -> WKNavigationActionPolicy {
-            guard !action.shouldPerformDownload, let url = action.request.url, let scheme = url.scheme?.lowercased() else {
-                return .cancel
+            guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
+            if action.shouldPerformDownload {
+                return OrgPageRules.mayDownload(
+                    isMainFrame: action.targetFrame?.isMainFrame ?? false,
+                    sourceIsMainFrame: action.sourceFrame.isMainFrame,
+                    served: page.serves(url)) ? .download : .cancel
             }
             let mainFrame = action.targetFrame?.isMainFrame ?? true
             if page.serves(url) { return .allow }
@@ -100,29 +286,105 @@ private struct OrgWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-            response.canShowMIMEType ? .allow : .cancel
+            let http = response.response as? HTTPURLResponse
+            if response.isForMainFrame, let problem = http.flatMap({ OrgPageRules.failure(status: $0.statusCode) }) {
+                controller.failed(problem, at: response.response.url)
+                return .cancel
+            }
+            let attachment = http?.value(forHTTPHeaderField: "Content-Disposition")?
+                .trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("attachment") == true
+            if attachment || !response.canShowMIMEType {
+                // The response carries no source frame: a main-frame response
+                // is strut's own page's, whose navigation was allowed above.
+                let served = response.response.url.map(page.serves) ?? false
+                return OrgPageRules.mayDownload(
+                    isMainFrame: response.isForMainFrame, sourceIsMainFrame: response.isForMainFrame, served: served)
+                    ? .download : .cancel
+            }
+            return .allow
+        }
+
+        func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+            download.delegate = self
+        }
+
+        func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+            download.delegate = self
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            controller.problem = nil
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            failed(error)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            failed(error)
+        }
+
+        private func failed(_ error: Error) {
+            let error = error as NSError
+            // A load we cancelled, or turned into a download or a refusal.
+            if error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled { return }
+            if error.domain == "WebKitErrorDomain" && error.code == 102 { return }
+            controller.failed(error.localizedDescription, at: error.userInfo[NSURLErrorFailingURLErrorKey] as? URL)
+        }
+
+        // MARK: Downloads
+
+        func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+            guard let folder = controller.newFolder() else {
+                controller.notice = "There was no room to keep it."
+                return nil
+            }
+            let file = folder.appendingPathComponent(OrgPageRules.filename(suggestedFilename), isDirectory: false)
+            downloads[ObjectIdentifier(download)] = (download, folder, file)
+            return file
+        }
+
+        func downloadDidFinish(_ download: WKDownload) {
+            guard let entry = downloads.removeValue(forKey: ObjectIdentifier(download)), let file = entry.file else { return }
+            controller.shared = OrgPageSharedFile(url: file)
+        }
+
+        func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+            if let entry = downloads.removeValue(forKey: ObjectIdentifier(download)) { controller.remove(entry.folder) }
+            if (error as NSError).code == NSURLErrorCancelled { return }
+            controller.notice = "The download did not finish."
         }
 
         /// `target=_blank` and `window.open`: never a window. One on the org's
-        /// strut (its viewer's "open in a new tab", for a file it has no view
-        /// of) opens here, Back returning; a link elsewhere goes out as a
-        /// link does.
+        /// strut opens here, Back returning: a link to another app (strut's
+        /// page alone hands one to its host) as that app's page alone, with
+        /// the token, and only on the person's own tap, since the app is the
+        /// org's; a file (its viewer's "open in a new tab", for a file it has
+        /// no view of) as it is; anything else of strut's UI (a run, a job)
+        /// nowhere. A link elsewhere goes out as a link does.
         func webView(
             _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
             for action: WKNavigationAction, windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
             guard let url = action.request.url else { return nil }
             if page.serves(url) {
-                if action.sourceFrame.isMainFrame { webView.load(URLRequest(url: url)) }
+                guard action.sourceFrame.isMainFrame else { return nil }
+                if StrutUI.isPage(url, in: page.folder) {
+                    if (webView as? TouchWebView)?.personActed == true, let link = page.appLink(url, from: webView.url),
+                       let there = page.request(for: link) { webView.load(there) }
+                } else {
+                    webView.load(URLRequest(url: url))
+                }
             } else {
                 follow(url, from: action, in: webView)
             }
             return nil
         }
 
-        /// The page's process ended (memory, a crash): loaded again, with its token.
+        /// The page's process ended (memory, a crash): loaded again, with its
+        /// token, where it was when that is strut's UI (an app at its view).
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            webView.load(page.request)
+            webView.load(page.request(at: webView.url) ?? page.request)
         }
 
         /// Only from strut's own page and on the person's own tap: a script's

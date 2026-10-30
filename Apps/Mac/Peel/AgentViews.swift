@@ -215,12 +215,19 @@ struct AgentDMRow: View {
     }
 
     /// What it points to: a job's deliverables, a page, a link.
-    private var artifacts: AnyView? {
-        guard !row.agentArtifacts.isEmpty else { return nil }
-        return agentNoteLines {
-            ForEach(Array(row.agentArtifacts.enumerated()), id: \.offset) { _, artifact in
-                AgentArtifactLine(artifact: artifact)
-            }
+    private var artifacts: AnyView? { agentArtifactLines(row.agentArtifacts) }
+}
+
+/// What a message points to, a quiet line each under it: the agent's DM
+/// replies, and in a tribe a member's (Jamie's) deliverables (`inTribe`:
+/// opened only on your own Stadeum workspaces, an app after a confirm).
+/// Nil for none.
+@MainActor func agentArtifactLines(_ artifacts: [AgentArtifact], inTribe: Bool = false) -> AnyView? {
+    guard !artifacts.isEmpty else { return nil }
+    return agentNoteLines {
+        // By position: a reply may name one thing twice.
+        ForEach(Array(artifacts.enumerated()), id: \.offset) { _, artifact in
+            AgentArtifactLine(artifact: artifact, inTribe: inTribe)
         }
     }
 }
@@ -267,47 +274,93 @@ private struct AgentJobLine: View {
 /// what is in it, and Open: a deliverable Peel's own strut shows (its
 /// handle; an org's file or app, read through to it) in the web pane beside
 /// the chat, with the org it lives on, or else an https link as any link.
-private struct AgentArtifactLine: View {
+/// Under the agent's DM replies, Jamie's in a call's chat, and a member's
+/// in a tribe (`inTribe`).
+struct AgentArtifactLine: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    @Environment(\.openWindow) private var openWindow
     let artifact: AgentArtifact
+    /// Title, then Open on a line of its own, for a narrow panel (the
+    /// call's chat); the summary only on hover.
+    var stacked = false
+    /// Sent in a tribe, where anyone could have written it
+    /// (docs/hive-tribes.md): a handle opens only on one of your own live
+    /// Stadeum workspaces, and an app only after a confirm.
+    var inTribe = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 11))
-                .accessibilityHidden(true)
-            Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
-                .foregroundStyle(Theme.text)
-                .lineLimit(1)
-            if let summary = artifact.summary {
-                Text("· " + summary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(summary)
-            }
-            if let handle = artifact.handle, let name = strutPage(handle)?.name {
-                // Made again on the click: strut may have started again on another port and key.
-                Button("Open") { if let page = strutPage(handle) { model.web.open(page) } }
-                    .buttonStyle(.peel(.link))
-                    .help(name)
-                if let peer = handle.peer { Text("@\(peer)").fixedSize() }
-            } else if let url = artifact.url {
-                // Where it goes, beside the agent's words for it.
-                Button("Open") { openURL(url) }
-                    .buttonStyle(.peel(.link))
-                    .help(url.absoluteString)
-                if let host = url.host() { Text(host).fixedSize() }
+        Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        icon
+                        title.lineLimit(2)
+                    }
+                    .help(artifact.summary ?? "")
+                    HStack(spacing: 6) { open }
+                        .padding(.leading, 17)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    icon
+                    title.lineLimit(1)
+                    if let summary = artifact.summary {
+                        Text("· " + summary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(summary)
+                    }
+                    open
+                }
             }
         }
         .font(Theme.font(13))
         .foregroundStyle(Theme.secondaryText)
     }
 
-    /// The deliverable on Peel's own strut; nil while it is not running.
-    private func strutPage(_ handle: AgentArtifact.Handle) -> StrutPage? {
-        guard let server = model.memoryServer, let url = server.page(showing: handle) else { return nil }
-        return StrutPage(url: url, server: server, name: handle.peer.map { "\(artifact.title) · @\($0)" } ?? artifact.title)
+    private var icon: some View {
+        Image(systemName: "doc.text")
+            .font(.system(size: 11))
+            .accessibilityHidden(true)
+    }
+
+    private var title: some View {
+        Text(artifact.label.map { "\($0): \(artifact.title)" } ?? artifact.title)
+            .foregroundStyle(Theme.text)
+    }
+
+    @ViewBuilder private var open: some View {
+        if let handle = artifact.handle, model.memoryServer != nil, !inTribe || model.stadeum.opensFromTribe(handle) {
+            // Made again on the click: strut may have started again on another port and key.
+            // An app the Apps list has opens there, as from the sidebar; else
+            // the page, in the web pane (`AppModel.open`). Both are the main window's: from the
+            // call's chat, that window comes to the front (opened again if closed).
+            let openIt = {
+                guard model.open(handle, title: artifact.title) else { return }
+                openWindow(id: MainWindow.id, value: MainWindow.Key.main)
+            }
+            if artifact.asksBeforeOpening(inTribe: inTribe) {
+                InlineConfirm(trigger: "Open", prompt: artifact.tribeAppQuestion(on: model.stadeum.workspaceName(handle.peer ?? "")),
+                              confirm: "Open app", confirmKind: .primary, style: .text) { openIt() }
+                    .foregroundStyle(Theme.link)
+                    .help(StrutPage.name(artifact.title, on: handle.peer))
+            } else {
+                Button("Open", action: openIt)
+                    .buttonStyle(.peel(.link))
+                    .help(StrutPage.name(artifact.title, on: handle.peer))
+            }
+            if let peer = handle.peer { Text("@\(peer)").fixedSize() }
+        } else if let url = artifact.url {
+            // Where it goes, beside the agent's words for it.
+            Button("Open") { openURL(url) }
+                .buttonStyle(.peel(.link))
+                .help(url.absoluteString)
+            if let host = url.host() { Text(host).fixedSize() }
+        } else if inTribe, let handle = artifact.handle, let peer = handle.peer, !model.stadeum.opensFromTribe(handle) {
+            // Someone else's workspace, or one not connected here: the title only.
+            Text("@\(peer) isn't connected here").fixedSize()
+        }
     }
 }
 

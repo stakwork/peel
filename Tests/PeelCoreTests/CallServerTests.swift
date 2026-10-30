@@ -67,6 +67,15 @@ struct CallTicketCheckTests {
         #expect(try CallServer.mediaURL("ws://127.0.0.1:7880", callServer: local).port == 7880)
     }
 
+    @Test func carriesTheNameItJoinedWith() throws {
+        let ticket = try CallServer.ticket(
+            serverURL: "wss://chat.sphinx.chat", token: token(claims()), room: room, callServer: production,
+            participantName: "Alex"
+        )
+        #expect(ticket.participantName == "Alex")
+        #expect(ticket.description.contains("name Alex"))
+    }
+
     @Test(arguments: [
         "wss://evil.example.com", "wss://chat.sphinx.chat.evil.com", "wss://x.chat.sphinx.chat", "wss://sphinx.livekit.cloud",
         "ws://chat.sphinx.chat", "http://chat.sphinx.chat", "wss://chat.sphinx.chat:7880", "wss://u:p@chat.sphinx.chat",

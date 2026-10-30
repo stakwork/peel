@@ -165,9 +165,60 @@ extension AppModel {
                          still: { [weak self] in self?.memoryServer == server })
     }
 
+    /// Changes what everyone who opens one of the person's own apps gets,
+    /// on Peel's strut, then reads the apps again so every card, row and
+    /// open page follows; `done` or the problem shows at the window's foot.
+    /// Whether strut made the change.
+    @discardableResult
+    func makeLive(_ app: WorkspaceApp, _ target: AppLiveTarget, done: String) async -> Bool {
+        guard app.peer == nil, let server = memoryServer else { return false }
+        let presenter = mainPresenter as? MenuPresenter
+        do {
+            try await AutomationsClient(server: server).makeLive(app.name, target)
+            presenter?.showToast(done)
+            refreshApps(workspaces: false)
+            return true
+        } catch {
+            presenter?.showToast(PeelError.problem(error, couldNot: "change the live version"))
+            return false
+        }
+    }
+
     /// The listed app a destination opens.
     func app(peer: String?, name: String) -> WorkspaceApp? {
         stadeum.apps.first { $0.peer == peer && $0.name == name }
+    }
+
+    /// Opens an app a deliverable names, as its page was left. `title` is
+    /// its name in the web pane. False while Peel's own strut is not running.
+    @discardableResult
+    func open(_ app: AgentArtifact.Handle, title: String) -> Bool {
+        open(app, title: title, link: nil)
+    }
+
+    /// Opens the app a page links to, at the view the link names (its first
+    /// with none).
+    @discardableResult
+    func open(_ link: StrutAppLink) -> Bool {
+        open(link.app, title: link.app.app?.name ?? "App", link: link)
+    }
+
+    /// One the Apps list has opens where its sidebar row opens it, when the
+    /// list shows what it names (no version, or the live one); any other,
+    /// its page alone in the web pane beside the chat. With `link`, at the
+    /// view it names, its page made again there; else as it was left.
+    private func open(_ app: AgentArtifact.Handle, title: String, link: StrutAppLink?) -> Bool {
+        if let named = app.app, let listed = self.app(peer: app.peer, name: named.name),
+           named.version == nil || named.version == listed.version {
+            if let link { appPlaces[listed.id, default: AppPlace()].open(at: link.input) }
+            destination = .app(peer: listed.peer, name: listed.name)
+            return true
+        }
+        guard let server = memoryServer, let url = server.page(showing: app, input: link?.input) else { return false }
+        web.open(StrutPage(url: url, server: server, name: StrutPage.name(title, on: app.peer))) { [weak self] in
+            self?.open($0)
+        }
+        return true
     }
 
     /// Where the listed apps come from, as the person reads them: Yours
@@ -193,7 +244,11 @@ extension AppModel {
     /// the account's sidebar layout.
     func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
         var pins = sidebarLayout.pinnedApps.filter { $0 != app.id }
-        if pinned { pins.append(app.id) }
+        if pinned {
+            // The first pin shows: the row's fold, closed before, is no longer there to open.
+            if pins.isEmpty { sidebarLayout.appsOpen = true }
+            pins.append(app.id)
+        }
         if pins != sidebarLayout.pinnedApps { sidebarLayout.pinnedApps = pins }
     }
 }

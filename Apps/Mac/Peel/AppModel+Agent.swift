@@ -11,6 +11,11 @@ import PeelUI
 final class MacAgent: AgentHost {
     /// The agent's memory: the running strut's address and key (`lookForMemory`).
     var memoryServer: MemoryServer?
+    /// The apps' web views kept while another destination shows (`WorkspaceAppView`).
+    @ObservationIgnored let appPages = AppPages.make()
+    /// Where each app's page is, by its id (`AppPlace`): what a page made
+    /// again opens at.
+    var appPlaces: [String: AppPlace] = [:]
     /// Where Peel Home is (`Profile.brain`), read when its agent opens;
     /// nil when it could not be read, and then no strut at all.
     var brain: Brain?
@@ -87,6 +92,8 @@ final class MacAgent: AgentHost {
     }
 
     func stop() {
+        appPages.evictAll()
+        appPlaces = [:]
         stopMove()
         deviceCards.close()
         agentBridge.stop()
@@ -118,6 +125,13 @@ final class MacAgent: AgentHost {
 extension AppModel {
     /// The Mac's model is always made with a `MacAgent` (`Platform.mac()`).
     var macAgent: MacAgent { agentHost as! MacAgent }
+
+    var appPages: AppPages { macAgent.appPages }
+
+    var appPlaces: [String: AppPlace] {
+        get { macAgent.appPlaces }
+        set { macAgent.appPlaces = newValue }
+    }
 
     var memoryServer: MemoryServer? {
         get { macAgent.memoryServer }
@@ -237,12 +251,12 @@ extension AppModel {
                 // A home server kept the old way, by address and key: Peel Home is on this Mac now, said once.
                 if oldHomeServer, (try? profile.brain.delete()) != nil {
                     notice = "Peel no longer connects to a home server by address. Your assistant runs on this Mac; "
-                        + "to keep it answering while this Mac sleeps, set up Peel Home on your home server."
+                        + "to keep it answering while this Mac sleeps, turn on Always on in Account."
                 }
             } catch {
                 // Not taken for "this Mac": no strut is started until it is set again.
                 brain = nil
-                notice = PeelError.noted(error, couldNot: "read where Peel Home is")
+                notice = PeelError.noted(error, couldNot: "read where your assistant runs")
             }
             let agent = AgentSession(store: store, credentials: KeptCredential(item: profile.agentCredential))
             agent.credentialChanged = { [weak self] in self?.modelChanged() }
@@ -273,6 +287,8 @@ extension AppModel {
         if brain == .thisMac, memory == nil, restarting, let strut { startStrut(strut, reporting: reporting) }
         guard memory != memoryServer else { return }
         memoryServer = memory
+        // A page of the strut that was running has no strut to talk to now.
+        appPages.evict(where: { $0.server != memory })
         closeMemory()
         automations = AutomationsState()
         modelChanged()
@@ -286,7 +302,7 @@ extension AppModel {
         guard let profile else { throw PeelError("Peel's account is not open.") }
         // Its mark is all that keeps this Mac's bridge stopped while the box's runs.
         guard brain?.moved == nil, macAgent.homeMove?.isRunning != true else {
-            throw PeelError("Peel Home is on your home server, or moving. Move it back to this Mac first.")
+            throw PeelError("Your assistant is on your home server, or moving. Turn off Always on first.")
         }
         try Brain.thisMac.keep(in: profile.brain)
         brain = .thisMac
@@ -302,9 +318,9 @@ extension AppModel {
         if url.host?.lowercased() == "home-setup", let link = HomeLink(url) {
             openHomeLink(link)
         } else if url.host?.lowercased() == "brain" {
-            notice = "That link is for the old home server, which Peel no longer uses. Set up Peel Home on your home server and open its link."
+            notice = "That link is for the old home server, which Peel no longer uses. Set up Always on again and open the new link."
         } else {
-            notice = "That Peel Home link doesn't work. Open it again from your home server's page."
+            notice = "That home server link doesn't work. Open it again from your home server."
         }
         return true
     }
@@ -366,6 +382,8 @@ extension AppModel {
         agent = nil
         closeMemory()
         memoryServer = nil
+        appPages.evictAll()
+        appPlaces = [:]
         agentConnectFrom = nil
     }
 }

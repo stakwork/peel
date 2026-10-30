@@ -170,17 +170,31 @@ private struct BiometricsRow: View {
     @State private var asking = false
 
     var body: some View {
-        Toggle(name, isOn: Binding(get: { on }, set: { wanted in
-            if wanted {
-                asking = true
-            } else {
-                Task {
-                    try? await model.turnOffBiometrics()
-                    on = await model.biometricsOn()
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(name, isOn: Binding(get: { on }, set: { wanted in
+                if wanted {
+                    asking = true
+                } else {
+                    Task {
+                        try? await model.turnOffBiometrics()
+                        on = await model.biometricsOn()
+                    }
+                }
+            }))
+            .tint(Theme.accent)
+            // Turned on on another device: never enrolled from there, only
+            // offered, through the same PIN step.
+            if model.biometricsOffered, !on {
+                HStack {
+                    Text("\(name) is on on your other device")
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.quietText(on: .raised))
+                    Spacer()
+                    Button("Turn on") { asking = true }
+                        .buttonStyle(.borderless)
                 }
             }
-        }))
-        .tint(Theme.accent)
+        }
         .sheet(isPresented: $asking) {
             Task { on = await model.biometricsOn() }
         } content: {

@@ -78,7 +78,7 @@ struct ChatList: View {
                     // The workspaces' apps, once Stadeum is connected here.
                     if !model.stadeum.live.isEmpty {
                         NavigationLink(value: ChatsRoute.apps) {
-                            NavRow(title: "Apps", systemImage: WorkspaceApp.symbol)
+                            NavRow(title: "Apps", icon: WorkspaceAppIcon(nil, size: 20))
                         }
                     }
                     NavigationLink(value: ChatsRoute.automations) {

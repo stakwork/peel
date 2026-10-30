@@ -27,7 +27,7 @@ struct WorkspaceAppView: View {
     var body: some View {
         VStack(spacing: 0) {
             DetailHeader(title: app.title, subtitle: subtitle) {
-                WorkspaceApp.headerIcon(app.iconSymbol)
+                WorkspaceApp.headerIcon(app.icon)
             } trailing: {
                 // The chip says what the status would, but problems.
                 if versions == nil || app.problems > 0 { AppStatus(app: app) }

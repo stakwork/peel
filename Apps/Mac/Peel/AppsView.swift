@@ -19,7 +19,7 @@ struct AppsView: View {
         let apps = model.stadeum.apps
         VStack(spacing: 0) {
             DetailHeader(title: "Apps", subtitle: apps.isEmpty ? nil : Formatting.count(apps.count, "app")) {
-                WorkspaceApp.headerIcon(WorkspaceApp.symbol)
+                WorkspaceApp.headerIcon(nil)
             } trailing: {
                 // The person's own and the workspaces' now, not at the sidebar's next read.
                 IconButton("arrow.clockwise", help: "Refresh", working: model.stadeum.readingApps) {
@@ -93,8 +93,7 @@ private struct AppCard: View {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 // A one-line title centred on the icon, a two-line one from its top.
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: app.iconSymbol)
-                        .font(.system(size: 16))
+                    WorkspaceAppIcon(app, size: 17)
                         .foregroundStyle(Theme.secondaryText)
                         .frame(width: Theme.AvatarSize.md, height: Theme.AvatarSize.md)
                         .background(Theme.input, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))

@@ -29,6 +29,15 @@
       }
     },
     {
+      "identity" : "lucide-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ajaxjiang96/lucide-swift.git",
+      "state" : {
+        "revision" : "81a161a96e29f00a2f793274dd90a65fd53fb3da",
+        "version" : "0.9.22"
+      }
+    },
+    {
       "identity" : "mqtt-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server-community/mqtt-nio.git",

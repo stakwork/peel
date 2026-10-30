@@ -74,6 +74,13 @@ final class PushCoordinator {
         refreshNames()
     }
 
+    /// The account's server is reached. A registration tried while it was
+    /// still connecting sent nothing, so it is tried again; one already
+    /// registered is not sent twice.
+    func connected() {
+        Task { await registerIfReady() }
+    }
+
     func accountClosed() {
         model = nil
         registered = nil

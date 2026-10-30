@@ -1170,8 +1170,10 @@ Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
   notification permission is asked for only when the flag is on, since
   nothing would come otherwise. `Notifier` is unchanged.
 - **The flag.** `PeelPushFlags.registerWithHub` (Info.plist
-  `PeelPushRegisterWithHub`, a UserDefaults value wins), **off by default**.
-  `registerPushToken` sends nothing while it is off, when not connected, with
+  `PeelPushRegisterWithHub`, a UserDefaults value wins), off when the key is
+  missing and **on in the iOS app's Info.plist**. `registerPushToken` sends
+  nothing while it is off, when not connected (it is tried again once the
+  connection is up), with
   an empty token, or with a key that is not a push key
   (`PushRegistrationTests`, which also asserts the app ID and environment the
   core is given).
@@ -1272,7 +1274,7 @@ The flag stays off until all of these are in place, in this order:
 5. Turn it on: Info.plist `PeelPushRegisterWithHub` to true, or for a
    development run the UserDefaults key `PeelPushRegisterWithHub` (a launch
    argument `-PeelPushRegisterWithHub YES`, or `defaults write` for the
-   simulator). A UserDefaults value wins. The default stays off.
+   simulator). A UserDefaults value wins. It is on in `Apps/iOS/Info.plist`.
 
 The environment reported is development for a Debug build and production for
 a Release one, and must equal the token's real environment.
@@ -1281,7 +1283,7 @@ Left to do:
 
 1. **Apple portal and Strut setup** as above (nothing here can do it).
 2. **Device check of the names map** (below).
-3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (13): move
+3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (14): move
    them together. The project's `DEVELOPMENT_TEAM` is `8297M44YTW` (shared
    with Sphinx); the Personal Team is only for the Mac's local signing.
 

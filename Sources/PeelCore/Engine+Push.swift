@@ -25,7 +25,7 @@ extension Engine {
     /// can route by app. Returns whether it registered.
     ///
     /// Nothing is sent unless `PeelPushFlags.registerWithHub` is on, and it
-    /// is off by default (docs/phases/07-iphone.md, "Push: what is built",
+    /// is off without its Info.plist key (docs/phases/07-iphone.md, "Push: what is built",
     /// "Turning registration on"). Not connected, or a key that is not a
     /// push key, or an empty token, sends nothing either.
     ///

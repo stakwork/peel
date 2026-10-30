@@ -11,6 +11,6 @@
 	<key>PeelPushEnvironment</key>
 	<string>$(PEEL_APS_ENVIRONMENT)</string>
 	<key>PeelPushRegisterWithHub</key>
-	<false/>
+	<true/>
 </dict>
 </plist>

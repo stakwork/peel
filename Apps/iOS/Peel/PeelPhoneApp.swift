@@ -53,6 +53,11 @@ struct PeelPhoneApp: App {
                 .onChange(of: PushNames.signature(model.conversations)) { _, _ in
                     PushCoordinator.shared.refreshNames()
                 }
+                // The push token waits for the connection: an account opened
+                // before it was up registered nothing.
+                .onChange(of: model.connection == .connected) { _, connected in
+                    if connected { PushCoordinator.shared.connected() }
+                }
                 // The PIN timeout counts the time Peel is away: in front is
                 // in use (the phone locks itself when it is not), noted as
                 // it comes back, every half minute, and as it leaves; on

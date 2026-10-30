@@ -742,7 +742,7 @@ is a short plan. Update the status and the journal when you finish something.
   (`docs/phases/07-iphone.md`, "Push: what is built"): `PeelPush` (no
   dependencies; the APNs token as hex, the push key in the shared Keychain
   group, `PushConfig` from Info.plist, `PeelPushFlags.registerWithHub`
-  (off by default: registration, `setPushTokenForApp` with `app_id` and the
+  (on in the iOS Info.plist, off without the key: registration, `setPushTokenForApp` with `app_id` and the
   build's APNs environment, only when it is on; "Turning registration on" in
   the phase file), `PushNotificationResolver`) and `PeelPushCrypto` (the core's
   `decryptChildIndex`), both linked by the notification extension

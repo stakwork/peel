@@ -545,6 +545,26 @@ extension Storage {
             // (`DictationRecord.heard`): History shows the rewrite.
             try db.execute(sql: "ALTER TABLE dictation ADD COLUMN heard TEXT")
         }
+        migrator.registerMigration("v30") { db in
+            // A strut proposal as Peel last read it (`KeptProposal`): its
+            // record, where it is (source "" for Peel's own strut, else a
+            // workspace's peer id), the device request whose card it is and
+            // that card's expiry, when it was read, when its card was
+            // answered here, and how and when it ended for Peel.
+            try db.execute(sql: """
+                CREATE TABLE proposal (
+                    source TEXT NOT NULL,
+                    id TEXT NOT NULL,
+                    request TEXT,
+                    notAfter INTEGER,
+                    record TEXT NOT NULL,
+                    readAt INTEGER NOT NULL,
+                    answeredAt INTEGER,
+                    ending TEXT,
+                    endedAt INTEGER,
+                    PRIMARY KEY (source, id))
+                """)
+        }
         return migrator
     }
 }

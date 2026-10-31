@@ -273,6 +273,46 @@ animated`), each move outside a change (a jump, the pill) and its
 dismantle. Never message text, names, keys, ids or amounts. The log changes
 nothing about how a list runs.
 
+## Proposal cards check
+
+The proposal cards at the end of the agent chat (docs/agent-on-strut.md,
+"Built: proposal cards") are checked offscreen against a stand-in
+workspace's strut inside the app (`OffscreenStrut`, fixture records of
+every shape a card draws), with `scripts/check-app.sh <dev profile>
+<drive> <out>` and this drive:
+
+```
+{"width": 1180}
+{"agent": "seed", "turns": 4}
+{"select": "Peel"}
+{"wait": 1}
+{"proposal": "stub"}
+{"wait": 2.5}
+{"snapshot": "cards-pending"}
+{"proposal": "input"}
+{"wait": 0.7}
+{"snapshot": "cards-input-open"}
+{"proposal": "accept"}
+{"wait": 0.5}
+{"proposal": "accept"}
+{"wait": 0.5}
+{"proposal": "accept"}
+{"wait": 0.5}
+{"proposal": "reject"}
+{"wait": 1}
+{"snapshot": "cards-decided"}
+{"appearance": "dark"}
+{"wait": 0.7}
+{"snapshot": "cards-decided-dark"}
+```
+
+The accepts land as Applied, as decided in Stadeum first (409, Rejected)
+and as Failed with the step's error; the reject as Rejected; another
+person's fixture never shows. Peel's own strut's cards (on their
+request's line) and a workspace's end to end are the journey
+`Journeys/Orchestrator/aProposalsCardComesFromTheRecordHereAndOnAWorkspace`,
+on the staged strut and bridge.
+
 ## List journeys
 
 Each row of the journey table in `reviews/2026-10-14-message-lists.md`

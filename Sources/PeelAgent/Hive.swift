@@ -40,28 +40,46 @@ extension AutomationsClient {
         }
     }
 
-    /// The peer call proposal `id` waits for, from strut's record; nil for
-    /// a proposal of another step. Throws when it cannot be read, is no
-    /// longer pending, or names a peer strut has not got: the card is then
-    /// refused, never shown in other words.
-    public func peerRequest(proposal id: String) async throws -> PeerRequest? {
-        guard id.range(of: #"^[A-Za-z0-9_-]{1,64}$"#, options: .regularExpression) != nil else {
-            throw PeelError("That is not a proposal id strut gives.")
+    /// One of Peel's own strut's proposals, as strut records it: the card
+    /// the Mac draws for the bridge's `proposal:<id>` request; gone when
+    /// strut has none. Throws when strut does not answer, or answers with
+    /// what is not that record.
+    public func readProposal(_ id: String) async throws -> ProposalRead {
+        guard ProposalRecord.isID(id) else { throw PeelError("That is not a proposal id strut gives.") }
+        let (status, data) = try await request("GET", "proposals/\(id)", nil, what: "the proposal")
+        switch status {
+        case 404: return .gone
+        case 403: return .forbidden
+        case 200..<300: break
+        default: _ = try Self.read(status, data)
         }
-        let proposal = try await call("GET", "proposals/\(id)", what: "the proposal")
-        guard proposal["status"] == "pending" else { throw PeelError("strut's proposal is no longer waiting.") }
-        guard proposal["step"]?.string == DeviceActions.peerTool else { return nil }
-        guard let peer = proposal["input"]?["peer"]?.string else { throw PeelError("strut's proposal names no workspace.") }
-        let peers = try await call("GET", "peers", what: "the workspaces")["peers"]?.array ?? []
+        let record = try ProposalRecord(strut: data)
+        guard record.id == id else { throw ProposalRefused("strut answered for another proposal.") }
+        return .record(record)
+    }
+
+    /// The call a hand-off `proposal` (`ProposalRecord.isHandOff`) makes,
+    /// worded for its card: the org by its record's label on this strut
+    /// (`GET /peers`). Throws for one naming a peer strut has not got.
+    public func peerRequest(from proposal: ProposalRecord) async throws -> PeerRequest {
+        guard case .object(let call)? = proposal.input, let peer = call["peer"]?.string else {
+            throw PeelError("strut's proposal names no workspace.")
+        }
+        let peers = try await self.call("GET", "peers", what: "the workspaces")["peers"]?.array ?? []
         guard let record = peers.first(where: { $0["id"]?.string == peer }) else {
             throw PeelError("strut has no workspace \u{201C}\(TextLine.clean(peer, max: 40))\u{201D}.")
         }
-        let input = proposal["input"]?["input"]
+        var inputKeys: Set<String> = []
+        var prompt: String?
+        if case .object(let input)? = call["input"] {
+            inputKeys = Set(input.keys)
+            prompt = input["prompt"]?.string
+        }
         return PeerRequest(peer: peer, name: HivePeer.name(label: record["label"]?.string, id: peer),
-                           workflow: proposal["input"]?["workflow"]?.string ?? "orchestrator",
-                           prompt: input?["prompt"]?.string,
-                           more: !Set(input?.object?.keys ?? [:].keys).subtracting(["prompt", "session"]).isEmpty
-                               || !Set(proposal["input"]?.object?.keys ?? [:].keys).subtracting(Self.peerCallKeys).isEmpty)
+                           workflow: call["workflow"]?.string ?? "orchestrator",
+                           prompt: prompt,
+                           more: !inputKeys.subtracting(["prompt", "session"]).isEmpty
+                               || !Set(call.keys).subtracting(Self.peerCallKeys).isEmpty)
     }
 
     /// What a call to an org may hold beside its message for the card to

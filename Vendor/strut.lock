@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #390 (live feeds: a job's updates kept for a reader with no callback, graph writes heard, job/status), after #392 (a host's quit closes the graph), #382–#391 (the package index, app frame downloads and mic, artifact link paths, the builder handover) and #370–#381.
-067a84eaa157fa731567abd0b46033e9050ae26a
+# stakwork/strut main at the merge of #404 (proposals: a card on every record and brief, a person token decides only its actor's), after #391–#403 (live feeds' builder hints, the store front and the package index's llms.txt, one assistant per orchestrator, run log and step output caps, an app's rename is its title, run report blocks, the agent trace view) and #370–#390.
+c23756aee90f367e12522a51525df7b604fa26eb

@@ -40,6 +40,23 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`, or
     /// the name alone for one of the person's own.
     public var id: String { peer.map { "@\($0)/\(name)" } ?? name }
+
+    /// The link Share copies: Hive's page for the app, `/w/<peer>/apps/<name>`
+    /// (the peer id is the workspace's slug there), each `/`-separated
+    /// segment of the name percent-encoded. It holds no token and grants
+    /// nothing: whoever opens it in Peel gets the app only if that
+    /// workspace is already paired there (`OrgPage.hiveApp`). Nil for an
+    /// app of the person's own, on their own strut: it has no workspace.
+    public func shareLink(hive: URL = HiveClient.production) -> URL? {
+        guard let peer, !name.isEmpty else { return nil }
+        let segment = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+        let path = name.split(separator: "/", omittingEmptySubsequences: false)
+            .map { $0.addingPercentEncoding(withAllowedCharacters: segment) ?? "" }
+            .joined(separator: "/")
+        var base = hive.absoluteString
+        while base.hasSuffix("/") { base.removeLast() }
+        return URL(string: "\(base)/w/\(peer.addingPercentEncoding(withAllowedCharacters: segment) ?? "")/apps/\(path)")
+    }
 }
 
 extension WorkspaceApp {

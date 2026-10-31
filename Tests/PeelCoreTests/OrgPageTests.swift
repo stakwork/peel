@@ -33,6 +33,67 @@ struct OrgPageTests {
         #expect(query(page.url(on: URL(string: "https://acme.sphinx.chat/lab")!)) == "app=hive%2Fboard&solo=1")
     }
 
+    // MARK: - Sharing an app
+
+    private func app(_ name: String, peer: String? = "sphinx") -> WorkspaceApp {
+        WorkspaceApp(peer: peer, name: name, title: name, about: nil)
+    }
+
+    @Test(arguments: [
+        ("board", "https://hive.sphinx.chat/w/sphinx/apps/board"),
+        ("acme/hvac/invoices", "https://hive.sphinx.chat/w/sphinx/apps/acme/hvac/invoices"),
+        ("my app/q&a", "https://hive.sphinx.chat/w/sphinx/apps/my%20app/q&a"),
+        ("a?b/c#d", "https://hive.sphinx.chat/w/sphinx/apps/a%3Fb/c%23d"),
+    ])
+    func aSharedAppIsHivesPageForItWithNothingElse(name: String, link: String) {
+        #expect(app(name).shareLink()?.absoluteString == link)
+    }
+
+    @Test func anAppOfThePersonsOwnHasNoLinkToShare() {
+        #expect(app("mine", peer: nil).shareLink() == nil)
+    }
+
+    @Test(arguments: ["board", "acme/hvac/invoices", "a.b-c_d/x9"])
+    func aShareLinkOpensTheSameAppItCameFrom(name: String) throws {
+        let link = try #require(app(name).shareLink())
+        #expect(OrgPage.hiveApp(link) == OrgPage(peer: "sphinx", query: "app", value: name))
+    }
+
+    @Test(arguments: [
+        "http://hive.sphinx.chat/w/sphinx/apps/board",
+        "https://example.com/w/sphinx/apps/board",
+        "https://hive.sphinx.chat.evil.com/w/sphinx/apps/board",
+        "https://evil.com/hive.sphinx.chat/w/sphinx/apps/board",
+        "https://user@hive.sphinx.chat/w/sphinx/apps/board",
+        "https://hive.sphinx.chat:8443/w/sphinx/apps/board",
+        "https://hive.sphinx.chat/w/sphinx/apps/",
+        "https://hive.sphinx.chat/w/sphinx/apps",
+        "https://hive.sphinx.chat/w/sphinx/apps/board/",
+        "https://hive.sphinx.chat/w/sphinx/apps/v2",
+        "https://hive.sphinx.chat/w/sphinx/apps/acme/v2/board",
+        "https://hive.sphinx.chat/w/sphinx/apps/data.db",
+        "https://hive.sphinx.chat/w/sphinx/apps/..",
+        "https://hive.sphinx.chat/w/sphinx/apps/a/../b",
+        "https://hive.sphinx.chat/w/sphinx/apps/a%2Fb",
+        "https://hive.sphinx.chat/w/sphinx/apps/%40acme",
+        "https://hive.sphinx.chat/w/sphinx/apps/board/extra//more",
+        "https://hive.sphinx.chat/w/sphinx/tasks/board",
+        "https://hive.sphinx.chat/x/sphinx/apps/board",
+        "https://hive.sphinx.chat/w/-bad/apps/board",
+    ])
+    func aLinkThatIsNotHivesPageForAnAppOpensNothing(link: String) throws {
+        #expect(OrgPage.hiveApp(try #require(URL(string: link))) == nil)
+    }
+
+    @Test(arguments: [
+        "HTTPS://HIVE.SPHINX.CHAT/w/sphinx/apps/board",
+        "https://hive.sphinx.chat/w/sphinx/apps/board?input=view-2",
+        "https://hive.sphinx.chat/w/sphinx/apps/board#top",
+    ])
+    func theSchemeAndHostIgnoreCaseAndTheQueryAndFragmentAreIgnored(link: String) throws {
+        #expect(OrgPage.hiveApp(try #require(URL(string: link))) == OrgPage(peer: "sphinx", query: "app", value: "board"))
+    }
+
     @Test func oneOfTheBrainsOwnHasNoPageOnAnOrg() throws {
         #expect(try #require(AgentArtifact.Handle(path: "/jobs/j-1/files/plan.md")).onOrg == nil)
         #expect(try #require(AgentArtifact.Handle(path: "/artifacts/1793/shot.png")).onOrg == nil)

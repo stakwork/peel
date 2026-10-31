@@ -441,7 +441,28 @@ public final class Stadeum {
         app.peer.map { opening(OrgPage.app(app.name, on: $0), title: app.title) } ?? .onMac
     }
 
-    private func opening(_ page: OrgPage, title: String? = nil) -> Opening {
+    /// What a tapped link does here: a Hive app link for a workspace this
+    /// device has paired opens that app; one for a workspace it has not (or
+    /// with Stadeum not connected) says to connect it first; any other link
+    /// is not Peel's to open.
+    public enum LinkTap: Equatable {
+        case open(OrgPage, OrgPageRequest)
+        /// The workspace's slug.
+        case connectFirst(String)
+        case notOurs
+    }
+
+    public func tap(_ url: URL, hive: URL = HiveClient.production) -> LinkTap {
+        guard let page = OrgPage.hiveApp(url, hive: hive) else { return .notOurs }
+        switch opening(page) {
+        case .page(let request): return .open(page, request)
+        case .connectFirst, .notPaired: return .connectFirst(page.peer)
+        case .onMac: return .notOurs
+        }
+    }
+
+    /// How an org's page opens: on its own strut.
+    public func opening(_ page: OrgPage, title: String? = nil) -> Opening {
         guard let peer = live.first(where: { $0.id == page.peer }) else {
             return link == nil || revoked ? .connectFirst : .notPaired(page.peer)
         }

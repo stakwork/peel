@@ -1,6 +1,7 @@
 import PeelCore
 import PeelUI
 import SwiftUI
+import UIKit
 
 /// Apps, from Chats' top rows: the apps the Stadeum workspaces pinned as
 /// tabs, A–Z, each read and opened on its workspace's own strut with the
@@ -36,6 +37,17 @@ struct AppsScreen: View {
                         AppRow(app: app, showsSource: several)
                     }
                     .buttonStyle(.plain)
+                    // Copies a link to the app: nothing is sent, and it opens
+                    // here only for someone with that workspace connected.
+                    .contextMenu {
+                        if let link = app.shareLink() {
+                            Button("Share link", systemImage: "link") {
+                                Clipboard.copy(link.absoluteString)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                CopyFeedback.announce("Link copied")
+                            }
+                        }
+                    }
                 }
             } footer: {
                 if !unread.isEmpty, !apps.isEmpty {

@@ -205,10 +205,21 @@ extension Message {
     /// (`AgentArtifact(strutEntry:workspace:)`). Whoever sent the message
     /// wrote them, and in a tribe that is anyone: an entry opens only
     /// against the reader's own pairing with that workspace, never by itself.
-    public var strutArtifacts: [AgentArtifact] {
+    public var strutArtifacts: [AgentArtifact] { strutEntries?.artifacts ?? [] }
+
+    /// strut's proposals on a post in a tribe (`metadata.strut.proposals`,
+    /// `StrutProposals`, docs/hive-tribes.md, "Proposals in a tribe"):
+    /// those Jamie's post made, each a card under it, and how Jamie's
+    /// reply says each ended. Whoever sent the message wrote them, as with
+    /// its deliverables. Nil for a message that names none.
+    public var strutProposals: StrutProposals? { strutEntries?.proposals }
+
+    /// strut's entries in a message's metadata, read once: its deliverables
+    /// and its proposals (`StrutEntries`). Nil for a message with none.
+    public var strutEntries: StrutEntries? {
         guard type == MessageType.text, !deleted, let body, body.contains("strut") || body.contains(#"\u"#),
-              let metadata = MessageMetadata.string(in: body), case .object(let fields)? = JSONValue(text: metadata) else { return [] }
-        return CallChatWire.artifacts(fields["strut"])
+              let metadata = MessageMetadata.string(in: body), case .object(let fields)? = JSONValue(text: metadata) else { return nil }
+        return StrutEntries(strut: fields["strut"])
     }
 
     /// `key` in a talk message's extras: `metadata.peel` with no `op`.
@@ -255,6 +266,28 @@ public struct AgentJob: Sendable, Equatable {
 /// (`{ id, title, kind?, label?, summary?, url? }`) and the bridge adds to
 /// (`path` or `app`, stakwork/sphinx#391): shown by its title; opened by an
 /// https link, or on Peel's own strut by its handle.
+/// strut's own entries in a message's metadata, `metadata.strut`
+/// (`{ workspace, artifacts, proposals }`), as Jamie's posts in a tribe
+/// carry them: the deliverables (`AgentArtifact`, each resolved against the
+/// workspace) and the proposals (`StrutProposals`). Read once per message
+/// (`Message.strutEntries`); nil when there is neither.
+public struct StrutEntries: Sendable, Equatable {
+    public let artifacts: [AgentArtifact]
+    public let proposals: StrutProposals?
+
+    public init(artifacts: [AgentArtifact], proposals: StrutProposals? = nil) {
+        self.artifacts = artifacts
+        self.proposals = proposals
+    }
+
+    init?(strut: JSONValue?) {
+        let artifacts = CallChatWire.artifacts(strut)
+        let proposals = StrutProposals(strut: strut)
+        guard !artifacts.isEmpty || proposals != nil else { return nil }
+        self.init(artifacts: artifacts, proposals: proposals)
+    }
+}
+
 public struct AgentArtifact: Sendable, Equatable {
     /// The most read from one message.
     static let most = 20

@@ -172,10 +172,10 @@ private struct AgentMessageList: View {
         // The local turns only above the DM's first message: not while older
         // pages are to come, nor over a jump's window. With no DM yet they are
         // shown the same way, read only.
-        let shown = dm.map { _ in
-            AgentDMRows(rows: model.chatRows, answering: model.agentAnswering,
-                        fromStart: !model.mayHaveOlder && !model.showsWindow)
-        } ?? AgentDMRows(rows: [], answering: nil, fromStart: true)
+        // The workspaces' cards come whether or not the DM is the chat yet.
+        let shown = AgentDMRows(rows: dm == nil ? [] : model.chatRows, answering: dm == nil ? nil : model.agentAnswering,
+                                proposals: model.proposals.orgCards,
+                                fromStart: dm == nil || !model.mayHaveOlder && !model.showsWindow)
         MessageTable(model: model, rows: rows.rows(of: agent, open: model.agentOpenRows, dm: shown), composer: composer,
                      focus: dm == nil ? nil : MessageList.focusTarget(of: model, in: composer, hasRows: !model.chatRows.isEmpty),
                      reachesNewest: dm == nil || model.timelineReachesNewest, hasOlder: dm != nil && model.mayHaveOlder, link: link)
@@ -677,7 +677,6 @@ struct FactLine: View {
 struct AgentApprovalCard: View {
     let intent: ToolIntent
     let answer: (ApprovalDecision) -> Void
-    @FocusState private var focused: Bool
 
     var body: some View {
         Callout(.attention, intent.action, detail: detail, icon: .symbol("paperplane", Theme.attention)) {
@@ -713,23 +712,9 @@ struct AgentApprovalCard: View {
             .padding(.top, 4)
         }
         .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
-        .focusable()
-        .focusEffectDisabled()
-        .focused($focused)
-        // Only while the card itself has the keys: Return on a button inside
-        // it (Deny tabbed to) is not Allow once. A send that costs sats takes
-        // a click on Allow once, never a key that may have been meant for
-        // something else.
-        .onKeyPress(.return) {
-            guard focused, intent.cost == nil else { return .ignored }
-            answer(.allowOnce)
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            guard focused else { return .ignored }
-            answer(.deny)
-            return .handled
-        }
+        // A send that costs sats takes a click on Allow once, never a key
+        // that may have been meant for something else.
+        .answerKeys(returnAccepts: intent.cost == nil) { answer(.allowOnce) } reject: { answer(.deny) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Waiting on you: \(intent.action)")
     }
@@ -741,10 +726,48 @@ struct AgentApprovalCard: View {
     }
 }
 
+/// The keys a card waiting on you takes, and only while the card itself
+/// has them (never as it appears: the agent, not you, decides when it
+/// comes, so a Return meant for the composer never allows it; and Return
+/// on a button inside it, tabbed to, is the button's): Return accepts when
+/// `returnAccepts`, Escape rejects. `enabled` false takes the card out of
+/// the focus order (it is no longer yours to answer).
+private struct AnswerKeys: ViewModifier {
+    let enabled: Bool
+    let returnAccepts: Bool
+    let accept: () -> Void
+    let reject: () -> Void
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focusable(enabled)
+            .focusEffectDisabled()
+            .focused($focused)
+            .onKeyPress(.return) {
+                guard focused, enabled, returnAccepts else { return .ignored }
+                accept()
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                guard focused, enabled else { return .ignored }
+                reject()
+                return .handled
+            }
+    }
+}
+
 extension View {
+    /// The one owner of an approval card's keys (`AnswerKeys`): the send
+    /// card's and the proposal card's.
+    func answerKeys(enabled: Bool = true, returnAccepts: Bool, accept: @escaping () -> Void, reject: @escaping () -> Void) -> some View {
+        modifier(AnswerKeys(enabled: enabled, returnAccepts: returnAccepts, accept: accept, reject: reject))
+    }
+
     /// A note in the agent chat (a job, the tools a reply ran, what it
-    /// points to), with the message it is about, in line with its text.
-    fileprivate func agentNoteRow() -> some View {
+    /// points to), or the cards under a post in a tribe, with the message it
+    /// is about, in line with its text.
+    func agentNoteRow() -> some View {
         frame(maxWidth: MessageRow.textWidth, alignment: .leading)
             .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
             .padding(.trailing, 20)

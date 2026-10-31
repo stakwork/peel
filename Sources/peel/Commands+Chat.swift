@@ -15,7 +15,7 @@ extension Invocation {
             // Offline, the send is still recorded, as failed, so it can be retried.
             await session.connectIfPossible(insecure: insecure)
             try await session.engine.sendText(
-                arguments.rest().joined(separator: " "), to: pubkey, replyTo: replyTo, inThread: inThread
+                arguments.rest().joined(separator: " "), to: pubkey, replyTo: replyTo, inThread: inThread, metadata: metadata
             )
             try await session.finish(after: wait)
 

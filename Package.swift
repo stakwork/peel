@@ -111,7 +111,7 @@ let package = Package(
         // agent's journeys drive PeelAgent, strut and the bridge with a stand-in model.
         .testTarget(
             name: "PeelIntegrationTests",
-            dependencies: ["PeelCore", "AgentKit", "PeelAgent", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["PeelCore", "AgentKit", "PeelAgent", "PeelUI", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // Timings on a synthetic large account; skipped unless PEEL_BENCH=1.
         .testTarget(

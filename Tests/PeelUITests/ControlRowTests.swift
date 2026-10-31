@@ -94,6 +94,37 @@ struct ControlRowTests {
         #expect(ChatRow.rows([message(0, body: body(strut))], parents: [:], inTribe: false, people: people).map(\.agentArtifacts) == [[]])
     }
 
+    /// A member's post that made strut's proposals carries them as cards
+    /// (docs/hive-tribes.md, "Proposals in a tribe"): on its own row, and
+    /// still when a reply folds the post into its thread's row (the
+    /// owner's answer is such a reply); never on yours, never in a direct
+    /// message, and a post whose entries are only outcomes draws none.
+    @Test func aTribeMembersProposalsShowUnderTheirPostAndItsThreadsRow() {
+        func body(_ proposals: String) -> String {
+            let metadata = #"{"strut":{"workspace":"acme","artifacts":[{"id":"plan","title":"Plan","url":"/jobs/j-1/files/plan.md"}],"proposals":"# + proposals + "}}"
+            return String(decoding: try! JSONEncoder().encode(["content": "Waiting for you to approve", "metadata": metadata]), as: UTF8.self)
+        }
+        let made = #"[{"id":"p-1","step":"package/install","title":"Install acme/linear","status":"pending","url":"/proposals/p-1"}]"#
+        let ended = #"[{"id":"p-1","step":"package/install","title":"Install acme/linear","status":"applied"}]"#
+        let post = message(0, chat: tribe, body: body(made))
+        let rows = ChatRow.rows([post, message(1, chat: tribe, fromMe: true, body: body(made)), message(2, chat: tribe, body: body(ended))],
+                                parents: [:], inTribe: true, people: people)
+        #expect(rows[0].strutProposals?.proposed.map(\.id) == ["p-1"] && rows[0].agentArtifacts.map(\.title) == ["Plan"])
+        #expect(rows[1].strutProposals == nil && rows[2].strutProposals == nil, "yours, and a reply's outcomes, draw no card")
+        #expect(ChatRow.rows([message(0, body: body(made))], parents: [:], inTribe: false, people: people).first?.strutProposals == nil)
+        // The owner's reply folds the post into its thread's row, which keeps the card.
+        var reply = message(3, chat: tribe, fromMe: true)
+        reply.threadUUID = uuid(0)
+        reply.replyUUID = uuid(0)
+        let summary = ThreadSummary(original: post, count: 1, lastTimestamp: reply.timestamp, unread: 0, latest: reply)
+        let folded = ChatRow.rows([reply], threads: [uuid(0): summary], parents: [uuid(0): post], inTribe: true, people: people)
+        #expect(folded.count == 1 && folded[0].summary != nil && folded[0].message.uuid == uuid(0))
+        #expect(folded[0].strutProposals?.proposed.map(\.id) == ["p-1"] && folded[0].agentArtifacts.map(\.title) == ["Plan"])
+        // Opened as a thread, its original at the top keeps them too.
+        let opened = ChatRow.rows([reply], parents: [:], inTribe: true, people: people, threadRoot: uuid(0), original: post)
+        #expect(opened.first?.strutProposals?.proposed.map(\.id) == ["p-1"] && opened.first?.agentArtifacts.map(\.title) == ["Plan"])
+    }
+
     /// An app sent in a tribe asks before it opens, naming the app and
     /// version its link opens, never the title its sender wrote; a file
     /// opens without asking, and nothing asks outside a tribe.

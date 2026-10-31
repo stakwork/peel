@@ -1779,6 +1779,126 @@ org and draws it.
   the checks (strut checks the path again, and the page encodes the whole
   value); strut's own names rules sit on `Handle` though `Hive` uses them.
 
+### Built: proposal cards (2026-10-31)
+
+A strut proposal (strut's plans/proposals.md, specs/API.md §12: a tool call
+an agent made that a person must approve; strut records it and runs the
+step in code on their yes) is one inline card in the agent chat, drawn by
+one renderer for every step, from strut's record: Peel's own strut's
+proposals, which the bridge brings as `approve` requests (`proposal:<id>`,
+runner R1), and the person's own on each Stadeum workspace's strut, read
+and decided with the person token Peel holds (strut#404, merged as main
+`c23756a`: a `card` on every new record and brief, and a person token
+that sees and decides only its actor's proposals).
+
+- **Pin.** `Vendor/strut.lock` moves to `c23756a` (the merge of #404,
+  after #391–#403: live feeds' builder hints, the store front, one
+  assistant per orchestrator, run log and step output caps, run report
+  blocks, the agent trace view). Staged for the checks as
+  `PEEL_STRUT_STAGE=~/Library/Caches/dev.peel.build/strut-404`. What the
+  jump changes for Peel: strut's builder now gates `package/install` by
+  its own default (the store front, #394 and #396), so a package the
+  builder would install is a card too; Peel still sets no
+  `builder.approve` of its own (`OrchestratorTests` says so). Nothing
+  else in the suite moved.
+- **The record** (`ProposalRecord`, PeelCore `Proposal.swift`): id,
+  step, title, summary, the model's rationale, strut's `card` (version 1:
+  title, summary, up to twelve `fields` of label, value, kind and
+  `danger`, the two buttons' words, `full`), status (`pending`,
+  `accepted` while the step runs, `rejected`, `applied`, `failed`), who
+  proposed it (`by.actor`, the person a run spoke for), the decision and
+  the result, and the input (kept up to 64 KB). Read bounded and cleaned
+  (`TextLine.block`: lines kept, hidden and direction characters gone),
+  unknown keys and kinds ignored, a status Peel does not know refused. A
+  record from before #404 has no card: one is built from the title, the
+  summary and the input as strut builds its generic one
+  (`ProposalCard.generic`). `full: false` never turns a proposal down: the
+  card says "Not everything is shown" and opens the whole input.
+- **Kept** (`KeptProposal`, `Storage.keepProposal`, the `proposal` table,
+  v30): every record as last read, with its device request and that
+  card's expiry for Peel's own strut's, so a restart draws each card as it
+  stood before the next read; a decided card stays on its line. A
+  workspace's final ones are forgotten after a week (their cards have no
+  line to stay on).
+- **Peel's own strut's** (`DeviceActions.approve` through
+  `ProposalReader`): the record is read for every `proposal:` request
+  (`AutomationsClient.readProposal`; tried again for 90 s while strut does
+  not answer, as when it starts again; one strut has not got is refused at
+  once) and kept; a `strut/run-workflow` proposal keeps its own card and
+  its "Always allow for this org" rule (`peerCall`: it is the whole check
+  on a message that leaves for another strut, and the generic card has no
+  rule, since one would cover any input of the step); every other step
+  gets the record's card, the gate keeping its time. Unreadable after the
+  retries, no longer pending, or a hand-off holding more than its card
+  shows: refused, never shown in the bridge's words (as before). The
+  Mac's answer goes back as the request's result, and the bridge decides
+  once in strut, as before; Peel calls no decide for its own strut's.
+- **A workspace's** (`HivePeer.pendingProposals`, `proposal`, `decide`):
+  `GET {org}/proposals?status=pending` with the person token lists their
+  own; Peel filters by `by.actor` too, since a strut from before #404
+  lists everyone's, and another person's is never shown (nor kept). A
+  decision is `POST …/decide { action }` with the token, the action
+  alone, never an edit to the input: 200 is the record after (the step
+  has run), 409 the record as it stands (decided in Stadeum first), 403
+  "You can't decide this one here" (and, where that strut listed others'
+  proposals, that the workspace's strut needs an update), 400 strut's
+  words with the proposal still pending, 404 gone. The same person's
+  Stadeum conversations' proposals appear too, named for the org.
+- **Live status** (`ProposalWatch`, PeelUI, `AppModel.proposals`): no one
+  pushes a change, so it polls. The workspaces' lists every 45 s while
+  Peel is in front (5 min behind; every 15 s for 90 s after a hand-off
+  to a workspace went through, when it is most likely to propose), and
+  when Peel comes to the front; a pending one no longer listed is read by
+  itself. Peel's own strut's record every 30 s while its card waits, and
+  after the Mac's answer at 2, 4, 8, 15 and 30 s then every 10 s until it
+  is final; an accepted one every 5 s while its step runs. A strut that
+  does not answer keeps what is shown and is asked again later, with no
+  notice beyond "not answering" on a workspace's card; a workspace that
+  refuses the token (401, 403) says so instead, since the pairing renews
+  it. A card past its request's time is expired here, read no more. What
+  is kept says how each ended for Peel (strut said final; gone; not this
+  person's; never readable), and the Mac's answer time, so a restart
+  keeps the fast cadence.
+- **The card** (`ProposalCardView`, Mac; `Callout`'s box and tokens over
+  `Fact`'s rows on the chat's inset card): the title, where it is (the workspace, the
+  step), the summary, the fields on an inset card (code monospaced; a
+  `danger` field tinted with the destructive colour and marked, the one
+  red: what the step would lose), "Not everything is shown" with the
+  whole input behind a disclosure, the model's reason apart ("The
+  assistant's reason: …"), then the card's own two buttons (Return
+  accepts only while the card has the keys, the card was read whole and
+  nothing in it warns; a card strut sent that Peel cannot read is drawn
+  from the input and takes a click; Escape rejects; "Nothing changes
+  until you accept."), or how it stands as a badge: Accepting… or
+  Rejecting… while strut is told, Running… while the step runs, Applied
+  (green), Rejected, Failed (amber, with the error), Expired, Pending,
+  Gone, Not yours. Amber while it waits, as the approval card. Peel's own
+  strut's card sits on its request's line (`DeviceRequestLine`); a
+  workspace's at the end of the agent chat (`AgentListRow.proposal`,
+  after the DM's rows), open or final for ten minutes.
+- **In a tribe** (docs/hive-tribes.md, "Proposals in a tribe"): what a
+  `@jamie` turn proposes is the tribe owner's to decide, on Jamie's post,
+  which carries the proposal in `metadata.strut.proposals`
+  (`Message.strutProposals`). The same card is drawn under the post for
+  everyone (`TribeProposalCards`); the owner's buttons send a reply to
+  the post with the card's own word, which Hive reads and decides on the
+  org's strut as the owner; Jamie's reply in the thread, from the same
+  member, ends the card. Kept per (workspace, id) with its post, so a
+  restart redraws it; never a card at the end of the agent chat too, nor
+  read from the org's strut by itself.
+- **Not here.** "Accept again" on a failed proposal: the bridge decides
+  each card once and treats a `failed` record as over, so a second accept
+  of Peel's own strut's needs the bridge to relay a new card (sphinx); a
+  workspace's could be accepted again here and is not yet. The bridge's
+  "Done: …" line after a proposal is still a line of its own, not a change
+  on the card (sphinx). An expired card tells strut nothing (the bridge's
+  `CARD_SECS`), so strut may still say pending: the bridge should reject
+  it there with reason "expired" so every reader agrees (sphinx). A
+  workspace's and a tribe's proposals on the iPhone. Peel Home on a home
+  server: its strut's records are not read (the Mac reads its own strut
+  only), as before. Hive's half of a tribe's proposals: the carrier and
+  the outcome posts, and the decision from the owner's reply.
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

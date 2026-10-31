@@ -118,6 +118,19 @@ is a short plan. Update the status and the journal when you finish something.
     stored row wins; a message seen before is not a new copy), `claim` and
     `finish` (only one run does it; a send's `sending` mark is in
     `Storage.apply`), the owed ones, forgetting expired ones
+  - `Storage+Proposals.swift` — the proposals as last read (`KeptProposal`,
+    the `proposal` table, v30): strut's record, where it is (Peel's own
+    strut, or a workspace by its peer id), for Peel's own strut's the
+    device request whose card it is and that card's expiry, when it was
+    read and answered here, and how it ended for Peel (`Ending`: final,
+    gone, forbidden, unreadable, each at a time), and in a tribe the post
+    whose card it is (`TribePost`) and the owner's answer (`fromStrut`,
+    where its truth comes from; `take(carrier:on:at:)` and
+    `take(outcome:at:)`, what the tribe's posts say of it in any order;
+    `answerStaleAt`); `keepProposal`, `proposals`,
+    `forgetOrgProposals(endedBefore:)`, and `proposalPosts(after:)`, the
+    tribes' posts naming a proposal since the last look
+    (`Setting.proposalPostsScan`)
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
     mutes, send status, invoices, uploads, contacts and tribes
@@ -222,7 +235,10 @@ is a short plan. Update the status and the journal when you finish something.
     `Hive` and `WorkspaceApp` use too), `Message.strutArtifacts` (strut's
     entries in `metadata.strut`: Jamie's deliverables in a tribe,
     docs/hive-tribes.md) and `AgentDM` (your
-    message the agent is still answering in its DM)
+    message the agent is still answering in its DM); `StrutEntries`,
+    strut's own entries in a message's metadata read once
+    (`Message.strutEntries`: the deliverables, `strutArtifacts`, and the
+    proposals, `strutProposals`)
   - `Preferences.swift` — the one owner of every user setting: the
     registry (`Preference`: the preferences file's key, account or device
     scope, the official encoding), `JSONValue`, the official reader's
@@ -279,7 +295,26 @@ is a short plan. Update the status and the journal when you finish something.
   - `TextLine.swift` — `TextLine.clean`, words someone else wrote as one
     safe line (control and direction characters out, no `<<<` marker,
     capped): the one cleaner the agent's chat data, Stadeum and strut's
-    listings share
+    listings share; `TextLine.block`, the same keeping line breaks and
+    tabs, for words read in full (a proposal's summary and fields)
+  - `Proposal.swift` — a strut proposal as Peel reads it
+    (docs/agent-on-strut.md, "Built: proposal cards"; strut's
+    specs/API.md §12): `ProposalRecord` (id, step, title, summary, the
+    model's rationale, strut's `card`, status, who proposed it with the
+    person's `by.actor`, the decision and the result, the input up to 64 KB;
+    read bounded and cleaned from strut's JSON, a status Peel does not know
+    refused), `ProposalCard` (version 1: title, summary, up to twelve
+    fields with kind and `danger`, the two buttons' words, `full`; and
+    `generic`, the card built from the input for a record from before
+    strut#404), `ProposalSource` and `ProposalKey` (Peel's own strut, or a
+    workspace), a workspace's strut asked with the person's token
+    (`HivePeer.pendingProposals(actor:)`, filtered by actor so another
+    person's is never shown; `proposal(_:)`, `ProposalRead`; `decide`,
+    `ProposalDecided`: 200, 409, 403, 400, 404 each their own), and
+    `StrutProposals`, what Jamie's post in a tribe says of them
+    (`metadata.strut.proposals`, read by `Message.strutProposals`: those
+    the post made, each a card under it, and how a reply says each ended;
+    docs/hive-tribes.md, "Proposals in a tribe")
   - `BiometricUnlock.swift` — Face ID in place of the PIN, opt-in: the
     PIN kept in a Keychain item behind `.biometryCurrentSet` (this device,
     a passcode set), released by a face and then used as a typed PIN;
@@ -340,6 +375,25 @@ is a short plan. Update the status and the journal when you finish something.
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
+  `ProposalWatch` (`AppModel.proposals`: the proposals shown as cards,
+  Peel's own strut's and the person's on each workspace, kept as last read
+  (`Storage.keepProposal`) so a restart draws them before the next read;
+  the polls, since nothing pushes: the workspaces' pending lists while
+  Peel is in front, on coming to the front and after a hand-off went
+  through, every open record after an answer until it is over, Peel's own
+  strut's through `readLocal`, which the Mac installs; `decide` on a
+  workspace with the person's token, and its `notes` (not yours, gone,
+  waits on another, an older strut), `deciding`, `unreachable` and
+  `refused` (the token no longer taken); `orgCards`, each paired
+  workspace's open and lately over ones as `OrgCard` (the record, the
+  workspace's name, deciding, its note) for the end of the agent chat;
+  `kept(request:)` for a card on its request's line; in a tribe
+  (`isTribe`), `noticed`, what a post says of them (kept from the post,
+  ended only by the same member's reply in its thread, in any order),
+  `answered(byOwn:)`, your own reply in the post's thread with a card's
+  word as your answer, and `answerInTribe`, the owner's reply to the post
+  through `sendReply`; opened on the Mac only, and its writes go off the
+  main actor);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
   the iPhone), Connect (Hive's device flow; `cameToFront`, from
@@ -370,7 +424,8 @@ is a short plan. Update the status and the journal when you finish something.
   `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
   `WebPresenting`, `CallProvider` and `OngoingCall`, and `AgentHost`, the
   agent's PeelAgent side); `ChatRow` (`Sender`, `Quote`, the rows built
-  once per change); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
+  once per change; in a tribe a member's deliverables and the proposals
+  their post made, `strutProposals`); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
   whether the server has more); `PaymentItem+Display`; `Formatting`
   (counts and their nouns, times and dates, offsets); `Labels` (a chat's
   title, Leave and Remove's words, a tribe's membership notes, a refused
@@ -493,10 +548,25 @@ is a short plan. Update the status and the journal when you finish something.
   row will be; the agent's device requests draw it too), `AgentConnectButton`),
   `DeviceCards` (the cards for the agent's `send` and `approve` device
   requests, each on its request's line in the agent's DM via
-  `DeviceRequestLine` and `ChatRow.approval`; in any DM a request's
+  `DeviceRequestLine` and `ChatRow.approval`; a `proposal:` request's
+  record read from Peel's strut and kept (`ProposalReader`) so its line
+  draws the proposal card; in any DM a request's
   one row, `ChatRow.agentRequest`, which opens to what it read or did,
-  `DeviceRequestDetail`; and the send grants), `AgentTable` (the agent chat's
-  rows for `MessageTable`, `AgentListRow`, `AgentDMRows` (the agent's DM
+  `DeviceRequestDetail`; and the send grants), `ProposalCardViews`
+  (`ProposalCardView`, one strut proposal's card for every step,
+  `Callout`'s box with `Fact`'s rows on the chat's inset card: title, workspace
+  and step, summary, the fields with a `danger` one tinted destructive,
+  the whole input behind a disclosure when the fields do not cover it,
+  the model's reason apart, the card's own two buttons (`answerKeys`,
+  shared with `AgentApprovalCard`: Return accepts a card read whole with
+  nothing to lose while it has the keys, Escape rejects) or how it stands
+  as a badge (Accepting…, Running…, Applied, Rejected, Failed, Expired,
+  Gone, Not yours); `OrgProposalRow`, a workspace's at the end of the
+  agent chat, decided there with the person's token; `TribeProposalCards`,
+  those Jamie's post in a tribe made, under the post, with the buttons for
+  the tribe's owner alone, whose click is a reply to the post), `AgentTable` (the agent chat's
+  rows for `MessageTable`, `AgentListRow` (a workspace's proposal among
+  its kinds), `AgentDMRows` (the agent's DM
   as the chat draws it: its rows as a chat's with tool rows above a reply,
   "writing…", the earlier local turns above under "Old assistant chats (this Mac only)", read
   only) and `AgentOpenRows`, which tool rows are open), `OffscreenAgent` (the
@@ -787,7 +857,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `DeviceActions.swift` — the device requests that act as you: `send`
     (the send tool's plan on its card through `ApprovalGate` and its
     rules, or an automation's send grant with `[Agent] ` first) and
-    `approve` (the card alone, which may keep a send grant); a card past
+    `approve` (the card alone, which may keep a send grant; a
+    `proposal:` request's record read from strut through `ProposalReader`,
+    tried again while strut does not answer, and kept: a hand-off to a
+    workspace gets its own card and its "Always allow" (`peerCall`), every
+    other step the record's card by its title); a card past
     the request's time is `expired`; every other kind goes to `DeviceReads`
   - `ChatDirectory.swift` — a chat by the name the agent gives: chat id,
     exact, normalised, without spaces, part of a name, then typos;
@@ -811,9 +885,11 @@ is a short plan. Update the status and the journal when you finish something.
     which agents (the assistant, its jobs) reach each server, written into
     the host delta as `mcp/<server>/*`
   - `Hive.swift` — the Mac's side of a Hive pairing (PeelCore's
-    `HiveClient`, `HiveLink`): strut's peers made Hive's (`syncPeers`), and
-    the org call a `proposal:` card is for, read from strut's record
-    (`peerRequest`)
+    `HiveClient`, `HiveLink`): strut's peers made Hive's (`syncPeers`),
+    one of Peel's strut's proposals read as its record
+    (`readProposal`, a `ProposalRead`: the record, gone, or not this Mac's),
+    and the org call a hand-off proposal is, worded for its card
+    (`peerRequest(from:)`)
   - `WorkspaceApps.swift` — the Mac's reads of PeelCore's `WorkspaceApp`:
     the apps a workspace pinned as tabs, read
     through Peel's strut (`pinnedApps(of:)`, `GET /peers/<id>/apps`), the
@@ -923,7 +999,8 @@ is a short plan. Update the status and the journal when you finish something.
     arguments as the run's `input` under the config `{{ input }}` (strut
     templates any config, so memory text never goes as one), strut's reply
     read back, a step's own refusal as the failure, cleaned to one line
-- `Sources/peel/` — command-line harness for PeelCore
+- `Sources/peel/` — command-line harness for PeelCore (`send --metadata
+  <json object>` puts a stand-in's metadata on a message, for the checks)
   - `PeelCommand.swift` — usage and dispatch; `Invocation` (one run's
     options and remaining arguments, `load()`, `readOnlyStorage()`) and the
     argument helpers the areas share
@@ -943,7 +1020,10 @@ is a short plan. Update the status and the journal when you finish something.
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
-  `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`;
+  `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`,
+  `ProposalTests` (strut's record and card read, each status, a record
+  without a card, the words cleaned, the store, a workspace's strut asked
+  with the person's token, a tribe post's proposals and outcomes);
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS
@@ -951,8 +1031,10 @@ is a short plan. Update the status and the journal when you finish something.
   engine and profile, no window or server: `CallStoreTests` (each chat's
   busiest watched call, the call you are on, locking stops the watches),
   `ChatListControllerTests` (the list controller's 25 cases on a fake
-  engine and store) and `ChatSearchTests` (Return before a search's
-  matches waits for the first of them) and `DictationTests` (the hotkey's
+  engine and store), `ChatSearchTests` (Return before a search's
+  matches waits for the first of them), `ProposalWatchTests` (what the
+  watch keeps, reads again and decides, on a stand-in strut; a proposal on
+  Jamie's post in a tribe, answered by a reply) and `DictationTests` (the hotkey's
   state machine, the hotkey's encoding, the WAV writer,
   where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
   correction learned and the dictation models; `DictationEditTests`, when

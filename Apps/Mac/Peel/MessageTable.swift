@@ -1287,6 +1287,7 @@ extension ChatRow: TableRow {
             if message.attachmentKind != nil { height += 220 }
             if summary != nil { height += 28 }
             height += CGFloat(agentArtifacts.count) * 24
+            for record in strutProposals?.proposed ?? [] { height += record.estimatedCardHeight + Theme.Space.sm }
         default:
             height += 28
         }
@@ -1294,9 +1295,13 @@ extension ChatRow: TableRow {
     }
 
     func content(in list: ComposerID, canAnswer: Bool) -> AnyView {
-        // A tribe member's deliverables (Jamie's), under the message.
-        AnyView(ListRowContent(row: self, composer: list, canAnswer: canAnswer,
-                               below: inTribe ? agentArtifactLines(agentArtifacts, inTribe: true) : nil))
+        // A tribe member's deliverables (Jamie's) under the message, and the
+        // proposals its post made as cards, which the tribe's owner decides.
+        let below = inTribe ? AnyView(VStack(alignment: .leading, spacing: 0) {
+            agentArtifactLines(agentArtifacts, inTribe: true)
+            TribeProposalCards(row: self, canAnswer: canAnswer)
+        }) : nil
+        return AnyView(ListRowContent(row: self, composer: list, canAnswer: canAnswer, below: below))
     }
 
     func hoverBar(in list: ComposerID) -> AnyView? {

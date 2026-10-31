@@ -66,7 +66,7 @@ final class OffscreenDriver {
     private struct Step: Decodable {
         var select, open, notification, key, type, snapshot, link: String?
         var probe, thread, close, expect, signal, list, note, reveal, appearance, agent, unread: String?
-        var mcp, name, url, token: String?
+        var mcp, name, url, token, proposal: String?
         var mods: [String]?
         var wait, duration, scroll, overscroll, width, over, back, next, wheel: Double?
         var scrollTo, steps, hover, turns: Int?
@@ -75,7 +75,7 @@ final class OffscreenDriver {
 
         enum CodingKeys: String, CodingKey {
             case select, open, notification, key, type, snapshot, link, probe, thread, close, expect, signal, note, reveal
-            case appearance, agent, wheel, turns, unread, mcp, name, url, token
+            case appearance, agent, wheel, turns, unread, mcp, name, url, token, proposal
             case mods, wait, scroll, overscroll, width, over, back, scrollTo, jump, steps, next, hover
             case list = "in", duration = "for", submit = "return"
         }
@@ -233,6 +233,8 @@ final class OffscreenDriver {
             try await agent(what, step)
         } else if let what = step.mcp {
             try await mcp(what, step)
+        } else if let what = step.proposal {
+            try await proposal(what)
         } else if let points = step.wheel {
             try wheel(by: points, in: step.list ?? "agent")
         } else if let row = step.scrollTo {
@@ -851,6 +853,70 @@ final class OffscreenDriver {
         default:
             throw Failure(description: "no agent step \(what)")
         }
+    }
+
+    // MARK: Proposals
+
+    #if DEBUG
+    /// A workspace's strut standing in (`OffscreenStrut`), while the drive runs.
+    private var strut: OffscreenStrut?
+    #endif
+
+    /// `{"proposal": "tribe-accept"}` (or `tribe-reject`) answers the first
+    /// waiting proposal card under a post in the open tribe, as the owner's
+    /// click does (a reply to the post goes out).
+    /// `{"proposal": "stub"}` pairs the account with a stand-in workspace,
+    /// Acme, whose strut is a stub on this Mac holding the fixture
+    /// proposals, and reads them now (as Peel coming to the front does);
+    /// `"accept"` and `"reject"` answer the first card waiting at the end
+    /// of the agent chat, as its buttons do; `"input"` opens the full input
+    /// of the first card whose fields leave it out, as its link does;
+    /// `"poll"` reads again now. Debug builds only, as the stub is.
+    private func proposal(_ what: String) async throws {
+        #if DEBUG
+        guard let model = model() else { throw Failure(description: "no account open") }
+        switch what {
+        case "stub":
+            let strut = try OffscreenStrut.start()
+            self.strut = strut
+            let acme = HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)", token: "offscreen-token", label: "Acme")
+            model.proposals.orgs = { ([acme], OffscreenStrut.actor) }
+            model.proposals.cameToFront()
+            Offscreen.log("drive: a stand-in workspace's strut on port \(strut.port)")
+        case "poll":
+            model.proposals.cameToFront()
+        case "input":
+            // As a click on "Show the full input" of the first card whose fields leave the input out.
+            guard let card = model.proposals.orgCards.first(where: { !$0.kept.record.shownCard.full }),
+                  let engine = ListProbe.geometry(kind: "agent") as? MessageTableEngine<AgentListRow> else {
+                throw Failure(description: "no workspace proposal with more than its card shows")
+            }
+            AgentDisclosures(rowID: AgentListRow.rowID(card), rows: model.agentOpenRows).open("input").toggle(expanding: engine.expanding)
+            Offscreen.log("drive: the full input of \(card.kept.record.id) opened")
+        case "accept", "reject":
+            guard let card = model.proposals.orgCards.first(where: { !$0.kept.isOver }) else {
+                throw Failure(description: "no workspace proposal waiting")
+            }
+            await model.proposals.decide(card.key, accept: what == "accept")
+            Offscreen.log("drive: \(what)ed \(card.kept.record.id): now \(card.key.id) "
+                + "\(model.proposals.kept[card.key]?.record.status.rawValue ?? "?")"
+                + (model.proposals.notes[card.key].map { " · \($0)" } ?? ""))
+        case "tribe-accept", "tribe-reject":
+            // As a click on the first waiting card under a post in the open tribe.
+            let waiting = model.proposals.kept.values
+                .filter { $0.post?.tribe == model.selectedChat && !$0.isOver && $0.record.status == .pending && $0.answeredAt == nil }
+                .sorted { ($0.readAt, $0.record.id) < ($1.readAt, $1.record.id) }
+            guard let card = waiting.first else { throw Failure(description: "no proposal waiting on a post in the open tribe") }
+            await model.proposals.answerInTribe(card.key, accept: what == "tribe-accept")
+            let after = model.proposals.kept[card.key]
+            Offscreen.log("drive: \(what) \(card.record.id): answered \(after?.answer.map { $0 ? "accept" : "reject" } ?? "not")"
+                + (model.proposals.notes[card.key].map { " · \($0)" } ?? ""))
+        default:
+            throw Failure(description: "no proposal step \(what)")
+        }
+        #else
+        throw Failure(description: "the proposal steps run in a debug build only")
+        #endif
     }
 
     /// Past the list's end (down, negative) or its top by `points` over

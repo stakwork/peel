@@ -134,6 +134,112 @@ and `TribeJamie` in the iPhone's `ChatDetails.swift`, over one model,
     from Acme? Anyone in the tribe could have sent this link.");
   - an https link opens as any link in a message does.
 
+## Proposals in a tribe
+
+Status: Peel's side built 2026-10-31 (PR #464, with the proposal cards of
+the agent chat). It waits for Hive's half: the proposal in Jamie's post
+and the decision from the owner's reply (its PR number goes here once it
+is open). Checked against stand-in posts on the local stack, not a Hive.
+
+A `@jamie` turn in a tribe runs as the owner, so what it proposes (a
+`package/install`, an `app/grant`, a delete: strut's proposals,
+docs/agent-on-strut.md, "Built: proposal cards") is the owner's to
+decide. The owner decides it in the tribe, on Jamie's post, and everyone
+there sees the card and how it ended.
+
+**The carrier.** Hive's post "Waiting for <owner> to approve: <title>"
+carries each proposal in `metadata.strut`, beside the deliverables:
+
+```
+"strut": { "workspace": "<slug>", "artifacts": [ … ],
+           "proposals": [ { "id", "step", "title", "summary"?, "card"?, "status",
+                            "url": "/proposals/<id>", "rationale"?, "createdAt"? } ] }
+```
+
+`card` is strut's card exactly as in #464 (`{ v: 1, title, summary?,
+fields, actions, full }`); a swarm whose strut is older than `c23756a`
+sends none, and the card is built from the title and the summary
+(`ProposalCard.generic`). `url` is strut-relative and marks a proposal
+the post made, against a reply's outcome, which has none. Unknown keys are
+ignored, as are entries Peel cannot read; up to ten per post
+(`StrutProposals.most`). `Message.strutProposals` reads it
+(`StrutProposals`, PeelCore `Proposal.swift`); `ChatRow.rows` puts it on
+a member's row in a tribe, beside the deliverables, never on your own,
+and on the row that stands for the post once replies fold it into its
+thread (the owner's own answer is such a reply: the card must not fold
+away with it; `takeStrutEntries`).
+
+**The card.** `TribeProposalCards` (Mac, `ProposalCardViews.swift`) draws
+each as `ProposalCardView` under the post, as in the agent chat: the
+title, the workspace and the step, the summary, the fields (a `danger`
+one tinted as a loss), the model's reason apart, "Not everything is
+shown" with the whole input when the fields do not cover it. The tribe's
+owner (`Tribe.canManage`, the list's `canAnswer`) gets the card's own two
+buttons, and Return and Escape as in the agent chat; everyone else sees
+the card, its badge, and "The tribe's owner decides this." Not on the
+iPhone yet, as #464 left it.
+
+**Deciding.** The owner's click sends a plain reply in the tribe to
+Jamie's post (`Engine.sendText(_:to:replyTo:)`, `ProposalWatch.answerInTribe`
+through `sendReply`, installed by `AppModel`) whose text is the card's
+own word (`actions.accept` or `actions.reject`, else Accept and Reject).
+Nothing else goes with it: the daemon forwards a reply to a Jamie post
+with its `replyTo` and `owner: true`, and Hive matches the text against
+the card's words and decides on the org's strut as the owner. The reply
+itself, arriving like any message of the owner's (sent here, or from
+their other device), is the answer (`ProposalWatch.answered(byOwn:)`: a
+reply of yours in the post's thread whose text is a card's own word;
+kept as `KeptProposal.answeredAt` and `answer`, so a restart shows it
+still): the card shows Accepting… or Rejecting…, the buttons gone, on
+every device of the owner's. Peel never decides a tribe's proposal with
+the person token, though the owner holds one: one path, through Hive, so
+the outcome is in the tribe for everyone. After ten minutes with no word
+from Jamie (`KeptProposal.answerPatience`) the card says "No answer yet:
+the reply may not have reached Jamie" and offers the buttons again; a
+second answer is another reply.
+
+**The outcome.** Hive replies under the same post with a readable line
+("Applied: <title>", "Rejected: <title>", "Failed: <title> — <error>")
+carrying `metadata.strut.proposals: [{ id, status, title, step, error? }]`,
+no card. Peel takes it only from the same member (by alias, which the
+tribes server keeps unique in a tribe) in the thread of the post whose
+card it is (any member can write the field, as with a deliverable): the
+card moves to Applied, Rejected or Failed with the error. The posts may
+come in any order (history pages do): the later post has the last word
+on the status, so a copy of the carrier coming round again never reopens
+a decided card, and an outcome that comes before its post is kept as
+ended on the post its reply answers (`KeptProposal.take`). A reply with
+no proposals in its metadata is a normal turn, nothing for the card.
+
+**Kept.** Each is kept per (workspace, id) in the `proposal` table of
+#464 with its post (`tribe`, `post`, `poster`) and the answer, so a
+restart redraws it; a tribe's is never forgotten with a workspace's old
+ones (its card stays on its post). Where a proposal's truth comes from is
+one rule, `KeptProposal.fromStrut`: strut's record, read with the
+person's token, for Peel's own strut's and a workspace's; the tribe's
+posts for one on a post. So the owner's `ProposalWatch`, which lists the
+same proposal on the org's strut by person token, never shows one on a
+post at the end of the agent chat too, never reads it from the org's
+strut by itself (that read would say "not yours" to anyone but the
+owner), and leaves it alone in the list once it is on a post (a list read
+just before a decision must not reopen a card its outcome ended, nor put
+the Mac's clock where the posts' dates go: a record listed first takes the
+posts' clock from its post on). Posts that came while nothing watched
+(before this build, or to the CLI on the profile) are taken up as the
+watch opens, from where its last look got to (`Storage.proposalPosts(after:)`,
+`Setting.proposalPostsScan`), so a later open reads nothing twice.
+
+**Tests.** `ProposalTests` (a post's proposals and a reply's outcomes
+read, what is skipped, the posts in any order, the stale answer, the
+store), `ProposalWatchTests` (kept from the post, never a workspace's
+card nor read by itself, the owner's reply with the card's word, ended by
+Jamie's word in the thread and by no one else's, a reply that could not
+go, a reopen), the journey `Journeys/Tribes/aProposalOnJamiesPostIsAnsweredByTheOwnersReply`
+(through the real core: Bob posts as Jamie with the metadata, Alice's
+answer reaches him as a reply to his post with the card's word, his
+outcome ends her card, Carol gets the post too), and the offscreen check
+in `docs/testing.md`, "Proposal cards in a tribe".
+
 ## Choices the plan left open
 
 1. **Preselected.** The plan says the pick is preselected from the tribe's

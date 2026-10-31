@@ -226,7 +226,7 @@ As of 2026-10-19. The detail and each PR's checks are in
 | Piece | State |
 |---|---|
 | The bridge: runner (inbox, turns, sessions with `/new`, device requests, cancel, chunking; a run it did not launch, such as an automation's, sent to the DM) | Merged (stakwork/sphinx#382, #385, #387) |
-| `agent_seed` in the core and sphinx-ffi v0.8.39 | Merged; Peel pins v0.8.39 |
+| `agent_seed` in the core and sphinx-ffi v0.8.39 | Merged; Peel pins v0.8.40 (from v0.8.39) |
 | strut: `withStop()`, automation callbacks, retain text; `job/start`, `job/continue`; the generic `orchestrator`; the automation steps | Merged (stakwork/strut#198, #195, #196, #213) |
 | Peel PRs 1–7, 6b, 9: the envelope, device reads, sends and approvals, the bridge launched, Peel's half of the orchestrator, the Agent chat as the DM, jobs in the DM, automations on strut with send grants, the iPhone's DM | Merged |
 | PR 10: strut is the agent, no switch; runner ships in Release builds too, inside the sandbox | Merged (peel#334) |

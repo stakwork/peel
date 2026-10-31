@@ -5,9 +5,10 @@ import PeelUI
 
 /// The control bar of a screen recording, the dictation HUD's pill: before
 /// it starts, Cancel and Record; while it runs, a red dot and the time
-/// between Discard and Stop; in its last minute how long is left before it
-/// stops itself (Account › Segments' Segment limit), and what became of a mic
-/// that went quiet. Never in the recording.
+/// between Discard and Pause and Stop; paused, the time held and dimmed, a
+/// ring for the dot and Play where Pause was; in its last minute how long is
+/// left before it stops itself (Account › Segments' Segment limit), and what
+/// became of a mic that went quiet. Never in the recording.
 struct RecordingBarView: View {
     let controller: RecordingController
 
@@ -38,19 +39,25 @@ struct RecordingBarView: View {
 
     private var running: some View {
         let time = MediaInfo.format(duration: controller.elapsed)
+        let paused = controller.phase == .paused
         return HStack(spacing: Theme.Space.sm) {
             HUDButton(.symbol("xmark"), label: "Discard the recording", filled: false, action: controller.discard)
-            Circle()
-                .fill(Theme.destructive)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
+            Group {
+                if paused {
+                    Circle().strokeBorder(.white.opacity(0.62), lineWidth: 1.5)
+                } else {
+                    Circle().fill(Theme.destructive)
+                }
+            }
+            .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
             Text(time)
                 .font(Theme.font(12, .semibold))
                 .monospacedDigit()
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(paused ? 0.62 : 1))
                 // Room for "10:00", so the bar keeps its size.
                 .frame(minWidth: 36, alignment: .leading)
-                .accessibilityLabel("Recording, \(time)")
+                .accessibilityLabel("\(paused ? "Paused" : "Recording"), \(time)")
             if let left = controller.timeLeft {
                 let shown = MediaInfo.format(duration: left.rounded(.up))
                 Text("\(shown) left")
@@ -64,6 +71,11 @@ struct RecordingBarView: View {
                 Text(mic)
                     .font(Theme.font(12, .semibold))
                     .foregroundStyle(Theme.hudWarning)
+            }
+            if paused {
+                HUDButton(.symbol("play.fill"), label: "Resume recording", filled: false, action: controller.resume)
+            } else {
+                HUDButton(.symbol("pause.fill"), label: "Pause the recording", filled: false, action: controller.pause)
             }
             HUDButton(.symbol("checkmark"), label: "Stop and keep the recording", filled: true, action: controller.stop)
         }

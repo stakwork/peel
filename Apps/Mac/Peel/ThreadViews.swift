@@ -119,8 +119,8 @@ struct ThreadSummaryLine: View {
     }
 }
 
-/// The newest reply's words under a thread's line, "Name: text" in full,
-/// wrapping onto as many lines as it needs, smaller than the original. Its sender's photo is already in the
+/// The newest reply's words under a thread's line, "Name: text" clamped to two
+/// lines with an ellipsis (the full text opens in the thread), smaller than the original. Its sender's photo is already in the
 /// avatars above.
 struct LastReplyPreview: View {
     @Environment(AppModel.self) private var model
@@ -131,6 +131,8 @@ struct LastReplyPreview: View {
         (Text(sender.label + ": ").font(Theme.font(12, .semibold)).foregroundColor(sender.hue.name)
             + Text(message.threadReplyPreview).font(Theme.font(12)).foregroundColor(Theme.secondaryText))
             .multilineTextAlignment(.leading)
+            .lineLimit(2)
+            .truncationMode(.tail)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

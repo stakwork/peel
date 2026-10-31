@@ -24,14 +24,26 @@ final class DeviceCards {
     func handler(for engine: Engine, agent: AgentSession) -> DeviceRequestHandler {
         store = SendGrants(beside: agent.rules)
         readGrants()
+        // The proposals' records, read from Peel's strut as it runs now (its
+        // port and key change as it starts again) and kept with the account.
+        let strut: @Sendable () async throws -> AutomationsClient = { [weak self] in
+            guard let server = await self?.model?.memoryServer else { throw PeelError("Peel's strut is not running.") }
+            return AutomationsClient(server: server)
+        }
+        let read: @Sendable (String) async throws -> ProposalRead = { id in try await strut().readProposal(id) }
+        model?.proposals.readLocal = read
         // Offscreen, a stand-in: a check never asks macOS or touches the person's Calendar.
         let actions = DeviceActions(
             engine: engine, rules: agent.rules,
             calendar: Offscreen.isOn ? OffscreenAgent.calendar() : EventKitCalendar(),
-            peerRequest: { [weak self] id in
-                guard let server = await self?.model?.memoryServer else { throw PeelError("Peel's strut is not running.") }
-                return try await AutomationsClient(server: server).peerRequest(proposal: id)
-            },
+            proposals: ProposalReader(
+                read: read,
+                peer: { record in try await strut().peerRequest(from: record) },
+                keep: { [weak self] request, record in
+                    await self?.model?.proposals.keep(record, source: .local, request: request.id,
+                                                      notAfter: Int64(request.deadline.timeIntervalSince1970))
+                }
+            ),
             ask: { [weak self] request, approval in await self?.ask(request, approval) },
             changed: { [weak self, weak agent] in
                 Task { @MainActor in
@@ -69,6 +81,8 @@ final class DeviceCards {
         model?.waitingCards[waiting.agent]?[id] = nil
         if model?.waitingCards[waiting.agent]?.isEmpty == true { model?.waitingCards[waiting.agent] = nil }
         waiting.answer.resume(returning: decision)
+        // A proposal's card: the bridge tells strut within seconds, and the record follows.
+        if decision != nil { model?.proposals.answered(request: id) }
     }
 
     /// The account closes: the cards come down unanswered, to be asked
@@ -77,6 +91,7 @@ final class DeviceCards {
         for id in Array(answers.keys) { answer(id, nil) }
         store = nil
         grants = []
+        model?.proposals.readLocal = nil
     }
 
     func revoke(_ grant: SendGrant) throws {
@@ -121,7 +136,19 @@ struct DeviceRequestLine: View {
     let line: String
 
     var body: some View {
-        if let intent = row.approval, case .envelope(let request)? = row.message.control, let id = request.id {
+        if case .envelope(let request)? = row.message.control, let id = request.id, id.hasPrefix(DeviceActions.proposalPrefix),
+           let kept = model.proposals.kept(request: id), !kept.record.isHandOff {
+            // One of strut's proposals: its card, from the record the Mac kept,
+            // with its buttons while it waits here and its state after. A call
+            // to a workspace keeps its own card below.
+            ProposalCardView(
+                proposal: kept, org: nil, stance: row.approval != nil ? .waiting : .answered(row.agentRequest?.status),
+                note: model.proposals.notes[kept.key], input: AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("input"),
+                answer: row.approval == nil ? nil : { model.macAgent.deviceCards.answer(id, $0 ? .allowOnce : .deny) }
+            )
+            .padding(.vertical, Theme.Space.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let intent = row.approval, case .envelope(let request)? = row.message.control, let id = request.id {
             AgentApprovalCard(intent: intent) { model.macAgent.deviceCards.answer(id, $0) }
                 .padding(.vertical, Theme.Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)

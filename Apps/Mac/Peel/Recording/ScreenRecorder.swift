@@ -68,6 +68,13 @@ final class ScreenRecorder {
 
     var duration: TimeInterval { delegate.duration }
 
+    /// Stops writing, the capture left running so Resume is instant: nothing
+    /// said or shown goes in the file until `resume`.
+    func pause() { delegate.pause() }
+
+    /// Writes again, the file carrying straight on from where it paused.
+    func resume() { delegate.resume() }
+
     /// How long the mic has sent nothing but zeros: a live mic always
     /// hears something, so this is a mic gone, not a quiet room.
     var micSilence: TimeInterval { delegate.micSilence }
@@ -89,6 +96,10 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
     private let video: AVAssetWriterInput
     private let audio: AVAssetWriterInput
     private let ended: @Sendable ((any Error)?) -> Void
+    /// The screen as a pause left it: a still screen sends no new frame, so
+    /// without this the file would show what was there before the pause.
+    /// Only touched on `queue`.
+    private var held: CMSampleBuffer?
     private let log = Logger(subsystem: "dev.peel.mac", category: "recording")
 
     private struct State {
@@ -98,6 +109,7 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
         var start: CMTime?
         var latest: CMTime?
         var micSeen = false
+        var pauses = RecordingPauses()
     }
     private let state = Mutex(State())
     /// When the mic last sent anything but zeros.
@@ -116,6 +128,10 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
             return max(0, (latest - start).seconds)
         }
     }
+
+    func pause() { state.withLock { $0.pauses.pause() } }
+
+    func resume() { state.withLock { $0.pauses.resume() } }
 
     var micSilence: TimeInterval {
         let quiet = lastSound.withLock { $0 }.duration(to: .now).components
@@ -142,6 +158,7 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
     func finish(_ error: (any Error)?) {
         queue.async { [self] in
             guard claim() else { return }
+            held = nil
             let (start, latest) = state.withLock { ($0.start, $0.latest) }
             guard let start else {
                 // Not one frame: no file.
@@ -158,13 +175,30 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        let time = sampleBuffer.presentationTimeStamp
-        guard time.isValid else { return }
+        let arrived = sampleBuffer.presentationTimeStamp
+        guard arrived.isValid else { return }
+        if type == .microphone { hear(sampleBuffer) }
+        // A frame unchanged since the last (`idle`) has no picture, but its
+        // time still counts.
+        let complete = type == .screen && Self.status(of: sampleBuffer) == .complete
+        let (placed, done, begun) = state.withLock { state in
+            (state.done ? nil : state.pauses.fileTime(of: arrived, after: state.latest), state.done, state.start != nil)
+        }
+        guard let placed else {
+            if complete, !done { held = sampleBuffer }
+            return
+        }
+        if placed.rejoined {
+            let frame = held
+            held = nil
+            if !complete, let frame, begun, video.isReadyForMoreMediaData,
+               let moved = RecordingMedia.shifted(frame, by: placed.time - frame.presentationTimeStamp) {
+                video.append(moved)
+            }
+        }
+        let time = placed.time
         switch type {
         case .screen:
-            // A frame unchanged since the last (`idle`) has no picture, but
-            // its time still counts.
-            let complete = Self.status(of: sampleBuffer) == .complete
             let started = state.withLock { state -> Bool in
                 guard !state.done else { return false }
                 if state.start == nil, complete {
@@ -174,9 +208,10 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
                 if state.start != nil { state.latest = max(state.latest ?? time, time) }
                 return state.start != nil
             }
-            if started, complete, video.isReadyForMoreMediaData { video.append(sampleBuffer) }
+            if started, complete, video.isReadyForMoreMediaData, let sample = RecordingMedia.shifted(sampleBuffer, by: time - arrived) {
+                video.append(sample)
+            }
         case .microphone:
-            hear(sampleBuffer)
             let started = state.withLock { state -> Bool in
                 guard !state.done, let start = state.start else { return false }
                 state.latest = max(state.latest ?? time, time)
@@ -189,7 +224,9 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCStreamOutput
                 return true
             }
             // Sound from before the first frame is dropped by the writer.
-            if started, audio.isReadyForMoreMediaData { audio.append(sampleBuffer) }
+            if started, audio.isReadyForMoreMediaData, let sample = RecordingMedia.shifted(sampleBuffer, by: time - arrived) {
+                audio.append(sample)
+            }
         default:
             return
         }

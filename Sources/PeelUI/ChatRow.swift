@@ -95,6 +95,11 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
     /// only on the reader's own Stadeum workspaces, an app after a confirm.
     public var agentJob: AgentJob?
     public var agentArtifacts: [AgentArtifact] = []
+    /// In a tribe: strut's proposals a member's (Jamie's) post made, each
+    /// a card under it (`Message.strutProposals`, docs/hive-tribes.md,
+    /// "Proposals in a tribe"), as they stand in `AppModel.proposals`; the
+    /// tribe's owner decides them from there, by a reply.
+    public var strutProposals: StrutProposals?
     /// In the agent's DM: a request to this Mac as one row, how it ended
     /// folded in (no ack or result lines of its own).
     public var agentRequest: AgentRequest?
@@ -260,9 +265,6 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
                 row.agentArtifacts = message.agentArtifacts
             } else if kind == .message {
                 row.quote = quote(message, parents: parents, threadRoot: threadRoot, inTribe: inTribe, people: people)
-                // A tribe's one rule beside "no control lines": a member's deliverables
-                // (Jamie's replies, docs/hive-tribes.md), opened only on your own workspaces.
-                if inTribe, !message.fromMe { row.agentArtifacts = message.strutArtifacts }
             }
             if kind == .request { row.approved = message.uuid.flatMap { answers[$0] } }
             // One card per request, on its newest copy (the bridge may ask again).
@@ -352,10 +354,21 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
         return request
     }
 
-    /// A row for one message, its sender worked out once.
+    /// A row for one message, its sender worked out once. In a tribe, a
+    /// member's message row carries strut's entries, the tribe's one rule
+    /// beside "no control lines": their deliverables (Jamie's replies,
+    /// docs/hive-tribes.md), opened only on your own workspaces, and the
+    /// proposals their post made, each a card under it; on the post's own
+    /// row, on the row that stands for it once replies fold it into its
+    /// thread, and at the top of its thread. Never yours.
     private static func row(_ message: Message, kind: Kind, id: String, inTribe: Bool, people: People) -> ChatRow {
-        ChatRow(id: id, kind: kind, message: message, inTribe: inTribe,
-                sender: people.sender(of: message, inTribe: inTribe), date: message.date)
+        var row = ChatRow(id: id, kind: kind, message: message, inTribe: inTribe,
+                          sender: people.sender(of: message, inTribe: inTribe), date: message.date)
+        if inTribe, kind == .message, !message.fromMe, let entries = message.strutEntries {
+            row.agentArtifacts = entries.artifacts
+            if let proposals = entries.proposals, !proposals.proposed.isEmpty { row.strutProposals = proposals }
+        }
+        return row
     }
 
     /// Only text and attachments are quoted, and not one with no words (it

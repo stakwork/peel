@@ -476,7 +476,7 @@ struct BoostLineView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            if showsChip, boosts.count > 0 { BoostChipView(boosts: boosts) }
+            if showsChip, boosts.count > 0 { BoostChipView(boosts: boosts, chat: chat, inTribe: inTribe) }
             if let since = boosts.pendingSince {
                 WaitingLine(since: since, what: "Boost", person: inTribe ? nil : chat)
             }
@@ -491,9 +491,25 @@ struct BoostLineView: View {
 }
 
 private struct BoostChipView: View {
+    @Environment(AppModel.self) private var model
     let boosts: BoostSummary
+    let chat: String
+    let inTribe: Bool
+
+    private static let shownBoosters = 3
+    private static let overlap: CGFloat = 5
+
+    /// One per person, first boost first, by alias as the Mac app keeps
+    /// them; a boost without an alias counts on its own.
+    private var boosters: [BoostSummary.Boost] {
+        var seen = Set<String>()
+        return boosts.boosts.enumerated().filter { index, boost in
+            seen.insert(boost.fromMe ? "\u{0}me" : boost.alias.map { "a\($0)" } ?? "#\(index)").inserted
+        }.map(\.element)
+    }
 
     var body: some View {
+        let people = boosters
         let pending = boosts.pendingSince != nil
         let mine = boosts.boostedByMe && !pending
         Chip(.inset, lit: mine) {
@@ -505,10 +521,26 @@ private struct BoostChipView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(mine ? Theme.boostMineText : Theme.text)
                 + Text(" sats").foregroundStyle(Theme.secondaryText)
+                HStack(spacing: -Self.overlap) {
+                    ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
+                        let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
+                                                  chat: chat, inTribe: inTribe)
+                        Avatar(name: avatar.avatarName, url: avatar.photoURL, size: Theme.AvatarSize.xs, hue: avatar.hue)
+                            .padding(1)
+                            .background(ChipStyle.inset.fill(lit: mine), in: Circle())
+                            .zIndex(Double(Self.shownBoosters - index))
+                    }
+                }
+                .accessibilityHidden(true)
+                if people.count > Self.shownBoosters {
+                    Text("+\(people.count - Self.shownBoosters)")
+                        .foregroundStyle(Theme.secondaryText)
+                }
             }
             .phoneFont(.time)
             .monospacedDigit()
-            .padding(.horizontal, 8)
+            .padding(.leading, 8)
+            .padding(.trailing, people.count > Self.shownBoosters ? 8 : 3)
             .padding(.vertical, 3)
         }
         // The row reads the total ("boosted 1,200 sats").
@@ -560,6 +592,8 @@ struct ThreadSummaryButton: View {
                     + Text(latest.threadReplyPreview).foregroundColor(Theme.quietText(on: surface)))
                     .phoneFont(.secondary)
                     .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
             }
             }

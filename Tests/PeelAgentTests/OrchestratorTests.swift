@@ -102,9 +102,11 @@ struct OrchestratorTests {
         #expect(Set(["job/start", "job/continue", "job/list", "job/get", "job/read"]).isSubset(of: tools), "\(tools)")
         #expect(orchestrator["params"]?["system"]?.string?.contains("You are Peel's agent") == true)
         #expect(orchestrator["params"]?["model"] == nil, "the connected model runs it")
-        // strut's builder, which the orchestrator starts with job/start: no card, closed to peers (strut drops `peer`).
+        // strut's builder, which the orchestrator starts with job/start: no card of Peel's (only strut's own, a
+        // package someone published installed on the person's yes since strut#394), closed to peers (strut drops `peer`).
         let builder = try await call("GET", "workflows/builder/flow", on: server)
-        #expect(builder["params"]?["approve"]?.array?.isEmpty != false && builder["peer"] == nil, "\(builder)")
+        let gated = builder["params"]?["approve"]?.array?.compactMap(\.string) ?? []
+        #expect(gated.allSatisfy { $0 == "package/install" } && builder["peer"] == nil, "\(builder)")
         // A job reaches a peer only on a card, as the orchestrator does.
         let job = try await call("GET", "workflows/job/flow", on: server)
         #expect(job["params"]?["approve"]?.array?.contains("strut/run-workflow") == true, "\(job)")

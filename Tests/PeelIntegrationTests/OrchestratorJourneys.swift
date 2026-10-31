@@ -6,6 +6,7 @@ import os
 @testable import PeelTestSupport
 import Testing
 @testable import PeelCore
+@testable import PeelUI
 
 extension Journeys {
     /// Milestone 1, "strut answers" (docs/agent-on-strut.md, PR 5), through
@@ -492,14 +493,20 @@ extension Journeys {
                 }
             }
             let first = try await ask()
-            #expect(try await client.peerRequest(proposal: first) == PeerRequest(peer: "acme", name: "Acme", workflow: "orchestrator",
-                                                                                  prompt: "What is Acme shipping?"))
+            guard case .record(let firstRecord) = try await client.readProposal(first) else {
+                Issue.record("the proposal was not read")
+                return
+            }
+            #expect(try await client.peerRequest(from: firstRecord) == PeerRequest(peer: "acme", name: "Acme", workflow: "orchestrator",
+                                                                                    prompt: "What is Acme shipping?"))
 
             let (alice, other) = try await Journeys.Payments.pair()
             let rules = ApprovalRules(store: try SQLiteAgentStore.inMemory(device: "mac"))
             let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())
             do {
-                let actions = DeviceActions(engine: alice.engine, rules: rules, calendar: StandInCalendar(), peerRequest: { id in try? await client.peerRequest(proposal: id) }) { _, approval in
+                let reader = ProposalReader(read: { id in try await client.readProposal(id) },
+                                            peer: { record in try await client.peerRequest(from: record) }, keep: { _, _ in })
+                let actions = DeviceActions(engine: alice.engine, rules: rules, calendar: StandInCalendar(), proposals: reader) { _, approval in
                     cards.withLock { $0.append(approval.intent) }
                     return .alwaysAllow
                 }
@@ -711,6 +718,148 @@ extension Journeys {
             #expect(try !alice.messages(in: fixture.club.pubkey).contains { $0.content?.contains("weekly " + post) == true })
 
             for person in [alice, fixture.bob] { await person.close() }
+        }
+
+        /// Proposal cards (docs/agent-on-strut.md, "Built: proposal cards"),
+        /// on two staged struts at the pin. Peel's own: a connected server's
+        /// write is a proposal whose card the bridge brings to the Mac
+        /// (runner R1); the Mac reads the record and draws strut's card
+        /// from it (one field per input key, Accept and Reject) rather than
+        /// the bridge's words, keeps it, and after Allow the kept record
+        /// follows the bridge's decide to `applied`. A workspace's: the
+        /// person's own pending proposal on the org's strut, listed and
+        /// decided with a person token minted there, strut's card for
+        /// `app/grant` (every field a warning, Grant and Don't grant) on it;
+        /// another person's never listed to that token; a decide on another
+        /// person's refused with 403.
+        @Test(.enabled(if: staged))
+        @MainActor
+        func aProposalsCardComesFromTheRecordHereAndOnAWorkspace() async throws {
+            let (alice, other) = try await Journeys.Payments.pair()
+            let mcp = try await MCPStub()
+            let person = "tom-cm1"
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                let body = String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...])
+                let answered = body.contains(#""type":"tool_result""#)
+                if body.contains("Grant the todo app") {
+                    // Acme's own assistant, as the person: an app/grant proposal.
+                    return answered ? Self.toolUse("final_answer", ["text": "Proposed the grant.", "artifacts": []])
+                        : Self.toolUse("app_grant", ["name": "todo", "rationale": "The app needs to ask the assistant."])
+                }
+                if body.contains("Someone else's install") {
+                    return answered ? Self.toolUse("final_answer", ["text": "Proposed.", "artifacts": []])
+                        : Self.toolUse("package_install", ["package": "acme/secret"])
+                }
+                guard answered else { return Self.toolUse("linear_create_issue", ["title": "Try proposal cards", "team": "PEEL"]) }
+                return Self.toolUse("final_answer", ["text": "Asked you first.", "artifacts": []])
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-proposal-cards-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let mine = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "mine"),
+                                                 secretKey: FileItem(file: root.appending(path: "mine-key"))))
+            let acme = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "acme"),
+                                                 secretKey: FileItem(file: root.appending(path: "acme-key"))))
+            let bridge = try #require(BundledBridge(executable: BundledBridge.staged, data: root.appending(path: "bridge")))
+            defer {
+                bridge.stop(quietly: true)
+                mine.stop(quietly: true)
+                acme.stop(quietly: true)
+                model.stop()
+                mcp.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            mine.allowsLocalMCP = true
+            try mine.keep(MCPGrants(assistant: ["linear"]))
+            let (local, central) = (try await mine.start(), try await acme.start())
+            let credential = AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in")
+            let client = AutomationsClient(server: local)
+            for server in [local, central] { try await AutomationsClient(server: server).setModel(credential) }
+            try await client.installOrchestrator()
+            try await client.addMCPServer(name: "linear", url: mcp.url, key: "lin_api_secret")
+            let agent = try await bridge.setUp(on: alice.engine, beside: local, alias: "Agent", pair: true).pubkey
+            try await client.useBridge(try #require(bridge.server))
+
+            // Peel's own strut: the Mac's card from the record, kept, then applied.
+            let watch = ProposalWatch()
+            await watch.open(alice.storage)
+            defer { watch.close() }
+            watch.readLocal = { id in try await client.readProposal(id) }
+            let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())
+            let rules = ApprovalRules(store: try SQLiteAgentStore(path: alice.profile.directory.appendingPathComponent("agent.sqlite").path, device: "mac"))
+            let reader = ProposalReader(
+                read: { id in try await client.readProposal(id) }, peer: { record in try await client.peerRequest(from: record) },
+                keep: { request, record in
+                    await watch.keep(record, source: .local, request: request.id, notAfter: Int64(request.deadline.timeIntervalSince1970))
+                }
+            )
+            let actions = DeviceActions(engine: alice.engine, rules: rules, calendar: StandInCalendar(), proposals: reader) { request, approval in
+                cards.withLock { $0.append(approval.intent) }
+                // As the card's Accept: the watch told, so it reads the record until the bridge's decide lands.
+                await watch.answered(request: request.id)
+                return .allowOnce
+            }
+            await alice.engine.answerDeviceRequests(with: actions.handler)
+            try await alice.engine.setDeviceAgent(agent)
+            try await alice.engine.sendText("File an issue: Try proposal cards", to: agent)
+            try await eventually("the reply", timeout: .seconds(60)) {
+                try alice.messages(in: agent).contains { !$0.fromMe && $0.control == nil && $0.content == "Asked you first." }
+            }
+            try await eventually("the card, then the call", timeout: .seconds(60)) { mcp.calls.count == 1 }
+            let shown = try #require(cards.withLock { $0 }.first)
+            let kept = try #require(watch.kept.values.first { $0.source == .local })
+            #expect(shown.action == kept.record.shownCard.title && shown.content == nil && shown.target == nil, "\(shown)")
+            #expect(kept.record.step == "mcp/linear/create_issue" && kept.request?.hasPrefix("proposal:") == true, "\(kept.record)")
+            let card = try #require(kept.record.card)
+            #expect(Set(card.fields.map(\.label)) == ["title", "team"] && card.fields.first { $0.label == "title" }?.value == "Try proposal cards")
+            #expect(card.accept == "Accept" && card.reject == "Reject" && card.full && kept.record.by.actor == nil)
+            // The bridge's decide lands on the record, and the watch reads it: applied.
+            try await eventually("the kept record to be applied", timeout: .seconds(60), every: .seconds(1)) {
+                await watch.tick()
+                return watch.kept.values.first { $0.source == .local }?.record.status == .applied
+            }
+            #expect(watch.kept.values.first { $0.source == .local }?.isOver == true)
+            #expect(mcp.calls.count == 1 && mcp.calls.first?.bearer == "lin_api_secret")
+
+            // A workspace's strut, as the org's central: a person token for the person, and another's.
+            let token = try #require(try await Self.strutCall("POST", "peers/tokens", ["actor": .string(person)], on: central)["token"]?.string)
+            let kates = try #require(try await Self.strutCall("POST", "peers/tokens", ["actor": .string("kate-x1")], on: central)["token"]?.string)
+            let peer = HivePeer(id: "acme", baseUrl: central.base.absoluteString, token: token, label: "Acme")
+            // The org's assistant run with a person's token, as a hand-off runs it: its proposals are that person's.
+            func propose(_ prompt: String, with token: String, actor: String) async throws -> String {
+                let body = Data(#"{"input":{"prompt":"\#(prompt)"}}"#.utf8)
+                let (status, data) = try await Web.requestStrut("POST", central.base.appending(path: "workflows/orchestrator/run"), json: body,
+                                                                bearer: token, limit: 1_000_000, what: "the run")
+                // strut takes a run (202) and runs it on its own.
+                #expect(status == 200 || status == 202, "\(status) \(String(decoding: data, as: UTF8.self).prefix(300))")
+                return try await eventually("\(actor)'s proposal", timeout: .seconds(60)) {
+                    let pending = try await Self.strutCall("GET", "proposals?status=pending", on: central)["proposals"]?.array ?? []
+                    return pending.first { $0["by"]?["actor"]?.string == actor }?["id"]?.string
+                }
+            }
+            let grant = try await propose("Grant the todo app", with: token, actor: person)
+            let secret = try await propose("Someone else's install", with: kates, actor: "kate-x1")
+            let (listed, others) = try await peer.pendingProposals(actor: person)
+            #expect(listed.map(\.id) == [grant] && listed.first?.by.actor == person, "\(listed.map(\.id))")
+            #expect(others == 0, "a strut at the pin shows a person token only their own")
+            let grantCard = try #require(listed.first?.card)
+            #expect(grantCard.accept == "Grant" && grantCard.reject == "Don't grant" && grantCard.fields.allSatisfy(\.danger) && !grantCard.fields.isEmpty)
+            #expect(listed.first?.rationale == "The app needs to ask the assistant.")
+            // Watched as the Mac and the iPhone watch it: listed, decided as the person, final.
+            watch.orgs = { ([peer], person) }
+            await watch.tick()
+            let key = ProposalKey(source: .org("acme"), id: grant)
+            #expect(watch.orgCards.map(\.kept.record.id) == [grant] && watch.orgCards.first?.org == "Acme")
+            await watch.decide(key, accept: true)
+            let decided = try #require(watch.kept[key])
+            #expect(decided.record.status.isFinal && decided.isOver, "\(decided.record.status)")
+            #expect(try await Self.strutCall("GET", "proposals/\(grant)", on: central)["decision"]?["by"]?.string == person)
+            // Another person's: not this token's to see or decide.
+            #expect(try await peer.proposal(secret) == .gone)
+            #expect(try await peer.decide(secret, accept: true) == .notYours("forbidden: proposal \"\(secret)\" is not yours to decide"))
+            let katesPeer = HivePeer(id: "acme", baseUrl: central.base.absoluteString, token: kates, label: "Acme")
+            #expect(try await katesPeer.pendingProposals(actor: "kate-x1").mine.map(\.id) == [secret])
+            for person in [alice, other] { await person.close() }
         }
 
         static func strutCall(_ method: String, _ path: String, _ body: AgentKit.JSONValue? = nil, on server: MemoryServer) async throws -> AgentKit.JSONValue {

@@ -5,6 +5,7 @@ import UIKit
 
 @main
 struct PeelPhoneApp: App {
+    @UIApplicationDelegateAdaptor(PeelAppDelegate.self) private var appDelegate
     @State private var model: AppModel
     @State private var router: PhoneRouter
     @Environment(\.scenePhase) private var scenePhase
@@ -41,8 +42,21 @@ struct PeelPhoneApp: App {
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { model.becameActive() }
+                    if phase == .active {
+                        model.becameActive()
+                        PushCoordinator.shared.refreshNames()
+                    }
                     if phase == .background { model.leftForeground() }
+                }
+                // The names a push shows follow the chats and their names, not
+                // every new message.
+                .onChange(of: PushNames.signature(model.conversations)) { _, _ in
+                    PushCoordinator.shared.refreshNames()
+                }
+                // The push token waits for the connection: an account opened
+                // before it was up registered nothing.
+                .onChange(of: model.connection == .connected) { _, connected in
+                    if connected { PushCoordinator.shared.connected() }
                 }
                 // The PIN timeout counts the time Peel is away: in front is
                 // in use (the phone locks itself when it is not), noted as
@@ -60,7 +74,13 @@ struct PeelPhoneApp: App {
                     if phase == .ready, let profile = model.profile {
                         // Renewed when due, not at every unlock.
                         model.stadeum.open(profile, renewNow: false)
+                        PushCoordinator.shared.accountOpened(model)
                     } else {
+                        // An account exists but is locked, or failed to open:
+                        // the launch-time question is not held back. With
+                        // none, it waits for the account to open.
+                        if phase == .locked || model.profile?.hasAccount == true { PushCoordinator.shared.requestLaunchPermission() }
+                        PushCoordinator.shared.accountClosed()
                         model.stadeum.close()
                         router.orgPage = nil
                     }

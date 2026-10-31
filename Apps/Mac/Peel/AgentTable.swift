@@ -18,6 +18,9 @@ struct AgentListRow: TableRow {
         /// One row of the agent's DM as the chat draws it, with the tools
         /// an agent's reply ran above it (`AgentDMRows`).
         case dm(ChatRow)
+        /// A workspace's proposal waiting on you, or just decided
+        /// (`ProposalWatch.orgCards`): its card, after the DM's rows.
+        case proposal(OrgCard)
         /// The agent answering your message in its DM: "writing…".
         case answering
     }
@@ -33,6 +36,8 @@ struct AgentListRow: TableRow {
         var connected = false
         /// A DM row as drawn (`dm`).
         var row: ChatRow?
+        /// A workspace's proposal as drawn (`proposal`).
+        var card: OrgCard?
     }
 
     let id: String
@@ -50,6 +55,7 @@ struct AgentListRow: TableRow {
         switch kind {
         case .turn, .answering: .init("agent-turn")
         case .intro, .earlier: .init("agent-note")
+        case .proposal: .init("agent-proposal")
         case .dm(let row): .init("agent-" + row.reuse.rawValue)
         }
     }
@@ -59,6 +65,8 @@ struct AgentListRow: TableRow {
         case .intro: return 90
         case .earlier: return 40
         case .answering: return 50
+        case .proposal(let card):
+            return card.kept.record.estimatedCardHeight + 2 * Theme.Space.sm
         case .dm(let row):
             let lines = row.agentTools.count + row.agentArtifacts.count + (row.agentJob == nil ? 0 : 1)
             return row.estimatedHeight + CGFloat(lines) * 24
@@ -86,6 +94,8 @@ struct AgentListRow: TableRow {
                         .padding(.horizontal, 20)
                 case .dm(let row):
                     AgentDMRow(row: row, composer: list, canAnswer: canAnswer)
+                case .proposal(let card):
+                    OrgProposalRow(card: card, rowID: id)
                 case .answering:
                     AgentAnsweringRow(name: version.name)
                 }
@@ -110,11 +120,16 @@ struct AgentListRow: TableRow {
             case .dm(let chatRow):
                 if chatRow.startsNew, divider == nil { divider = row.id }
                 return chatRow.listRow(in: list)
-            case .intro, .earlier, .answering:
+            case .intro, .earlier, .answering, .proposal:
                 return ChatListRow(id: row.id, canAnchor: false)
             }
         }
         return ListContent(rows: listed, divider: divider, reachesNewest: reachesNewest, hasOlder: hasOlder)
+    }
+
+    /// The row a workspace's proposal card is, by where it is and its id.
+    static func rowID(_ card: OrgCard) -> String {
+        "proposal-\(card.kept.source.rawValue)-\(card.kept.record.id)"
     }
 
     /// What the chat Peel's own loop kept is called, over its turns and in
@@ -194,6 +209,8 @@ struct AgentListRow: TableRow {
     let rows: [ChatRow]
     /// Your message it is answering (`AppModel.agentAnswering`).
     let answering: Message?
+    /// The workspaces' proposals to show after the rows (`ProposalWatch.orgCards`).
+    var proposals: [OrgCard] = []
     /// The rows start at the DM's first message: the intro and the local
     /// turns go above them. Otherwise nothing does, so the list's first row
     /// is the DM's and a jump to an older message waits for its page.
@@ -205,6 +222,12 @@ struct AgentListRow: TableRow {
             AgentListRow(id: row.id, kind: .dm(row),
                          version: .init(name: name, open: open.open.filter { AgentDisclosures.key($0, isIn: row.id) }, row: row),
                          agent: agent, openRows: open)
+        }
+        for card in proposals {
+            let id = AgentListRow.rowID(card)
+            shown.append(AgentListRow(id: id, kind: .proposal(card),
+                                      version: .init(name: name, open: open.open.filter { AgentDisclosures.key($0, isIn: id) }, card: card),
+                                      agent: agent, openRows: open))
         }
         if let answering {
             shown.append(AgentListRow(id: "answering-" + (answering.uuid ?? ""), kind: .answering,

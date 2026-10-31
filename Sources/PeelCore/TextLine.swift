@@ -26,6 +26,33 @@ public enum TextLine {
         return line.count > max ? String(line.prefix(max - 1)) + "…" : line
     }
 
+    /// `text` as a block of at most `max` characters that keeps its line
+    /// breaks, tabs and indentation: every other control character dropped,
+    /// the hidden controls `clean` drops dropped too, a run of blank lines
+    /// cut to one, and no run of three "<" left. For words someone else wrote that are
+    /// read in full (a proposal's summary, a field's value), where one line
+    /// would lose their shape.
+    public static func block(_ text: String, max: Int) -> String {
+        var scalars = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            switch scalar.properties.generalCategory {
+            case .control where scalar == "\n" || scalar == "\t": scalars.append(scalar)
+            case .lineSeparator, .paragraphSeparator: scalars.append("\n")
+            case .control: continue
+            case _ where hiddenControls.contains(scalar.value): continue
+            default: scalars.append(scalar)
+            }
+        }
+        // Each line's trailing whitespace goes; its indentation (code, JSON) stays.
+        var block = String(scalars).split(separator: "\n", omittingEmptySubsequences: false)
+            .map { String($0.reversed().drop(while: \.isWhitespace).reversed()) }
+            .joined(separator: "\n")
+        while block.contains("\n\n\n") { block = block.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
+        while block.contains("<<<") { block = block.replacingOccurrences(of: "<<<", with: "<< <") }
+        block = block.trimmingCharacters(in: .whitespacesAndNewlines)
+        return block.count > max ? String(block.prefix(max - 1)) + "…" : block
+    }
+
     /// The marks, embeddings, overrides and isolates of the bidirectional
     /// algorithm, and the invisible characters that could split a marker
     /// unseen (zero width space, word joiner, byte order mark, soft hyphen)

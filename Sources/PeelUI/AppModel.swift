@@ -329,6 +329,9 @@ public final class AppModel {
     public let calls: CallStore
     /// The person's Stadeum workspaces, paired on this device, and the apps listed.
     public let stadeum = Stadeum()
+    /// The proposals shown as cards in the agent chat: Peel's own strut's
+    /// and the person's on each workspace, as last read (`ProposalWatch`).
+    public let proposals = ProposalWatch()
     /// What the app supplies: panels, the clipboard, playback, calls, presence.
     @ObservationIgnored public let platform: Platform
     /// The web pane beside the chat, with this profile's website data.
@@ -424,6 +427,8 @@ public final class AppModel {
             notice = PeelError.noted(error)
         }
         notifier.model = self
+        proposals.orgs = { [weak self] in (self?.stadeum.live ?? [], self?.stadeum.link?.actor) }
+        proposals.inFront = { [weak self] in self?.platform.presence.isFrontmost ?? false }
         calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
         calls.hiveCall = { [weak self] peer in
             guard let self else { throw PeelError("Peel is closing.") }
@@ -728,7 +733,10 @@ public final class AppModel {
         // A pairing under way polls now (the person may have just approved
         // it in the browser); the workspaces are renewed if due, which the
         // hourly look may have slept through.
-        if phase == .ready { stadeum.cameToFront() }
+        if phase == .ready {
+            stadeum.cameToFront()
+            proposals.cameToFront()
+        }
         // Asked first, so the open chat's `read` goes after the ask and its
         // answer is not applied over it.
         Task {
@@ -1363,6 +1371,7 @@ public final class AppModel {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
         agentHost?.close(in: self)
+        proposals.close()
         platform.pasteboard.clearSecret()
         // Players are keyed by message id, which the next account reuses.
         platform.playback.closeFullScreen()
@@ -1455,6 +1464,12 @@ public final class AppModel {
         // With no agent here (the phone), the agent's DM is still the agent
         // chat: the agent is this account's own, from the same words.
         if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
+        // The proposals' watch before the device requests, whose cards it keeps; only
+        // where their cards are drawn (the Mac: the phone has none yet, and would only poll).
+        if agentHost != nil { await proposals.open(storage) }
+        // A tribe's owner answers a proposal on Jamie's post by a reply to it (docs/hive-tribes.md).
+        proposals.sendReply = { [weak self] text, tribe, post in try await self?.sendText(text, to: tribe, replyTo: post) }
+        proposals.isTribe = { [weak self] chat in self?.tribes[chat] != nil }
         if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
         await engine.configurePreferences(preferenceCapabilities(for: profile))
         await refreshSyncedPreferences(engine)
@@ -1547,6 +1562,7 @@ public final class AppModel {
             case .message(let message, let arrival):
                 notifier.received(message, arrival)
                 approveJamie(asking: message)
+                if message.fromMe { proposals.answered(byOwn: message) } else { proposals.noticed(message) }
             case .moneyReceived(let message):
                 money.received(Receipt(message))
             case .invoicePaid(let invoice):

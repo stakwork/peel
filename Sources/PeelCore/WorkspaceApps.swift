@@ -96,8 +96,7 @@ extension WorkspaceApp {
     /// The apps `peer` pinned as tabs, read on its own strut with the
     /// person's token: the iPhone's way, which has no strut to read through.
     public static func pinned(on peer: HivePeer) async throws -> [WorkspaceApp] {
-        guard let base = URL(string: peer.baseUrl) else { throw PeelError("\(peer.name)'s address could not be read.") }
-        let (status, data) = try await Web.requestStrut("GET", base.appending(path: "apps"), bearer: peer.token,
+        let (status, data) = try await Web.requestStrut("GET", try peer.strut.appending(path: "apps"), bearer: peer.token,
                                                         limit: 2 * 1024 * 1024, what: "\(peer.name)'s apps", timeout: 30)
         guard status == 200 else { throw PeelError("\(peer.name) did not list its apps (HTTP \(status)).") }
         return try listing(data, peer: peer.id)

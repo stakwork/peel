@@ -1,5 +1,6 @@
 import AgentKit
 import Foundation
+import os
 import Synchronization
 import Testing
 @testable import PeelAgent
@@ -307,22 +308,46 @@ struct HiveTests {
 
     /// The card for a call to an org: worded from strut's record and showing
     /// all it sends; another workflow there gets no "Always allow"; one that
-    /// cannot be read, or holds more than the card shows, is refused with no
-    /// card; another step's proposal is asked as before.
-    @Test func aCallToAnOrgIsWordedFromStrutsRecordOrRefused() async throws {
+    /// cannot be read, is no longer pending, or holds more than the card
+    /// shows, is refused with no card. Another step's proposal gets its
+    /// record's card: the Mac keeps the record and asks with the card's
+    /// title, never the bridge's words; one strut has not got is refused at
+    /// once, without the patience a strut that does not answer gets.
+    @Test func aProposalsCardComesFromStrutsRecordOrIsRefused() async throws {
         let profile = TempProfile()
         let storage = try registeredStorage(profile, contact: keyG, Storage.Commit())
         let rules = ApprovalRules(store: try SQLiteAgentStore.inMemory(device: "mac"))
         let cards = DeviceActionsTests.Cards()
+        let kept = OSAllocatedUnfairLock(initialState: [(String, ProposalRecord)]())
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        @Sendable func record(_ id: String, step: String, status: ProposalRecord.Status = .pending, card: ProposalCard? = nil) -> ProposalRecord {
+            ProposalRecord(id: id, step: step, title: "Title of \(id)", card: card, status: status, by: .init(workflow: "orchestrator", runId: "r1"),
+                           input: .object(["peer": .string("acme"), "workflow": .string(step == "triage-call" ? "triage" : "orchestrator"),
+                                           "input": .object(["prompt": .string("Look at bug 12")])]))
+        }
         try await withTestEngine(storage, on: Transport(publishing: { _, _ in })) { engine in
-            let actions = DeviceActions(engine: engine, rules: rules, calendar: StandInCalendar(), peerRequest: { id in
+            let reader = ProposalReader(read: { id in
+                reads.withLock { $0 += 1 }
                 switch id {
+                case "triage", "more", "call": return .record(record(id, step: ProposalRecord.handOffStep))
+                case "decided": return .record(record(id, step: ProposalRecord.handOffStep, status: .applied))
+                case "gone": return .gone
+                case "down": throw PeelError("Peel's strut is not running.")
+                case "install":
+                    return .record(record(id, step: "package/install", card: ProposalCard(title: "Install the package acme/linear",
+                                                                                         fields: [.init(label: "Needs", value: "LINEAR_KEY")],
+                                                                                         accept: "Install", reject: "Don't install")))
+                default: return .record(record(id, step: "graph/create-node"))
+                }
+            }, peer: { record in
+                switch record.id {
                 case "triage": return PeerRequest(peer: "acme", name: "Acme", workflow: "triage", prompt: "Look at bug 12")
                 case "more": return PeerRequest(peer: "acme", name: "Acme", workflow: "orchestrator", prompt: "Hi", more: true)
-                case "gone": throw PeelError("strut's proposal is no longer waiting.")
-                default: return nil
+                case "call": return PeerRequest(peer: "acme", name: "Acme", workflow: "orchestrator", prompt: "Look at bug 12")
+                default: throw PeelError("strut's proposal names no workspace.")
                 }
-            }) { _, approval in await cards.ask(approval) }
+            }, keep: { request, record in kept.withLock { $0.append((request.id, record)) } }, patience: 0)
+            let actions = DeviceActions(engine: engine, rules: rules, calendar: StandInCalendar(), proposals: reader) { _, approval in await cards.ask(approval) }
             func approve(_ id: String) async -> DeviceAnswer? {
                 await actions.answer(DeviceRequest(agent: "02a", id: id, kind: "approve",
                                                    args: .object(["intent": .object(["action": .string("Run strut/run-workflow")])]),
@@ -333,18 +358,51 @@ struct HiveTests {
             let card = try #require(cards.asked.first)
             #expect(card.action == "Send this to Acme?" && card.content == "Look at bug 12" && !card.mayBeAlwaysAllowed)
             #expect(card.details.last == "Runs its workflow \u{201C}triage\u{201D}")
-            let kept = try rules.all()
-            #expect(kept.isEmpty)
-            // Unreadable, or more than it can show: refused, no card.
-            for id in ["proposal:gone", "proposal:more"] {
+            #expect(try rules.all().isEmpty)
+            // Unreadable, gone, decided already, or more than it can show: refused, no card.
+            for id in ["proposal:down", "proposal:gone", "proposal:decided", "proposal:more"] {
                 #expect(await approve(id)?.status == .failed, "\(id)")
             }
             #expect(cards.asked.count == 1)
-            // Another step's proposal: the bridge's words, as before.
+            // The record is kept whenever one was read, decided or not.
+            #expect(kept.withLock { $0.map(\.0) } == ["proposal:triage", "proposal:decided", "proposal:more"])
+            // Another step's proposal: the record's card, by its title, with no "Always allow".
             cards.reply = .some(.allowOnce)
-            #expect(await approve("proposal:other")?.status == .done)
-            #expect(cards.asked.last?.action == "Run strut/run-workflow" && cards.asked.last?.target == nil)
+            #expect(await approve("proposal:install")?.status == .done)
+            #expect(cards.asked.last?.action == "Install the package acme/linear" && cards.asked.last?.target == nil)
+            #expect(await approve("proposal:node")?.status == .done)
+            #expect(cards.asked.last?.action == "Title of node")
+            #expect(kept.withLock { $0.last?.1.step } == "graph/create-node")
+            // A request that is no proposal: the bridge's words, as before.
+            #expect(await approve("1792159542479/turn/003-peel_device")?.status == .done)
+            #expect(cards.asked.last?.action == "Run strut/run-workflow")
         }
+    }
+
+    /// A read strut does not answer is tried again for the reader's
+    /// patience, never past the request's time, and a strut that has no such
+    /// proposal is not asked twice.
+    @Test func aReadStrutDoesNotAnswerIsTriedAgainBrieflyAndAGoneOneOnce() async throws {
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let flaky = ProposalReader(read: { id in
+            let n = reads.withLock { $0 += 1; return $0 }
+            if id == "gone" { return .gone }
+            if id == "other" { throw ProposalRefused("strut answered for another proposal.") }
+            guard n >= 2 else { throw PeelError("Peel's strut is not running.") }
+            return .record(ProposalRecord(id: id, step: "x/y", title: "T", status: .pending, by: .init(workflow: "w", runId: "r")))
+        }, peer: { _ in throw PeelError("not a hand-off") }, keep: { _, _ in }, patience: 10)
+        let record = try await DeviceActions.readProposal("p1", with: flaky, before: Date().addingTimeInterval(3600))
+        #expect(record.id == "p1" && reads.withLock { $0 } == 2)
+        // strut answered: gone, or about another record. Once.
+        for id in ["gone", "other"] {
+            reads.withLock { $0 = 0 }
+            await #expect(throws: ProposalRefused.self) { try await DeviceActions.readProposal(id, with: flaky, before: Date().addingTimeInterval(3600)) }
+            #expect(reads.withLock { $0 } == 1, "\(id)")
+        }
+        // The request's time is up first: no second try.
+        reads.withLock { $0 = 0 }
+        await #expect(throws: PeelError.self) { try await DeviceActions.readProposal("p2", with: flaky, before: Date().addingTimeInterval(1)) }
+        #expect(reads.withLock { $0 } == 1)
     }
 
     /// A peer's token goes only to https off this Mac: any other address
@@ -380,7 +438,11 @@ struct HiveTests {
         }
         defer { strut.stop() }
         let client = AutomationsClient(server: try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k")))
-        let asked = try #require(try await client.peerRequest(proposal: "p1"))
+        guard case .record(let record) = try await client.readProposal("p1") else {
+            Issue.record("not read")
+            return
+        }
+        let asked = try await client.peerRequest(from: record)
         #expect(asked.name == "Acme" && asked.prompt == "Hi" && asked.more == more)
     }
 

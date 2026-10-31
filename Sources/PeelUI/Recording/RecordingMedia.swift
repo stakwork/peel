@@ -3,6 +3,52 @@ import CoreMedia
 import Foundation
 import Synchronization
 
+/// Where a recording's samples go in its file, around pauses
+/// (docs/recording.md): dropped while paused, then moved back by all the
+/// time paused, so the file carries straight on.
+public struct RecordingPauses: Sendable {
+    /// Between the last sample before a pause and the first after: longer
+    /// than a mic's buffer, or the sound either side would overlap.
+    static let seam = CMTime(value: 1, timescale: 10)
+    /// Dropped after the first sample since Resume. A sample comes a moment
+    /// after it was captured, so the first ones hold what was said in the pause.
+    static let settle = CMTime(value: 1, timescale: 5)
+
+    public private(set) var paused = false
+    private var rejoining = false
+    private var joining = false
+    private var resumedAt: CMTime?
+    private var gap = CMTime.zero
+
+    public init() {}
+
+    public mutating func pause() { paused = true }
+
+    public mutating func resume() {
+        guard paused else { return }
+        paused = false
+        rejoining = true
+    }
+
+    /// Where the sample at `time` goes in the file, and whether it is the
+    /// first since a pause; nil to drop it. `latest` is the file's latest time.
+    public mutating func fileTime(of time: CMTime, after latest: CMTime?) -> (time: CMTime, rejoined: Bool)? {
+        guard !paused else { return nil }
+        if rejoining {
+            rejoining = false
+            joining = true
+            resumedAt = time + Self.settle
+        }
+        if let resumedAt, time < resumedAt { return nil }
+        let rejoined = joining
+        if joining {
+            joining = false
+            if let latest { gap = time - latest - Self.seam }
+        }
+        return (time - gap, rejoined)
+    }
+}
+
 /// A recording's file (docs/recording.md): how it is written, then its
 /// audio read out for strut and its captions written into it. Nothing is
 /// re-encoded after it is written but that audio.
@@ -50,6 +96,17 @@ public enum RecordingMedia {
             writer.add(input)
         }
         return (writer, video, audio)
+    }
+
+    /// `sample` moved `offset` along the file's clock.
+    public static func shifted(_ sample: CMSampleBuffer, by offset: CMTime) -> CMSampleBuffer? {
+        guard offset != .zero else { return sample }
+        guard var timing = try? sample.sampleTimingInfos() else { return nil }
+        for index in timing.indices {
+            timing[index].presentationTimeStamp = timing[index].presentationTimeStamp + offset
+            if timing[index].decodeTimeStamp.isValid { timing[index].decodeTimeStamp = timing[index].decodeTimeStamp + offset }
+        }
+        return try? CMSampleBuffer(copying: sample, withNewTiming: timing)
     }
 
     /// The recording's sound as 16 kHz mono PCM16 in a WAV at `wav`, as

@@ -1605,6 +1605,29 @@ stakwork/hive#5667.
 - Built and tested offline; the Mac and iPhone apps build. Not checked in
   the running app, nor against a Hive with the routes on.
 
+## Shared screen at full size (2026-10-30)
+
+Tom found a shared screen soft and jumpy on the other end. The share was
+published with LiveKit's defaults, so simulcast added a half-size 3 fps
+layer beside the full one, and a Peel viewer's adaptive stream (the Swift
+SDK, Mac and iPhone; the web client measures in pixels) asked the server
+for the layer that fits its `VideoView` in points, not pixels
+(`VideoView.rendererSize` is the view's frame). A share in a call window
+under 960 points wide, which is most laptop windows, got the 960-pixel
+3 fps layer stretched over a Retina screen. Now the share is published
+with `ScreenShare.publishOptions` (`simulcast: false`): one layer, the
+full 1920-wide 15 fps picture, 2.5 Mbit/s at most. Dynacast still pauses
+it while nobody is subscribed. The capture itself is unchanged (1920 on
+the long side, 15 fps, `CallScreenShare.swift`). Not checked on a real
+call in this session: a two-Mac share with the window at laptop size.
+
+Review finding not applied: every viewer now receives the full stream,
+a phone with the share in a thumbnail too, where the old low layer was
+about 150 kbit/s. Accepted: a shared screen is there to be read, the
+cost is one 2.5 Mbit/s stream per viewer, and a sharper low layer
+(`screenShareSimulcastLayers`) would still be picked by points, so it
+would not fix a laptop's call window.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

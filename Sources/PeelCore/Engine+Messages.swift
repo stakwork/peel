@@ -38,16 +38,25 @@ extension Engine {
     /// agent's send request it answers: sent at most once, refused
     /// (`requestClosed`) once past its time or already being sent, and
     /// throwing `SendUnconfirmed` when it is stored but its publish failed
-    /// or may have, so the request is never answered as sent.
+    /// or may have, so the request is never answered as sent. `metadata`,
+    /// a JSON object as text, goes as the body's `metadata`: the CLI's
+    /// `--metadata`, for a message standing in for another client's (a
+    /// tribe's Jamie) in a check; the app sends none this way.
     @discardableResult
     public func sendText(
         _ text: String, to pubkey: String, replyTo: String? = nil, inThread: String? = nil, priceAtMost: UInt64? = nil,
-        for request: DeviceRequest? = nil
+        metadata: String? = nil, for request: DeviceRequest? = nil
     ) async throws -> String? {
         let links = try links(replyTo: replyTo, inThread: inThread, in: pubkey)
         var fields = ["content": text]
         fields["replyUuid"] = links.replyTo
         fields["threadUuid"] = links.thread
+        if let metadata {
+            guard metadata.utf8.count <= MessageMetadata.maxLength, case .object? = JSONValue(text: metadata) else {
+                throw PeelError("a message's metadata is a JSON object of at most \(MessageMetadata.maxLength / 1024) KB")
+            }
+            fields["metadata"] = metadata
+        }
         return try await deliver(body: try Self.json(fields), to: pubkey, priceAtMost: priceAtMost, replacing: nil, for: request)
     }
 

@@ -14,6 +14,18 @@ CODE_SIGN_STYLE = Automatic
 MARKETING_VERSION = 1.0.0
 CURRENT_PROJECT_VERSION = 1
 
+// Remote push (iPhone, docs/phases/07-iphone.md "Push: what is built"). The
+// app and its notification extension share this app group and Keychain group
+// (the team prefix is added where it is used), and both read them back from
+// Info.plist (PeelPush's PushConfig). They follow PEEL_BUNDLE_ID, so a build
+// under another team needs only its own bundle ID. The group IDs must exist
+// in the Apple portal for the team that signs.
+PEEL_APP_GROUP = group.$(PEEL_BUNDLE_ID)
+PEEL_KEYCHAIN_GROUP = $(PEEL_BUNDLE_ID).shared
+// APNs gateway: the sandbox for Debug, production for Release (archives).
+PEEL_APS_ENVIRONMENT = development
+PEEL_APS_ENVIRONMENT[config=Release] = production
+
 #include? "Local.xcconfig"
 
 PRODUCT_BUNDLE_IDENTIFIER = $(PEEL_BUNDLE_ID)

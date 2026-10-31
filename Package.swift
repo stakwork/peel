@@ -10,6 +10,8 @@ let package = Package(
         .library(name: "PeelUI", targets: ["PeelUI"]),
         .library(name: "PeelAgent", targets: ["PeelAgent"]),
         .library(name: "PeelDiagnostics", targets: ["PeelDiagnostics"]),
+        .library(name: "PeelPush", targets: ["PeelPush"]),
+        .library(name: "PeelPushCrypto", targets: ["PeelPushCrypto"]),
         .executable(name: "peel", targets: ["peel"]),
     ],
     dependencies: [
@@ -32,6 +34,13 @@ let package = Package(
                 .product(name: "CrashReporter", package: "plcrashreporter", condition: .when(platforms: [.macOS, .iOS])),
             ]
         ),
+        // Remote push without the core: the token, the shared push key, the
+        // ids from Info.plist, the flag, and what a push says. Pure logic that
+        // the app and the notification extension share; builds anywhere.
+        .target(name: "PeelPush"),
+        // The core's decryptChildIndex for the notification extension, which
+        // links this and PeelPush alone (not PeelCore).
+        .target(name: "PeelPushCrypto", dependencies: ["PeelPush", "Sphinxrs"]),
         // Rust core, built by scripts/build-ffi.sh.
         .binaryTarget(name: "sphinxrsFFI", path: "Vendor/sphinxrsFFI.xcframework"),
         // Generated bindings; not written for Swift 6 concurrency checking.
@@ -45,6 +54,7 @@ let package = Package(
             dependencies: [
                 "Sphinxrs",
                 "PeelDiagnostics",
+                "PeelPush",
                 .product(name: "MQTTNIO", package: "mqtt-nio"),
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "NIOCore", package: "swift-nio"),
@@ -82,10 +92,12 @@ let package = Package(
         // No PeelAgent here, so these also run on iOS.
         .testTarget(
             name: "PeelCoreTests",
-            dependencies: ["PeelCore", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["PeelCore", "PeelPush", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // The app's model, on a real engine and profile; no window, no server.
         .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "AgentKit", "PeelTestSupport"]),
+        // Pure logic: runs on Linux too (`swift test --filter PeelPushTests`).
+        .testTarget(name: "PeelPushTests", dependencies: ["PeelPush"]),
         // Pure logic: runs on Linux too (`swift test --filter PeelDiagnosticsTests`).
         .testTarget(name: "PeelDiagnosticsTests", dependencies: ["PeelDiagnostics"]),
         // PeelAgent is Mac-only, and so are its tests.
@@ -99,7 +111,7 @@ let package = Package(
         // agent's journeys drive PeelAgent, strut and the bridge with a stand-in model.
         .testTarget(
             name: "PeelIntegrationTests",
-            dependencies: ["PeelCore", "AgentKit", "PeelAgent", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["PeelCore", "AgentKit", "PeelAgent", "PeelUI", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         // Timings on a synthetic large account; skipped unless PEEL_BENCH=1.
         .testTarget(

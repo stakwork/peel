@@ -18,6 +18,15 @@ public struct HivePeer: Codable, Sendable, Equatable {
     public var description: String?
     public var repos: [String]?
 
+    public init(id: String, baseUrl: String, token: String, label: String? = nil, description: String? = nil, repos: [String]? = nil) {
+        self.id = id
+        self.baseUrl = baseUrl
+        self.token = token
+        self.label = label
+        self.description = description
+        self.repos = repos
+    }
+
     /// What the person reads: its label, or its id.
     public var name: String { Self.name(label: label, id: id) }
 

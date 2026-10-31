@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PeelCore
+import PeelUI
 
 extension Journeys {
     @Suite struct Tribes {
@@ -182,6 +183,85 @@ extension Journeys {
             #expect(try second.messages(in: club.pubkey).allSatisfy { $0.status == nil || $0.delivery == .delivered })
 
             for person in [alice, second, carol] { await person.close() }
+        }
+
+        /// A proposal on Jamie's post in a tribe, as Hive posts it
+        /// (docs/hive-tribes.md, "Proposals in a tribe"), through the real
+        /// core: Bob stands in for Jamie and posts it with the proposal in
+        /// `metadata.strut`; Alice, the owner, keeps the card from the post
+        /// and answers it, and her reply reaches Bob as a reply to his post
+        /// with the card's own word; Bob's reply in the thread saying it
+        /// was applied ends her card. Carol, a member, gets the post and its
+        /// proposal too (the app gives her the card without buttons).
+        @Test func aProposalOnJamiesPostIsAnsweredByTheOwnersReply() async throws {
+            let alice = try await Person.create("alice")
+            let bob = try await Person.create("bob")
+            let carol = try await Person.create("carol")
+            for person in [alice, bob, carol] { try await Bank.shared.give(500, to: person) }
+            let tag = UUID().uuidString.prefix(6)
+            let tribe = try await alice.engine.createTribe(TribeSettings(name: "jamie \(tag)"))
+            let link = try #require(tribe.link)
+            try await bob.engine.joinTribe(link: link)
+            try await carol.engine.joinTribe(link: link)
+            try await Self.waitUntilIn(tribe.pubkey, bob)
+            try await Self.waitUntilIn(tribe.pubkey, carol)
+
+            let watch = await ProposalWatch()
+            await MainActor.run {
+                watch.isTribe = { $0 == tribe.pubkey }
+                watch.sendReply = { text, chat, post in try await alice.engine.sendText(text, to: chat, replyTo: post) }
+            }
+            await watch.open(alice.storage)
+            defer { Task { @MainActor in watch.close() } }
+            let made = #"""
+            {"strut":{"workspace":"acme","artifacts":[],"proposals":[{"id":"p-install-\#(tag)","step":"package/install",
+             "title":"Install the package acme/linear","summary":"acme/linear 1.0.0 (MIT) from acme.",
+             "card":{"v":1,"title":"Install the package acme/linear","fields":[{"label":"Version","value":"1.0.0 (MIT)"},{"label":"Runs code","value":"Yes","danger":true}],
+                     "actions":{"accept":"Install","reject":"Don't install"},"full":true},
+             "status":"pending","url":"/proposals/p-install-\#(tag)","rationale":"You asked for Linear."}]}}
+            """#
+            try await bob.engine.sendText("Waiting for alice to approve: Install the package acme/linear", to: tribe.pubkey, metadata: made)
+            let post = try await eventually("Alice to see Jamie's post") {
+                try alice.messages(in: tribe.pubkey).first { !$0.fromMe && $0.strutProposals != nil }
+            }
+            let postUUID = try #require(post.uuid)
+            await MainActor.run { watch.noticed(post) }
+            let key = ProposalKey(source: .org("acme"), id: "p-install-\(tag)")
+            let kept = try await MainActor.run { try #require(watch.kept[key]) }
+            #expect(kept.post == TribePost(tribe: tribe.pubkey, uuid: postUUID, poster: "bob") && kept.record.status == .pending)
+            #expect(kept.record.card?.accept == "Install" && kept.record.card?.hasDanger == true)
+
+            // The owner's answer: a reply to the post with the card's word, which Bob (Jamie) gets as such.
+            await watch.answerInTribe(key, accept: true)
+            let answer = try await eventually("Bob to see Alice's answer") {
+                try bob.messages(in: tribe.pubkey).first { !$0.fromMe && $0.replyUUID == postUUID }
+            }
+            #expect(answer.content == "Install" && answer.threadRoot == postUUID)
+            // Alice's own copy of the reply, as the model hands every message of hers: the answer.
+            let own = try #require(try alice.messages(in: tribe.pubkey).first { $0.fromMe && $0.replyUUID == postUUID })
+            await MainActor.run { watch.answered(byOwn: own) }
+            let answered = try await MainActor.run { try #require(watch.kept[key]) }
+            #expect(answered.answer == true && answered.answeredAt == own.date && answered.record.status == .pending)
+
+            // Jamie's word in the thread: the card ends.
+            let done = #"{"strut":{"workspace":"acme","proposals":[{"id":"p-install-\#(tag)","status":"applied","title":"Install the package acme/linear","step":"package/install"}]}}"#
+            try await bob.engine.sendText("Applied: Install the package acme/linear", to: tribe.pubkey, replyTo: postUUID, metadata: done)
+            let outcome = try await eventually("Alice to see Jamie's outcome") {
+                try alice.messages(in: tribe.pubkey).first { !$0.fromMe && $0.strutProposals?.outcomes.isEmpty == false }
+            }
+            #expect(outcome.threadRoot == postUUID)
+            await MainActor.run { watch.noticed(outcome) }
+            let ended = try await MainActor.run { try #require(watch.kept[key]) }
+            #expect(ended.record.status == .applied && ended.isOver && ended.post?.uuid == postUUID)
+
+            // A member gets the post and its proposal as well.
+            let carols = try await eventually("Carol to see Jamie's post") {
+                try carol.messages(in: tribe.pubkey).first { !$0.fromMe && $0.strutProposals != nil }
+            }
+            #expect(carols.strutProposals?.proposed.first?.id == "p-install-\(tag)" && carols.uuid == postUUID)
+            await alice.close()
+            await bob.close()
+            await carol.close()
         }
 
         static func waitUntilIn(_ tribe: String, _ person: Person) async throws {

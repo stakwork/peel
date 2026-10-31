@@ -3,6 +3,44 @@ import Foundation
 import os
 import PeelCore
 
+/// strut answered about the proposal: it has none by that id, it is not
+/// this Mac's to read, or the answer was not that record. Not worth asking
+/// again, where a strut that does not answer is.
+public struct ProposalRefused: Error, LocalizedError {
+    public let reason: String
+
+    public init(_ reason: String) {
+        self.reason = reason
+    }
+
+    public var errorDescription: String? { reason }
+}
+
+/// How the Mac reads one of Peel's own strut's proposals for its card, and
+/// keeps what it read: `read` the record (`AutomationsClient.readProposal`;
+/// the watch reads with the same), `peer` the org call a hand-off proposal
+/// is (`AutomationsClient.peerRequest(from:)`), `keep` what was read
+/// (`ProposalWatch`), from which the card is drawn now and after.
+public struct ProposalReader: Sendable {
+    public var read: @Sendable (String) async throws -> ProposalRead
+    public var peer: @Sendable (ProposalRecord) async throws -> PeerRequest
+    public var keep: @Sendable (DeviceRequest, ProposalRecord) async -> Void
+    /// How long a read strut does not answer is tried again before the
+    /// card is refused: strut may be starting again.
+    public var patience: TimeInterval
+
+    public init(
+        read: @escaping @Sendable (String) async throws -> ProposalRead,
+        peer: @escaping @Sendable (ProposalRecord) async throws -> PeerRequest,
+        keep: @escaping @Sendable (DeviceRequest, ProposalRecord) async -> Void, patience: TimeInterval = 90
+    ) {
+        self.read = read
+        self.peer = peer
+        self.keep = keep
+        self.patience = patience
+    }
+}
+
 /// The device requests that act as you (docs/agent-on-strut.md, "Sends as
 /// you" and "Approvals"), on the Mac: `send`, planned by the send tool
 /// and allowed on its card in the agent's DM (or by an "Always allow" rule),
@@ -24,8 +62,8 @@ public struct DeviceActions: Sendable {
     let calendar: DeviceCalendar
     let rules: ApprovalRules
     let grants: SendGrants
-    /// The org call a `proposal:` card is for, read from strut (`AutomationsClient.peerRequest`).
-    let peerRequest: (@Sendable (String) async throws -> PeerRequest?)?
+    /// How one of strut's proposals is read for its card (`ProposalReader`); nil, the bridge's words.
+    let proposals: ProposalReader?
     let ask: Ask
     /// A card remembered an "Always allow" or kept a send grant.
     let changed: @Sendable () -> Void
@@ -61,11 +99,10 @@ public struct DeviceActions: Sendable {
         }
     }
 
-    /// `calendar`: the person's Calendar and Reminders; `peerRequest`: what
-    /// a `proposal:` card's call to an org is, from strut.
+    /// `calendar`: the person's Calendar and Reminders; `proposals`: how a
+    /// `proposal:` card's record is read from strut and kept.
     public init(
-        engine: Engine, rules: ApprovalRules, calendar: any CalendarStore,
-        peerRequest: (@Sendable (String) async throws -> PeerRequest?)? = nil,
+        engine: Engine, rules: ApprovalRules, calendar: any CalendarStore, proposals: ProposalReader? = nil,
         ask: @escaping Ask, changed: @escaping @Sendable () -> Void = {}
     ) {
         self.engine = engine
@@ -74,7 +111,7 @@ public struct DeviceActions: Sendable {
         self.calendar = DeviceCalendar(store: calendar)
         self.rules = rules
         grants = SendGrants(beside: rules)
-        self.peerRequest = peerRequest
+        self.proposals = proposals
         self.ask = ask
         self.changed = changed
     }
@@ -189,16 +226,22 @@ public struct DeviceActions: Sendable {
     /// offered: the intent names no target.
     private func approve(_ request: DeviceRequest, _ args: AgentKit.JSONValue) async -> DeviceAnswer? {
         // One of strut's proposals, relayed by the bridge as `proposal:<id>`:
-        // read from strut's own record. A call to an org's assistant is worded
-        // here; one that cannot be read is refused, never shown in the
-        // bridge's words; a proposal takes no send grant.
+        // read from strut's own record, which is kept so the card is drawn
+        // from it, now and after. A call to an org's assistant is worded
+        // here (`peerCall`); any other step gets the record's card
+        // (`proposalCard`). One that cannot be read is refused, never shown
+        // in the bridge's words; a proposal takes no send grant.
         let proposal = request.id.hasPrefix(Self.proposalPrefix)
-        if proposal, let peerRequest {
+        if proposal, let proposals {
             do {
-                if let asked = try await peerRequest(String(request.id.dropFirst(Self.proposalPrefix.count))) {
-                    return await peerCall(request, asked)
-                }
+                let record = try await Self.readProposal(String(request.id.dropFirst(Self.proposalPrefix.count)), with: proposals,
+                                                         before: request.deadline)
+                await proposals.keep(request, record)
+                guard record.status == .pending else { return .failed("strut's proposal is no longer waiting.") }
+                return record.isHandOff ? await peerCall(request, try await proposals.peer(record)) : await proposalCard(request, record)
             } catch {
+                // Cut short (the account closing): asked again once it is open, never turned down for it.
+                if Task.isCancelled || error is CancellationError { return nil }
                 return .failed("Peel could not read this request from strut, so it was not shown: \(error.localizedDescription)")
             }
         }
@@ -263,8 +306,42 @@ public struct DeviceActions: Sendable {
 
     /// The id the bridge gives a card for one of strut's proposals.
     public static let proposalPrefix = "proposal:"
-    /// The tool an org's "Always allow" is kept under.
-    public static let peerTool = "strut/run-workflow"
+    /// The tool an org's "Always allow" is kept under: the step that hands a request to an org.
+    public static let peerTool = ProposalRecord.handOffStep
+
+    /// The card for any other proposal: drawn by the Mac from the record it
+    /// kept (`ProposalReader.keep`), with the card's own buttons; here only
+    /// its title marks what waits, and the gate keeps its time. Never
+    /// "Always allow": a rule would cover any input of the step.
+    private func proposalCard(_ request: DeviceRequest, _ record: ProposalRecord) async -> DeviceAnswer? {
+        let intent = ToolIntent(action: record.card?.title ?? record.title)
+        if let refusal = await decide(request, tool: record.step, intent: intent) { return refusal.answer }
+        return .done("Accepted.")
+    }
+
+    /// Reads proposal `id` from strut, trying again while strut does not
+    /// answer (it may be starting again) for `reader.patience` at most, and
+    /// never past the request's time; one strut says it has not got is not
+    /// asked for again.
+    static func readProposal(_ id: String, with reader: ProposalReader, before deadline: Date) async throws -> ProposalRecord {
+        let giveUp = min(deadline, Date().addingTimeInterval(reader.patience))
+        var wait: TimeInterval = 2
+        while true {
+            do {
+                switch try await reader.read(id) {
+                case .record(let record): return record
+                case .gone: throw ProposalRefused("strut has no proposal \(id).")
+                case .forbidden: throw ProposalRefused("strut's proposal \(id) is not this Mac's to read.")
+                }
+            } catch let refused as ProposalRefused {
+                throw refused
+            } catch {
+                guard !Task.isCancelled, Date().addingTimeInterval(wait) < giveUp else { throw error }
+                try await Task.sleep(for: .seconds(wait))
+                wait = min(wait * 2, 30)
+            }
+        }
+    }
 
     /// What an org's "Always allow" names: that org's assistant, never another workflow there.
     public static func peerRuleTarget(_ peer: String) -> String { "\(peer)/orchestrator" }

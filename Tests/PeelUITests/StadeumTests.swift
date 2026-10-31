@@ -196,6 +196,27 @@ struct StadeumTests {
         stadeum.close()
     }
 
+    @Test func aTappedHiveLinkOpensAPairedWorkspacesAppOrSaysToConnectFirst() throws {
+        let profile = try profile()
+        let stadeum = Stadeum()
+        let mine = URL(string: "https://hive.sphinx.chat/w/acme/apps/hive/board")!
+        // No Stadeum here yet.
+        #expect(stadeum.tap(mine) == .connectFirst("acme"))
+        try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        stadeum.open(profile)
+        guard case .open(let page, let request) = stadeum.tap(mine) else {
+            Issue.record("a paired workspace's app did not open")
+            return
+        }
+        #expect(page == OrgPage.app("hive/board", on: "acme") && request.peer == "acme")
+        // A workspace not paired here, then links that are not Hive's apps.
+        #expect(stadeum.tap(URL(string: "https://hive.sphinx.chat/w/globex/apps/board")!) == .connectFirst("globex"))
+        #expect(stadeum.tap(URL(string: "https://example.com/w/acme/apps/board")!) == .notOurs)
+        #expect(stadeum.tap(URL(string: "http://hive.sphinx.chat/w/acme/apps/board")!) == .notOurs)
+        #expect(stadeum.tap(URL(string: "https://hive.sphinx.chat/w/acme")!) == .notOurs)
+        stadeum.close()
+    }
+
     /// A tribe's Jamie as Hive keeps it (docs/hive-tribes.md): unknown
     /// until read, read again at most once a minute for an approval,
     /// offered with the org it is linked to even when this device no longer

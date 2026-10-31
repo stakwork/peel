@@ -35,6 +35,7 @@ struct WorkspaceAppView: View {
                     AppVersionsControl(title: app.title, versions: versions, previewing: $previewing, busy: changing,
                                        change: change)
                 }
+                AppShareButton(app: app)
                 AppPinButton(app: app)
                 IconButton("arrow.clockwise", help: "Reload") { loads += 1 }
             }
@@ -126,6 +127,22 @@ struct AppPinButton: View {
             }
         }
         .accessibilityValue(pinned ? "On" : "Off")
+    }
+}
+
+/// Copies the link that shares an app (`WorkspaceApp.shareLink`): to the
+/// clipboard only, nothing is sent. Not shown for one of the person's own.
+struct AppShareButton: View {
+    @Environment(AppModel.self) private var model
+    let app: WorkspaceApp
+
+    var body: some View {
+        if let link = app.shareLink() {
+            IconButton("link", help: "Copy link to share") {
+                guard Clipboard.copy(link.absoluteString) else { return }
+                (model.mainPresenter as? MenuPresenter)?.showToast("Link copied")
+            }
+        }
     }
 }
 

@@ -259,6 +259,15 @@ extension AppModel {
         }
     }
 
+    /// Sends `text` to `chat` (a reply to `replyTo`, in `inThread`) and
+    /// marks the chat as sent to: the composer's text-only send, and the
+    /// tribe owner's answer to a proposal on Jamie's post.
+    func sendText(_ text: String, to chat: String, replyTo: String? = nil, inThread: String? = nil) async throws {
+        guard let engine else { throw PeelError("the account is closed.") }
+        try await engine.sendText(text, to: chat, replyTo: replyTo, inThread: inThread)
+        sent(in: chat)
+    }
+
     /// Sends what a composer holds: its files, one message each, with the
     /// text as the last one's caption (or on its own), all with the reply
     /// and thread links the composer was set to. Returns whether the text
@@ -289,8 +298,7 @@ extension AppModel {
         conversationNotices[chat] = nil
         if files.isEmpty {
             do {
-                try await engine.sendText(text, to: chat, replyTo: replyTo, inThread: inThread)
-                sent(in: chat)
+                try await sendText(text, to: chat, replyTo: replyTo, inThread: inThread)
                 return true
             } catch {
                 conversationNotices[chat] = PeelError.noted(error, couldNot: "send")

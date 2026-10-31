@@ -9,12 +9,16 @@ import PeelCore
 /// from its strut's record (`readLocal`, kept here by `DeviceActions`
 /// through `keep`), and the person's own on each Stadeum workspace's strut,
 /// read with the person token Peel holds and decided with it here
-/// (`decide`). Each is kept as last read (`Storage.keepProposal`), so a
-/// restart draws the cards as they stood before the next read. No one
-/// pushes a change, so this polls: the workspaces' pending lists while Peel
-/// is in front, every open record after an answer until it is over, and
-/// once more when Peel comes to the front or a hand-off to a workspace went
-/// through (that is when the workspace is most likely to propose something).
+/// (`decide`), and those Jamie's posts in a tribe carry (`noticed`,
+/// docs/hive-tribes.md, "Proposals in a tribe"), whose state comes from the
+/// tribe's posts alone and which the tribe's owner answers by a reply to
+/// the post (`answerInTribe`, through `sendReply`). Each is kept as last
+/// read (`Storage.keepProposal`), so a restart draws the cards as they
+/// stood before the next read. No one pushes a change, so this polls: the
+/// workspaces' pending lists while Peel is in front, every open record
+/// after an answer until it is over, and once more when Peel comes to the
+/// front or a hand-off to a workspace went through (that is when the
+/// workspace is most likely to propose something).
 @MainActor @Observable
 public final class ProposalWatch {
     /// Every proposal kept, by where it is and its id.
@@ -42,6 +46,14 @@ public final class ProposalWatch {
     /// The workspaces and the person's actor on them, from the account's
     /// Stadeum pairing (`AppModel`); a test's or the offscreen driver's stand-in.
     @ObservationIgnored public var orgs: @MainActor () -> (peers: [HivePeer], actor: String?) = { ([], nil) }
+    /// How the tribe's owner answers a proposal on Jamie's post: a reply in
+    /// the tribe to that post with the card's own word (`text`, then the
+    /// tribe and the post's uuid), installed by `AppModel`; nil on a device
+    /// that sends none.
+    @ObservationIgnored public var sendReply: (@MainActor (String, String, String) async throws -> Void)?
+    /// Whether a chat is a tribe, from the account (`AppModel`): strut's
+    /// entries count only on a tribe's posts.
+    @ObservationIgnored public var isTribe: @MainActor (String) -> Bool = { _ in false }
     /// Whether Peel is in front: the workspaces are listed often then, seldom otherwise.
     @ObservationIgnored var inFront: @MainActor () -> Bool = { true }
     @ObservationIgnored var now: @MainActor () -> Date = { Date() }
@@ -94,9 +106,12 @@ public final class ProposalWatch {
     // MARK: - Open and close
 
     /// The account opened: what was kept (read after every write still on
-    /// its way, so a close and reopen sees the latest), and the watch. A
-    /// record kept meanwhile (a card asked as the account opens) is newer
-    /// than the store's and stays.
+    /// its way, so a close and reopen sees the latest), the tribes' posts
+    /// that name proposals (taken up as any arrival: a post that came while
+    /// nothing watched, to another process on the profile or before this
+    /// build, is a card all the same), and the watch. A record kept
+    /// meanwhile (a card asked as the account opens) is newer than the
+    /// store's and stays.
     public func open(_ storage: Storage) async {
         close()
         self.storage = storage
@@ -104,18 +119,26 @@ public final class ProposalWatch {
         let now = now()
         let cutoff = now.addingTimeInterval(-Self.keptAfterOver)
         let tail = writes
-        let loaded = await Task.detached {
+        let (loaded, posts) = await Task.detached {
             await tail?.value
             try? storage.forgetOrgProposals(endedBefore: cutoff)
-            return (try? storage.proposals()) ?? []
+            let loaded = (try? storage.proposals()) ?? []
+            // The tribes' posts stored since the last look, those naming a proposal.
+            var posts: [Message] = []
+            if let since = try? storage.proposalPostsScanned(), let scan = try? storage.proposalPosts(after: since) {
+                posts = scan.posts.filter { $0.strutProposals != nil }
+                try? storage.setProposalPostsScanned(scan.upTo)
+            }
+            return (loaded, posts)
         }.value
         guard generation == self.generation, self.storage === storage else { return }
-        for proposal in loaded where proposal.source == .local || (proposal.ending?.at ?? now) >= cutoff {
+        for proposal in loaded where proposal.source == .local || !proposal.fromStrut || (proposal.ending?.at ?? now) >= cutoff {
             guard kept[proposal.key] == nil else { continue }
             kept[proposal.key] = proposal
             if let request = proposal.request { byRequest[request] = proposal.key }
             schedule(proposal, at: now)
         }
+        for post in posts { noticed(post) }
         listSoon = true
         refreshCards(at: now)
         loop = Task { await run(generation) }
@@ -154,6 +177,8 @@ public final class ProposalWatch {
     public func keep(_ record: ProposalRecord, source: ProposalSource, request: String? = nil, notAfter: Int64? = nil) {
         let now = now()
         let key = ProposalKey(source: source, id: record.id)
+        // One on a tribe's post stands by the tribe's posts alone (`fromStrut`).
+        guard kept[key]?.fromStrut ?? true else { return }
         var proposal = kept[key]?.updated(with: record, at: now)
             ?? KeptProposal(source: source, record: record, request: request, notAfter: notAfter, readAt: now)
         if proposal.request == nil, let request { proposal.request = request }
@@ -188,6 +213,129 @@ public final class ProposalWatch {
     public func cameToFront() {
         listSoon = true
         wake()
+    }
+
+    // MARK: - In a tribe
+
+    /// A post in a tribe arrived (live, or from history): what it says of
+    /// strut's proposals is kept (`Message.strutProposals`). A post that
+    /// made one gives the card, dated as the post is, under that post; a
+    /// reply saying how one ended moves it, only from the member who posted
+    /// the card, in its thread (any member can write the field, as with a
+    /// deliverable: a stranger's word never ends a card, and one that came
+    /// before the post gives way to it). Nothing outside a tribe, nothing
+    /// from your own posts (your reply is `answered(byOwn:)`).
+    public func noticed(_ message: Message) {
+        guard storage != nil, !message.fromMe, !message.deleted, let uuid = message.uuid, isTribe(message.chat),
+              let proposals = message.strutProposals else { return }
+        let now = now()
+        let date = message.date
+        let source = ProposalSource.org(proposals.workspace)
+        let poster = message.senderAlias
+        for record in proposals.proposed {
+            let key = ProposalKey(source: source, id: record.id)
+            let post = TribePost(tribe: message.chat, uuid: uuid, poster: poster)
+            let current = kept[key]
+            // Another post claiming the same proposal is not its card: the first keeps it.
+            if let on = current?.post, on.uuid != uuid { continue }
+            var proposal: KeptProposal
+            if let current, current.post?.poster ?? poster == poster {
+                // strut's listing of it (the owner's), or this post again.
+                proposal = current
+                proposal.take(carrier: record, on: post, at: date)
+            } else {
+                // New; or known only by someone else's reply in its thread, which was not its member's word.
+                proposal = KeptProposal(source: source, record: record, readAt: date, post: post)
+            }
+            store(proposal, at: now)
+        }
+        // Only a reply by the member who posted the card (by alias, which the tribes
+        // server keeps unique while they are in the tribe), in that post's thread, ends it.
+        let thread = message.threadRoot
+        guard thread != uuid, let poster else { return }
+        for record in proposals.outcomes {
+            let key = ProposalKey(source: source, id: record.id)
+            var proposal: KeptProposal
+            if let current = kept[key] {
+                guard let post = current.post, post.tribe == message.chat, post.uuid == thread, post.poster == poster else { continue }
+                proposal = current
+                proposal.take(outcome: record, at: date)
+            } else {
+                proposal = KeptProposal(source: source, record: record, readAt: date,
+                                        post: TribePost(tribe: message.chat, uuid: thread, poster: poster))
+            }
+            store(proposal, at: now)
+        }
+    }
+
+    /// Your own reply in a post's thread, as any message of yours arrives
+    /// (sent here, or from your other device): with a card's own word on an
+    /// open proposal of that post, it is your answer to it, dated as the
+    /// reply is.
+    public func answered(byOwn message: Message) {
+        guard storage != nil, message.fromMe, !message.deleted, message.type == MessageType.text, let uuid = message.uuid,
+              isTribe(message.chat) else { return }
+        let thread = message.threadRoot
+        let word = message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard thread != uuid, !word.isEmpty else { return }
+        let now = now()
+        for proposal in kept.values
+        where proposal.post?.tribe == message.chat && proposal.post?.uuid == thread && !proposal.isOver && proposal.record.status == .pending {
+            let card = proposal.record.shownCard
+            let accept: Bool
+            if word == card.accept { accept = true } else if word == card.reject { accept = false } else { continue }
+            guard proposal.answeredAt.map({ message.date > $0 }) ?? true else { continue }
+            var answered = proposal
+            answered.answeredAt = message.date
+            answered.answer = accept
+            store(answered, at: now)
+        }
+    }
+
+    /// The tribe's owner answers the proposal on Jamie's post: a reply to
+    /// that post with the card's own word (Hive reads it and decides on the
+    /// workspace's strut as the owner; the outcome comes back as a reply
+    /// for everyone). The reply, arriving like any message of yours, is the
+    /// answer (`answered(byOwn:)`), so the card says so until Jamie's word,
+    /// or offers the buttons again after a while
+    /// (`KeptProposal.answerPatience`). One at a time per card; a reply
+    /// that could not go is said on the card. `message`, the post, is taken
+    /// up first when the watch has not got it.
+    public func answerInTribe(_ key: ProposalKey, accept: Bool, on message: Message? = nil) async {
+        if kept[key] == nil, let message { noticed(message) }
+        guard let proposal = kept[key], let post = proposal.post, !proposal.isOver, proposal.record.status == .pending,
+              let sendReply else { return }
+        let card = proposal.record.shownCard
+        await deciding(key, accept: accept) {
+            try await sendReply(accept ? card.accept : card.reject, post.tribe, post.uuid)
+        } failed: { error in
+            PeelError.noted(error, couldNot: "send your answer")
+        }
+    }
+
+    /// One decision under way on `key`, which way, with its note cleared
+    /// first and the cards refreshed around it; what `work` throws is said
+    /// on the card in `failed`'s words. Returns whether it went, on this
+    /// account still.
+    @discardableResult
+    private func deciding(_ key: ProposalKey, accept: Bool, _ work: () async throws -> Void,
+                          failed: (any Error) -> String) async -> Bool {
+        guard deciding[key] == nil else { return false }
+        deciding[key] = accept
+        if notes[key] != nil { notes[key] = nil }
+        refreshCards(at: now())
+        let generation = generation
+        defer {
+            deciding[key] = nil
+            refreshCards(at: now())
+        }
+        do {
+            try await work()
+        } catch {
+            if generation == self.generation { notes[key] = failed(error) }
+            return false
+        }
+        return generation == self.generation
     }
 
     private func peer(_ id: String) -> HivePeer? {
@@ -241,7 +389,9 @@ public final class ProposalWatch {
     /// list covers.
     private func schedule(_ proposal: KeptProposal, at now: Date) {
         let key = proposal.key
-        guard !proposal.isOver, !proposal.isExpired(at: now) else {
+        // One on a tribe's post stands by its posts (`fromStrut`): a read of the
+        // workspace's strut by itself would say "not yours" to anyone but the owner.
+        guard !proposal.isOver, !proposal.isExpired(at: now), proposal.fromStrut else {
             due[key] = nil
             return
         }
@@ -259,6 +409,13 @@ public final class ProposalWatch {
         due[key] = interval.map { now.addingTimeInterval($0) }
     }
 
+    /// `key` read from strut as soon as the watch turns, where its truth is strut's.
+    private func readNow(_ key: ProposalKey) {
+        guard let proposal = kept[key], proposal.fromStrut else { return }
+        due[key] = now()
+        wake()
+    }
+
     /// Peel is done with `proposal` though strut never said it was final:
     /// gone, not this person's, or never readable. Its card goes as a final one does.
     private func finish(_ proposal: KeptProposal, _ ending: KeptProposal.Ending, at now: Date) {
@@ -269,8 +426,9 @@ public final class ProposalWatch {
 
     private func refreshCards(at now: Date) {
         let paired = orgs().peers
+        // A tribe's card is under its post, never here too: one place to decide it.
         let cards = kept.values.filter { proposal in
-            paired.contains { $0.id == proposal.source.peer }
+            proposal.fromStrut && paired.contains { $0.id == proposal.source.peer }
                 && (proposal.ending.map { now.timeIntervalSince($0.at) < Self.shownAfterOver } ?? true)
         }.sorted { ($0.record.createdAt ?? $0.readAt, $0.record.id) < ($1.record.createdAt ?? $1.readAt, $1.record.id) }
             .map { proposal in
@@ -290,24 +448,14 @@ public final class ProposalWatch {
     /// be decided yet, not this person's to decide, or a workspace whose
     /// strut is from before a person could: said on the card, nothing else.
     public func decide(_ key: ProposalKey, accept: Bool) async {
-        guard let id = key.source.peer, let peer = peer(id), kept[key] != nil, deciding[key] == nil else { return }
-        deciding[key] = accept
-        if notes[key] != nil { notes[key] = nil }
-        refreshCards(at: now())
-        let generation = generation
-        defer {
-            deciding[key] = nil
-            refreshCards(at: now())
-        }
-        let outcome: ProposalDecided
-        do {
+        guard let id = key.source.peer, let peer = peer(id), let proposal = kept[key], proposal.fromStrut else { return }
+        var outcome: ProposalDecided?
+        let went = await deciding(key, accept: accept) {
             outcome = try await peer.decide(key.id, accept: accept)
-        } catch {
-            guard generation == self.generation else { return }
-            notes[key] = "\(peer.name) could not be reached, so nothing was decided. Try again in a moment."
-            return
+        } failed: { _ in
+            "\(peer.name) could not be reached, so nothing was decided. Try again in a moment."
         }
-        guard generation == self.generation, let proposal = kept[key] else { return }
+        guard went, let outcome, let proposal = kept[key] else { return }
         let now = now()
         switch outcome {
         case .decided(let record):
@@ -317,8 +465,7 @@ public final class ProposalWatch {
             if record.isOpen { notes[key] = words }
             keep(record, source: key.source)
         case .alreadyDecided(nil, _):
-            due[key] = now
-            wake()
+            readNow(key)
         case .notYours:
             notes[key] = oldStruts.contains(id)
                 ? "You can't decide this one here: \(peer.name)'s workspace runs an older strut, which needs an update first."
@@ -329,6 +476,7 @@ public final class ProposalWatch {
             notes[key] = "\(peer.name) no longer has this proposal."
             finish(proposal, .gone(now), at: now)
         }
+        refreshCards(at: now)
     }
 
     // MARK: - The watch
@@ -434,7 +582,7 @@ public final class ProposalWatch {
                 keep(record, source: .org(peer))
             }
             for proposal in kept.values where proposal.source == .org(peer) && !proposal.isOver && !ids.contains(proposal.record.id) {
-                due[proposal.key] = now
+                readNow(proposal.key)
             }
         }
     }

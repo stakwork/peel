@@ -6,9 +6,12 @@ import Foundation
 // card in the agent chat: Peel's own strut's, which the bridge relays as an
 // `approve` device request (`proposal:<id>`, `DeviceActions`), and the
 // person's own on each Stadeum workspace's strut, read and decided with the
-// person token Peel holds (`HivePeer`). The record is strut's; every word in
-// it was written by a model or another host, so it is read bounded and
-// cleaned, and nothing in it is acted on but by the person's click.
+// person token Peel holds (`HivePeer`), and in a tribe on Jamie's post,
+// which carries the proposal in its metadata (`StrutProposals`,
+// docs/hive-tribes.md, "Proposals in a tribe"), where the tribe's owner
+// decides it by a reply. The record is strut's; every word in it was
+// written by a model or another host, so it is read bounded and cleaned,
+// and nothing in it is acted on but by the person's click.
 
 /// strut's record of one proposal, as Peel reads it.
 public struct ProposalRecord: Codable, Sendable, Equatable {
@@ -374,6 +377,73 @@ public struct ProposalKey: Hashable, Sendable {
     public init(source: ProposalSource, id: String) {
         self.source = source
         self.id = id
+    }
+}
+
+/// What a post in a tribe says of strut's proposals
+/// (`metadata.strut.proposals`, docs/hive-tribes.md, "Proposals in a
+/// tribe"): Jamie's post that a turn made one carries each, with its `url`
+/// on the workspace's strut, as the record the post has of it (id, step,
+/// title, summary, strut's card, status, the model's rationale); Jamie's
+/// reply once the owner decided carries how each ended (no url: id, step,
+/// title, status, the error). Whoever posted wrote it, as with a
+/// deliverable: a card is drawn under the post, its words are the post's,
+/// and nothing is done but by the owner's own reply. Entries Peel cannot
+/// read are skipped; a workspace that is no peer id reads as none.
+public struct StrutProposals: Sendable, Equatable {
+    /// The most read from one post.
+    public static let most = 10
+
+    /// The workspace whose strut the proposals are on, as `HivePeer.id`.
+    public let workspace: String
+    /// The proposals the post made, each a card under it.
+    public let proposed: [ProposalRecord]
+    /// How proposals ended, as the post says of each.
+    public let outcomes: [ProposalRecord]
+
+    public init(workspace: String, proposed: [ProposalRecord], outcomes: [ProposalRecord] = []) {
+        self.workspace = workspace
+        self.proposed = proposed
+        self.outcomes = outcomes
+    }
+
+    /// `metadata.strut` of a post, or nil when it names no proposal Peel can read.
+    init?(strut: JSONValue?) {
+        guard case .object(let fields)? = strut, case .string(let workspace)? = fields["workspace"],
+              AgentArtifact.Handle.isPeerID(workspace), case .array(let entries)? = fields["proposals"] else { return nil }
+        var proposed: [ProposalRecord] = []
+        var outcomes: [ProposalRecord] = []
+        var ids: Set<String> = []
+        for entry in entries.prefix(Self.most) {
+            guard case .object(var given) = entry else { continue }
+            // A proposal has its address on the workspace's strut; an outcome names none.
+            let carried = given["url"]?.string != nil
+            if !carried, let error = given["error"], given["result"] == nil { given["result"] = .object(["error": error]) }
+            guard let record = try? ProposalRecord(strut: given), ids.insert(record.id).inserted else { continue }
+            // An outcome says how it ended, or that the step runs; one that says "pending" says nothing.
+            if carried { proposed.append(record) } else if record.status != .pending { outcomes.append(record) }
+        }
+        guard !proposed.isEmpty || !outcomes.isEmpty else { return nil }
+        self.init(workspace: workspace, proposed: proposed, outcomes: outcomes)
+    }
+}
+
+/// A post in a tribe whose card a proposal is: Jamie's, in that tribe, by
+/// the member who posted it (their alias as sent, which the tribes server
+/// keeps unique in the tribe). The card stays on that post, and only a
+/// reply in its thread from the same member says how it ended.
+public struct TribePost: Sendable, Equatable {
+    /// The tribe, by its key.
+    public var tribe: String
+    /// The post's uuid, which the owner's answer replies to.
+    public var uuid: String
+    /// Who posted it, by alias.
+    public var poster: String?
+
+    public init(tribe: String, uuid: String, poster: String? = nil) {
+        self.tribe = tribe
+        self.uuid = uuid
+        self.poster = poster
     }
 }
 

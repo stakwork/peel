@@ -36,6 +36,10 @@ public enum Setting: String, Sendable {
     /// The call server calls are started on and links are checked against,
     /// as `host[:port]`; `chat.sphinx.chat` when unset.
     case callServer
+    /// The highest message id the proposals' watch has looked at for a
+    /// tribe post naming strut's proposals (`Storage.proposalPosts(after:)`):
+    /// a later open reads only the rows stored since.
+    case proposalPostsScan
     /// Which sidebar sections are open and shown in full
     /// (`ChatSections.Layout`, as JSON).
     case sidebarLayout

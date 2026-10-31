@@ -38,7 +38,8 @@ struct PeelCommand {
           invites                     invites waiting to be used
           invite-cancel <code>        cancel an invite and get its sats back (code from invites)
           send <pubkey> <text>        send a text message to a contact or a tribe
-                                      (--reply <uuid> answers a message, --thread <uuid> posts in its thread)
+                                      (--reply <uuid> answers a message, --thread <uuid> posts in its thread,
+                                      --metadata <json object> goes as the body's metadata, for a stand-in)
           listen                      stay connected, reconnecting as needed, and print what arrives;
                                       answers the device agent's read requests
           device-agent [<pubkey>|off]  the agent contact whose device requests this account answers
@@ -193,6 +194,8 @@ struct Invocation {
     let tribeOptions: TribeOptions
     let replyTo: String?
     let inThread: String?
+    /// `send`'s `--metadata`: a JSON object as text, the body's `metadata`.
+    let metadata: String?
     let memesHost: String?
     let note: String?
     let confirmed: Bool
@@ -221,6 +224,7 @@ struct Invocation {
         tribeOptions = try TribeOptions(&arguments)
         replyTo = arguments.option("--reply")
         inThread = arguments.option("--thread")
+        metadata = arguments.option("--metadata")
         memesHost = arguments.option("--memes-host")
         note = arguments.option("--text")
         confirmed = arguments.flag("--yes")

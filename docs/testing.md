@@ -313,6 +313,58 @@ request's line) and a workspace's end to end are the journey
 `Journeys/Orchestrator/aProposalsCardComesFromTheRecordHereAndOnAWorkspace`,
 on the staged strut and bridge.
 
+## Proposal cards in a tribe
+
+The cards under Jamie's posts in a tribe (docs/hive-tribes.md,
+"Proposals in a tribe") are checked on a local stack with three
+development profiles: the tribe's owner, a stand-in for Jamie, and a
+member. The stand-in posts as Hive will, with the proposals in the body's
+metadata, through the CLI's `send --metadata`:
+
+```sh
+scripts/test-stack.sh start                                   # its PEEL_STACK_DIR and hosts
+peel --profile pc-owner --server <PEEL_BROKER> --tribe-host <PEEL_TRIBES> --alias Owner init
+peel --profile pc-jamie … --alias Jamie init;  peel --profile pc-member … --alias Member init
+scripts/fund-dev.sh <stack dir> pc-owner 200   # and pc-jamie, pc-member
+peel --profile pc-owner tribe-create Proposals --price-per-message 0     # the link
+peel --profile pc-jamie tribe-join '<link>' --yes;  peel --profile pc-member tribe-join '<link>' --yes
+peel --profile pc-jamie send <tribe> "Waiting for Owner to approve: Install the package acme/linear" \
+  --metadata '{"strut":{"workspace":"acme","artifacts":[],"proposals":[{"id":"tc-install-1","step":"package/install",
+  "title":"Install the package acme/linear","card":{…},"status":"pending","url":"/proposals/tc-install-1"}]}}'
+```
+
+Then `scripts/check-app.sh pc-owner <drive> <out>` with this drive, a
+loop beside it answering each `signal-*` file in the out dir as Hive
+would (`peel --profile pc-jamie send <tribe> "Applied: …" --reply <post uuid>
+--metadata '{"strut":{"workspace":"acme","proposals":[{"id":"tc-install-1","status":"applied","title":"…","step":"package/install"}]}}'`):
+
+```
+{"width": 1180}
+{"select": "Proposals"}
+{"wait": 2}
+{"snapshot": "tribe-cards-pending"}
+{"proposal": "tribe-accept"}
+{"wait": 1.5}
+{"snapshot": "tribe-cards-accepting"}
+{"signal": "jamie-applies"}
+{"wait": 8}
+{"snapshot": "tribe-cards-applied"}
+{"proposal": "tribe-reject"}
+{"wait": 1.5}
+{"signal": "jamie-rejects"}
+{"wait": 8}
+{"snapshot": "tribe-cards-rejected"}
+```
+
+The owner's cards show their buttons; `tribe-accept` sends the reply
+("Install") and the card says Accepting…; Jamie's outcome in the thread
+lands it as Applied, the reject as Rejected. Once a post has replies the
+tribe folds it into its thread's row, which keeps the card (the owner's
+own answer is such a reply). The same drive's first snapshot on
+`pc-member` shows the cards without buttons and "The tribe's owner
+decides this." The path through the real core, without the app, is the
+journey `Journeys/Tribes/aProposalOnJamiesPostIsAnsweredByTheOwnersReply`.
+
 ## List journeys
 
 Each row of the journey table in `reviews/2026-10-14-message-lists.md`

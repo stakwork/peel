@@ -1876,6 +1876,16 @@ that sees and decides only its actor's proposals).
   strut's card sits on its request's line (`DeviceRequestLine`); a
   workspace's at the end of the agent chat (`AgentListRow.proposal`,
   after the DM's rows), open or final for ten minutes.
+- **In a tribe** (docs/hive-tribes.md, "Proposals in a tribe"): what a
+  `@jamie` turn proposes is the tribe owner's to decide, on Jamie's post,
+  which carries the proposal in `metadata.strut.proposals`
+  (`Message.strutProposals`). The same card is drawn under the post for
+  everyone (`TribeProposalCards`); the owner's buttons send a reply to
+  the post with the card's own word, which Hive reads and decides on the
+  org's strut as the owner; Jamie's reply in the thread, from the same
+  member, ends the card. Kept per (workspace, id) with its post, so a
+  restart redraws it; never a card at the end of the agent chat too, nor
+  read from the org's strut by itself.
 - **Not here.** "Accept again" on a failed proposal: the bridge decides
   each card once and treats a `failed` record as over, so a second accept
   of Peel's own strut's needs the bridge to relay a new card (sphinx); a
@@ -1884,9 +1894,10 @@ that sees and decides only its actor's proposals).
   on the card (sphinx). An expired card tells strut nothing (the bridge's
   `CARD_SECS`), so strut may still say pending: the bridge should reject
   it there with reason "expired" so every reader agrees (sphinx). A
-  workspace's proposals on the iPhone. Peel Home on a home server: its
-  strut's records are not read (the Mac reads its own strut only), as
-  before.
+  workspace's and a tribe's proposals on the iPhone. Peel Home on a home
+  server: its strut's records are not read (the Mac reads its own strut
+  only), as before. Hive's half of a tribe's proposals: the carrier and
+  the outcome posts, and the decision from the owner's reply.
 
 ## 5. Automations, jobs and connectors
 

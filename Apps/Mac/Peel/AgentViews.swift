@@ -765,8 +765,9 @@ extension View {
     }
 
     /// A note in the agent chat (a job, the tools a reply ran, what it
-    /// points to), with the message it is about, in line with its text.
-    fileprivate func agentNoteRow() -> some View {
+    /// points to), or the cards under a post in a tribe, with the message it
+    /// is about, in line with its text.
+    func agentNoteRow() -> some View {
         frame(maxWidth: MessageRow.textWidth, alignment: .leading)
             .padding(.leading, 20 + MessageRow.avatarSize + MessageRow.gutterSpacing)
             .padding(.trailing, 20)

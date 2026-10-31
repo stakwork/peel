@@ -66,8 +66,7 @@ struct AgentListRow: TableRow {
         case .earlier: return 40
         case .answering: return 50
         case .proposal(let card):
-            let shown = card.kept.record.shownCard
-            return 110 + CGFloat(shown.fields.count) * 30 + (shown.summary == nil ? 0 : 50) + (card.kept.record.rationale == nil ? 0 : 20)
+            return card.kept.record.estimatedCardHeight + 2 * Theme.Space.sm
         case .dm(let row):
             let lines = row.agentTools.count + row.agentArtifacts.count + (row.agentJob == nil ? 0 : 1)
             return row.estimatedHeight + CGFloat(lines) * 24

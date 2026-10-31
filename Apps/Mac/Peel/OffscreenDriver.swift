@@ -862,6 +862,9 @@ final class OffscreenDriver {
     private var strut: OffscreenStrut?
     #endif
 
+    /// `{"proposal": "tribe-accept"}` (or `tribe-reject`) answers the first
+    /// waiting proposal card under a post in the open tribe, as the owner's
+    /// click does (a reply to the post goes out).
     /// `{"proposal": "stub"}` pairs the account with a stand-in workspace,
     /// Acme, whose strut is a stub on this Mac holding the fixture
     /// proposals, and reads them now (as Peel coming to the front does);
@@ -897,6 +900,16 @@ final class OffscreenDriver {
             await model.proposals.decide(card.key, accept: what == "accept")
             Offscreen.log("drive: \(what)ed \(card.kept.record.id): now \(card.key.id) "
                 + "\(model.proposals.kept[card.key]?.record.status.rawValue ?? "?")"
+                + (model.proposals.notes[card.key].map { " · \($0)" } ?? ""))
+        case "tribe-accept", "tribe-reject":
+            // As a click on the first waiting card under a post in the open tribe.
+            let waiting = model.proposals.kept.values
+                .filter { $0.post?.tribe == model.selectedChat && !$0.isOver && $0.record.status == .pending && $0.answeredAt == nil }
+                .sorted { ($0.readAt, $0.record.id) < ($1.readAt, $1.record.id) }
+            guard let card = waiting.first else { throw Failure(description: "no proposal waiting on a post in the open tribe") }
+            await model.proposals.answerInTribe(card.key, accept: what == "tribe-accept")
+            let after = model.proposals.kept[card.key]
+            Offscreen.log("drive: \(what) \(card.record.id): answered \(after?.answer.map { $0 ? "accept" : "reject" } ?? "not")"
                 + (model.proposals.notes[card.key].map { " · \($0)" } ?? ""))
         default:
             throw Failure(description: "no proposal step \(what)")

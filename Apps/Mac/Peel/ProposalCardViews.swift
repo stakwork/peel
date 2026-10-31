@@ -9,19 +9,30 @@ import SwiftUI
 /// `danger` tinted as a loss, the one red), the model's reason apart, and
 /// either the card's own two buttons or how it ended, as a badge at the top right.
 /// One renderer for every step, Peel's own strut's (on its request's line,
-/// `DeviceRequestLine`) and a workspace's (at the end of the chat,
-/// `AgentListRow.proposal`). Amber while it waits, as the approval card;
-/// the same keys as it (`answerKeys`): Return accepts only a card read
-/// whole with nothing in it that warns, Escape rejects.
+/// `DeviceRequestLine`), a workspace's (at the end of the chat,
+/// `AgentListRow.proposal`) and one on Jamie's post in a tribe
+/// (`TribeProposalCards`, decided by the tribe's owner from there). Amber
+/// while it waits, as the approval card; the same keys as it
+/// (`answerKeys`): Return accepts only a card read whole with nothing in
+/// it that warns, Escape rejects.
 struct ProposalCardView: View {
     /// How it stands here, beyond the record: waiting on you with the
     /// buttons; answered on this Mac (how, from the request's result: nil
-    /// while the Mac has not), the record to follow; being decided on the workspace.
+    /// while the Mac has not), the record to follow; being decided on the
+    /// workspace, or answered in the tribe (the reply on its way); in a
+    /// tribe, someone else's to decide (the owner's). The owner's answer
+    /// in a tribe is the record's own (`KeptProposal.answer`).
     enum Stance: Equatable {
         case waiting
         case answered(ControlEnvelope.Status?)
         case deciding(accept: Bool)
+        case theirs
     }
+
+    /// Under a tribe's card the owner answered that Jamie has not ended in time.
+    static let noAnswerYet = "No answer yet: the reply may not have reached Jamie. You can answer again."
+    /// A tribe's card for everyone but its owner.
+    static let ownersLine = "The tribe's owner decides this."
 
     let proposal: KeptProposal
     /// The workspace it is on, by name; nil for Peel's own strut.
@@ -97,7 +108,7 @@ struct ProposalCardView: View {
             if let line = Self.outcomeLine(shown, record: proposal.record) {
                 Text(line).muted().textSelection(.enabled)
             }
-            if let note {
+            if let note = note ?? (proposal.isAnswerStale(at: now) ? Self.noAnswerYet : nil) {
                 Text(note).muted().foregroundStyle(Theme.attention)
             }
             if waiting, let answer {
@@ -130,10 +141,12 @@ struct ProposalCardView: View {
     }
 
     /// When the card says something else without a new read: the second its
-    /// request runs out, while it waits.
+    /// request runs out, while it waits; in a tribe, when the owner's reply
+    /// has waited long enough on Jamie's word.
     private var changesAt: Date? {
-        guard proposal.record.isOpen, !proposal.isOver, let notAfter = proposal.notAfter else { return nil }
-        return Date(timeIntervalSince1970: TimeInterval(notAfter + 1))
+        guard proposal.record.isOpen, !proposal.isOver else { return nil }
+        if let notAfter = proposal.notAfter { return Date(timeIntervalSince1970: TimeInterval(notAfter + 1)) }
+        return proposal.answerStaleAt?.addingTimeInterval(1)
     }
 
     /// What the card shows of where the proposal stands.
@@ -142,6 +155,8 @@ struct ProposalCardView: View {
         case waiting
         /// Pending; this Mac's card is not up (not asked again yet), or it is being decided elsewhere.
         case pending
+        /// Pending, and the tribe's owner's to decide, not yours.
+        case theirs
         /// Answered here; strut is being told.
         case telling(accepted: Bool)
         /// Accepted: the step runs.
@@ -162,7 +177,7 @@ struct ProposalCardView: View {
         var label: String? {
             switch self {
             case .waiting: nil
-            case .pending: "Pending"
+            case .pending, .theirs: "Pending"
             case .telling(let accepted): accepted ? "Accepting…" : "Rejecting…"
             case .running: "Running…"
             case .applied: "Applied"
@@ -219,6 +234,11 @@ struct ProposalCardView: View {
             }
         }
         if case .deciding(let accept) = stance { return .telling(accepted: accept) }
+        if stance == .theirs { return .theirs }
+        // The owner's reply in a tribe, until Jamie's word; the buttons again once it has waited too long.
+        if let accept = proposal.answer, proposal.answeredAt != nil {
+            return proposal.isAnswerStale(at: now) ? .waiting : .telling(accepted: accept)
+        }
         if expired { return .expired }
         return stance == .waiting ? .waiting : .pending
     }
@@ -229,6 +249,7 @@ struct ProposalCardView: View {
         switch state {
         case .waiting, .telling, .running, .gone, .notYours, .unreadable: return nil
         case .pending: return "Waiting for a decision."
+        case .theirs: return ownersLine
         case .applied: return "Done" + (record.result?.at.map { " at \(Formatting.time($0))" } ?? "") + "."
         case .rejected: return "Not done" + (record.decision?.reason.map { ": \($0)" } ?? ".")
         case .failed: return "The step did not work" + (record.result?.error.map { ": \($0)" } ?? ".")
@@ -336,5 +357,58 @@ struct OrgProposalRow: View {
         .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, Theme.Space.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// strut's proposals a member's (Jamie's) post in a tribe made, each as
+/// its card under the post (`ChatRow.strutProposals`, docs/hive-tribes.md,
+/// "Proposals in a tribe"), as the watch keeps it from the tribe's posts
+/// (`AppModel.proposals`): a card only for a proposal whose post this is
+/// (a later post claiming one draws none). The tribe's owner (`canAnswer`)
+/// gets the card's buttons, and answers by a reply to the post
+/// (`ProposalWatch.answerInTribe`); everyone else sees the card, how it
+/// stands, and that the owner decides it.
+struct TribeProposalCards: View {
+    @Environment(AppModel.self) private var model
+    let row: ChatRow
+    let canAnswer: Bool
+
+    var body: some View {
+        if let proposals = row.strutProposals {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                ForEach(proposals.proposed, id: \.id) { record in
+                    card(ProposalKey(source: .org(proposals.workspace), id: record.id))
+                }
+            }
+            .agentNoteRow()
+        }
+    }
+
+    @ViewBuilder
+    private func card(_ key: ProposalKey) -> some View {
+        let watch = model.proposals
+        if let proposal = watch.kept[key], proposal.post?.uuid == row.message.uuid {
+            let stance: ProposalCardView.Stance = if let accept = watch.deciding[key] {
+                .deciding(accept: accept)
+            } else {
+                canAnswer ? .waiting : .theirs
+            }
+            ProposalCardView(
+                proposal: proposal, org: watch.orgName(key.source), stance: stance, note: watch.notes[key],
+                input: AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("input-\(key.id)"),
+                answer: canAnswer && !proposal.isOver
+                    ? { accept in Task { await watch.answerInTribe(key, accept: accept, on: row.message) } } : nil
+            )
+        }
+    }
+}
+
+extension ProposalRecord {
+    /// A first guess at its card's height, for a row not yet measured
+    /// (`AgentListRow`, `ChatRow`): the header and the buttons or badge, a
+    /// row per field, the summary and the reason when there are any.
+    var estimatedCardHeight: CGFloat {
+        let shown = shownCard
+        return 110 + CGFloat(shown.fields.count) * 37 + (shown.summary == nil ? 0 : 50) + (rationale == nil ? 0 : 20)
     }
 }

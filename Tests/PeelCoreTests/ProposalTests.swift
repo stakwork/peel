@@ -241,3 +241,185 @@ struct ProposalTests {
         #expect(StrutRefusal(status: 401, name: "Acme").isAuth && !StrutRefusal(status: 500, name: "Acme").isAuth)
     }
 }
+
+// MARK: - In a tribe
+
+extension ProposalTests {
+    /// Jamie's post in a tribe, with the proposals it made (`metadata.strut`,
+    /// docs/hive-tribes.md, "Proposals in a tribe").
+    static func post(workspace: String = "acme", proposals: String, type: Int = MessageType.text, deleted: Bool = false,
+                     uuid: String = "post-1", replyTo: String? = nil, alias: String = "Jamie", at timestamp: Int64 = 1_800_000_000_000) throws -> Message {
+        let metadata = #"{"strut":{"workspace":"\#(workspace)","artifacts":[],"proposals":\#(proposals)}}"#
+        var message = Message.fixture(uuid: uuid, type: type, chat: "02tribe", fromMe: false, sender: sender(alias: alias),
+                                      body: try Engine.json(["content": "Waiting for Tom to approve", "metadata": metadata]),
+                                      content: "Waiting for Tom to approve", timestamp: timestamp, replyUUID: replyTo, threadUUID: replyTo)
+        message.deleted = deleted
+        return message
+    }
+
+    static let proposedEntries = #"""
+        [{"id":"p-install-1","step":"package/install","title":"Install the package acme/linear",
+          "summary":"acme/linear 1.0.0 (MIT) from acme.\nIt needs the secret LINEAR_KEY.",
+          "card":{"v":1,"title":"Install the package acme/linear","fields":[{"label":"Version","value":"1.0.0 (MIT)"},{"label":"Runs code","value":"Yes","danger":true}],
+                  "actions":{"accept":"Install","reject":"Don't install"},"full":true},
+          "status":"pending","url":"/proposals/p-install-1","rationale":"You asked for Linear.","createdAt":"2026-10-31T10:00:00Z","extra":1},
+         {"id":"p-node-2","step":"graph/create-node","title":"Create a node","status":"pending","url":"/proposals/p-node-2"},
+         {"id":"bad status","step":"x","status":"weird","url":"/proposals/x"},
+         {"id":"no-step","status":"pending","url":"/proposals/no-step"},
+         {"id":"p-install-1","step":"package/install","title":"Twice","status":"pending","url":"/proposals/p-install-1"},
+         "not an object"]
+        """#
+
+    static let outcomeEntries = #"""
+        [{"id":"p-install-1","status":"failed","title":"Install the package acme/linear","step":"package/install","error":"npm said no‮"}]
+        """#
+
+    /// A post that made proposals gives each as a card (one with strut's
+    /// card, one without); a reply says how one ended; what Peel cannot
+    /// read is skipped; a workspace that is no peer id, a post that is not
+    /// text, a deleted one, or one naming no proposal gives nothing.
+    @Test func aTribePostsProposalsAndTheirOutcomesAreRead() throws {
+        let post = try #require(Self.post(proposals: Self.proposedEntries).strutProposals)
+        #expect(post.workspace == "acme" && post.outcomes.isEmpty)
+        #expect(post.proposed.map(\.id) == ["p-install-1", "p-node-2"], "a status not known, no step, not an object, an id twice: skipped")
+        let install = post.proposed[0]
+        #expect(install.step == "package/install" && install.status == .pending && install.rationale == "You asked for Linear.")
+        #expect(install.summary == "acme/linear 1.0.0 (MIT) from acme.\nIt needs the secret LINEAR_KEY.")
+        #expect(install.card?.accept == "Install" && install.card?.hasDanger == true && install.card?.fields.count == 2)
+        #expect(install.createdAt == Date(iso8601: "2026-10-31T10:00:00Z") && install.input == nil)
+        #expect(post.proposed[1].card == nil && post.proposed[1].shownCard.title == "Create a node" && post.proposed[1].shownCard.fields.isEmpty)
+        #expect(post.proposed[1].acceptsByKey, "a card built from the post, nothing in it warns")
+
+        let reply = try #require(Self.post(proposals: Self.outcomeEntries, uuid: "reply-1", replyTo: "post-1").strutProposals)
+        #expect(reply.proposed.isEmpty && reply.outcomes.count == 1)
+        #expect(reply.outcomes[0].id == "p-install-1" && reply.outcomes[0].status == .failed && reply.outcomes[0].result?.error == "npm said no", "the error cleaned")
+
+        #expect(try Self.post(workspace: "not a peer id!", proposals: Self.proposedEntries).strutProposals == nil)
+        #expect(try Self.post(proposals: Self.proposedEntries, type: MessageType.attachment).strutProposals == nil)
+        #expect(try Self.post(proposals: Self.proposedEntries, deleted: true).strutProposals == nil)
+        #expect(try Self.post(proposals: "[]").strutProposals == nil)
+        #expect(try Self.post(proposals: #"[{"id":"p-install-1","step":"package/install","status":"pending"}]"#).strutProposals == nil,
+                "an outcome saying pending says nothing")
+        #expect(try Self.post(proposals: #"["not an object"]"#).strutProposals == nil)
+        let artifactsOnly = Message.fixture(uuid: "d1", chat: "02tribe", sender: sender(alias: "Jamie"),
+                                            body: try Engine.json(["content": "a plan", "metadata": #"{"strut":{"workspace":"acme","artifacts":[{"title":"Plan","url":"https://acme.example/plan"}]}}"#]))
+        #expect(artifactsOnly.strutProposals == nil && artifactsOnly.strutArtifacts.count == 1)
+    }
+
+    /// What the tribe's posts say of a kept proposal, in whichever order
+    /// they come: the post that made it gives the card and where it is,
+    /// its reply how it ended, and the later word wins, so a copy of the
+    /// post coming round again never reopens a decided one, nor does a
+    /// reply; a record read from strut first keeps its input and takes the
+    /// posts' clock; the owner's answer that Jamie has not ended in time
+    /// is stale, and only then.
+    @Test func aTribesPostsMoveAKeptProposalInAnyOrder() throws {
+        let made = try #require(Self.post(proposals: Self.proposedEntries).strutProposals).proposed[0]
+        let ended = try #require(Self.post(proposals: Self.outcomeEntries, uuid: "reply-1", replyTo: "post-1").strutProposals).outcomes[0]
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let t1 = t0.addingTimeInterval(60)
+        let post = TribePost(tribe: "02tribe", uuid: "post-1", poster: "Jamie")
+        // Made, then ended.
+        var kept = KeptProposal(source: .org("acme"), record: made, readAt: t0, post: post)
+        #expect(!kept.isOver && kept.post == post && !kept.fromStrut)
+        kept.take(outcome: ended, at: t1)
+        #expect(kept.record.status == .failed && kept.record.result?.error == "npm said no" && kept.ending == .final(t1) && kept.readAt == t1)
+        #expect(kept.record.card?.accept == "Install", "the card stays")
+        kept.take(carrier: made, on: post, at: t0)
+        #expect(kept.record.status == .failed && kept.ending == .final(t1) && kept.readAt == t1, "the post coming round again changes nothing")
+        // Ended, then made.
+        var late = KeptProposal(source: .org("acme"), record: ended, readAt: t1, post: post)
+        #expect(late.isOver && late.record.card == nil)
+        late.take(carrier: made, on: post, at: t0)
+        #expect(late.record.card?.accept == "Install" && late.record.rationale == "You asked for Linear.")
+        #expect(late.record.status == .failed && late.record.result?.error == "npm said no" && late.ending == .final(t1) && late.post == post)
+        // A reply never reopens a decided one, nor says "pending" of it; an older reply says nothing.
+        var open = ended
+        open.status = .pending
+        late.take(outcome: open, at: t1.addingTimeInterval(60))
+        var applied = ended
+        applied.status = .applied
+        late.take(outcome: applied, at: t0)
+        #expect(late.record.status == .failed && late.ending == .final(t1))
+        // strut's record read first (the owner's list, dated by this Mac's clock) keeps its input
+        // when the post has none, and takes the posts' clock from the post on.
+        var listed = KeptProposal(source: .org("acme"), record: made, readAt: t1.addingTimeInterval(3600))
+        listed.record.input = .object(["package": .string("acme/linear")])
+        #expect(listed.fromStrut)
+        listed.take(carrier: made, on: post, at: t0)
+        #expect(listed.record.input != nil && listed.post == post && listed.readAt == t0 && !listed.fromStrut)
+        listed.take(outcome: ended, at: t1)
+        #expect(listed.record.status == .failed, "a reply dated before the list's read still counts")
+        // The owner's answer, waiting on Jamie.
+        var answered = KeptProposal(source: .org("acme"), record: made, readAt: t0, answeredAt: t1, post: post, answer: true)
+        #expect(answered.answerStaleAt == t1.addingTimeInterval(KeptProposal.answerPatience))
+        #expect(!answered.isAnswerStale(at: t1.addingTimeInterval(KeptProposal.answerPatience - 1)))
+        #expect(answered.isAnswerStale(at: t1.addingTimeInterval(KeptProposal.answerPatience)))
+        answered.record.status = .accepted
+        #expect(answered.answerStaleAt == nil, "the step runs: Jamie has it")
+        answered.record.status = .pending
+        answered.ending = .final(t1)
+        #expect(answered.answerStaleAt == nil)
+        var notInATribe = answered
+        notInATribe.ending = nil
+        notInATribe.post = nil
+        #expect(notInATribe.answerStaleAt == nil)
+    }
+
+    /// A tribe's proposal comes back from the store with its post and the
+    /// owner's answer, and is never forgotten with a workspace's old ones.
+    @Test func aTribesProposalIsKeptWithItsPostAndAnswer() throws {
+        let profile = TempProfile()
+        let made = try #require(Self.post(proposals: Self.proposedEntries).strutProposals).proposed[0]
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let post = TribePost(tribe: "02tribe", uuid: "post-1", poster: "Jamie")
+        do {
+            let storage = try profile.storage()
+            try storage.keepProposal(KeptProposal(source: .org("acme"), record: made, readAt: t0, answeredAt: t0.addingTimeInterval(5), post: post, answer: false))
+            var over = KeptProposal(source: .org("acme"), record: made, readAt: t0, ending: .final(t0.addingTimeInterval(-30 * 24 * 3600)), post: post)
+            over.record.id = "p-old-tribe"
+            over.record.status = .applied
+            try storage.keepProposal(over)
+            var orgs = KeptProposal(source: .org("acme"), record: made, readAt: t0, ending: .final(t0.addingTimeInterval(-30 * 24 * 3600)))
+            orgs.record.id = "p-old-org"
+            orgs.record.status = .applied
+            try storage.keepProposal(orgs)
+        }
+        let storage = try profile.storage()
+        let kept = try #require(try storage.proposals().first { $0.record.id == "p-install-1" })
+        #expect(kept.post == post && kept.answer == false && kept.answeredAt == t0.addingTimeInterval(5) && kept.record.card?.accept == "Install")
+        try storage.forgetOrgProposals(endedBefore: t0)
+        #expect(Set(try storage.proposals().map(\.record.id)) == ["p-install-1", "p-old-tribe"], "a tribe's stays with its post")
+    }
+
+    /// The tribes' posts that may name a proposal, read from where the last
+    /// look got to: someone else's text in a tribe whose body says
+    /// `proposals`, never a direct message's or your own; the mark moves to
+    /// the highest message stored, so the next look reads nothing twice.
+    @Test func theTribesPostsNamingProposalsAreReadFromTheLastLook() throws {
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        let post = try Self.post(proposals: Self.proposedEntries, uuid: uuid(1))
+        var mine = try Self.post(proposals: Self.proposedEntries, uuid: uuid(2))
+        mine.fromMe = true
+        var inDM = try Self.post(proposals: Self.proposedEntries, uuid: uuid(3))
+        inDM.chat = "02dm"
+        let plain = Message.fixture(uuid: uuid(4), chat: "02tribe", sender: sender(alias: "Kate"), content: "no proposals here", timestamp: 1_800_000_001_000)
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(pubkey: "02tribe", ready: true), (pubkey: "02dm", ready: true)],
+            messages: [(post, false, nil), (mine, false, nil), (inDM, false, nil), (plain, false, nil)],
+            tribes: [Tribe(pubkey: "02tribe", name: "jamie", isOwner: true)]
+        ))
+        #expect(try storage.proposalPostsScanned() == 0)
+        let first = try storage.proposalPosts(after: 0)
+        #expect(first.posts.map(\.uuid) == [uuid(1)], "\(first.posts.map(\.uuid))")
+        #expect(first.upTo >= 4)
+        try storage.setProposalPostsScanned(first.upTo)
+        #expect(try storage.proposalPostsScanned() == first.upTo)
+        #expect(try storage.proposalPosts(after: first.upTo).posts.isEmpty)
+        let later = try Self.post(proposals: Self.outcomeEntries, uuid: uuid(5), replyTo: uuid(1), at: 1_800_000_002_000)
+        _ = try storage.apply(Storage.Commit(messages: [(later, false, nil)]))
+        let next = try storage.proposalPosts(after: first.upTo)
+        #expect(next.posts.map(\.uuid) == [uuid(5)] && next.upTo > first.upTo)
+    }
+}

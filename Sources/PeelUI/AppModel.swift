@@ -1466,7 +1466,7 @@ public final class AppModel {
         if agentHost == nil, let agent = try? await engine.agentPubkey(), self.engine === engine { agentContact = agent }
         // The proposals' watch before the device requests, whose cards it keeps; only
         // where their cards are drawn (the Mac: the phone has none yet, and would only poll).
-        if agentHost != nil { proposals.open(storage) }
+        if agentHost != nil { await proposals.open(storage) }
         if let handler = agentHost?.deviceRequests(for: engine) { await engine.answerDeviceRequests(with: handler) }
         await engine.configurePreferences(preferenceCapabilities(for: profile))
         await refreshSyncedPreferences(engine)

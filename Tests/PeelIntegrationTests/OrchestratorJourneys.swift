@@ -709,7 +709,7 @@ extension Journeys {
 
             // Peel's own strut: the Mac's card from the record, kept, then applied.
             let watch = ProposalWatch()
-            watch.open(alice.storage)
+            await watch.open(alice.storage)
             defer { watch.close() }
             watch.readLocal = { id in try await client.readProposal(id) }
             let cards = OSAllocatedUnfairLock(initialState: [ToolIntent]())

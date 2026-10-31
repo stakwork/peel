@@ -54,11 +54,10 @@ public final class ProposalWatch {
     @ObservationIgnored private var reads: [ProposalKey: Int] = [:]
     /// Reads of a record that got no answer in a row, for the backoff.
     @ObservationIgnored private var failures: [ProposalKey: Int] = [:]
-    /// What is to be written, by key, and whether a write is under way:
-    /// writes go off the main actor, one batch at a time, the latest state
-    /// of each record winning.
-    @ObservationIgnored private var dirty: [ProposalKey: KeptProposal] = [:]
-    @ObservationIgnored private var writing = false
+    /// The writes to the store, off the main actor, each after the one
+    /// before (its tail): what is read back is never older than what was
+    /// written, and a reopen reads after every write.
+    @ObservationIgnored private var writes: Task<Void, Never>?
     @ObservationIgnored private var listedAt = Date.distantPast
     @ObservationIgnored private var listSoon = false
     /// Until when the workspaces are listed often: a hand-off just went through.
@@ -94,21 +93,31 @@ public final class ProposalWatch {
 
     // MARK: - Open and close
 
-    /// The account opened: what was kept, and the watch.
-    public func open(_ storage: Storage) {
+    /// The account opened: what was kept (read after every write still on
+    /// its way, so a close and reopen sees the latest), and the watch. A
+    /// record kept meanwhile (a card asked as the account opens) is newer
+    /// than the store's and stays.
+    public func open(_ storage: Storage) async {
         close()
         self.storage = storage
+        let generation = generation
         let now = now()
         let cutoff = now.addingTimeInterval(-Self.keptAfterOver)
-        Task.detached { try? storage.forgetOrgProposals(endedBefore: cutoff) }
-        for proposal in (try? storage.proposals()) ?? [] where proposal.source == .local || (proposal.ending?.at ?? now) >= cutoff {
+        let tail = writes
+        let loaded = await Task.detached {
+            await tail?.value
+            try? storage.forgetOrgProposals(endedBefore: cutoff)
+            return (try? storage.proposals()) ?? []
+        }.value
+        guard generation == self.generation, self.storage === storage else { return }
+        for proposal in loaded where proposal.source == .local || (proposal.ending?.at ?? now) >= cutoff {
+            guard kept[proposal.key] == nil else { continue }
             kept[proposal.key] = proposal
             if let request = proposal.request { byRequest[request] = proposal.key }
             schedule(proposal, at: now)
         }
         listSoon = true
         refreshCards(at: now)
-        let generation = generation
         loop = Task { await run(generation) }
     }
 
@@ -119,10 +128,6 @@ public final class ProposalWatch {
         loop = nil
         nap?.cancel()
         nap = nil
-        // What is not written yet goes now, before the store is let go.
-        for proposal in dirty.values { try? storage?.keepProposal(proposal) }
-        dirty = [:]
-        writing = false
         storage = nil
         kept = [:]
         byRequest = [:]
@@ -209,33 +214,22 @@ public final class ProposalWatch {
             burstUntil = now.addingTimeInterval(Self.burstFor)
             listSoon = true
         }
-        dirty[key] = proposal
-        write()
+        write(proposal)
         refreshCards(at: now)
         wake()
     }
 
-    /// Writes what changed, off the main actor (the engine may hold the
-    /// database for a commit), one batch at a time; what changes meanwhile
-    /// goes in the next.
-    private func write() {
-        guard !writing, let storage, !dirty.isEmpty else { return }
-        writing = true
-        let batch = dirty
-        dirty = [:]
-        let generation = generation
-        Task.detached {
-            for proposal in batch.values {
-                do {
-                    try storage.keepProposal(proposal)
-                } catch {
-                    Diagnostics.note(error: error)
-                }
-            }
-            await MainActor.run {
-                guard generation == self.generation else { return }
-                self.writing = false
-                self.write()
+    /// Writes `proposal` off the main actor (the engine may hold the
+    /// database for a commit), after every write before it.
+    private func write(_ proposal: KeptProposal) {
+        guard let storage else { return }
+        let previous = writes
+        writes = Task.detached {
+            await previous?.value
+            do {
+                try storage.keepProposal(proposal)
+            } catch {
+                Diagnostics.note(error: error)
             }
         }
     }

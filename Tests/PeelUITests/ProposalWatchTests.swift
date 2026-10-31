@@ -25,10 +25,10 @@ struct ProposalWatchTests {
     }
 
     /// A watch over `storage` with a clock of its own, in front.
-    private func makeWatch(_ storage: Storage, now: @escaping @MainActor () -> Date = { Date() }) -> ProposalWatch {
+    private func makeWatch(_ storage: Storage, now: @escaping @MainActor () -> Date = { Date() }) async -> ProposalWatch {
         let watch = ProposalWatch()
         watch.now = now
-        watch.open(storage)
+        await watch.open(storage)
         return watch
     }
 
@@ -39,7 +39,7 @@ struct ProposalWatchTests {
     @Test func aLocalProposalIsKeptReadAgainAfterTheAnswerAndSurvivesAReopen() async throws {
         let storage = try profile.storage()
         let clock = Clock(Date(timeIntervalSince1970: 1_800_000_000))
-        var watch = makeWatch(storage) { clock.now }
+        let watch = await makeWatch(storage) { clock.now }
         let reads = Reads()
         watch.readLocal = { id in await reads.add(id); return try await reads.answer(id) }
         await reads.set("p1", .record(record("p1")))
@@ -80,11 +80,13 @@ struct ProposalWatchTests {
         await watch.tick()
         #expect(watch.notes[ProposalKey(source: .local, id: "p2")] == "strut no longer has this proposal.")
         #expect(watch.kept(request: "proposal:p2")?.ending == .gone(clock.now))
-        // Reopened: as kept.
+        // Closed and opened again (as the account locks and unlocks, on the one
+        // watch the app has): as kept, the last writes landed first.
         watch.close()
         #expect(watch.kept(request: "proposal:p1") == nil)
-        watch = makeWatch(storage) { clock.now }
+        await watch.open(storage)
         #expect(watch.kept(request: "proposal:p1")?.record.status == .applied)
+        #expect(watch.kept(request: "proposal:p2")?.ending == .gone(clock.now))
         // A card past its time, still pending on strut: expired here, read no more.
         await reads.set("p3", .record(record("p3")))
         watch.readLocal = { id in await reads.add(id); return try await reads.answer(id) }
@@ -116,7 +118,7 @@ struct ProposalWatchTests {
             return state.answer(line, body: String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...]), json: Self.json)
         }
         defer { strut.stop() }
-        let watch = makeWatch(storage) { clock.now }
+        let watch = await makeWatch(storage) { clock.now }
         let acme = HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)", token: "t", label: "Acme")
         watch.orgs = { ([acme], "tom") }
         await watch.tick()
@@ -184,12 +186,13 @@ struct ProposalWatchTests {
         clock.advance(ProposalWatch.listEvery)
         await watch.tick()
         #expect(watch.unreachable == ["acme"] && watch.kept[a4] != nil)
-        // Reopened: a workspace's are kept too.
+        // Closed and opened again: a workspace's are kept too, and with no workspace
+        // paired now there is nothing of a workspace's to decide here, so no card.
         watch.close()
-        let again = makeWatch(storage) { clock.now }
-        #expect(again.kept[a1]?.record.status == .applied && again.kept[a3] != nil)
-        // No workspace paired now: nothing of a workspace's to decide here, so no card.
-        #expect(again.orgCards.isEmpty)
+        watch.orgs = { ([], nil) }
+        await watch.open(storage)
+        #expect(watch.kept[a1]?.record.status == .applied && watch.kept[a3] != nil)
+        #expect(watch.orgCards.isEmpty)
     }
 
     /// The clock a test moves.

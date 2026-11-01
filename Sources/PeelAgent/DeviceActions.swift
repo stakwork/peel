@@ -65,6 +65,8 @@ public struct DeviceActions: Sendable {
     let ask: Ask
     /// A card remembered an "Always allow" or kept a send grant.
     let changed: @Sendable () -> Void
+    /// A card was answered No: what "What it learned" reads a correction from.
+    let rejected: @Sendable (DeviceRequest, ToolIntent) -> Void
 
     /// The prefix an automation's message starts with, added here (decision 1
     /// of automations-and-jobs.md).
@@ -100,7 +102,8 @@ public struct DeviceActions: Sendable {
     /// `proposals`: how a `proposal:` card's record is read from strut and kept.
     public init(
         engine: Engine, rules: ApprovalRules, proposals: ProposalReader? = nil,
-        ask: @escaping Ask, changed: @escaping @Sendable () -> Void = {}
+        ask: @escaping Ask, changed: @escaping @Sendable () -> Void = {},
+        rejected: @escaping @Sendable (DeviceRequest, ToolIntent) -> Void = { _, _ in }
     ) {
         self.engine = engine
         tools = SphinxTools(storage: engine.storage)
@@ -110,6 +113,7 @@ public struct DeviceActions: Sendable {
         self.proposals = proposals
         self.ask = ask
         self.changed = changed
+        self.rejected = rejected
     }
 
     /// The handler `Engine.answerDeviceRequests` takes.
@@ -447,7 +451,9 @@ public struct DeviceActions: Sendable {
         if outcome == .alwaysAllowed { changed() }
         switch outcome {
         case .allowedOnce, .alwaysAllowed, .allowedByRule: return nil
-        case .denied: return Refusal(answer: .denied())
+        case .denied:
+            rejected(request, intent)
+            return Refusal(answer: .denied())
         case .stopped: return Refusal(answer: nil)
         }
     }

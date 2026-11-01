@@ -62,6 +62,8 @@ final class MacAgent: AgentHost {
     var openedAutomation: String?
     /// The device requests' cards and the send grants.
     let deviceCards = DeviceCards()
+    /// "What it learned": the person's own habits (`AppModel+Learned`).
+    let learned = LearnedModel()
     /// Account › Connections (`AppModel+Connections`).
     let connections = ConnectionsState()
     /// The Mac's side of the person's Stadeum workspaces, paired as peers (`AppModel+Hive`).
@@ -70,6 +72,7 @@ final class MacAgent: AgentHost {
     func open(_ profile: Profile, engine: Engine, in model: AppModel) {
         model.openAgent(profile, engine: engine)
         deviceCards.model = model
+        learned.model = model
     }
 
     /// The agent in strut asks this Mac for chat reads, sends and approvals

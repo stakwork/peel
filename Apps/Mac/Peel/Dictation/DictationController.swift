@@ -60,6 +60,8 @@ final class DictationController {
     /// The open account's database; nil while it is locked or closed, when
     /// nothing is kept (`AppDelegate` gates it on `AppModel.phase`).
     @ObservationIgnored var history: () -> Storage? = { nil }
+    /// The person fixed dictated text by hand ("What it learned" reads it as a correction).
+    @ObservationIgnored var corrected: (_ typed: String, _ edited: String) -> Void = { _, _ in }
     @ObservationIgnored private var tap: DictationHotkeyTap?
     /// What had the keyboard when the key went down: where the text goes.
     @ObservationIgnored private var target: FocusFacts?
@@ -562,6 +564,7 @@ extension DictationController {
         }
         watch = DictationEditWatch.watch(typed: typed) { [weak self] edited in
             guard let self, let edited, edited != typed, isCurrent(server, account) else { return }
+            corrected(typed, edited)
             Task { await self.learn(typed: typed, edited: edited, on: server, account: account) }
         }
     }

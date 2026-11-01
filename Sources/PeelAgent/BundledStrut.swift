@@ -179,7 +179,7 @@ public final class BundledStrut {
         let (grants, person) = (grants, person)
         var personal: String?
         if let person { personal = await personalSection(for: person) }
-        try Orchestrator.hostConfig(grants: grants, personal: personal).write(to: hostConfig, options: .atomic)
+        try Orchestrator.hostConfig(grants: grants, personal: personal, learned: LearnedInstructions.read(in: data)).write(to: hostConfig, options: .atomic)
         launchedGrants = grants
         launchedPerson = person
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)

@@ -208,6 +208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // System-wide dictation: starts its hotkey once its permissions are in,
         // and keeps each dictation in the open account's History.
         DictationController.shared.history = { [weak self] in self?.model?.unlockedStorage }
+        DictationController.shared.corrected = { [weak self] typed, edited in
+            self?.model?.macAgent.learned.noteDictation(typed: typed, edited: edited)
+        }
         DictationController.shared.start()
         RecordingController.sweepLeftovers()
         // A key press, click or scroll in Peel's windows is use, which puts

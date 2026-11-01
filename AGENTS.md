@@ -878,6 +878,14 @@ is a short plan. Update the status and the journal when you finish something.
     the read tools' resolver, thread and reply by `Engine.checkLinks`, the
     card's words and a tribe's price, then `Engine.sendText` capped at
     that price; its row's line ends with the sent message's ids
+  - `Learned*.swift` — "What it learned" (`docs/learned.md`): Hive's Cause
+    and theme process on the person's own graph, Mac only, nothing to Hive.
+    `LearnedCause` (types, key, 25-word and no-name rules), `LearnedGrouping`
+    (the grouping rules), `LearnedDetect` (corrections to candidates,
+    `LearnedSignalLog`), `LearnedStore` (over `MemoryServer` only),
+    `LearnedWorkflows` (the seeded `peel-learned-*` workflows and the judge),
+    `LearnedService` (a dry-run check; writes only on approve; undo;
+    `LearnedInstructions`). The Mac's `AppModel+Learned` and `LearnedView`.
   - `AgentStore+Profile.swift` — `SQLiteAgentStore.open(for:storage:)`,
     the account's `agent.sqlite` as the app opens it
   - `Connections.swift` — Account › Connections' MCP servers in strut's

@@ -189,10 +189,11 @@ public enum Orchestrator {
     /// refuses the builder's `meta/set-automation` (it runs only as an
     /// accepted proposal): a workflow is scheduled by an automation whose
     /// prompt runs it, made by the orchestrator on one card.
+    /// `learned`: the live concepts of "What it learned" (`LearnedInstructions`), by name.
     /// `grants`: the MCP servers each agent reaches (Connections), all of
     /// their tools; strut asks first for any not read-only.
-    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil) throws -> Data {
-        let system = [section, personal].compactMap { $0 }.joined(separator: "\n\n")
+    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil, learned: String? = nil) throws -> Data {
+        let system = [section, personal, learned].compactMap { $0 }.joined(separator: "\n\n")
         // A call to an org's assistant (a Stadeum workspace paired as a peer) asks the person first, from
         // the orchestrator or a job it starts: a card on the Mac that names the org and shows the message
         // (`PeerRequest`). strut grants `strut/run-workflow` to both, and since strut#294 no other route reaches it.

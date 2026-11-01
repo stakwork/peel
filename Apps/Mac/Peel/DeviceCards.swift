@@ -48,6 +48,10 @@ final class DeviceCards {
                     agent?.reloadRules()
                     self?.readGrants()
                 }
+            },
+            // A No is a correction "What it learned" may read.
+            rejected: { [weak self] request, intent in
+                Task { @MainActor in self?.model?.macAgent.learned.noteRejected(request: request, intent: intent) }
             }
         )
         return actions.handler

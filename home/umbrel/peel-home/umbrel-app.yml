@@ -1,0 +1,45 @@
+manifestVersion: 2.0
+id: peel-home
+storage:
+  dataRoot: data
+category: ai
+name: Peel Home
+version: "1.0.0"
+tagline: Your Peel agent, answering while your Mac sleeps
+icon: https://raw.githubusercontent.com/stakwork/peel/main/Apps/Assets/AppIcon.icon/Assets/peel.svg
+description: >-
+  Open Peel Home on the Mac that runs Peel and click Open in Peel. Peel moves
+  your agent here, its strut and bridge, and it is offline for about a minute.
+
+
+  Peel Home then runs on this Umbrel: your agent answers from here while the
+  Mac sleeps, and its memory, workflows and automations are kept here. The
+  Mac's strut keeps a copy of your memory in sync, so dictation still works on
+  the Mac.
+
+
+  To move it back, open Peel Home here and click Send Peel Home back, then
+  Open in Peel on the Mac.
+
+
+  It needs only outbound internet. Two ports are open on your home network:
+  3781, where the Mac's Peel makes the move, and only while a move is under
+  way; and 3782, where the Mac's strut syncs memory, over TLS and only for
+  that.
+releaseNotes: ""
+
+developer: Stakwork
+website: https://github.com/stakwork/peel
+dependencies: []
+repo: https://github.com/stakwork/peel
+support: https://github.com/stakwork/peel/issues
+
+port: 3780
+gallery: []
+path: ""
+
+defaultUsername: ""
+defaultPassword: ""
+
+submitter: Stakwork
+submission: https://github.com/stakwork/umbrel-apps

@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      # The Umbrel app's copies of home/ (home/umbrel/).
+      - run: ./scripts/check-umbrel.sh
       - uses: actions/cache@v4
         with:
           path: .build/sphinx-core

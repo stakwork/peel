@@ -29,6 +29,11 @@ else
     tier=low
 fi
 
+# The Umbrel app carries copies of home/: a change to either must keep them in step.
+if printf '%s\n' "$files" | grep -q '^home/'; then
+    "$(dirname "$0")/check-umbrel.sh" >/dev/null || { "$(dirname "$0")/check-umbrel.sh"; exit 1; }
+fi
+
 echo "Risk: $tier ($lines lines changed)"
 [ -z "$reasons_high" ] || printf '%s\n' "$reasons_high" | sed 's/^/  high: /'
 [ "$tier" != medium ] || [ -z "$reasons_medium" ] || printf '%s\n' "$reasons_medium" | sed 's/^/  medium: /'

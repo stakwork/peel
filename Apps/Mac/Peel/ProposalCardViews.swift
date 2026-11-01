@@ -44,6 +44,11 @@ struct ProposalCardView: View {
     let input: AgentDisclosure
     /// Accept or reject; nil once it is not yours to answer here.
     let answer: ((Bool) -> Void)?
+    /// Everything under the title, opened by a click on it; nil where it
+    /// always shows. A tribe's card starts shut: the post is someone else's.
+    var details: AgentDisclosure?
+
+    @Environment(\.listRowExpanding) private var expanding
 
     var body: some View {
         TimelineView(.redrawing(at: changesAt)) { context in
@@ -55,75 +60,61 @@ struct ProposalCardView: View {
         let shown = Self.state(of: proposal, stance: stance, at: now)
         let card = proposal.record.shownCard
         let waiting = shown == .waiting
+        let open = details?.isOpen ?? true
         // `Callout`'s box and tokens, drawn here: inside its baseline-aligned row a
         // long field, changed in place (the badge, the input opened), measured a line short.
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
         return VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
-                Image(systemName: "checklist")
-                    .font(.system(size: 13))
-                    .foregroundStyle(waiting ? Theme.attention : Theme.secondaryText)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(card.title)
-                        .font(Theme.font(13, .semibold))
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text([org.map { "From \($0)" }, proposal.record.step].compactMap { $0 }.joined(separator: " · "))
-                        .muted()
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+            header(card, shown: shown, open: open)
+            if open {
+                if let summary = card.summary {
+                    Text(summary).muted().textSelection(.enabled)
                 }
-                Spacer(minLength: Theme.Space.sm)
-                ProposalStatus(shown: shown)
-            }
-            if let summary = card.summary {
-                Text(summary).muted().textSelection(.enabled)
-            }
-            if !card.fields.isEmpty {
-                Card(.inset) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(card.fields.enumerated()), id: \.offset) { index, field in
-                            if index > 0 { Theme.divider.frame(height: 1) }
-                            ProposalFact(field: field)
+                if !card.fields.isEmpty {
+                    Card(.inset) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(card.fields.enumerated()), id: \.offset) { index, field in
+                                if index > 0 { Theme.divider.frame(height: 1) }
+                                ProposalFact(field: field)
+                            }
                         }
                     }
                 }
-            }
-            if proposal.record.cardUnreadable {
-                Text("Peel can't read this card's details; what is shown comes from the input.")
-                    .muted()
-                    .foregroundStyle(Theme.attention)
-            }
-            if !card.full {
-                ProposalFullInput(record: proposal.record, disclosure: input)
-            }
-            if let rationale = proposal.record.rationale {
-                (Text("The assistant's reason: ").foregroundStyle(Theme.secondaryText) + Text(rationale).italic())
-                    .font(Theme.font(12))
-                    .foregroundStyle(Theme.text)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let line = Self.outcomeLine(shown, record: proposal.record) {
-                Text(line).muted().textSelection(.enabled)
-            }
-            if let note = note ?? (proposal.isAnswerStale(at: now) ? Self.noAnswerYet : nil) {
-                Text(note).muted().foregroundStyle(Theme.attention)
-            }
-            if waiting, let answer {
-                HStack(spacing: Theme.Space.sm) {
-                    Button(card.accept) { answer(true) }
-                        .buttonStyle(.peel(.primary, size: .sm))
-                        .help(proposal.record.acceptsByKey ? "Return" : "Click to accept")
-                    Button(card.reject) { answer(false) }
-                        .buttonStyle(.peel(.ghost, size: .sm))
-                        .help("Escape")
-                    Text("Nothing changes until you accept.")
+                if proposal.record.cardUnreadable {
+                    Text("Peel can't read this card's details; what is shown comes from the input.")
                         .muted()
-                        .padding(.leading, Theme.Space.xs)
+                        .foregroundStyle(Theme.attention)
                 }
-                .padding(.top, 2)
+                if !card.full {
+                    ProposalFullInput(record: proposal.record, disclosure: input)
+                }
+                if let rationale = proposal.record.rationale {
+                    (Text("The assistant's reason: ").foregroundStyle(Theme.secondaryText) + Text(rationale).italic())
+                        .font(Theme.font(12))
+                        .foregroundStyle(Theme.text)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let line = Self.outcomeLine(shown, record: proposal.record) {
+                    Text(line).muted().textSelection(.enabled)
+                }
+                if let note = note ?? (proposal.isAnswerStale(at: now) ? Self.noAnswerYet : nil) {
+                    Text(note).muted().foregroundStyle(Theme.attention)
+                }
+                if waiting, let answer {
+                    HStack(spacing: Theme.Space.sm) {
+                        Button(card.accept) { answer(true) }
+                            .buttonStyle(.peel(.primary, size: .sm))
+                            .help(proposal.record.acceptsByKey ? "Return" : "Click to accept")
+                        Button(card.reject) { answer(false) }
+                            .buttonStyle(.peel(.ghost, size: .sm))
+                            .help("Escape")
+                        Text("Nothing changes until you accept.")
+                            .muted()
+                            .padding(.leading, Theme.Space.xs)
+                    }
+                    .padding(.top, 2)
+                }
             }
         }
         .padding(.horizontal, Theme.Space.md)
@@ -131,13 +122,62 @@ struct ProposalCardView: View {
         .background(waiting ? Theme.attention.opacity(0.07) : Theme.panel, in: shape)
         .overlay(shape.strokeBorder(waiting ? Theme.attention.opacity(0.28) : Theme.divider))
         .frame(maxWidth: MessageRow.textWidth, alignment: .leading)
-        .answerKeys(enabled: waiting && answer != nil, returnAccepts: proposal.record.acceptsByKey) {
+        // Shut, it takes no key: what Return would accept is not on the screen.
+        .answerKeys(enabled: waiting && answer != nil && open, returnAccepts: proposal.record.acceptsByKey) {
             answer?(true)
         } reject: {
             answer?(false)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(waiting ? "Waiting on you: \(card.title)" : "\(card.title): \(shown.label?.lowercased() ?? "")")
+    }
+
+    /// The title, where it is from and how it stands. With `details` a
+    /// click on it opens or shuts the rest, and shut, one waiting on you says so.
+    @ViewBuilder
+    private func header(_ card: ProposalCard, shown: State, open: Bool) -> some View {
+        let row = HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
+            if details != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.secondaryText)
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            Image(systemName: "checklist")
+                .font(.system(size: 13))
+                .foregroundStyle(shown == .waiting ? Theme.attention : Theme.secondaryText)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                let title = Text(card.title)
+                    .font(Theme.font(13, .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                // A title that opens the card takes the click, not a selection.
+                if details == nil { title.textSelection(.enabled) } else { title }
+                Text([org.map { "From \($0)" }, proposal.record.step].compactMap { $0 }.joined(separator: " · "))
+                    .muted()
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: Theme.Space.sm)
+            if !open, shown == .waiting {
+                Text("Waiting on you").muted().foregroundStyle(Theme.attention)
+            } else {
+                ProposalStatus(shown: shown)
+            }
+        }
+        if let details {
+            Button {
+                details.toggle(expanding: expanding)
+            } label: {
+                row.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(open ? "Hide the details" : "Show the details")
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
+        } else {
+            row
+        }
     }
 
     /// When the card says something else without a new read: the second its
@@ -269,7 +309,7 @@ private struct ProposalFact: View {
             Text(field.label)
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: 110, alignment: .leading)
-            FactText(text: field.value, symbol: field.danger ? "exclamationmark.triangle.fill" : nil,
+            FactText(text: field.shownValue, symbol: field.danger ? "exclamationmark.triangle.fill" : nil,
                      tint: field.danger ? Theme.destructive : nil, monospaced: field.kind == .code)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -303,7 +343,7 @@ private struct ProposalStatus: View {
 
 /// Under fields that leave part of the input out: that not everything is
 /// shown, and the whole input on a click, as text; or that it is more than
-/// Peel keeps of one.
+/// Peel keeps of one, or that it never came (a tribe's post).
 private struct ProposalFullInput: View {
     @Environment(\.listRowExpanding) private var expanding
     let record: ProposalRecord
@@ -319,8 +359,11 @@ private struct ProposalFullInput: View {
                         disclosure.toggle(expanding: expanding)
                     }
                     .buttonStyle(.peel(.link, size: .sm))
-                } else {
+                } else if record.inputCut {
                     Text("The full input is larger than Peel keeps; strut has it.").muted()
+                } else {
+                    // A tribe's post carries the card alone.
+                    Text("The rest wasn't sent with it.").muted()
                 }
             }
             if disclosure.isOpen, let text {
@@ -364,7 +407,8 @@ struct OrgProposalRow: View {
 /// its card under the post (`ChatRow.strutProposals`, docs/hive-tribes.md,
 /// "Proposals in a tribe"), as the watch keeps it from the tribe's posts
 /// (`AppModel.proposals`): a card only for a proposal whose post this is
-/// (a later post claiming one draws none). The tribe's owner (`canAnswer`)
+/// (a later post claiming one draws none). Each starts shut to its title
+/// and how it stands; a click on the title opens it. The tribe's owner (`canAnswer`)
 /// gets the card's buttons, and answers by a reply to the post
 /// (`ProposalWatch.answerInTribe`); everyone else sees the card, how it
 /// stands, and that the owner decides it.
@@ -387,6 +431,7 @@ struct TribeProposalCards: View {
     @ViewBuilder
     private func card(_ key: ProposalKey) -> some View {
         let watch = model.proposals
+        let disclosures = AgentDisclosures(rowID: row.id, rows: model.agentOpenRows)
         if let proposal = watch.kept[key], proposal.post?.uuid == row.message.uuid {
             let stance: ProposalCardView.Stance = if let accept = watch.deciding[key] {
                 .deciding(accept: accept)
@@ -395,9 +440,10 @@ struct TribeProposalCards: View {
             }
             ProposalCardView(
                 proposal: proposal, org: watch.orgName(key.source), stance: stance, note: watch.notes[key],
-                input: AgentDisclosures(rowID: row.id, rows: model.agentOpenRows).open("input-\(key.id)"),
+                input: disclosures.open("input-\(key.id)"),
                 answer: canAnswer && !proposal.isOver
-                    ? { accept in Task { await watch.answerInTribe(key, accept: accept, on: row.message) } } : nil
+                    ? { accept in Task { await watch.answerInTribe(key, accept: accept, on: row.message) } } : nil,
+                details: disclosures.open("card-\(key.id)")
             )
         }
     }
@@ -405,10 +451,13 @@ struct TribeProposalCards: View {
 
 extension ProposalRecord {
     /// A first guess at its card's height, for a row not yet measured
-    /// (`AgentListRow`, `ChatRow`): the header and the buttons or badge, a
+    /// (`AgentListRow`): the header and the buttons or badge, a
     /// row per field, the summary and the reason when there are any.
     var estimatedCardHeight: CGFloat {
         let shown = shownCard
         return 110 + CGFloat(shown.fields.count) * 37 + (shown.summary == nil ? 0 : 50) + (rationale == nil ? 0 : 20)
     }
+
+    /// The same for a card shut to its title (a tribe's, `ChatRow`).
+    static let estimatedShutCardHeight: CGFloat = 56
 }

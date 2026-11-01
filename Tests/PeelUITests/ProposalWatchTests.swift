@@ -24,12 +24,14 @@ struct ProposalWatchTests {
         """
     }
 
-    /// A watch over `storage` with a clock of its own, in front.
+    /// A watch over `storage` with a clock of its own, in front. Its
+    /// tribes are known only once it is open, as `AppModel` opens it: the
+    /// account lists its tribes after.
     private func makeWatch(_ storage: Storage, now: @escaping @MainActor () -> Date = { Date() }) async -> ProposalWatch {
         let watch = ProposalWatch()
         watch.now = now
-        watch.isTribe = { ["02tribe", "02other"].contains($0) }
         await watch.open(storage)
+        watch.isTribe = { ["02tribe", "02other"].contains($0) }
         return watch
     }
 
@@ -355,7 +357,8 @@ struct ProposalWatchTests {
 
     /// Posts that came while nothing watched (to the CLI on the profile,
     /// or before this build): taken up from the store as the watch opens,
-    /// in a tribe only, so the owner's card has its buttons all the same.
+    /// in a tribe only, so the owner's card has its buttons all the same;
+    /// before the account has listed its tribes.
     @Test func aTribesPostsFromBeforeTheWatchAreTakenUpAsItOpens() async throws {
         let storage = try profile.storage()
         let (post1, reply1, dmPost) = (uuid(31), uuid(32), uuid(33))

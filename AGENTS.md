@@ -130,7 +130,8 @@ is a short plan. Update the status and the journal when you finish something.
     `answerStaleAt`); `keepProposal`, `proposals`,
     `forgetOrgProposals(endedBefore:)`, and `proposalPosts(after:)`, the
     tribes' posts naming a proposal since the last look
-    (`Setting.proposalPostsScan`)
+    (`Setting.proposalPostsScan`, read again from the start when
+    `proposalPostsVersion` changes)
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
     mutes, send status, invoices, uploads, contacts and tribes
@@ -563,8 +564,9 @@ is a short plan. Update the status and the journal when you finish something.
   as a badge (Accepting…, Running…, Applied, Rejected, Failed, Expired,
   Gone, Not yours); `OrgProposalRow`, a workspace's at the end of the
   agent chat, decided there with the person's token; `TribeProposalCards`,
-  those Jamie's post in a tribe made, under the post, with the buttons for
-  the tribe's owner alone, whose click is a reply to the post), `AgentTable` (the agent chat's
+  those Jamie's post in a tribe made, under the post, shut to its title
+  until a click (`details`), with the buttons for the tribe's owner alone,
+  whose click is a reply to the post), `AgentTable` (the agent chat's
   rows for `MessageTable`, `AgentListRow` (a workspace's proposal among
   its kinds), `AgentDMRows` (the agent's DM
   as the chat draws it: its rows as a chat's with tool rows above a reply,

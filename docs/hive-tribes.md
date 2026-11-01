@@ -170,10 +170,14 @@ thread (the owner's own answer is such a reply: the card must not fold
 away with it; `takeStrutEntries`).
 
 **The card.** `TribeProposalCards` (Mac, `ProposalCardViews.swift`) draws
-each as `ProposalCardView` under the post, as in the agent chat: the
-title, the workspace and the step, the summary, the fields (a `danger`
-one tinted as a loss), the model's reason apart, "Not everything is
-shown" with the whole input when the fields do not cover it. The tribe's
+each as `ProposalCardView` under the post, shut to its title, the workspace
+and step, and its badge until a click on the title opens the rest, as in the
+agent chat: the summary, the fields (a `danger` one tinted as a loss), the
+model's reason apart, "Not everything is shown" when the fields do not
+cover the input. Hive's post carries the card, never the input, so a field
+strut cut ends in "…" (`Field.shownValue`, not strut's "(see full input)",
+which is no link) and the line says the rest wasn't sent; shut, the card
+takes no key. The tribe's
 owner (`Tribe.canManage`, the list's `canAnswer`) gets the card's own two
 buttons, and Return and Escape as in the agent chat; everyone else sees
 the card, its badge, and "The tribe's owner decides this." Not on the
@@ -227,7 +231,11 @@ the Mac's clock where the posts' dates go: a record listed first takes the
 posts' clock from its post on). Posts that came while nothing watched
 (before this build, or to the CLI on the profile) are taken up as the
 watch opens, from where its last look got to (`Storage.proposalPosts(after:)`,
-`Setting.proposalPostsScan`), so a later open reads nothing twice.
+`Setting.proposalPostsScan`), so a later open reads nothing twice. The look
+reads only the tribes' rows, so its posts are taken up without asking which
+chats are tribes: the watch opens before the account has listed them. A new
+`Storage.proposalPostsVersion` reads every row again once; version 2 does,
+because the first watch asked, was told none, and took none of the posts.
 
 **Tests.** `ProposalTests` (a post's proposals and a reply's outcomes
 read, what is skipped, the posts in any order, the stale answer, the

@@ -250,13 +250,21 @@ extension Storage {
         }
     }
 
-    /// Where the last `proposalPosts(after:)` got to.
+    /// Changed when a look left out posts it read, so the next one reads
+    /// every stored row again. "2": the first watch opened before the
+    /// account listed its tribes and took none of the posts it read.
+    static let proposalPostsVersion = "2"
+
+    /// Where the last `proposalPosts(after:)` got to; 0 when another
+    /// `proposalPostsVersion` made it.
     public func proposalPostsScanned() throws -> Int64 {
-        try value(for: .proposalPostsScan).flatMap(Int64.init) ?? 0
+        guard try value(for: .proposalPostsScanVersion) == Self.proposalPostsVersion else { return 0 }
+        return try value(for: .proposalPostsScan).flatMap(Int64.init) ?? 0
     }
 
     public func setProposalPostsScanned(_ id: Int64) throws {
         try set(String(id), for: .proposalPostsScan)
+        try set(Self.proposalPostsVersion, for: .proposalPostsScanVersion)
     }
 
     /// Forgets a workspace's proposals over since before `date`: their

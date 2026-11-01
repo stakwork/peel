@@ -246,6 +246,13 @@ struct ControlRowTests {
         #expect(after.map(\.message.id) == [asked.id, read.id, again.id, waiting.id, reply.id, more.id])
         #expect(after[2].agentRequest?.outcome(at: before) == "Declined" && after[2].agentRequest?.reason == "You said no")
         #expect(after[2].agentRequest?.outcomeElsewhere(at: expiry) == "Declined")
+        // Calendar and Reminders: a change waits on the card, a read does not.
+        for (kind, asks) in [("calendar.events", false), ("reminders.list", false), ("calendar.create", true),
+                             ("calendar.update", true), ("calendar.delete", true), ("reminders.create", true), ("reminders.complete", true)] {
+            let request = message(12, body: controlBody("Peel asked your Mac", peel:
+                #"{"v":1,"op":"request","id":"c_1","device":"d","kind":"\#(kind)","args":{},"not_after":9}"#))
+            #expect(ChatRow.rows([request], parents: [:], inTribe: false, people: people, agentDM: true).first?.agentRequest?.asks == asks, "\(kind)")
+        }
         // An automation's send goes on its grant: nothing waits on you.
         let granted = message(11, body: controlBody("Peel asked your Mac to send a message for you", peel:
             #"{"v":1,"op":"request","id":"r_2","device":"d","kind":"send","args":{"automation":"a_1"},"not_after":9}"#))

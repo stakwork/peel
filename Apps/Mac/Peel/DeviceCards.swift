@@ -32,8 +32,10 @@ final class DeviceCards {
         }
         let read: @Sendable (String) async throws -> ProposalRead = { id in try await strut().readProposal(id) }
         model?.proposals.readLocal = read
+        // Offscreen, a stand-in: a check never asks macOS or touches the person's Calendar.
         let actions = DeviceActions(
             engine: engine, rules: agent.rules,
+            calendar: Offscreen.isOn ? OffscreenAgent.calendar() : EventKitCalendar(),
             proposals: ProposalReader(
                 read: read,
                 peer: { record in try await strut().peerRequest(from: record) },

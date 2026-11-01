@@ -29,6 +29,16 @@ public struct DeviceAnswer: Sendable, Equatable {
     public static let expired = Self(status: .expired)
 }
 
+/// The Calendar and Reminders request kinds (docs/agent-on-strut.md,
+/// "Request types"): the Mac answers the reads at once, and each change
+/// waits on its card. One list for the Mac's answer and the DM's rows.
+public enum DeviceKind {
+    public static let calendarReads: Set = ["calendar.events", "reminders.list"]
+    public static let calendarChanges: Set = [
+        "calendar.create", "calendar.update", "calendar.delete", "reminders.create", "reminders.complete",
+    ]
+}
+
 /// One request the agent asked this device, as its handler gets it.
 public struct DeviceRequest: Sendable, Equatable {
     /// The agent contact that asked it.

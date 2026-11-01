@@ -45,10 +45,11 @@ public struct ProposalReader: Sendable {
 /// you" and "Approvals"), on the Mac: `send`, planned by the send tool
 /// and allowed on its card in the agent's DM (or by an "Always allow" rule),
 /// or, for an automation, by its send grant; and `approve`, the card alone,
-/// which may make a send grant. The card goes through the approval gate and
-/// its rules (`ApprovalGate`), and what runs is what it showed. A card past the
+/// which may make a send grant; and the changes to Calendar and Reminders
+/// (`DeviceCalendar`). The card goes through the approval gate and its rules
+/// (`ApprovalGate`), and what runs is what it showed. A card past the
 /// request's time closes itself as `expired`. Every other kind is a read
-/// (`DeviceReads`).
+/// (`DeviceReads`, or `DeviceCalendar` for Calendar and Reminders).
 public struct DeviceActions: Sendable {
     /// Puts the card up in the agent's DM and waits for your answer; nil
     /// when it was taken down unanswered (the account closed), so the
@@ -58,6 +59,7 @@ public struct DeviceActions: Sendable {
     let engine: Engine
     let tools: SphinxTools
     let reads: DeviceReads
+    let calendar: DeviceCalendar
     let rules: ApprovalRules
     let grants: SendGrants
     /// How one of strut's proposals is read for its card (`ProposalReader`); nil, the bridge's words.
@@ -97,14 +99,16 @@ public struct DeviceActions: Sendable {
         }
     }
 
-    /// `proposals`: how a `proposal:` card's record is read from strut and kept.
+    /// `calendar`: the person's Calendar and Reminders; `proposals`: how a
+    /// `proposal:` card's record is read from strut and kept.
     public init(
-        engine: Engine, rules: ApprovalRules, proposals: ProposalReader? = nil,
+        engine: Engine, rules: ApprovalRules, calendar: any CalendarStore, proposals: ProposalReader? = nil,
         ask: @escaping Ask, changed: @escaping @Sendable () -> Void = {}
     ) {
         self.engine = engine
         tools = SphinxTools(storage: engine.storage)
         reads = DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias })
+        self.calendar = DeviceCalendar(store: calendar)
         self.rules = rules
         grants = SendGrants(beside: rules)
         self.proposals = proposals
@@ -118,11 +122,30 @@ public struct DeviceActions: Sendable {
     }
 
     func answer(_ request: DeviceRequest) async -> DeviceAnswer? {
-        guard ["send", "approve"].contains(request.kind) else { return await reads.answer(request.kind, request.args) }
+        let calendarKind = DeviceCalendar.handles(request.kind)
+        guard calendarKind || ["send", "approve"].contains(request.kind) else { return await reads.answer(request.kind, request.args) }
         guard case .object = request.args, let args = try? AgentKit.JSONValue(encoding: request.args) else {
             return .failed("args must be a JSON object")
         }
+        if calendarKind { return await calendarChange(request, args) }
         return request.kind == "send" ? await send(request, args) : await approve(request, args)
+    }
+
+    // MARK: - Calendar and Reminders
+
+    /// A read's answer; a change once its card allows it, done once.
+    private func calendarChange(_ request: DeviceRequest, _ args: AgentKit.JSONValue) async -> DeviceAnswer? {
+        switch await calendar.plan(request, args) {
+        case .answer(let answer):
+            return answer
+        case .change(let intent, let run):
+            if let refusal = await decide(request, tool: request.kind, intent: intent) { return refusal.answer }
+            do {
+                return .done(try await run())
+            } catch {
+                return Date() > request.deadline ? .expired : .failed(error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - send

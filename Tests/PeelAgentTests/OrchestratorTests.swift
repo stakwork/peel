@@ -16,7 +16,8 @@ struct OrchestratorTests {
         let config = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(), as: UTF8.self))
         let tools = config["orchestrator"]?["tools"]?.array?.compactMap(\.string) ?? []
         #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/diagnostics",
-                          "sphinx/send", "automation/list", "automation/preview", "automation/create", "automation/update",
+                          "sphinx/send", "calendar/events", "reminders/list", "calendar/create", "calendar/update", "calendar/delete",
+                          "reminders/create", "reminders/complete", "automation/list", "automation/preview", "automation/create", "automation/update",
                           "automation/delete", "automation/run-now",
                           // Memory is Peel's to grant: strut's default orchestrator has none.
                           "memory/remember", "memory/recall", "memory/get", "memory/ontology", "memory/forget", "memory/merge"])
@@ -34,6 +35,10 @@ struct OrchestratorTests {
         // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
         #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
         #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))
+        // It reads Calendar and Reminders but never changes them: no one is there to allow a card.
+        let changes = Set(DeviceStep.calendar.map(\.type)).subtracting(DeviceStep.calendarReads.map(\.type))
+        #expect(changes.count == 5 && changes.isDisjoint(with: Orchestrator.automationRunTools)
+                && Orchestrator.automationRunTools.contains("calendar/events"))
     }
 
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
@@ -52,7 +57,8 @@ struct OrchestratorTests {
         #expect(!Orchestrator.automationRunTools.contains(DeviceStep.diagnostics.type), "an automation never reads Peel's record")
         #expect(section.contains("give it a grant"))
         // The prompts name the steps by hand: each one granted is named.
-        for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + Orchestrator.memoryTools + ["automation/list"] {
+        for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + DeviceStep.calendar.map(\.type)
+            + Orchestrator.memoryTools + ["automation/list"] {
             #expect(section.contains(step), "\(step)")
         }
         for step in Orchestrator.automationRunTools { #expect(unattended.contains(step), "\(step)") }

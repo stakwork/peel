@@ -144,7 +144,7 @@ extension Journeys {
             func actions(for person: Person) throws -> DeviceRequestHandler {
                 let path = person.profile.directory.appendingPathComponent("agent.sqlite").path
                 let rules = ApprovalRules(store: try SQLiteAgentStore(path: path, device: "mac"))
-                return DeviceActions(engine: person.engine, rules: rules) { request, _ in
+                return DeviceActions(engine: person.engine, rules: rules, calendar: StandInCalendar()) { request, _ in
                     asked.withLock { $0.append(request.id) }
                     if let reply = replies.withLock({ $0[request.id] }) { return reply }
                     // A card nobody answers.
@@ -214,6 +214,76 @@ extension Journeys {
             #expect(try carolGot(words) == 1)
 
             for person in [relaunched, bob, carol] { await person.close() }
+        }
+
+        /// Bob, as the agent, asks Alice's Mac what is on Thursday and to
+        /// remind her to call Sam at 5 (docs/connectors-and-authoring.md,
+        /// P6), on a stand-in calendar. The read answers with no card; the
+        /// reminder waits on its card and, allowed, is made once. Peel
+        /// stopped after making it but before answering (the row left
+        /// `running`, as a kill there leaves it) answers it after a relaunch
+        /// with no second card and no second reminder; the bridge asking
+        /// again gets the stored answer.
+        @Test func theMacReadsItsCalendarAndAddsAReminderOnce() async throws {
+            let (alice, bob) = try await Journeys.Payments.pair()
+            let (aliceKey, bobKey) = (try alice.pubkey, try bob.pubkey)
+            let thursday = try #require(DeviceCalendar.time("2026-10-29T14:00")?.date)
+            let calendar = StandInCalendar(events: [
+                CalendarEvent(id: "e1", title: "Dentist", start: thursday, end: thursday.addingTimeInterval(3600)),
+            ])
+            let cards = Mutex(0)
+            func actions(for person: Person) throws -> DeviceRequestHandler {
+                let path = person.profile.directory.appendingPathComponent("agent.sqlite").path
+                let rules = ApprovalRules(store: try SQLiteAgentStore(path: path, device: "mac"))
+                return DeviceActions(engine: person.engine, rules: rules, calendar: calendar) { _, _ in
+                    cards.withLock { $0 += 1 }
+                    return .allowOnce
+                }.handler
+            }
+            await alice.engine.answerDeviceRequests(with: try actions(for: alice))
+            try await alice.engine.setDeviceAgent(bobKey)
+            let mac = await alice.engine.deviceID
+            func ask(_ id: String, _ kind: String, _ args: PeelCore.JSONValue) async throws {
+                let request = ControlEnvelope(op: .request, id: id, device: mac, kind: kind, args: args,
+                                              notAfter: Int64(Date().timeIntervalSince1970) + 3600)
+                try await bob.engine.sendControl(request, text: "Peel asked your Mac", to: aliceKey)
+            }
+            func result(_ id: String, count: Int = 1) async throws -> ControlEnvelope {
+                try await eventually("the result for \(id)", timeout: .seconds(60)) {
+                    let all = try bob.messages(in: aliceKey).compactMap { message -> ControlEnvelope? in
+                        guard !message.fromMe, case .envelope(let e)? = message.control, e.re == id, e.op == .result else { return nil }
+                        return e
+                    }
+                    return all.count >= count ? all.last : nil
+                }
+            }
+
+            try await ask("thursday", "calendar.events", .object(["from": .string("2026-10-29"), "to": .string("2026-10-29")]))
+            let read = try await result("thursday")
+            #expect(read.status == .done && read.result?.object?["text"]?.string?.contains("Dentist") == true)
+            #expect(cards.withLock { $0 } == 0)
+
+            let remind: PeelCore.JSONValue = .object(["title": .string("Call Sam"), "due": .string("2026-10-22T17:00")])
+            try await ask("call-sam", "reminders.create", remind)
+            let made = try await result("call-sam")
+            #expect(made.status == .done && cards.withLock { $0 } == 1)
+            #expect(await calendar.allReminders.map(\.title) == ["Call Sam"])
+
+            // Stopped after the reminder was made, before the answer was kept.
+            await alice.engine.close()
+            try await alice.storage.pool.write {
+                try $0.execute(sql: "UPDATE deviceRequest SET state = 'running' WHERE id = 'call-sam'")
+            }
+            let relaunched = try alice.relaunched()
+            await relaunched.engine.answerDeviceRequests(with: try actions(for: relaunched))
+            try await relaunched.engine.connect()
+            let after = try await result("call-sam", count: 2)
+            #expect(after.status == .done && cards.withLock { $0 } == 1)
+            try await ask("call-sam", "reminders.create", remind)
+            _ = try await result("call-sam", count: 3)
+            #expect(await calendar.allReminders.count == 1 && cards.withLock { $0 } == 1)
+
+            for person in [relaunched, bob] { await person.close() }
         }
     }
 }

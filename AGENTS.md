@@ -863,8 +863,18 @@ is a short plan. Update the status and the journal when you finish something.
     `proposal:` request's record read from strut through `ProposalReader`,
     tried again while strut does not answer, and kept: a hand-off to a
     workspace gets its own card and its "Always allow" (`peerCall`), every
-    other step the record's card by its title); a card past
+    other step the record's card by its title), and Calendar and Reminders
+    changes on the same card (`DeviceCalendar`); a card past
     the request's time is `expired`; every other kind goes to `DeviceReads`
+  - `DeviceCalendar.swift` — Calendar and Reminders by device request:
+    `calendar.events` and `reminders.list` read at once (between the
+    `ChatData` markers); `calendar.create`, `.update`, `.delete`,
+    `reminders.create` and `.complete` worked out into a card first; access
+    asked with macOS's prompt once, and said plainly when off; a create
+    carries a marker URL so the same request never makes a second
+  - `CalendarStore.swift` — `CalendarStore`: EventKit (`EventKitCalendar`,
+    an actor; nothing EventKit leaves it) or `StandInCalendar` (in memory,
+    never asks macOS: the tests and the offscreen checks)
   - `ChatDirectory.swift` — a chat by the name the agent gives: chat id,
     exact, normalised, without spaces, part of a name, then typos;
     ambiguous rather than a guess
@@ -1067,7 +1077,10 @@ is a short plan. Update the status and the journal when you finish something.
   tool (a price raised while the card waits is refused in the engine's
   words), threads and replies, hidden characters), `DeviceActionsTests`
   (sends and approvals by device request: the card, once, deny, expiry,
-  "Always allow", the price cap, send grants),
+  "Always allow", the price cap, send grants), `DeviceCalendarTests`
+  (Calendar and Reminders on a stand-in: reads with no card, a reminder
+  made once and only when allowed, access off in words, a moved event
+  keeping its length, refusals before the card),
   `BrainTests` (what is kept, an old home server read as this Mac),
   `PeelHomeTests` (every point a move out or back can fail leaves at most
   one bridge able to run, and this Mac's runs only when nothing reached the
@@ -1101,7 +1114,8 @@ is a short plan. Update the status and the journal when you finish something.
   card), `DeviceRequestJourneys` (the Mac answers its agent's
   `chats.unseen` once, a repeat from the ledger, strangers nothing; sends
   as you once and only when allowed, `expired`, `unknown` after a stop
-  mid-send); `FundDev` (the bank's half of
+  mid-send; a calendar read and one reminder, also after a stop once it
+  was made); `FundDev` (the bank's half of
   `fund-dev.sh`, run only by it)
 - `home/` — Peel Home, the always-on box's Compose bundle (its README,
   `docs/always-on.md`): `setup` runs strut's own `strut move serve` through

@@ -412,6 +412,8 @@ apps already show the content.
 | `send` | `chat`, `text`, `thread_uuid?`, `reply_to_uuid?`, `max_price_sats`, `automation?` | send | `SendTool`'s plan and `Engine.sendText`, behind the card or a grant (below) |
 | `calendar.events` | `from`, `to`, `calendars?` | read | EventKit; the first use asks for macOS Calendar access |
 | `calendar.create`, `calendar.update`, `calendar.delete` | the event, or its id | send | EventKit, behind the card |
+| `reminders.list` | `list?`, `include_done?`, `limit?` | read | EventKit; the first use asks for macOS Reminders access |
+| `reminders.create`, `reminders.complete` | `title`, `due?`, `list?`, `notes?`, or its id | send | EventKit, behind the card |
 | `approve` | `intent` (a `ToolIntent`) | — | The card only; the answer is the result. Used by strut steps that act on the brain (automations) |
 
 Results are what the Swift tools return today (`ChatData` text, with the
@@ -1412,6 +1414,70 @@ From the connectors and authoring design (stakwork/peel#342, `docs/connectors-an
   `aWorkflowTheAgentBuildsIsTestedAndPublishedWithNoCard`: the builder is ungated):
   a DM asks for a workflow, the orchestrator starts the builder, its
   publish is one pending proposal and the workflow does not exist.
+### Built: connectors P6, Calendar and Reminders (2026-10-22)
+
+PR 8 brought back, plus `reminders.*` (the connectors and authoring
+design, stakwork/peel#342, section 4).
+
+- **Steps.** Seven sealed device steps: `calendar/events`,
+  `calendar/create`, `calendar/update`, `calendar/delete`,
+  `reminders/list`, `reminders/create`, `reminders/complete`, granted to
+  the orchestrator. An automation's run gets the two reads only: nobody is
+  there to allow a card. The prompt says "remind me to…" is a reminder in
+  Reminders, which notifies by itself, not an automation (the automations
+  prompt said the opposite before).
+- **On the Mac.** `DeviceCalendar` (in `DeviceActions`): reads answer at
+  once between the `ChatData` markers (an invitation's title is someone
+  else's words); a change is worked out first (title, times, calendar or
+  list named and checked) and shown on the existing card, with no "Always
+  allow". Times go both ways as local time on the Mac with no offset
+  (`2026-10-29T17:00`), or a date alone for a whole day: an offset worked
+  out from the day of the message is wrong across a change of the clocks
+  (an offset is still read when given). A moved event keeps its length,
+  an all-day one in whole days. A reminder due on a date alone is due all
+  day, not at midnight.
+- **What the card showed.** An update or delete first reads the event
+  again and refuses if it changed while the card was up; a save sets only
+  the fields that differ. Completing a reminder sets only its done flag.
+  Every answer that names an item (made, changed, deleted) puts it between
+  the markers, like the reads.
+- **Recurring events.** EventKit's id names the whole series (its lookup
+  gives the first occurrence), so an occurrence's id here is the series id
+  and the occurrence's start (`<id>@<seconds>`), found again by a one-day
+  search.
+- **Once.** A create carries a marker URL (`peel-agent-request:<hash of the
+  agent and request id>`): the same request asked again, or rerun after a
+  stop once the item was made, finds it and answers without a second card
+  or item. An update already applied is "Nothing to change"; a reminder
+  already done says so.
+- **Access.** Checked before the card. Never asked: macOS's prompt, once
+  (`requestFullAccessToEvents` / `…Reminders`). Off, or "add only": denied,
+  with where to allow it (System Settings › Privacy & Security ›
+  Calendars or Reminders). The Mac target has both usage strings and
+  `com.apple.security.personal-information.calendars` in both entitlement
+  files (hardened runtime and the sandbox block EventKit without it).
+- **Offscreen.** The check app uses a `StandInCalendar` (one event,
+  "Dentist" next Thursday at 14:00) and never shows macOS's prompt; tests
+  use stand-ins too, so nothing touches a real calendar.
+- **Checked.** `DeviceCalendarTests`; `ControlRowTests` (which kinds wait
+  on you); `Journeys/DeviceRequests.theMacReadsItsCalendarAndAddsAReminderOnce`
+  (a read with no card, one reminder on one card, and once after a stop);
+  `Journeys/Orchestrator.thursdayIsReadAndAReminderIsAddedOnACard` (the DM
+  through strut and the bridge); `check-app.sh` on a dev profile with a
+  second profile standing in for the agent's account (the read's row, the
+  card's words, Allow once).
+- **Not checked.** EventKit itself against a real calendar (recurring
+  occurrences, Exchange or CalDAV calendars that may drop the marker URL,
+  "Add events only" access): that needs Tom's grant on his Mac, so it is
+  his first try.
+- **Review findings not applied.** A delete re-run after a stop, once the
+  event was gone, answers "No event with that id" though it was done.
+  Two calendars with the same name: the first EventKit gives is used. An
+  automation's run may read the calendar and post where its grant allows,
+  as it may already read chats. A create's marker check reads every
+  reminder, done ones included. Found on the way: `Automation.date` reads
+  a time with an offset as UTC (its narrower style first); harmless for
+  strut's `Z` times, so left for its own change.
 
 ### Built: connectors P3, the Connections screen (2026-10-23)
 

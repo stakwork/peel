@@ -210,7 +210,7 @@ struct DeviceActionsTests {
         let rules = ApprovalRules(store: try SQLiteAgentStore.inMemory(device: "mac"))
         let cards = Cards()
         try await withTestEngine(storage, on: Transport(publishing: publishing)) { engine in
-            let actions = DeviceActions(engine: engine, rules: rules) { _, approval in await cards.ask(approval) }
+            let actions = DeviceActions(engine: engine, rules: rules, calendar: StandInCalendar()) { _, approval in await cards.ask(approval) }
             try await body(actions, cards, storage)
         }
     }

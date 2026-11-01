@@ -347,7 +347,7 @@ struct HiveTests {
                 default: throw PeelError("strut's proposal names no workspace.")
                 }
             }, keep: { request, record in kept.withLock { $0.append((request.id, record)) } }, patience: 0)
-            let actions = DeviceActions(engine: engine, rules: rules, proposals: reader) { _, approval in await cards.ask(approval) }
+            let actions = DeviceActions(engine: engine, rules: rules, calendar: StandInCalendar(), proposals: reader) { _, approval in await cards.ask(approval) }
             func approve(_ id: String) async -> DeviceAnswer? {
                 await actions.answer(DeviceRequest(agent: "02a", id: id, kind: "approve",
                                                    args: .object(["intent": .object(["action": .string("Run strut/run-workflow")])]),

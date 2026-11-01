@@ -98,6 +98,34 @@ struct PeelPhoneApp: App {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
+    private let inbox = AgentInbox.shared
+    @State private var draining = false
+
+    /// Sends what the Action button's intent queued, once the account is
+    /// open (text waits in memory behind the PIN) and the agent's DM exists.
+    /// One drain at a time; each text opens the agent chat and goes through
+    /// the composer's send, which words a failure in the chat's notice.
+    private func drain() async {
+        guard !draining, model.phase == .ready, inbox.count > 0 else { return }
+        guard let agent = model.agentChat else {
+            // Once the connection has settled with no agent DM, say so
+            // rather than hold the text for ever.
+            if model.connection == .connected {
+                while inbox.next() != nil {}
+                model.notice = "Set up the Peel agent before asking it from the Action button."
+            }
+            return
+        }
+        draining = true
+        defer { draining = false }
+        while model.phase == .ready, let text = inbox.next() {
+            router.openChat(agent)
+            if await !model.send(text, from: .chat(agent)),
+               (model.drafts[.chat(agent)] ?? "").isEmpty {
+                model.drafts[.chat(agent)] = text
+            }
+        }
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -123,6 +151,11 @@ struct RootView: View {
                 if phase == .onboarding { router.reset() }
             }
             .onAppear { if model.phase == .onboarding { router.reset() } }
+            .task { await drain() }
+            .onChange(of: inbox.count) { _, _ in Task { await drain() } }
+            .onChange(of: model.phase) { _, _ in Task { await drain() } }
+            .onChange(of: model.agentChat) { _, _ in Task { await drain() } }
+            .onChange(of: model.connection == .connected) { _, _ in Task { await drain() } }
     }
 
     @ViewBuilder private var phase: some View {

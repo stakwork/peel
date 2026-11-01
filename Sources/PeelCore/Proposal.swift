@@ -239,6 +239,14 @@ public struct ProposalCard: Codable, Sendable, Equatable {
             self.kind = kind
             self.danger = danger
         }
+
+        /// The value as shown: a value cut (`ProposalCard.cutMarker`) ends
+        /// in "…", since the card says under its fields whether the whole
+        /// input can be opened, and the marker is no link.
+        public var shownValue: String {
+            guard value.hasSuffix(ProposalCard.cutMarker) else { return value }
+            return String(value.dropLast(ProposalCard.cutMarker.count)) + "…"
+        }
     }
 
     public var title: String

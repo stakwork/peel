@@ -423,6 +423,15 @@ extension ProposalTests {
         #expect(next.posts.map(\.uuid) == [uuid(5)] && next.upTo > first.upTo)
     }
 
+    /// A value strut cut ends in "…" as shown, not in its marker, which is no
+    /// link; a value whole, or one ending in other words, is shown as it is.
+    @Test func aCutValueIsShownEndingInAnEllipsis() {
+        let cut = ProposalCard.Field(label: "docs", value: "Insomnia is common" + ProposalCard.cutMarker)
+        #expect(cut.shownValue == "Insomnia is common…")
+        #expect(ProposalCard.Field(label: "name", value: "Insomnia").shownValue == "Insomnia")
+        #expect(ProposalCard.Field(label: "note", value: "see full input").shownValue == "see full input")
+    }
+
     /// A mark the first watch left (no version: it took none of the posts
     /// it read) counts as no look, so every post is read again; one this
     /// version made holds.

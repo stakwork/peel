@@ -1287,7 +1287,8 @@ extension ChatRow: TableRow {
             if message.attachmentKind != nil { height += 220 }
             if summary != nil { height += 28 }
             height += CGFloat(agentArtifacts.count) * 24
-            for record in strutProposals?.proposed ?? [] { height += record.estimatedCardHeight + Theme.Space.sm }
+            // A tribe's cards start shut (`TribeProposalCards`); an opened one is measured.
+            height += CGFloat(strutProposals?.proposed.count ?? 0) * (ProposalRecord.estimatedShutCardHeight + Theme.Space.sm)
         default:
             height += 28
         }

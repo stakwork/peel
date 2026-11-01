@@ -40,6 +40,9 @@ public enum Setting: String, Sendable {
     /// tribe post naming strut's proposals (`Storage.proposalPosts(after:)`):
     /// a later open reads only the rows stored since.
     case proposalPostsScan
+    /// The `Storage.proposalPostsVersion` the `proposalPostsScan` was
+    /// made by; a new version reads every row again.
+    case proposalPostsScanVersion
     /// Which sidebar sections are open and shown in full
     /// (`ChatSections.Layout`, as JSON).
     case sidebarLayout

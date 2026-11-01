@@ -130,7 +130,8 @@ is a short plan. Update the status and the journal when you finish something.
     `answerStaleAt`); `keepProposal`, `proposals`,
     `forgetOrgProposals(endedBefore:)`, and `proposalPosts(after:)`, the
     tribes' posts naming a proposal since the last look
-    (`Setting.proposalPostsScan`)
+    (`Setting.proposalPostsScan`, read again from the start when
+    `proposalPostsVersion` changes)
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
     mutes, send status, invoices, uploads, contacts and tribes

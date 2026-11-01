@@ -227,7 +227,11 @@ the Mac's clock where the posts' dates go: a record listed first takes the
 posts' clock from its post on). Posts that came while nothing watched
 (before this build, or to the CLI on the profile) are taken up as the
 watch opens, from where its last look got to (`Storage.proposalPosts(after:)`,
-`Setting.proposalPostsScan`), so a later open reads nothing twice.
+`Setting.proposalPostsScan`), so a later open reads nothing twice. The look
+reads only the tribes' rows, so its posts are taken up without asking which
+chats are tribes: the watch opens before the account has listed them. A new
+`Storage.proposalPostsVersion` reads every row again once; version 2 does,
+because the first watch asked, was told none, and took none of the posts.
 
 **Tests.** `ProposalTests` (a post's proposals and a reply's outcomes
 read, what is skipped, the posts in any order, the stale answer, the

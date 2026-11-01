@@ -138,7 +138,7 @@ public final class ProposalWatch {
             if let request = proposal.request { byRequest[request] = proposal.key }
             schedule(proposal, at: now)
         }
-        for post in posts { noticed(post) }
+        for post in posts { takeUp(post) }
         listSoon = true
         refreshCards(at: now)
         loop = Task { await run(generation) }
@@ -226,7 +226,15 @@ public final class ProposalWatch {
     /// before the post gives way to it). Nothing outside a tribe, nothing
     /// from your own posts (your reply is `answered(byOwn:)`).
     public func noticed(_ message: Message) {
-        guard storage != nil, !message.fromMe, !message.deleted, let uuid = message.uuid, isTribe(message.chat),
+        guard isTribe(message.chat) else { return }
+        takeUp(message)
+    }
+
+    /// `noticed` for a post known to be a tribe's: the look as the watch
+    /// opens reads only the tribes' rows (`Storage.proposalPosts(after:)`),
+    /// before the account has listed its tribes.
+    private func takeUp(_ message: Message) {
+        guard storage != nil, !message.fromMe, !message.deleted, let uuid = message.uuid,
               let proposals = message.strutProposals else { return }
         let now = now()
         let date = message.date

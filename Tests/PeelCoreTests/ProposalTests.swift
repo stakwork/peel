@@ -422,4 +422,16 @@ extension ProposalTests {
         let next = try storage.proposalPosts(after: first.upTo)
         #expect(next.posts.map(\.uuid) == [uuid(5)] && next.upTo > first.upTo)
     }
+
+    /// A mark the first watch left (no version: it took none of the posts
+    /// it read) counts as no look, so every post is read again; one this
+    /// version made holds.
+    @Test func aMarkTheFirstWatchLeftIsReadAgainFromTheStart() throws {
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        try storage.set("42", for: .proposalPostsScan)
+        #expect(try storage.proposalPostsScanned() == 0)
+        try storage.setProposalPostsScanned(42)
+        #expect(try storage.proposalPostsScanned() == 42)
+    }
 }

@@ -450,8 +450,12 @@ public final class Stadeum {
 
     /// Links `tribe` to `peer`'s org (Jamie joins it and answers `@jamie`
     /// there, as this person), or with nil unlinks it (No Jamie). A throw
-    /// is Hive's refusal in words (`HiveClient.linkTribe`).
-    public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws {
+    /// is Hive's refusal in words (`HiveClient.linkTribe`), and changes
+    /// nothing. An unlink Hive took answers Jamie's key when the tribe was
+    /// this person's to unlink: the member whose mark goes with the link
+    /// (`AppModel.setJamie`).
+    @discardableResult
+    public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws -> String? {
         guard let link, !revoked else { throw PeelError("Connect Stadeum to add Jamie.") }
         let generation = generation
         let client = HiveClient(hive: link.hive)
@@ -460,19 +464,23 @@ public final class Stadeum {
             guard live.contains(where: { $0.id == peer.id }) else { throw PeelError("Connect Stadeum to add Jamie from \(peer.name).") }
             guard let host = tribe.host else { throw PeelError("This tribe's server isn't known here, so Jamie can't join it.") }
             let (jamie, linked) = try await client.linkTribe(link, workspace: peer.id, tribe: tribe.pubkey, host: host, name: tribe.name)
-            guard generation == self.generation else { return }
+            guard generation == self.generation else { return nil }
             var links = jamieLinks ?? JamieLinks(jamie: jamie, tribes: [])
             links.jamie = jamie
             links.tribes.removeAll { $0.pubkey == key }
             links.tribes.append(linked)
             jamieLinks = links
-        } else {
-            try await client.unlinkTribe(link, tribe: tribe.pubkey)
-            guard generation == self.generation else { return }
-            jamieLinks?.tribes.removeAll { $0.pubkey == key }
+            jamieChanges += 1
+            jamieProblem = nil
+            return nil
         }
+        let wasLinked = jamieLink(of: tribe.pubkey) != nil ? jamieLinks?.jamie.pubkey : nil
+        try await client.unlinkTribe(link, tribe: tribe.pubkey)
+        guard generation == self.generation else { return nil }
+        jamieLinks?.tribes.removeAll { $0.pubkey == key }
         jamieChanges += 1
         jamieProblem = nil
+        return wasLinked
     }
 
     /// What Hive said of the tribes, let go: the account closed, or another pairing.

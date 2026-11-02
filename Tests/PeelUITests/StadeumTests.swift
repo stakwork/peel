@@ -361,6 +361,40 @@ struct StadeumTests {
         #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
     }
 
+    /// An unlink Hive refuses changes nothing: the tribe stays linked, so
+    /// Jamie keeps its mark (`AppModel.setJamie` unmarks only on Hive's
+    /// yes). One Hive takes answers Jamie's key, the member to unmark; a
+    /// tribe that was not linked here answers none.
+    @Test func anUnlinkHiveRefusesKeepsTheLinkAndOnlyATakenOneNamesJamie() async throws {
+        let tribe = String(repeating: "ab", count: 33), other = String(repeating: "cd", count: 33)
+        let jamie = String(repeating: "0c", count: 33)
+        let refusing = Mutex(true)
+        let hive = try await HTTPStub { _, request in
+            if request.hasPrefix("GET /api/strut-devices/tribes ") {
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribes":[{"pubkey":"\#(tribe)","host":"h","workspace":"acme"}]}"#)
+            }
+            if request.hasPrefix("DELETE /api/strut-devices/tribes/") {
+                return refusing.withLock { $0 } ? (500, #"{"error":"Failed to unlink"}"#) : (200, #"{"unlinked":true}"#)
+            }
+            return (404, "{}")
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile, renewNow: false)
+        await stadeum.readJamieLinks()
+        let record = Tribe(pubkey: tribe, host: "h", isOwner: true)
+
+        await #expect(throws: PeelError.self) { try await stadeum.setJamie(nil, for: record) }
+        #expect(stadeum.jamiePick(of: tribe) == "acme")
+        refusing.withLock { $0 = false }
+        #expect(try await stadeum.setJamie(nil, for: record) == jamie)
+        #expect(stadeum.jamiePick(of: tribe) == "")
+        #expect(try await stadeum.setJamie(nil, for: Tribe(pubkey: other, host: "h", isOwner: true)) == nil)
+        stadeum.close()
+    }
+
     /// A read of the links that Hive answers after this device linked the
     /// tribe does not take the link back, and the next read asks again.
     @Test func aReadAnsweredAfterALinkDoesNotTakeItBack() async throws {

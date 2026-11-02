@@ -10,17 +10,15 @@ extension AppModel {
     /// Links `tribe` to `peer`'s org, or with nil unlinks it
     /// (`Stadeum.setJamie`). Linking marks Jamie to know who is speaking
     /// there once it is in (`markJamie`): part of the link, never a second
-    /// step. Unlinking takes the mark off first, best effort and without
-    /// waiting on the tribes server, which drops it with the member anyway
-    /// once Hive has told Jamie to leave; this device then no longer counts
-    /// it settled (`Engine.markSendersOnce`). A throw is Hive's refusal.
+    /// step. Unlinking takes the mark off once Hive has unlinked it (a
+    /// refused unlink leaves Jamie linked and marked), best effort and
+    /// without waiting on the tribes server, which drops it with the member
+    /// anyway once Jamie leaves; this device then no longer counts it
+    /// settled (`Engine.markSendersOnce`). A throw is Hive's refusal.
     public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws {
-        if peer == nil, stadeum.jamiePick(of: tribe.pubkey)?.isEmpty == false,
-           let jamie = stadeum.jamieLinks?.jamie.pubkey, let engine {
-            try? await engine.stopShowingSenders(jamie, in: tribe.pubkey)
-        }
-        try await stadeum.setJamie(peer, for: tribe)
+        let unlinked = try await stadeum.setJamie(peer, for: tribe)
         if peer != nil { markJamie(in: tribe.pubkey) }
+        if let unlinked, let engine { try? await engine.stopShowingSenders(unlinked, in: tribe.pubkey) }
     }
 
     /// Whether Jamie knows who is speaking in `tribe` (`TribeMember.seesSenders`),

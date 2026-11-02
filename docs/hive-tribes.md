@@ -153,8 +153,10 @@ their delegation, their access. Anyone else asks with the owner's, as before.
   (`Engine.showSenders`, sphinx-rs's `showSenders`, over the tribes
   server's topic like the owner's other commands) and waits for the member
   list, which says it per member (`sees_senders`, `TribeMember.seesSenders`;
-  absent is false). Unlinking sends it off first, not waiting: the server
-  drops the mark with the member anyway once Jamie leaves.
+  absent is false). Unlinking sends it off once Hive has unlinked the
+  tribe (`Engine.stopShowingSenders`), not waiting: the server drops the
+  mark with the member anyway once Jamie leaves. An unlink Hive refuses
+  leaves Jamie linked and marked, and the switch on.
 - **Tribes linked before.** As the account opens and on each connection,
   only while connected (the lists need it; on the Mac the account opens
   before the engine connects), the tribes this person linked and owns are

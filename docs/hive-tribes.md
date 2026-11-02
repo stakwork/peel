@@ -342,7 +342,8 @@ second answer is another reply.
 carrying `metadata.strut.proposals: [{ id, status, title, step, error? }]`,
 no card. Peel takes it only from the same member (by alias, which the
 tribes server keeps unique in a tribe) in the thread of the post whose
-card it is (any member can write the field, as with a deliverable): the
+card it is (the mention's, which Jamie's post and its outcome both reply
+to; `TribePost.thread`, v31) (any member can write the field, as with a deliverable): the
 card moves to Applied, Rejected or Failed with the error. The posts may
 come in any order (history pages do): the later post has the last word
 on the status, so a copy of the carrier coming round again never reopens

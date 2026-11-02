@@ -65,7 +65,7 @@ public final class AppModel {
             }
             return [
                 Line(title: "Account", detail: connection.label, state: connection == .connected ? .done : .active),
-                Line(title: "Contacts", detail: label(contacts, noun: "checked"),
+                Line(title: "Contacts & Tribes", detail: label(contacts, noun: "checked"),
                      state: state(started: contacts != nil, done: messages != nil || finished)),
                 Line(title: "Messages", detail: label(messages, noun: "received"),
                      state: state(started: messages != nil, done: finished), fraction: messages?.fraction),

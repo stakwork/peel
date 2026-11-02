@@ -85,6 +85,14 @@ final class WebPane: NSObject, Identifiable {
     /// Where a link from it to another app goes (`open(_ page:)`).
     @ObservationIgnored private var strutOpensApp: ((StrutAppLink) -> Void)?
 
+    /// The deliverable on show is a Strut app or page: it can have a window of its own.
+    var canOpenInNewWindow: Bool { strut != nil }
+
+    func openInNewWindow() {
+        guard let strut, let opensApp = strutOpensApp else { return }
+        StrutAppWindows.shared.show(StrutPage(url: strut.url(at: webView?.url), server: strut.server, name: strut.name), link: linkAction, openApp: opensApp)
+    }
+
     /// An HTML attachment or a deliverable is on show: no web address to
     /// show, copy, or offer to try again.
     private var showsNoAddress: Bool { document != nil || strut != nil }
@@ -735,6 +743,9 @@ private struct WebToolbar: View {
                 if let url = page.url { NSWorkspace.shared.open(url) }
             }
             .disabled(page.url == nil)
+            if pane.canOpenInNewWindow {
+                IconButton("arrow.up.forward.app", help: "Open in new window") { pane.openInNewWindow() }
+            }
             MoreMenu(pane: pane, url: page.url)
             IconButton("xmark", help: "Close (⌘W)") {
                 pane.close()

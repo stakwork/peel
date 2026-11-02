@@ -90,7 +90,7 @@ services:
 
   bridge:
     # Should be the runner commit Peel ships (Vendor/runner.lock).
-    image: ${BRIDGE_IMAGE:-ghcr.io/stakwork/sphinx-runner:9bf7079@sha256:0da8270f1820e2d35d1c461a821930da870a3eac44cd084fe52eb49aa1fd0cfe}
+    image: ${BRIDGE_IMAGE:-ghcr.io/stakwork/sphinx-runner:74c1295@sha256:c519ce8bf5cea24a03ad3de3488051f0c810c16a5a777c94d8bdd6bc63e907ce}
     restart: unless-stopped
     network_mode: service:strut
     entrypoint: ["sh", "/gate.sh", "bridge", "/usr/src/sphinx-runner"]

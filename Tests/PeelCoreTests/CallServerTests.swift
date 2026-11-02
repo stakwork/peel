@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import PeelCore
 @testable import PeelTestSupport
@@ -308,5 +309,119 @@ struct CallTicketFetchTests {
             base: base, link: link(on: "127.0.0.1:\(stub.port)", "?callKey=k+"), participantName: "a", photoURL: nil
         ))
         #expect(URLCache.shared.cachedResponse(for: URLRequest(url: url)) == nil)
+    }
+}
+
+/// A join of a call Hive made asks a paired device's Hive for its ticket
+/// first (docs/hive-calls.md, "Who is speaking"): that ticket's identity is
+/// the one voice names, and Hive runs the person's requests as them. The call
+/// server is a loopback stub that would answer every join as someone else.
+struct CallTicketFromHiveTests {
+    private static let hiveRoom = "sphinx.call.-swarm38.sphinx.chat-.1793600000"
+    private static let hiveIdentity = "hive_0123456789abcdef0123456789abcdef"
+
+    /// The call server's answer to any ticket request: a token as `alice-1` for `room`.
+    private func callServer(room: String) async throws -> HTTPStub {
+        try await HTTPStub { port in
+            #"{"serverUrl":"ws://127.0.0.1:\#(port)","participantToken":"\#(token(claims(room: room)))"}"#
+        }
+    }
+
+    private func engine(callServer port: UInt16, _ profile: TempProfile) async throws -> Engine {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(state: [:], settings: [.server: "mqtts://lsp.example.com:8883"]))
+        let engine = try testEngine(storage)
+        try await engine.setCallServer("127.0.0.1:\(port)")
+        return engine
+    }
+
+    private func hiveTicket(port: UInt16, room: String = hiveRoom, serverURL: String? = nil) -> HiveCallTicket {
+        var hive = claims(room: room)
+        hive["sub"] = Self.hiveIdentity
+        return HiveCallTicket(serverUrl: serverURL ?? "ws://127.0.0.1:\(port)", participantToken: token(hive))
+    }
+
+    @Test func aHiveRoomJoinsWithHivesTicketUnderTheNameTheCallServerWouldGet() async throws {
+        let stub = try await callServer(room: Self.hiveRoom)
+        defer { stub.stop() }
+        let profile = TempProfile()
+        let engine = try await engine(callServer: stub.port, profile)
+        let link = try #require(CallLink(link: "http://127.0.0.1:\(stub.port)/rooms/\(Self.hiveRoom)", server: "127.0.0.1:\(stub.port)"))
+        let asked = OSAllocatedUnfairLock(initialState: [String]())
+        let answer = hiveTicket(port: stub.port)
+
+        let ticket = try await engine.callTicket(for: link, in: nil) { room, name, metadata in
+            asked.withLock { $0.append("\(room)|\(name)|\(metadata ?? "none")") }
+            return answer
+        }
+
+        #expect(ticket.identity == Self.hiveIdentity)
+        #expect(ticket.participantName == "Peel user")
+        #expect(asked.withLock { $0 } == ["\(Self.hiveRoom)|Peel user|none"])
+        #expect(stub.requests.isEmpty)
+    }
+
+    /// Anything short of a ticket that passes the call server's checks joins
+    /// through the call server, as the call's starter: no Stadeum, a Hive
+    /// that refuses, a ticket for another room, a media host Peel does not know.
+    @Test(arguments: ["refused", "another room", "another media host"])
+    func anyFailureJoinsThroughTheCallServer(failure: String) async throws {
+        let stub = try await callServer(room: Self.hiveRoom)
+        defer { stub.stop() }
+        let profile = TempProfile()
+        let engine = try await engine(callServer: stub.port, profile)
+        let link = try #require(CallLink(link: "http://127.0.0.1:\(stub.port)/rooms/\(Self.hiveRoom)", server: "127.0.0.1:\(stub.port)"))
+        let answer: HiveCallTicket? = switch failure {
+        case "another room": hiveTicket(port: stub.port, room: room)
+        case "another media host": hiveTicket(port: stub.port, serverURL: "wss://media.example.com")
+        default: nil
+        }
+
+        let ticket = try await engine.callTicket(for: link, in: nil) { _, _, _ in
+            guard let answer else { throw PeelError("Stadeum could not give a call ticket: No Hive call in that room.") }
+            return answer
+        }
+
+        #expect(ticket.identity == "alice-1")
+        #expect(stub.requests.count == 1)
+    }
+
+    /// Peel's own rooms and the apps' are never told to Hive.
+    @Test(arguments: [room, "sphinx.call.1729000000.512", "sphinx.call.-not-a-hive-room"])
+    func anotherRoomNeverAsksHive(other: String) async throws {
+        let stub = try await callServer(room: other)
+        defer { stub.stop() }
+        let profile = TempProfile()
+        let engine = try await engine(callServer: stub.port, profile)
+        let link = try #require(CallLink(link: "http://127.0.0.1:\(stub.port)/rooms/\(other)", server: "127.0.0.1:\(stub.port)"))
+        let asked = OSAllocatedUnfairLock(initialState: 0)
+
+        let ticket = try await engine.callTicket(for: link, in: nil) { [port = stub.port] _, _, _ in
+            asked.withLock { $0 += 1 }
+            return hiveTicket(port: port, room: other)
+        }
+
+        #expect(ticket.identity == "alice-1")
+        #expect(asked.withLock { $0 } == 0)
+    }
+
+    /// A join cancelled while Hive is asked stays cancelled: it never goes on to the call server.
+    @Test func aCancelledJoinStaysCancelled() async throws {
+        let stub = try await callServer(room: Self.hiveRoom)
+        defer { stub.stop() }
+        let profile = TempProfile()
+        let engine = try await engine(callServer: stub.port, profile)
+        let link = try #require(CallLink(link: "http://127.0.0.1:\(stub.port)/rooms/\(Self.hiveRoom)", server: "127.0.0.1:\(stub.port)"))
+
+        let join = Task {
+            try await engine.callTicket(for: link, in: nil) { _, _, _ in
+                try await Task.sleep(for: .seconds(30))
+                throw PeelError("Stadeum could not give a call ticket.")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        join.cancel()
+        await #expect(throws: CancellationError.self) { try await join.value }
+        #expect(stub.requests.isEmpty)
     }
 }

@@ -42,6 +42,10 @@ decided (Tom, 2026-10-08; see "Decided" below).
   connected, the call menu can bring Jamie into a call from one of the
   person's workspaces; see the journal below and `../hive-calls.md`. It
   reopens decision 5 (Tom's call).
+- Built (who is speaking, 2026-11-02): a join of a call Hive made asks Hive
+  for the ticket first, so the person speaks to Jamie as themselves
+  (`../hive-calls.md`, "Who is speaking"; stakwork/hive#5699,
+  stakwork/sphinx-voice#23). Any failure joins as before.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), PR 8 (the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.

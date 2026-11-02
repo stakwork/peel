@@ -19,6 +19,11 @@ struct StadeumSection: View {
                 Text("Open what your workspaces' assistants make for you, and their apps, here on this iPhone.")
                     .foregroundStyle(Theme.quietText(on: .raised))
                     .fixedSize(horizontal: false, vertical: true)
+                if stadeum.reconnectHint {
+                    Text("Your account is back, but not its Stadeum connection. Connect Stadeum again.")
+                        .foregroundStyle(Theme.attention)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Button("Connect Stadeum") { stadeum.connect(as: UIDevice.current.name) }
                     .buttonStyle(.peel(.outline, size: .touch))
             case .pairing(let pairing):

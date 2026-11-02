@@ -48,6 +48,10 @@ public final class Stadeum {
     public private(set) var link: HiveLink?
     /// The last thing that went wrong, in words; nil once something works.
     public var problem: String?
+    /// A restored account has no pairing (none kept, or the one kept was
+    /// another account's and let go): the rows say to connect again.
+    /// Cleared by `connect`, `disconnect` and `dismissReconnectHint`.
+    public private(set) var reconnectHint = false
     /// Stadeum answered 401 (`HiveLink.revokedAt`, kept): the orgs stay
     /// listed until paired again, but their tokens are no longer used (`live`).
     public var revoked: Bool { link?.revokedAt != nil }
@@ -79,6 +83,8 @@ public final class Stadeum {
     public var isOpen: Bool { profile != nil }
 
     @ObservationIgnored private var profile: Profile?
+    /// The account was restored (`accountRestored`) before it opened here: `open` says so if it finds no pairing.
+    @ObservationIgnored private var restoredBeforeOpen = false
     @ObservationIgnored private var pairing: Task<Void, Never>?
     @ObservationIgnored private var renewing: Task<Void, Never>?
     @ObservationIgnored private var appsReading: Task<Void, Never>?
@@ -114,13 +120,49 @@ public final class Stadeum {
         } catch {
             problem = PeelError.noted(error, couldNot: "read your Stadeum connection")
         }
-        guard let link else { return }
+        let restored = restoredBeforeOpen
+        restoredBeforeOpen = false
+        guard let link else {
+            if restored { reconnectHint = true }
+            return
+        }
         status = revoked ? .needsPairing : .connected
         keepRenewed(now: renewNow)
+        dropIfAnotherAccounts()
         guard !revoked else { return }
         // Off the launch's path: a pairing made before Peel told Stadeum its Sphinx account is identified now.
-        if link.identified != true, identifiedAtOpen.insert(link.credential).inserted { identify() }
+        // One with no account recorded is asked too, so `identify` records it.
+        if link.identified != true || link.sphinxPubkey == nil, identifiedAtOpen.insert(link.credential).inserted { identify() }
         opened?()
+    }
+
+    /// The account was restored from its words (`AppModel.restoreAccount`):
+    /// with no pairing to show for it, the rows say to connect again. Its
+    /// pairing, if kept, is let go once it is known to be another account's.
+    public func accountRestored() {
+        guard isOpen else {
+            restoredBeforeOpen = true
+            return
+        }
+        if link == nil { reconnectHint = true }
+        dropIfAnotherAccounts()
+    }
+
+    /// The hint's line put away.
+    public func dismissReconnectHint() { reconnectHint = false }
+
+    /// Lets the pairing go if it was recorded for another Sphinx account
+    /// than the one open (`HiveLink.belongs`): the kept item deleted and the
+    /// host told, as for `disconnect`. Not known to differ, it stays.
+    private func dropIfAnotherAccounts() {
+        guard let link, link.sphinxPubkey != nil, let sphinxProof else { return }
+        let generation = generation
+        Task {
+            guard let pubkey = (try? await sphinxProof())?.pubkey,
+                  generation == self.generation, let kept = self.link, !kept.belongs(to: pubkey) else { return }
+            disconnect()
+            reconnectHint = true
+        }
     }
 
     /// The account closed (on the iPhone, locked too): everything let go,
@@ -136,6 +178,7 @@ public final class Stadeum {
         guard let profile else { return }
         pairing?.cancel()
         problem = nil
+        reconnectHint = false
         pollSoon = false
         let client = client(profile)
         let generation = generation
@@ -163,7 +206,11 @@ public final class Stadeum {
                 case .paired(let link):
                     // Cancelled, or the account closed, while Stadeum answered: nothing kept.
                     guard !Task.isCancelled, generation == self.generation else { return }
-                    try keep(link)
+                    // Recorded now, with the account that paired: `identify` may not get to it (Stadeum without the route).
+                    var paired = link
+                    if let sphinxProof { paired.sphinxPubkey = (try? await sphinxProof())?.pubkey ?? paired.sphinxPubkey }
+                    guard !Task.isCancelled, generation == self.generation else { return }
+                    try keep(paired)
                     status = .connected
                     keepRenewed(now: false)
                     // The pairing's answer does not say whether Hive knows the person's Sphinx account.
@@ -196,6 +243,7 @@ public final class Stadeum {
         guard let profile else { return }
         let actor = link?.actor
         reset()
+        reconnectHint = false
         var failed: (any Error)?
         do { try profile.hive.delete() } catch { failed = error }
         do { try host?.stadeumDisconnected(actor: actor) } catch { failed = failed ?? error }
@@ -319,7 +367,9 @@ public final class Stadeum {
                       current.credential == link.credential, let profile else { return }
                 switch said {
                 case .notYet: return
-                case .linked: current.identified = true
+                case .linked:
+                    current.identified = true
+                    current.sphinxPubkey = proof.pubkey
                 case .refused(let reason): current.sphinxRefused = SphinxRefusal(pubkey: proof.pubkey, reason: reason)
                 }
                 try current.write(to: profile.hive)

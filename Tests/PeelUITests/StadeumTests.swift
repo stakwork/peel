@@ -44,6 +44,70 @@ struct StadeumTests {
         func stadeumDisconnected(actor: String?) throws { calls.append("disconnected \(actor ?? "nil")") }
     }
 
+    /// A development profile whose pairing is `item`, holding a link recorded for `pubkey`.
+    private func profile(keeping pubkey: String?, in item: MemoryItem) throws -> Profile {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "stadeum-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var kept = try link(hive: URL(string: "http://127.0.0.1:1")!, peers: [])
+        kept.identified = true
+        kept.sphinxPubkey = pubkey
+        try kept.write(to: item)
+        return Profile(developmentAt: folder, hive: item)
+    }
+
+    @Test func aRestoredAccountKeepsItsOwnPairing() async throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.sphinxProof = { SphinxProof(pubkey: "02aa", token: "t") }
+        stadeum.open(try profile(keeping: "02aa", in: item), renewNow: false)
+        stadeum.accountRestored()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(stadeum.status == .connected && stadeum.link != nil && item.value != nil && !stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func aRestoredAccountLetsGoAnotherAccountsPairing() async throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.sphinxProof = { SphinxProof(pubkey: "02bb", token: "t") }
+        stadeum.open(try profile(keeping: "02aa", in: item), renewNow: false)
+        stadeum.accountRestored()
+        await until { stadeum.link == nil }
+        #expect(stadeum.status == .off && stadeum.link == nil && item.value == nil && stadeum.reconnectHint)
+        stadeum.connect(as: "iPhone")
+        #expect(!stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func aPairingWithNoRecordedAccountIsKept() async throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.open(try profile(keeping: nil, in: item), renewNow: false)
+        stadeum.accountRestored()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(stadeum.status == .connected && item.value != nil && !stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func aRestoreWithNoPairingSaysToConnectAgain() throws {
+        let stadeum = Stadeum()
+        stadeum.accountRestored()
+        stadeum.open(try profile(), renewNow: false)
+        #expect(stadeum.status == .off && stadeum.reconnectHint)
+        stadeum.dismissReconnectHint()
+        #expect(!stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func disconnectingDeletesThePairing() throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.open(try profile(keeping: "02aa", in: item), renewNow: false)
+        stadeum.disconnect()
+        #expect(item.value == nil && stadeum.link == nil && stadeum.status == .off)
+        stadeum.close()
+    }
+
     @Test func aPairingIsKeptWithTheAccountAndTheHostIsTold() async throws {
         let hive = try await hive(interval: 1) {
             (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
@@ -154,7 +218,8 @@ struct StadeumTests {
 
         /// The kept link, due for renewal.
         func due() throws {
-            var link = try #require(try HiveLink.read(from: profile.hive))
+            let stored = try HiveLink.read(from: profile.hive)
+            var link = try #require(stored)
             link.renewedAt = Date(timeIntervalSinceNow: -2 * 24 * 3600)
             try link.write(to: profile.hive)
         }
@@ -190,6 +255,8 @@ struct StadeumTests {
         #expect(told.withLock { $0 } == 3 && other.identified)
         try due()
         let after = told.withLock { $0 }
+        // The pairing now belongs to that key, so a renewal that says Stadeum knows it asks nothing.
+        stadeum.sphinxProof = other.sphinxProof
         stadeum.open(profile, renewNow: false)
         await until { stadeum.link?.renewedAt ?? .distantPast > Date(timeIntervalSinceNow: -60) }
         try await Task.sleep(for: .milliseconds(200))
@@ -310,8 +377,10 @@ struct StadeumTests {
         }
         #expect(titled.title == "Plan" && titled.workspace == "Acme")
         #expect(!"\(titled)".contains("jwt") && !"\(titled)".contains("Plan") && !String(reflecting: titled).contains("jwt"))
-        #expect(stadeum.opening(try #require(AgentArtifact.Handle(path: "/peers/globex/jobs/j/files/a.md"))) == .notPaired("globex"))
-        #expect(stadeum.opening(try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))) == .onMac)
+        let handle1 = try #require(AgentArtifact.Handle(path: "/peers/globex/jobs/j/files/a.md"))
+        #expect(stadeum.opening(handle1) == .notPaired("globex"))
+        let handle2 = try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))
+        #expect(stadeum.opening(handle2) == .onMac)
         #expect(stadeum.opening(WorkspaceApp(peer: nil, name: "mine", title: "Mine", about: nil)) == .onMac)
         stadeum.close()
     }
@@ -356,9 +425,12 @@ struct StadeumTests {
         try await stadeum.setJamie(nil, for: record)
         #expect(stadeum.jamiePick(of: tribe) == "" && stadeum.jamieOptions(for: tribe).map(\.id) == ["acme", ""])
 
-        #expect(stadeum.opensFromTribe(try #require(AgentArtifact.Handle(app: "@acme/board"))))
-        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/peers/initech/jobs/j/files/a.md"))))
-        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))))
+        let handle3 = try #require(AgentArtifact.Handle(app: "@acme/board"))
+        #expect(stadeum.opensFromTribe(handle3))
+        let handle4 = try #require(AgentArtifact.Handle(path: "/peers/initech/jobs/j/files/a.md"))
+        #expect(!stadeum.opensFromTribe(handle4))
+        let handle5 = try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))
+        #expect(!stadeum.opensFromTribe(handle5))
         stadeum.close()
         #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
     }

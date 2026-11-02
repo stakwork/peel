@@ -29,6 +29,10 @@ public struct Profile: Sendable {
     /// and the orgs' peer records (`HiveLink`, docs/connectors-and-authoring.md,
     /// "Peers"): in the Keychain for an app profile.
     public let hive: any SecretItem
+    /// Whether `delete` leaves `hive` be: an app profile's pairing is the
+    /// device's, kept under an account of its own, so removing the account
+    /// and restoring it does not pair again (`AppModel.restoreAccount`).
+    let keepsHive: Bool
     /// Face ID in place of the PIN, opt-in (`BiometricUnlock`); nil for a
     /// development profile, which has no PIN.
     public let biometrics: BiometricUnlock?
@@ -57,23 +61,29 @@ public struct Profile: Sendable {
             strutKey = KeychainItem(service: "dev.peel.strut", account: name)
             brain = KeychainItem(service: "dev.peel.brain", account: name)
             // Renewed while the Mac is locked too, like the agent's key.
-            hive = KeychainItem(service: "dev.peel.hive", account: name,
-                                accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+            hive = HiveItem(profileName: name)
+            keepsHive = true
             biometrics = BiometricUnlock(secrets: secrets, keeper: KeychainBiometricKeeper(account: name))
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
             (secrets, agentCredential, strutKey, brain, hive) = Self.files(in: directory)
+            keepsHive = false
             biometrics = nil
         }
     }
 
     /// A development profile in a directory of the caller's choosing: the
     /// integration tests' temporary accounts (`@testable` only).
-    init(developmentAt directory: URL) {
+    /// `hive` and `keepsHive` stand in for the pairing's item, to test what
+    /// `delete` does with an app profile's.
+    init(developmentAt directory: URL, hive: (any SecretItem)? = nil, keepsHive: Bool = false) {
         name = directory.lastPathComponent
         kind = .development
         self.directory = directory
-        (secrets, agentCredential, strutKey, brain, hive) = Self.files(in: directory)
+        let files = Self.files(in: directory)
+        (secrets, agentCredential, strutKey, brain) = (files.0, files.1, files.2, files.3)
+        self.hive = hive ?? files.4
+        self.keepsHive = keepsHive
         biometrics = nil
     }
 
@@ -147,7 +157,8 @@ public struct Profile: Sendable {
         try strutKey.delete()
         try brain.delete()
         try homePeer.delete()
-        try hive.delete()
+        // An app profile's pairing is the device's and stays; a development one's is a file beside the words.
+        if !keepsHive { try hive.delete() }
         try biometrics?.turnOff()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {

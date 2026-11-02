@@ -73,7 +73,7 @@ struct RecordingBarView: View {
                     .foregroundStyle(Theme.hudWarning)
             }
             if paused {
-                HUDButton(.symbol("play.fill"), label: "Resume recording", filled: false, action: controller.resume)
+                HUDButton(.symbol("record.circle.fill"), label: "Resume recording", filled: false, action: controller.resume)
             } else {
                 HUDButton(.symbol("pause.fill"), label: "Pause the recording", filled: false, action: controller.pause)
             }

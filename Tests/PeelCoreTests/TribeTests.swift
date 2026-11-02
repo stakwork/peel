@@ -327,72 +327,11 @@ struct TribeSendersTests {
     let club = strangerKey
     let jamie = key3G
 
-    /// How the stand-in lists Jamie.
-    enum Listed: Sendable { case absent, pending, confirmed }
-
-    /// A tribes server on the transport: the owner's commands as it gets
-    /// them ("ListMembers", "ShowSenders on|off"), answered with the member
-    /// list as the engine hears one (`tribe_members`). Jamie is listed as
-    /// `listed` says at each list asked for (the last one stays), marked
-    /// once a `ShowSenders` came; one from before the command
-    /// (`knowsShowSenders` false) does not know it and answers nothing.
-    final class TribesServer: @unchecked Sendable {
-        private let lock = NSLock()
-        private var heard: [String] = []
-        private var lists: [Listed]
-        private var marked: Bool
-        private var knows: Bool
-        private let tribe: String, jamie: String
-        var engine: Engine?
-
-        init(tribe: String, jamie: String, listed: [Listed], marked: Bool = false, knowsShowSenders: Bool = true) {
-            self.tribe = tribe
-            self.jamie = jamie
-            lists = listed
-            self.marked = marked
-            knows = knowsShowSenders
-        }
-
-        var commands: [String] { lock.withLock { heard } }
-        func upgrade() { lock.withLock { knows = true } }
-        func list(_ listed: Listed) { lock.withLock { lists = [listed] } }
-
-        var transport: Transport {
-            Transport(publishing: { [self] topic, payload in answer(topic, payload) })
-        }
-
-        private func answer(_ topic: String, _ payload: Data) {
-            guard topic.hasPrefix("tribe/"), let command = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
-            let reply: String? = lock.withLock {
-                if command["ListMembers"] != nil {
-                    heard.append("ListMembers")
-                    let listed = lists.count > 1 ? lists.removeFirst() : lists.first ?? .absent
-                    return members(listed)
-                }
-                guard let args = command["ShowSenders"] as? [Any], args.count == 3, let on = args[2] as? Bool else { return nil }
-                heard.append("ShowSenders \(on ? "on" : "off")")
-                let listed = lists.first ?? .absent
-                guard knows, listed == .confirmed, args[1] as? String == jamie else { return nil }
-                marked = on
-                return members(listed)
-            }
-            guard let reply else { return }
-            Task { [engine] in _ = try? await engine?.commit(coreResult(tribeMembers: reply), time: "1", expectedSender: nil) }
-        }
-
-        private func members(_ listed: Listed) -> String {
-            let owner = #"{"pubkey":"\#(keyG)","route_hint":"x","contact_key":"y","alias":"Owner"}"#
-            let jamie = #"{"pubkey":"\#(jamie)","route_hint":"x","contact_key":"y","alias":"Jamie"\#(marked ? #","sees_senders":true"# : "")}"#
-            let confirmed = listed == .confirmed ? [owner, jamie] : [owner]
-            return #"{"pubkey":"\#(tribe)","confirmed":[\#(confirmed.joined(separator: ","))],"pending":[\#(listed == .pending ? jamie : "")]}"#
-        }
-    }
-
     /// An engine owning `club` on its tribes host, its tribes server known, on `server`.
-    private func withEngine(_ server: TribesServer, in profile: TempProfile? = nil, _ body: (Engine) async throws -> Void) async throws {
-        let storage = try registeredStorage(profile ?? self.profile)
-        _ = try storage.apply(Storage.Commit(state: ["default_tribe_server": hex(key2G)]))
-        try storage.save([Tribe(pubkey: club, host: "tribes.test", isOwner: true)])
+    private func withEngine(
+        _ server: TribesServer, in profile: TempProfile? = nil, host: String = "tribes.test", _ body: (Engine) async throws -> Void
+    ) async throws {
+        let storage = try ownedTribeStorage(profile ?? self.profile, tribe: club, host: host)
         try await withTestEngine(storage, on: server.transport) { engine in
             server.engine = engine
             try await body(engine)
@@ -401,8 +340,8 @@ struct TribeSendersTests {
 
     /// Jamie joins a public tribe by itself, and a private one once the
     /// owner approved it: it is marked once the list shows it in, not before.
-    @Test(arguments: [Listed.absent, .pending])
-    func jamieIsMarkedOnceTheServerListsItIn(first: Listed) async throws {
+    @Test(arguments: [TribesServer.Listed.absent, .pending])
+    func jamieIsMarkedOnceTheServerListsItIn(first: TribesServer.Listed) async throws {
         let server = TribesServer(tribe: club, jamie: jamie, listed: [first, .confirmed])
         try await withEngine(server) { engine throws in
             let members = try #require(try await engine.showSendersOnceConfirmed(jamie, in: club, tries: 3, every: .milliseconds(10)))

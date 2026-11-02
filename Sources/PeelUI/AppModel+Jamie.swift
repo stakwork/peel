@@ -52,25 +52,27 @@ extension AppModel {
     /// the mark: one from before it does not know it. The link stands.
     static let sendersNotShown = "This tribe's server can't tell Jamie who is speaking yet, so everyone here asks with your access."
 
-    /// As the account opens with a pairing (`Stadeum.opened`), once a run
-    /// of Peel per pairing: Jamie marked to know who is speaking in each
-    /// tribe this person linked and owns that this device has not settled
-    /// (`Engine.markSendersOnce`), which marks the tribes linked before Peel
-    /// marked at linking, the first time this build opens. One whose server
-    /// did not answer is said in its Jamie row and asked again at the next
-    /// launch. Hive is asked which tribes are linked only when the account
-    /// owns one.
+    /// As the account opens with a pairing (`Stadeum.opened`) and on each
+    /// connection, only while connected (the lists need it), one at a time
+    /// per pairing, until a sweep has read every list this run of Peel
+    /// (`JamieSweep`): Jamie marked to know who is speaking
+    /// in each tribe this person linked and owns that this device has not
+    /// settled (`Engine.markSendersOnce`), which marks the tribes linked
+    /// before Peel marked at linking, the first time this build opens. One
+    /// whose server did not answer is said in its Jamie row and asked again
+    /// at the next launch. Hive is asked which tribes are linked only when
+    /// the account owns one.
     func markLinkedJamies() {
-        guard let engine, let credential = stadeum.link?.credential, !stadeum.revoked,
-              !jamieApprovals.swept.contains(credential) else { return }
+        guard let engine, let credential = stadeum.link?.credential, !stadeum.revoked else { return }
+        let connected = connection == .connected
         Task {
-            guard (try? engine.storage.tribes())?.contains(where: offersJamie(in:)) == true,
-                  let links = await stadeum.readJamieLinks(ifOlderThan: 60), self.engine === engine else { return }
-            jamieApprovals.swept.insert(credential)
-            let marked = await engine.markSendersOnce(links.jamie.pubkey, in: links.tribes.map(\.pubkey))
-            guard self.engine === engine else { return }
-            for (tribe, members) in marked.members { knownMembers[tribe] = members }
-            for tribe in marked.silent { jamieMarkNotes[tribe] = Self.sendersNotShown }
+            guard let sweep = await jamieSweep.run(
+                on: engine, pairing: credential, connected: connected,
+                owns: { (try? engine.storage.tribes())?.contains(where: self.offersJamie(in:)) == true },
+                links: { await self.stadeum.readJamieLinks(ifOlderThan: 60) }
+            ), self.engine === engine else { return }
+            for (tribe, members) in sweep.members { knownMembers[tribe] = members }
+            for tribe in sweep.silent { jamieMarkNotes[tribe] = Self.sendersNotShown }
         }
     }
 
@@ -201,7 +203,35 @@ struct JamieApprovals {
     var approved: Set<String> = []
     /// Tribes Jamie is being marked in (`markJamie`).
     var marking: Set<String> = []
-    /// The pairings (by credential) whose linked tribes were looked at as
-    /// the account opened this run of Peel (`markLinkedJamies`).
-    var swept: Set<String> = []
+}
+
+/// The sweep for the tribes an older Peel linked (`AppModel.markLinkedJamies`),
+/// as the account opens and on each connection: it runs only while
+/// connected (the tribes server's lists need the connection), one at a
+/// time per pairing, and until one has read every list this run of Peel;
+/// a sweep that could not read one (no connection yet, a slow server)
+/// records nothing and leaves it for the next.
+@MainActor
+final class JamieSweep {
+    /// The pairings (by credential) whose sweep read every list, and those under way.
+    private var swept: Set<String> = []
+    private var sweeping: Set<String> = []
+
+    /// One sweep for `pairing` on `engine` (`Engine.markSendersOnce`), with
+    /// Hive's links (`links`), read only when the account `owns` a tribe
+    /// Jamie can be in. Nil when it did not run, or read no links.
+    func run(
+        on engine: Engine, pairing: String, connected: Bool, owns: () -> Bool, links: () async -> JamieLinks?
+    ) async -> Engine.SendersSweep? {
+        guard connected, !swept.contains(pairing), sweeping.insert(pairing).inserted else { return nil }
+        defer { sweeping.remove(pairing) }
+        guard owns() else {
+            swept.insert(pairing)
+            return nil
+        }
+        guard let links = await links() else { return nil }
+        let sweep = await engine.markSendersOnce(links.jamie.pubkey, in: links.tribes.map(\.pubkey))
+        if sweep.complete { swept.insert(pairing) }
+        return sweep
+    }
 }

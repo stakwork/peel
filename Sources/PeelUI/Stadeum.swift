@@ -68,7 +68,7 @@ public final class Stadeum {
     @ObservationIgnored public var sphinxProof: (@MainActor () async throws -> SphinxProof?)?
     /// Called as the account opens with a pairing in use (`open`), once
     /// what it kept is read: `AppModel` marks Jamie in the tribes linked
-    /// before Peel did at linking (`markLinkedJamies`).
+    /// before Peel did at linking (`markLinkedJamies`), once connected.
     @ObservationIgnored public var opened: (@MainActor () -> Void)?
     /// Whether a read of `apps` is under way.
     public private(set) var readingApps = false

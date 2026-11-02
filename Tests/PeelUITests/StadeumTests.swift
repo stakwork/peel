@@ -454,3 +454,38 @@ struct StadeumTests {
         #expect(request.request(at: URL(string: "https://evil.example/lab/?app=x")!) == nil)
     }
 }
+
+/// The sweep for the tribes an older Peel linked (`JamieSweep`, what
+/// `AppModel.markLinkedJamies` runs as the account opens and on each
+/// connection), on a real engine and a stand-in tribes server.
+@MainActor
+struct JamieSweepTests {
+    let profile = TempProfile()
+
+    /// On the Mac the account opens before the engine connects: that sweep
+    /// does nothing and records nothing. One run on a connection whose
+    /// lists cannot be read (none yet) records nothing either; the
+    /// connection then marks Jamie once, and a later one sends nothing more.
+    @Test func theSweepWaitsForTheConnectionAndMarksOnce() async throws {
+        let (club, jamie) = (strangerKey, key3G)
+        let server = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed])
+        let engine = try testEngine(try ownedTribeStorage(profile, tribe: club))
+        server.engine = engine
+        let links = JamieLinks(jamie: JamieAccount(pubkey: jamie, alias: "Jamie"),
+                               tribes: [JamieLink(pubkey: club, host: "tribes.test", workspace: "acme")])
+        let sweep = JamieSweep()
+        func run(connected: Bool) async -> Engine.SendersSweep? {
+            await sweep.run(on: engine, pairing: "hivedev_abc", connected: connected, owns: { true }, links: { links })
+        }
+        #expect(await run(connected: false) == nil)
+        // No connection under the engine yet: the list is not read, nothing is settled.
+        let unread = try #require(await run(connected: true))
+        #expect(unread.unread == [club] && !unread.complete && server.commands.isEmpty)
+        await engine.useTransportForTesting(server.transport)
+        let marked = try #require(await run(connected: true))
+        #expect(marked.complete && marked.members[club]?.member(jamie)?.seesSenders == true)
+        #expect(server.commands == ["ListMembers", "ShowSenders on"])
+        #expect(await run(connected: true) == nil && server.commands.count == 2)
+        await engine.disconnect()
+    }
+}

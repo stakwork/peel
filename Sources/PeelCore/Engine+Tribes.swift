@@ -432,30 +432,40 @@ extension Engine {
     /// that can, and after that only those still unsettled. Each: its member
     /// list, read once; the member confirmed and unmarked is marked
     /// (`showSenders`), marked already is settled as it is. Not confirmed,
-    /// a tribes server that does not answer the mark (one from before it),
-    /// or anything else that fails: nothing is settled, and the next launch
-    /// asks again. The lists read, by tribe, and the tribes whose server did
-    /// not answer the mark.
-    public func markSendersOnce(
-        _ member: String, in linked: [String]
-    ) async -> (members: [String: TribeMembers], silent: [String]) {
-        guard member.isPubkey else { return ([:], []) }
+    /// or a tribes server that does not answer the mark (one from before
+    /// it): nothing is settled, and the next launch asks again. A list that
+    /// could not be read (no connection yet, the server slow) leaves the
+    /// sweep not `complete`, for the next connection to run again.
+    public func markSendersOnce(_ member: String, in linked: [String]) async -> SendersSweep {
+        var sweep = SendersSweep()
+        guard member.isPubkey else { return sweep }
         let key = member.lowercased()
         let settled = (try? sendersSettled()) ?? []
-        var read: [String: TribeMembers] = [:], silent: [String] = []
         for pubkey in linked where tribes[pubkey]?.canManage == true && tribes[pubkey]?.host != nil
             && !settled.contains(Self.sendersKey(key, in: pubkey)) {
             do {
                 // Marked now or already, it is settled; not listed in, it is not.
                 guard let members = try await showSendersOnceConfirmed(key, in: pubkey, tries: 1, every: .zero) else { continue }
-                read[pubkey] = members
+                sweep.members[pubkey] = members
             } catch Failure.sendersNotShown {
-                silent.append(pubkey)
+                sweep.silent.append(pubkey)
             } catch {
-                continue
+                sweep.unread.append(pubkey)
             }
         }
-        return (read, silent)
+        return sweep
+    }
+
+    /// What `markSendersOnce` did, by tribe.
+    public struct SendersSweep: Sendable, Equatable {
+        /// The lists read, the member marked in them (now or already).
+        public var members: [String: TribeMembers] = [:]
+        /// The tribes whose server did not answer the mark.
+        public var silent: [String] = []
+        /// The tribes whose list could not be read.
+        public var unread: [String] = []
+        /// Every list was read: the sweep need not run again this run of Peel.
+        public var complete: Bool { unread.isEmpty }
     }
 
     /// The "<tribe> <member>" keys this device has settled (`Setting.sendersMarked`).

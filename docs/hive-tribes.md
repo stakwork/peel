@@ -155,14 +155,18 @@ their delegation, their access. Anyone else asks with the owner's, as before.
   list, which says it per member (`sees_senders`, `TribeMember.seesSenders`;
   absent is false). Unlinking sends it off first, not waiting: the server
   drops the mark with the member anyway once Jamie leaves.
-- **Tribes linked before.** As the account opens, once a run of Peel, the
-  tribes this person linked and owns are looked at (`markLinkedJamies`,
-  `Engine.markSendersOnce`): one this device has not settled
-  (`Setting.sendersMarked`, per tribe and Jamie key) gets its member list
-  read; Jamie confirmed and unmarked is marked, marked already is settled.
-  So the first launch after updating marks every tribe linked by an older
-  Peel, and later launches send nothing. Hive is asked for the links only
-  when the account owns a tribe.
+- **Tribes linked before.** As the account opens and on each connection,
+  only while connected (the lists need it; on the Mac the account opens
+  before the engine connects), the tribes this person linked and owns are
+  looked at (`markLinkedJamies`, `JamieSweep`, `Engine.markSendersOnce`):
+  one this device has not settled (`Setting.sendersMarked`, per tribe and
+  Jamie key) gets its member list read; Jamie confirmed and unmarked is
+  marked, marked already is settled. A sweep that could not read a list
+  records nothing and runs again at the next connection; once one has read
+  them all, none runs again this run of Peel. So the first launch after
+  updating marks every tribe linked by an older Peel, and later launches
+  send nothing. Hive is asked for the links only when the account owns a
+  tribe.
 - **An older tribes server** knows no `ShowSenders` and answers nothing;
   nor does one whose broker takes no commands, or one asked about someone
   not in the tribe. After 15 seconds that is `sendersNotShown`: the Jamie row

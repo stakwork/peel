@@ -531,6 +531,8 @@ public final class AppModel {
     @ObservationIgnored private var readingMembers: Set<String> = []
     /// Jamie's approvals and marks this session (`approveJamie`, `markJamie`).
     @ObservationIgnored var jamieApprovals = JamieApprovals()
+    /// The sweep for the tribes an older Peel linked (`markLinkedJamies`).
+    @ObservationIgnored let jamieSweep = JamieSweep()
     /// What marking Jamie to know who is speaking said this session, by
     /// tribe, for its Jamie row (`markJamie`, `setJamieSeesSenders`).
     public internal(set) var jamieMarkNotes: [String: String] = [:]
@@ -1506,6 +1508,8 @@ public final class AppModel {
                 if state == .connected {
                     connectionError = nil
                     if notice != nil, notice == serverCheckNotice { notice = nil }
+                    // The tribes an older Peel linked: their lists need the connection.
+                    markLinkedJamies()
                 }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))

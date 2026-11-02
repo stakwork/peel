@@ -200,8 +200,8 @@ struct ProposalWatchTests {
 
     /// A proposal on Jamie's post in a tribe (docs/hive-tribes.md,
     /// "Proposals in a tribe"): kept from the post as it arrives, never
-    /// listed as a workspace's card nor read from the workspace's strut
-    /// (that would say "not yours" to anyone but the owner); answered by
+    /// listed as a workspace's card, and, since the post carries strut's
+    /// card, never read from the workspace's strut; answered by
     /// the owner's reply to the post with the card's own word; ended by
     /// Jamie's reply in the post's thread and by no one else's, in
     /// whichever order the posts come; a reply that could not go said on
@@ -382,6 +382,151 @@ struct ProposalWatchTests {
         #expect(watch.kept.count == 1)
     }
 
+    /// A post that sends a stub (strut's plans/proposal-links.md: id, step,
+    /// title, status, url), with this Peel paired to its workspace: the card
+    /// is read from that strut with the person's token as the post is taken
+    /// up (its fields, input, reason and who proposed it) and stays under the
+    /// post, through a copy of the post coming round again; Jamie's word in
+    /// the thread still ends it, and reads it again for the decision and the
+    /// result. Nothing else reads it: not a timer, not opening a card already
+    /// read. A strut that does not answer is tried a few times and the card
+    /// stays the post's title, never given up on.
+    @Test func aStubsCardIsReadFromTheWorkspacesStrutAtItsMomentsOnly() async throws {
+        let storage = try profile.storage()
+        let clock = Clock(Date(timeIntervalSince1970: 1_800_000_000))
+        let state = StrutState()
+        state.keep(record("p-stub-1", step: "package/install"))
+        let strut = try await HTTPStub { _, request in state.answer(String(request.prefix { $0 != "\r" }), body: "", json: Self.strutsRecord) }
+        defer { strut.stop() }
+        let watch = await makeWatch(storage) { clock.now }
+        // No actor: no list to read, so the reads below are the cards' alone.
+        watch.orgs = { ([HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)", token: "t", label: "Acme")], nil) }
+        let (tribe, post) = ("02tribe", uuid(41))
+        let key = ProposalKey(source: .org("acme"), id: "p-stub-1")
+        let t0 = Int64(1_800_000_000_000)
+
+        watch.noticed(try Self.tribePost(uuid: post, in: tribe, proposals: Self.stub("p-stub-1"), at: t0))
+        #expect(watch.kept[key]?.record.isStub == true)
+        await watch.tick()
+        let filled = try #require(watch.kept[key])
+        #expect(filled.record.card?.accept == "Install" && filled.record.card?.fields.map(\.label) == ["Runs code"])
+        #expect(filled.record.input == .object(["name": .string("p-stub-1")]) && filled.record.rationale == "You asked for Linear.")
+        #expect(filled.record.by.actor == "tom" && filled.record.status == .pending && !filled.isOver)
+        #expect(filled.post == TribePost(tribe: tribe, uuid: post, poster: "Jamie") && filled.readAt == Date(millisecondsSince1970: t0))
+        #expect(watch.tribeNote(key) == nil && watch.orgCards.isEmpty && state.reads == ["p-stub-1"])
+        // Not on a timer, nor when the card, read already, is opened or its post comes round again.
+        clock.advance(ProposalWatch.listEvery + ProposalWatch.reReadEvery)
+        await watch.tick()
+        watch.opened(key)
+        watch.noticed(try Self.tribePost(uuid: post, in: tribe, proposals: Self.stub("p-stub-1"), at: t0))
+        await watch.tick()
+        #expect(state.reads == ["p-stub-1"])
+        #expect(watch.kept[key]?.record.card?.accept == "Install" && watch.kept[key]?.record.by.actor == "tom", "the copy keeps strut's card")
+
+        // Jamie's word in the thread ends it, and the read after it brings strut's decision and result.
+        state.keep(record("p-stub-1", status: .applied, step: "package/install"))
+        let done = #"[{"id":"p-stub-1","status":"applied","title":"Install the package acme/linear","step":"package/install"}]"#
+        watch.noticed(try Self.tribePost(uuid: uuid(42), in: tribe, proposals: done, replyTo: post, at: t0 + 5_000))
+        #expect(watch.kept[key]?.record.status == .applied && watch.kept[key]?.ending == .final(Date(millisecondsSince1970: t0 + 5_000)))
+        await watch.tick()
+        let ended = try #require(watch.kept[key])
+        #expect(state.reads == ["p-stub-1", "p-stub-1"])
+        #expect(ended.record.decision?.by == "tom" && ended.record.result?.at == Date(iso8601: "2026-10-31T10:05:03Z"))
+        #expect(ended.isOver && ended.post?.uuid == post && ended.record.card?.accept == "Install")
+
+        // A strut that does not answer: tried again, longer apart, and never given up on.
+        strut.stop()
+        let silent = ProposalKey(source: .org("acme"), id: "p-stub-9")
+        watch.noticed(try Self.tribePost(uuid: uuid(43), in: tribe, proposals: Self.stub("p-stub-9"), at: t0 + 6_000))
+        for _ in 0..<(ProposalWatch.givenUpAfter + 2) {
+            await watch.tick()
+            clock.advance(61)
+        }
+        #expect(watch.kept[silent]?.isOver == false && watch.kept[silent]?.record.isStub == true && watch.unreachable == ["acme"])
+        #expect(watch.tribeNote(silent) == "This card opens for members of Acme.")
+    }
+
+    /// A stub whose record the workspace's strut will not show this person
+    /// (404 or 403: a strut from before a person token reads any proposal
+    /// by id): in a tribe that is not "gone" nor "not yours", only not
+    /// readable here. The card stays the post's title, open to its owner's
+    /// answer, and says it opens for the workspace's members; once strut
+    /// shows it, opening the card fills it in and the line goes.
+    @Test(arguments: [404, 403])
+    func aStubStrutWillNotShowStaysItsTitleAndIsNotGone(status: Int) async throws {
+        let storage = try profile.storage()
+        let state = StrutState()
+        state.keep(record("p-stub-2", step: "package/install"))
+        state.hide("p-stub-2", status)
+        let strut = try await HTTPStub { _, request in state.answer(String(request.prefix { $0 != "\r" }), body: "", json: Self.strutsRecord) }
+        defer { strut.stop() }
+        let watch = await makeWatch(storage)
+        watch.orgs = { ([HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)", token: "t", label: "Acme")], nil) }
+        let replies = Replies()
+        watch.sendReply = { text, tribe, post in try await replies.send(text, tribe, post) }
+        let (tribe, post) = ("02tribe", uuid(44))
+        let key = ProposalKey(source: .org("acme"), id: "p-stub-2")
+
+        watch.noticed(try Self.tribePost(uuid: post, in: tribe, proposals: Self.stub("p-stub-2"), at: 1_800_000_000_000))
+        await watch.tick()
+        let kept = try #require(watch.kept[key])
+        #expect(state.reads == ["p-stub-2"])
+        #expect(kept.ending == nil && kept.record.status == .pending && kept.record.isStub && kept.record.shownCard.fields.isEmpty)
+        #expect(watch.tribeNote(key) == "This card opens for members of Acme." && watch.notes[key] == nil)
+        await watch.answerInTribe(key, accept: true)
+        #expect(await replies.sent == [["Accept", tribe, post]], "still the owner's to answer")
+        // A copy of the post coming round again asks nothing strut answered already.
+        watch.noticed(try Self.tribePost(uuid: post, in: tribe, proposals: Self.stub("p-stub-2"), at: 1_800_000_000_000))
+        await watch.tick()
+        #expect(state.reads == ["p-stub-2"])
+        // strut shows it now: opening the card reads it.
+        state.show("p-stub-2")
+        watch.opened(key)
+        await watch.tick()
+        #expect(state.reads == ["p-stub-2", "p-stub-2"])
+        #expect(watch.kept[key]?.record.card?.accept == "Install" && watch.kept[key]?.record.input != nil && watch.tribeNote(key) == nil)
+    }
+
+    /// No read where none may go: a stub whose workspace this Peel is not
+    /// paired with (the title, and that its card opens for the workspace's
+    /// members, as Hive's text says the rest), and a post that carries
+    /// strut's card (a Hive from before the stub), drawn as it came, paired
+    /// or not; not as either is taken up, opened, or ended.
+    @Test func aStubWithNoPairingAndAPostWithACardAreNeverRead() async throws {
+        let storage = try profile.storage()
+        let state = StrutState()
+        state.keep(record("p-stub-3", step: "package/install"))
+        state.keep(record("p-install-1", step: "package/install"))
+        let strut = try await HTTPStub { _, request in state.answer(String(request.prefix { $0 != "\r" }), body: "", json: Self.strutsRecord) }
+        defer { strut.stop() }
+        let watch = await makeWatch(storage)
+        let (tribe, t0) = ("02tribe", Int64(1_800_000_000_000))
+        // Paired with another workspace only.
+        watch.orgs = { ([HivePeer(id: "beta", baseUrl: "http://127.0.0.1:\(strut.port)", token: "t", label: "Beta")], nil) }
+        let stub = ProposalKey(source: .org("acme"), id: "p-stub-3")
+        watch.noticed(try Self.tribePost(uuid: uuid(45), in: tribe, proposals: Self.stub("p-stub-3"), at: t0))
+        await watch.tick()
+        watch.opened(stub)
+        await watch.tick()
+        #expect(watch.kept[stub]?.record.isStub == true && watch.tribeNote(stub) == "This card opens for members of @acme.")
+        let stubEnded = #"[{"id":"p-stub-3","status":"rejected","title":"Install the package acme/linear","step":"package/install"}]"#
+        watch.noticed(try Self.tribePost(uuid: uuid(46), in: tribe, proposals: stubEnded, replyTo: uuid(45), at: t0 + 1_000))
+        await watch.tick()
+        #expect(watch.kept[stub]?.record.status == .rejected && watch.kept[stub]?.isOver == true)
+
+        // A post with strut's card, on the workspace this Peel is paired with.
+        watch.orgs = { ([HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)", token: "t", label: "Acme")], nil) }
+        let carded = ProposalKey(source: .org("acme"), id: "p-install-1")
+        watch.noticed(try Self.tribePost(uuid: uuid(47), in: tribe, proposals: Self.proposedEntries, at: t0 + 2_000))
+        await watch.tick()
+        watch.opened(carded)
+        watch.noticed(try Self.tribePost(uuid: uuid(48), in: tribe, proposals: Self.outcomeEntries, replyTo: uuid(47), at: t0 + 3_000))
+        await watch.tick()
+        #expect(watch.kept[carded]?.record.status == .failed && watch.kept[carded]?.record.card?.accept == "Install")
+        #expect(watch.tribeNote(carded) == nil)
+        #expect(state.reads.isEmpty)
+    }
+
     /// Your own reply in a post's thread.
     nonisolated private static func ownReply(_ text: String, uuid: String, in tribe: String, replyTo: String, at timestamp: Int64) -> Message {
         Message.fixture(uuid: uuid, chat: tribe, fromMe: true, content: text, timestamp: timestamp, replyUUID: replyTo, threadUUID: replyTo)
@@ -410,6 +555,24 @@ struct ProposalWatchTests {
     nonisolated private static let outcomeEntries = #"""
         [{"id":"p-install-1","status":"failed","title":"Install the package acme/linear","step":"package/install","error":"npm said no"}]
         """#
+
+    /// Hive's stub for proposal `id` (strut's plans/proposal-links.md): the reference alone.
+    nonisolated private static func stub(_ id: String) -> String {
+        #"[{"id":"\#(id)","step":"package/install","title":"Install the package acme/linear","status":"pending","url":"/proposals/\#(id)"}]"#
+    }
+
+    /// `record` as strut serves it by id since #404: its card, the model's
+    /// reason, who proposed it, and once applied the decision and the result.
+    nonisolated private static func strutsRecord(_ record: ProposalRecord) -> String {
+        let ended = record.status == .applied
+            ? #","decision":{"action":"accept","by":"tom","at":"2026-10-31T10:05:00Z"},"result":{"at":"2026-10-31T10:05:03Z"}"# : ""
+        return """
+        {"id":"\(record.id)","step":"\(record.step)","title":"Install the package acme/linear","status":"\(record.status.rawValue)",
+         "by":{"workflow":"orchestrator","runId":"r1","actor":"tom"},"input":{"name":"\(record.id)"},"rationale":"You asked for Linear.",
+         "card":{"v":1,"title":"Install the package acme/linear","fields":[{"label":"Runs code","value":"Yes","danger":true}],
+                 "actions":{"accept":"Install","reject":"Don't install"},"full":true}\(ended)}
+        """
+    }
 
     /// The owner's replies in the tribe, as the watch asks for them.
     private actor Replies {
@@ -441,18 +604,26 @@ struct ProposalWatchTests {
         }
     }
 
-    /// A workspace's strut: its records, who may not decide, and the decisions taken.
+    /// A workspace's strut: its records, who may not decide or read one, the
+    /// decisions taken, and the records read by id.
     private final class StrutState: @unchecked Sendable {
         private let lock = NSLock()
         private var records: [String: ProposalRecord] = [:]
         private var forbidden: Set<String> = []
+        private var hidden: [String: Int] = [:]
         private var held: Set<String> = []
         private var refusing = false
         private var decided: [String] = []
+        private var read: [String] = []
         var decisions: [String] { lock.withLock { decided } }
+        /// The ids read by themselves (`GET /proposals/:id`), in order.
+        var reads: [String] { lock.withLock { read } }
         func keep(_ record: ProposalRecord) { lock.withLock { records[record.id] = record } }
         func remove(_ id: String) { lock.withLock { records[id] = nil } }
         func forbid(_ id: String) { lock.withLock { forbidden.insert(id) } }
+        /// `id` read by itself answers `status` (404, 403) until `show`.
+        func hide(_ id: String, _ status: Int) { lock.withLock { hidden[id] = status } }
+        func show(_ id: String) { lock.withLock { hidden[id] = nil } }
         /// `id` applies after another proposal, still pending.
         func hold(_ id: String) { lock.withLock { held.insert(id) } }
         func refuseToken() { lock.withLock { refusing = true } }
@@ -469,6 +640,10 @@ struct ProposalWatchTests {
                 let parts = line.split(separator: " ")
                 guard parts.count >= 2 else { return (400, "{}") }
                 let path = parts[1].split(separator: "/").map(String.init)
+                if parts[0] == "GET", path.count == 2, path[0] == "proposals" {
+                    read.append(path[1])
+                    if let status = hidden[path[1]] { return (status, #"{"error":"No proposal"}"#) }
+                }
                 guard path.count >= 2, path[0] == "proposals", let record = records[path[1]] else { return (404, #"{"error":"No proposal"}"#) }
                 if parts[0] == "GET" { return (200, json(record)) }
                 guard parts[0] == "POST", path.count == 3, path[2] == "decide" else { return (404, "{}") }

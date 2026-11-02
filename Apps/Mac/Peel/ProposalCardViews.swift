@@ -408,7 +408,10 @@ struct OrgProposalRow: View {
 /// "Proposals in a tribe"), as the watch keeps it from the tribe's posts
 /// (`AppModel.proposals`): a card only for a proposal whose post this is
 /// (a later post claiming one draws none). Each starts shut to its title
-/// and how it stands; a click on the title opens it. The tribe's owner (`canAnswer`)
+/// and how it stands; a click on the title opens it, and reads a stub's
+/// card from the workspace's strut when it has not been read
+/// (`ProposalWatch.opened`); one that cannot be read here says it opens
+/// for the workspace's members (`tribeNote`). The tribe's owner (`canAnswer`)
 /// gets the card's buttons, and answers by a reply to the post
 /// (`ProposalWatch.answerInTribe`); everyone else sees the card, how it
 /// stands, and that the owner decides it.
@@ -438,13 +441,17 @@ struct TribeProposalCards: View {
             } else {
                 canAnswer ? .waiting : .theirs
             }
+            let details = disclosures.open("card-\(key.id)")
             ProposalCardView(
-                proposal: proposal, org: watch.orgName(key.source), stance: stance, note: watch.notes[key],
+                proposal: proposal, org: watch.orgName(key.source), stance: stance, note: watch.tribeNote(key),
                 input: disclosures.open("input-\(key.id)"),
                 answer: canAnswer && !proposal.isOver
                     ? { accept in Task { await watch.answerInTribe(key, accept: accept, on: row.message) } } : nil,
-                details: disclosures.open("card-\(key.id)")
+                details: details
             )
+            .onChange(of: details.isOpen) { _, open in
+                if open { watch.opened(key) }
+            }
         }
     }
 }

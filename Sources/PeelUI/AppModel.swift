@@ -436,6 +436,10 @@ public final class AppModel {
             guard let self else { throw PeelError("Peel is closing.") }
             return try await stadeum.callLink(on: peer)
         }
+        calls.hiveTicket = { @MainActor [weak self] room, name, metadata in
+            guard let self else { throw PeelError("Peel is closing.") }
+            return try await stadeum.callTicket(room: room, participantName: name, metadata: metadata)
+        }
         calls.chatNotice = { [weak self] chat, change in
             guard let self else { return }
             let notice = change(conversationNotices[chat])

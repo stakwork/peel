@@ -25,6 +25,11 @@ public struct CallLink: Sendable, Equatable {
     /// `callKey`, iOS's `hiveToken`.
     public let callKey: String?
     public let hiveToken: String?
+    /// Whether Hive made the room (`sphinx.call.-<host>-.<stamp>`, from its
+    /// `LIVEKIT_CALL_BASE_URL`): only then is Hive asked for the ticket
+    /// (`Engine.callTicket(for:in:hive:)`). Peel's own rooms and the apps'
+    /// never start with `-`.
+    public var isHive: Bool { room.hasPrefix(Self.roomPrefix + "-") }
     /// `server` as a URL: https, or http for this machine.
     private let base: URL
 

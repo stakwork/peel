@@ -189,7 +189,9 @@ For each of these, the simple choice for now, to revisit once it is in use:
 
 1. **Who speaks as you.** The same as the official apps today. Hive runs
    every turn of a call as the person who started it, whoever on the call
-   is speaking (sphinx-voice `AGENTS.md`). In a large public tribe that is
+   is speaking (sphinx-voice `AGENTS.md`). Reopened 2026-11-02: a paired
+   Peel now joins as its own person ("Who is speaking", below); everyone
+   else still speaks as the starter. In a large public tribe that is
    everyone who joins. Some of Jamie's writes wait for your approval, but
    what it reads, and the jobs it starts, run as you. For now, no warning
    in the menu and no rule by tribe size.
@@ -207,6 +209,46 @@ For each of these, the simple choice for now, to revisit once it is in use:
    `/api/calls/*` and never calls `/api/calls/exchange-token`. Dropping the
    token is a separate cleanup.
 
+## Who is speaking (2026-11-02)
+
+Hive's plan: `docs/plans/call-speaker-identity.md` in hive
+(stakwork/hive#5699; voice's half is stakwork/sphinx-voice#23). Tom starts
+a call, Evan asks Jamie for a PR, and today the turn runs as Tom: his strut
+actor, his budget. Hive can only run it as Evan if it knows which voice on
+the call is Evan's, and nothing a participant gets from the call server
+says so. The server mints any identity for anyone who asks, and passes
+whatever metadata the joiner sends. So a paired Peel asks Hive for its
+ticket instead.
+
+- **Which calls.** A room Hive made, `sphinx.call.-<host>-.<stamp>`
+  (`CallLink.isHive`): Peel's own rooms and the apps' never start with
+  `-`. A plain call in a DM never reaches Hive.
+- **The request.** `POST /api/strut-devices/calls/ticket { room,
+  participantName, metadata? }` with the device credential
+  (`HiveClient.callTicket`): the same name and photo the call server would
+  get. Hive answers in the call server's shape, with a token whose
+  identity it minted (`hive_<32 hex>`) and recorded against the device's
+  person. Voice sends that identity with each request it hears, and Hive
+  runs the turn as that person.
+- **The checks.** Hive's answer goes through the same checks as the call
+  server's (`CallServer.ticket`): the media host allowed for the account's
+  call server, the room, the expiry. A ticket from Hive is never trusted
+  any further than one from the call server.
+- **Any failure joins as before.** No Stadeum, revoked, a Hive without
+  the route, a 403 / 404 / 503, an answer that fails the checks: Peel
+  asks the call server as it always has, and the call runs as its
+  starter. The failure's kind goes to the diagnostics ring; nothing is
+  shown, since the join still works.
+- **Where it lives.** The engine decides (`Engine.callTicket(for:in:hive:)`,
+  the name and photo built once), Stadeum asks
+  (`Stadeum.callTicket`), `CallStore.join` hands one to the other
+  (`CallStore.hiveTicket`, wired by `AppModel`). The CLI's `call-ticket`
+  asks the call server only.
+
+Done when: a Hive room's join asks Hive first and uses its ticket, any
+failure falls back to the call server, another room never asks Hive, and
+the tests say so.
+
 ## Found along the way
 
 The Mac app makes an audio call with `link + "&startAudioOnly=true"`
@@ -222,3 +264,6 @@ Jamie was dispatched into. Not checked on a device.
    `hiveLink`, `CallStore`, the Mac and iPhone menus and the default from `app_url`.
    Built on this branch, with an entry in `docs/phases/06-calls.md`. To
    check against a Hive that has the route.
+3. Peel: who is speaking (above): `CallLink.isHive`,
+   `HiveClient.callTicket`, `Engine.callTicket(for:in:hive:)`,
+   `Stadeum.callTicket`, `CallStore.hiveTicket`.

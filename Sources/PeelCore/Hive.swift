@@ -401,6 +401,25 @@ public struct HiveClient: Sendable {
         }
     }
 
+    /// A ticket to join a call Hive made, as the person `link` pairs (hive
+    /// `docs/plans/call-speaker-identity.md`, docs/hive-calls.md "Who is
+    /// speaking"): the call server's token, under an identity Hive records
+    /// against them, so what they ask Jamie on the call runs as them. The
+    /// answer as Hive wrote it; the caller checks it as it checks the call
+    /// server's (`CallServer.ticket`). Throws for anything but a ticket.
+    public func callTicket(
+        _ link: HiveLink, room: String, participantName: String, metadata: String?
+    ) async throws -> HiveCallTicket {
+        var body = ["room": room, "participantName": participantName]
+        if let metadata { body["metadata"] = metadata }
+        let (status, data) = try await request("POST", "api/strut-devices/calls/ticket", body, bearer: link.credential)
+        guard status == 200 else { throw Self.failure(status, data, couldNot: "give a call ticket") }
+        guard let ticket = try? JSONDecoder.hive.decode(HiveCallTicket.self, from: data) else {
+            throw PeelError("Stadeum's call ticket could not be read.")
+        }
+        return ticket
+    }
+
     // MARK: - Jamie in tribes
 
     /// The tribes `link`'s person linked to their orgs, and Jamie's account
@@ -559,6 +578,22 @@ public struct HiveClient: Sendable {
     private static func said(_ data: Data) -> String? {
         (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"].map { TextLine.clean($0, max: 200) }
     }
+}
+
+/// A call ticket as Hive answers it (`HiveClient.callTicket`), in the call
+/// server's shape. Unchecked until `CallServer.ticket` reads it; the token
+/// is a bearer credential, so its descriptions leave it out.
+public struct HiveCallTicket: Decodable, Sendable, CustomStringConvertible, CustomReflectable {
+    public let serverUrl: String
+    public let participantToken: String
+
+    public init(serverUrl: String, participantToken: String) {
+        self.serverUrl = serverUrl
+        self.participantToken = participantToken
+    }
+
+    public var description: String { "HiveCallTicket(\(serverUrl), token not shown)" }
+    public var customMirror: Mirror { Mirror(self, children: ["serverUrl": serverUrl]) }
 }
 
 extension JSONDecoder {

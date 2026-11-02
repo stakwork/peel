@@ -365,6 +365,17 @@ public final class Stadeum {
         return try await HiveClient(hive: link.hive).startCall(link, workspace: peer.id)
     }
 
+    /// A ticket to join a call Hive made, as this device's person
+    /// (`HiveClient.callTicket`, docs/hive-calls.md "Who is speaking"):
+    /// Hive checks they may use the call's workspace. Throws when not
+    /// connected, and for anything Hive does not answer with a ticket.
+    public func callTicket(room: String, participantName: String, metadata: String?) async throws -> HiveCallTicket {
+        guard let link, !revoked else { throw PeelError("Stadeum is not connected.") }
+        return try await HiveClient(hive: link.hive).callTicket(
+            link, room: room, participantName: participantName, metadata: metadata
+        )
+    }
+
     // MARK: - Jamie in tribes
 
     /// Every tribe the person linked to an org, and Jamie's account, as

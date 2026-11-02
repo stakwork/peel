@@ -65,6 +65,11 @@ public final class CallStore {
     @ObservationIgnored var hiveCall: (_ peer: HivePeer) async throws -> String = { _ in
         throw PeelError("Connect Stadeum to call with Jamie.")
     }
+    /// Where a join asks Hive for its ticket to a call Hive made, so this
+    /// device's person speaks as themselves there (`Stadeum.callTicket`,
+    /// `Engine.callTicket(for:in:hive:)`). Nil: every call joins through
+    /// the call server.
+    @ObservationIgnored var hiveTicket: Engine.HiveTicketSource?
     /// The Jamie picked for calls in each chat, by peer id, "" for none
     /// (`Engine.callJamie`): this device's. A chat with no pick takes its
     /// tribe's (`HivePeer.jamie`).
@@ -254,7 +259,7 @@ public final class CallStore {
             chatNotice(chat) { $0?.hasPrefix("Could not join the call") == true ? nil : $0 }
         }
         do {
-            let ticket = try await engine.callTicket(for: link, in: chat)
+            let ticket = try await engine.callTicket(for: link, in: chat, hive: hiveTicket)
             guard self.engine === engine else { return false }
             leave()
             call = try provider.join(ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)

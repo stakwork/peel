@@ -25,10 +25,18 @@ final class VoiceModeController {
         var stopAgentTurn: (@MainActor () -> Void)?
         /// Why voice mode cannot run now (a dictation is recording), if so.
         var blocked: @MainActor () -> String?
+        /// The user's vocabulary, read-only: the Mac gives dictation's live
+        /// lexicon. TODO (docs/voice-mode.md): the phone has no source yet
+        /// (the vocabulary lives in the memory graph on the Mac's strut and
+        /// must be synced to it), so it gives nil and voice mode there is
+        /// generic-vocabulary.
+        var lexicon: @MainActor () -> LingoLexicon? = { nil }
     }
 
     var phase: VoicePhase { machine.phase }
-    var draft: String { machine.draft }
+    /// What the user said, with their vocabulary applied for display; the
+    /// machine keeps the raw words.
+    var draft: String { LexiconRewriter.apply(machine.draft, lexicon: hooks?.lexicon()) }
     /// Muted: the input is ignored but for "Peel unmute" (docs/voice-mode.md).
     var isMuted: Bool { machine.isMuted }
     /// 0…1 for the meter.
@@ -80,7 +88,7 @@ final class VoiceModeController {
 
     /// The strings the recogniser should expect.
     private var contextualStrings: [String] {
-        ["Peel", "Hey Peel"] + parser.table.all
+        VoiceVocabulary.contextualStrings(from: hooks?.lexicon(), base: ["Peel", "Hey Peel"] + parser.table.all)
     }
 
     init() {
@@ -223,7 +231,10 @@ final class VoiceModeController {
     }
 
     /// The composer's own send of a text message to the agent's DM.
-    private func send(_ text: String) {
+    private func send(_ raw: String) {
+        // The vocabulary is applied to the dictation only now: the commands
+        // were parsed from the raw transcript.
+        let text = LexiconRewriter.apply(raw, lexicon: hooks?.lexicon())
         guard let model, let chat = model.agentChat else {
             perform(machine.apply(.sendFinished(sent: false)))
             return
@@ -267,7 +278,7 @@ final class VoiceModeController {
     // MARK: Listening
 
     private func startListener() throws {
-        let listener = VoiceListener(contextualStrings: contextualStrings)
+        let listener = VoiceListener(contextualStrings: { [weak self] in self?.contextualStrings ?? [] })
         listener.onTranscript = { [weak self] transcript in self?.heard(transcript.text) }
         listener.onProblem = { [weak self] problem in self?.recognizerProblem(problem) }
         try listener.start()
@@ -483,7 +494,7 @@ final class VoiceModeController {
             guard await VoiceAuthorization.request() == .granted, wantsWake, !isArmed, !phase.isActive else { return }
             do {
                 try activateWakeSession()
-                let wake = VoiceListener(contextualStrings: contextualStrings)
+                let wake = VoiceListener(contextualStrings: { [weak self] in self?.contextualStrings ?? [] })
                 wake.onTranscript = { [weak self] transcript in self?.heardWake(transcript.text) }
                 wake.onProblem = { [weak self] _ in self?.stopWake() }
                 try wake.start()

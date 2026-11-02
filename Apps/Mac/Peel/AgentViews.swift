@@ -96,7 +96,8 @@ private struct AgentChatColumn: View {
             isAnswering: { model.agentAnswering != nil },
             isWaitingApproval: { model.agentWaiting },
             stopAgentTurn: { model.stopAgentTurn() },
-            blocked: { DictationController.shared.isListening ? "Voice mode is off while dictating." : nil }
+            blocked: { DictationController.shared.isListening ? "Voice mode is off while dictating." : nil },
+            lexicon: { DictationController.shared.lingo.lexicon }
         ))
     }
 

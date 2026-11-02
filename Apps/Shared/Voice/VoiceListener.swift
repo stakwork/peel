@@ -153,7 +153,9 @@ final class VoiceListener: SpeechListening {
     private var rotation: Task<Void, Never>?
     private var quickFailures = 0
     private var lastStart = Date.distantPast
-    private let extraStrings: [String]
+    /// Asked at each (re)start of a recognition task, so a vocabulary that
+    /// was refreshed meanwhile is picked up by the next one.
+    private let extraStrings: @MainActor () -> [String]
     private var configurationObserver: (any NSObjectProtocol)?
     private var rebuilding: Task<Void, Never>?
     #if os(macOS)
@@ -163,8 +165,9 @@ final class VoiceListener: SpeechListening {
     /// Tasks are ended and replaced this often, before the system's limit.
     private static let rotateAfter: TimeInterval = 50
 
-    /// `contextualStrings`: what the recogniser should expect (Peel, the phrases).
-    init(contextualStrings: [String]) { extraStrings = contextualStrings }
+    /// `contextualStrings`: what the recogniser should expect (Peel, the
+    /// phrases, the user's vocabulary), asked for again by each new task.
+    init(contextualStrings: @escaping @MainActor () -> [String]) { extraStrings = contextualStrings }
 
     func start() throws {
         guard !running else { return }
@@ -278,7 +281,7 @@ final class VoiceListener: SpeechListening {
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
         request.addsPunctuation = false
-        request.contextualStrings = extraStrings
+        request.contextualStrings = extraStrings()
         if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
         lastStart = Date()
         let old = task

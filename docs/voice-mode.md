@@ -49,8 +49,10 @@ idle ──start──▶ listening ──words──▶ hearing ──Peel send
 | `Apps/iOS/Peel/ConversationScreen.swift`, `YouTab.swift` | the phone's button, panel and settings |
 | `Apps/Mac/Peel/AgentViews.swift`, `AgentSettings.swift` | the Mac's |
 
+| `Sources/PeelUI/Voice/VoiceVocabulary.swift` | `VoiceVocabulary` (the lexicon as contextual strings), `LexiconRewriter` (the lexicon's mishearings rewritten) |
+
 Tests: `VoiceCommandParserTests`, `EchoFilterTests`, `SpokenTextTests`,
-`VoiceModeStateTests` (`Tests/PeelUITests`).
+`VoiceModeStateTests`, `VoiceVocabularyTests` (`Tests/PeelUITests`).
 
 ### Flow
 
@@ -85,6 +87,49 @@ Errors: a recogniser that fails three times in a row without words is
 reported; the controller says "I lost the microphone. Trying again.", retries
 after 1, 2, 4 s, and after the third leaves voice mode with a notice. (It
 does not speak when it gives up: the session is already released.)
+
+## The user's vocabulary (lingo)
+
+Voice mode reuses the vocabulary of Peel's dictation (`docs/dictation.md`,
+`LingoLexicon`: entries with the mishearings, "heard", and what the user
+writes for them; strut judges and learns them). It does not reuse dictation's
+recogniser: dictation records a WAV and strut's `/audio/transcribe` (sherpa-onnx
+on the Mac CPU) returns the text once per recording, already corrected. That is
+not streaming, so it cannot serve the live draft, "Peel <command>" detection,
+the mute listener or barge-in; the streaming `SFSpeechRecognizer` stays the live
+engine and the lexicon is applied around it:
+
+1. **Contextual strings.** `VoiceListener` asks for them each time it starts a
+   recognition task (about every 50 s, and after each reset), so a refreshed
+   vocabulary is used by the next task. `VoiceVocabulary.contextualStrings`:
+   "Peel", "Hey Peel" and the command phrases first, then the user's written
+   values and names (entries with mishearings first), without repeats, at most
+   100.
+2. **Rewrite.** `LexiconRewriter.apply` replaces each enabled mishearing form
+   (whole words, case aside, longest form first, one pass, punctuation kept)
+   with its written value. Entries the user turned off ("leave alone",
+   `dictationOff`) are never used. It runs on the dictation text only: the
+   parser still sees the raw transcript (so "peel send" parses as before, and
+   the echo filter sees what was heard), the draft shown is rewritten
+   (`VoiceModeController.draft`) and the message is rewritten when sent. The
+   machine keeps the raw words.
+3. **The seam.** `VoiceModeController.Hooks.lexicon` returns the lexicon or nil.
+   The Mac gives `DictationController.shared.lingo.lexicon`, read-only (kept
+   fresh by dictation's own refresh). **The iPhone has no source**: the
+   vocabulary lives in the memory graph on the Mac's strut and the phone has no
+   strut (and makes no call to one). TODO: sync the vocabulary to the phone
+   through Peel Home, or a strut it can reach. Until then voice mode on the
+   iPhone has a generic vocabulary.
+
+**TODO, Mac, not written: "Use Peel's dictation model for the final text".**
+The idea: an opt-in setting that records the utterance (16 kHz mono PCM16 WAV
+as `DictationAudioCapture` writes it, mode 0600, deleted after) and on send
+replaces the draft with `DictationSpeech.transcribe(wav)`, falling back to the
+streaming draft plus the rewrite after about 8 s or on any failure. It needs a
+second consumer of the voice engine's tap, and `DictationAudioCapture` owns its
+own engine (it would fight voice mode's voice-processing engine for the
+microphone), so it was left out rather than done unsafely. Next step: feed the
+`VoiceAudioFeed` buffers to a WAV writer.
 
 ## Phrases
 
@@ -295,11 +340,15 @@ Not relevant: Personal Voice (it speaks as you); `AVSpeechSynthesisProviderAudio
 | Streaming | yes, partial results | yes, long-form | no (a recording, then a result) | yes |
 | Limits | about one minute per task: restarted | no task limit | none | by provider |
 | Accuracy | fair | better | good (whisper-like) | good |
+| User's vocabulary | contextual strings only | contextual strings only | full lexicon, applied by strut | no |
 | Privacy | on device with `requiresOnDeviceRecognition` | on device | the user's own strut | audio leaves the device |
 
 ### Recommendation
 
-v1: on-device recognition (`SFSpeechRecognizer` now, `SpeechAnalyzer` when it
+v1: on-device streaming recognition for live text and commands, plus the
+user's lingo from dictation applied as contextual strings and a rewrite (an
+optional strut dictation pass on the Mac is a TODO; strut's transcriber is per
+recording, not streaming, so it is not the live engine). On-device recognition (`SFSpeechRecognizer` now, `SpeechAnalyzer` when it
 is written and tried) plus `AVSpeechSynthesizer` with the best installed
 Enhanced or Premium voice, each behind a protocol (`SpeechListening`,
 `SpeechSynthesizing`) so an opt-in cloud TTS (OpenAI or ElevenLabs, with the
@@ -370,6 +419,13 @@ Everything: it was written without building or running. To try on a device:
 - the Mac microphone and speech permission prompts, and a default-input change
 - a call starting during voice mode; a Mac dictation starting
 - engine rebuild loops (voice processing may post configuration changes)
+- the vocabulary: lexicon refresh timing (the Mac's `DictationLingo` may still
+  be empty or locked when voice mode starts; contextual strings are read again
+  at the next task), the real effect of `contextualStrings` (the recogniser
+  may ignore many), rewrite false positives (a mishearing form that is also a
+  real word), the iPhone having no vocabulary at all, and the missing strut
+  dictation pass (latency, once written)
+- `VoiceVocabularyTests`: written, desk-traced, not run
 
 ## Open questions and follow-ups
 

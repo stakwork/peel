@@ -140,6 +140,9 @@ Status: Peel's side built 2026-10-31 (PR #464, with the proposal cards of
 the agent chat). It waits for Hive's half: the proposal in Jamie's post
 and the decision from the owner's reply (its PR number goes here once it
 is open). Checked against stand-in posts on the local stack, not a Hive.
+The stub (strut's `plans/proposal-links.md`, stakwork/strut#406): Peel's
+side built 2026-11-01; a member's read of another person's proposal needs
+strut#407 on the org's swarm.
 
 A `@jamie` turn in a tribe runs as the owner, so what it proposes (a
 `package/install`, an `app/grant`, a delete: strut's proposals,
@@ -148,40 +151,74 @@ decide. The owner decides it in the tribe, on Jamie's post, and everyone
 there sees the card and how it ended.
 
 **The carrier.** Hive's post "Waiting for <owner> to approve: <title>"
-carries each proposal in `metadata.strut`, beside the deliverables:
+names each proposal in `metadata.strut`, beside the deliverables, as a
+stub: a reference, about 150 bytes, never the card (a tribe envelope
+carries references only):
 
 ```
 "strut": { "workspace": "<slug>", "artifacts": [ … ],
-           "proposals": [ { "id", "step", "title", "summary"?, "card"?, "status",
-                            "url": "/proposals/<id>", "rationale"?, "createdAt"? } ] }
+           "proposals": [ { "id", "step", "title", "status", "url": "/proposals/<id>" } ] }
 ```
 
-`card` is strut's card exactly as in #464 (`{ v: 1, title, summary?,
-fields, actions, full }`); a swarm whose strut is older than `c23756a`
-sends none, and the card is built from the title and the summary
-(`ProposalCard.generic`). `url` is strut-relative and marks a proposal
-the post made, against a reply's outcome, which has none. Unknown keys are
-ignored, as are entries Peel cannot read; up to ten per post
-(`StrutProposals.most`). `Message.strutProposals` reads it
-(`StrutProposals`, PeelCore `Proposal.swift`); `ChatRow.rows` puts it on
-a member's row in a tribe, beside the deliverables, never on your own,
-and on the row that stands for the post once replies fold it into its
-thread (the owner's own answer is such a reply: the card must not fold
-away with it; `takeStrutEntries`).
+A Hive from before the stub sends the whole brief instead: `summary`,
+`card` (strut's card exactly as in #464, `{ v: 1, title, summary?, fields,
+actions, full }`), `rationale` and `createdAt` beside the stub's keys;
+such a post is drawn as it came and never read (below). A swarm whose
+strut is older than `c23756a` sends no card, and the card is built from
+the title and the summary (`ProposalCard.generic`). `url` is
+strut-relative and marks a proposal the post made, against a reply's
+outcome, which has none. Unknown keys are ignored, as are entries Peel
+cannot read; up to ten per post (`StrutProposals.most`).
+`Message.strutProposals` reads it (`StrutProposals`, PeelCore
+`Proposal.swift`); `ChatRow.rows` puts it on a member's row in a tribe,
+beside the deliverables, never on your own, and on the row that stands for
+the post once replies fold it into its thread (the owner's own answer is
+such a reply: the card must not fold away with it; `takeStrutEntries`).
 
 **The card.** `TribeProposalCards` (Mac, `ProposalCardViews.swift`) draws
-each as `ProposalCardView` under the post, shut to its title, the workspace
-and step, and its badge until a click on the title opens the rest, as in the
-agent chat: the summary, the fields (a `danger` one tinted as a loss), the
-model's reason apart, "Not everything is shown" when the fields do not
-cover the input. Hive's post carries the card, never the input, so a field
-strut cut ends in "…" (`Field.shownValue`, not strut's "(see full input)",
-which is no link) and the line says the rest wasn't sent; shut, the card
-takes no key. The tribe's
-owner (`Tribe.canManage`, the list's `canAnswer`) gets the card's own two
-buttons, and Return and Escape as in the agent chat; everyone else sees
-the card, its badge, and "The tribe's owner decides this." Not on the
-iPhone yet, as #464 left it.
+each as `ProposalCardView` under the post, shut to its title, the
+workspace and step, and its badge until a click on the title opens the
+rest, as in the agent chat: the summary, the fields (a `danger` one tinted
+as a loss), the model's reason apart, "Not everything is shown" when the
+fields do not cover the input. A stub's card, read from the org's strut
+(below), has the input, so "Show the full input" opens it; a post from an
+older Hive carries the card and never the input, so a field strut cut ends
+in "…" (`Field.shownValue`, not strut's "(see full input)", which is no
+link) and the line says the rest wasn't sent; shut, the card takes no key.
+The tribe's owner (`Tribe.canManage`, the list's `canAnswer`) gets the
+card's own two buttons, and Return and Escape as in the agent chat;
+everyone else sees the card, its badge, and "The tribe's owner decides
+this." Not on the iPhone yet, as #464 left it.
+
+**Reading the card.** A stub's card (`ProposalRecord.isStub`: no card, no
+input) is the org's strut's record, read with the person's own token for
+that workspace, `GET /proposals/:id` through `HivePeer.proposal`:
+strut#407 lets a person token read any proposal on its strut by id (the
+lists stay the person's own, and deciding stays the proposer's), so any
+member paired with the org reads it, the owner and everyone else alike.
+`ProposalWatch.fillCard` reads it only when this Peel holds a Stadeum
+pairing for the envelope's `workspace`, and only at three moments: the
+post is taken up (live, from history, or as the watch opens; a copy of it
+coming round again reads only what strut has not answered here); the card
+is opened while it is still the stub (`ProposalWatch.opened`, from the
+title's click); and Jamie's outcome reply for it arrives, for the decision
+and the result. Never on a timer. strut's record fills the card (fields,
+words, input, reason, who proposed it) and its status wins, but a read
+never takes a card back behind the posts, from running to pending or from
+over to open (`KeptProposal.take(read:)`); the card stays under its post,
+on the posts' clock, and the tribe's outcome posts still move it
+(`KeptProposal.cardFromStrut` marks a card that came as a stub; a post's
+own `by`, which any member could write, is never read, so a post's card is
+never taken for strut's). In a tribe a 404 or a 403 from that read means
+"not readable here", never gone or not yours: the card stays the post's
+title, open, the owner's buttons still there, and says "This card opens
+for members of <org>." (`ProposalWatch.tribeNote`). A member who is not
+paired with the org (or paired with another one only) reads nothing and
+sees the same: the title from the post, its badge, and that line, which is
+all the post's text says anyway. A read that does not answer is tried
+again a few times, longer apart, then left until the next moment; it never
+ends the card. A post that carries a card is drawn as it came and never
+read.
 
 **Deciding.** The owner's click sends a plain reply in the tribe to
 Jamie's post (`Engine.sendText(_:to:replyTo:)`, `ProposalWatch.answerInTribe`
@@ -215,34 +252,40 @@ a decided card, and an outcome that comes before its post is kept as
 ended on the post its reply answers (`KeptProposal.take`). A reply with
 no proposals in its metadata is a normal turn, nothing for the card.
 
-**Kept.** Each is kept per (workspace, id) in the `proposal` table of
-#464 with its post (`tribe`, `post`, `poster`) and the answer, so a
-restart redraws it; a tribe's is never forgotten with a workspace's old
-ones (its card stays on its post). Where a proposal's truth comes from is
-one rule, `KeptProposal.fromStrut`: strut's record, read with the
-person's token, for Peel's own strut's and a workspace's; the tribe's
-posts for one on a post. So the owner's `ProposalWatch`, which lists the
+**Kept.** Each is kept per (workspace, id) in the `proposal` table of #464
+with its post (`tribe`, `post`, `poster`) and the answer, so a restart
+redraws it; a tribe's is never forgotten with a workspace's old ones (its
+card stays on its post). Where a proposal's truth comes from is one rule,
+`KeptProposal.fromStrut`: strut's record, read with the person's token,
+for Peel's own strut's and a workspace's; the tribe's posts for one on a
+post, with its card (and, at its moments, its status) from strut's record
+when the post sent a stub. So the owner's `ProposalWatch`, which lists the
 same proposal on the org's strut by person token, never shows one on a
-post at the end of the agent chat too, never reads it from the org's
-strut by itself (that read would say "not yours" to anyone but the
-owner), and leaves it alone in the list once it is on a post (a list read
-just before a decision must not reopen a card its outcome ended, nor put
-the Mac's clock where the posts' dates go: a record listed first takes the
-posts' clock from its post on). Posts that came while nothing watched
-(before this build, or to the CLI on the profile) are taken up as the
-watch opens, from where its last look got to (`Storage.proposalPosts(after:)`,
-`Setting.proposalPostsScan`), so a later open reads nothing twice. The look
-reads only the tribes' rows, so its posts are taken up without asking which
-chats are tribes: the watch opens before the account has listed them. A new
-`Storage.proposalPostsVersion` reads every row again once; version 2 does,
-because the first watch asked, was told none, and took none of the posts.
+post at the end of the agent chat too, never reads it on a timer, and
+leaves it alone in the list once it is on a post (a list read just before
+a decision must not reopen a card its outcome ended, nor put the Mac's
+clock where the posts' dates go: a record listed first takes the posts'
+clock from its post on). Posts that came while nothing watched (before
+this build, or to the CLI on the profile) are taken up as the watch opens,
+from where its last look got to (`Storage.proposalPosts(after:)`,
+`Setting.proposalPostsScan`), so a later open reads nothing twice. The
+look reads only the tribes' rows, so its posts are taken up without asking
+which chats are tribes: the watch opens before the account has listed
+them. A new `Storage.proposalPostsVersion` reads every row again once;
+version 2 does, because the first watch asked, was told none, and took
+none of the posts.
 
 **Tests.** `ProposalTests` (a post's proposals and a reply's outcomes
 read, what is skipped, the posts in any order, the stale answer, the
-store), `ProposalWatchTests` (kept from the post, never a workspace's
-card nor read by itself, the owner's reply with the card's word, ended by
+store, a stub's card taken from strut's record, never behind the posts,
+and a post's `by` never read), `ProposalWatchTests` (kept from the post,
+never a workspace's card, the owner's reply with the card's word, ended by
 Jamie's word in the thread and by no one else's, a reply that could not
-go, a reopen), the journey `Journeys/Tribes/aProposalOnJamiesPostIsAnsweredByTheOwnersReply`
+go, a reopen; a stub read when taken up and when Jamie's word comes and at
+no other time, a 404 or 403 leaving the title and the line rather than
+gone (and a copy of the post not asking again), a silent strut never given
+up on, no read with no pairing or for a post that carries a card), the
+journey `Journeys/Tribes/aProposalOnJamiesPostIsAnsweredByTheOwnersReply`
 (through the real core: Bob posts as Jamie with the metadata, Alice's
 answer reaches him as a reply to his post with the card's word, his
 outcome ends her card, Carol gets the post too), and the offscreen check

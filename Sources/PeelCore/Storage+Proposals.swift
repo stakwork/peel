@@ -59,9 +59,9 @@ public struct KeptProposal: Sendable, Equatable {
     /// How it ended for Peel; nil while it is open.
     public var ending: Ending?
     /// In a tribe (docs/hive-tribes.md, "Proposals in a tribe"): the post
-    /// whose card it is. Its state then comes from the tribe's posts, never
-    /// from a read of the workspace's strut by itself, and its card is
-    /// under that post alone.
+    /// whose card it is. Its state then comes from the tribe's posts, and
+    /// from the workspace's strut only when the post sent a stub
+    /// (`cardFromStrut`), never on a timer; its card is under that post alone.
     public var post: TribePost?
     /// In a tribe: the owner's answer sent here at `answeredAt`, true for an accept.
     public var answer: Bool?
@@ -113,17 +113,26 @@ public struct KeptProposal: Sendable, Equatable {
 
     /// Whether its truth is strut's record, read with the person's token
     /// (Peel's own strut's, a workspace's), or the tribe's posts
-    /// (`post != nil`): the latter is never read from a strut by itself,
+    /// (`post != nil`): the latter is never read from a strut on a timer,
     /// never a card at the end of the agent chat, and a read of strut that
     /// still happens (the owner's list) leaves it alone.
     public var fromStrut: Bool { post == nil }
+
+    /// In a tribe: whether its card comes from the workspace's strut, since
+    /// its post sent a stub (`ProposalRecord.isStub`): still the stub, or
+    /// strut's record read in its place. Read with the person's token when
+    /// the post is taken up, when its card is opened unread, and when an
+    /// outcome comes; a post that carries a card (a Hive from before the
+    /// stub) is drawn as it is and never read.
+    public var cardFromStrut: Bool { post != nil && (record.isStub || record.isStrutsRecord) }
 
     /// The post in a tribe that made it (`carrier`), dated as the post is:
     /// its card and words, and where its card is. The status stays the
     /// latest word's (a copy of the post coming round again never reopens a
     /// decided one), and what strut's own record had beyond the post's (the
-    /// input) stays too. A record read from strut before stands by the
-    /// posts from now on, so it takes the posts' clock.
+    /// input; for a stub, the card, its words and who proposed it) stays
+    /// too. A record read from strut before stands by the posts from now
+    /// on, so it takes the posts' clock.
     public mutating func take(carrier record: ProposalRecord, on post: TribePost, at date: Date) {
         if self.post == nil {
             self.post = post
@@ -137,7 +146,40 @@ public struct KeptProposal: Sendable, Equatable {
             known.input = self.record.input
             known.inputCut = self.record.inputCut
         }
+        if record.isStub {
+            known.card = self.record.card
+            known.cardUnreadable = self.record.cardUnreadable
+            known.summary = record.summary ?? self.record.summary
+            known.rationale = record.rationale ?? self.record.rationale
+            known.createdAt = record.createdAt ?? self.record.createdAt
+            known.by = self.record.by
+        }
         self.record = known
+    }
+
+    /// In a tribe: strut's record of it, read with the person's token in
+    /// place of a stub (`cardFromStrut`): its card, words, input and who
+    /// proposed it, and strut's word on how it stands, newer than a post's;
+    /// but a read never takes it back behind the posts (pending, the step
+    /// running, over: a read that left before Jamie's word came back after
+    /// it). It stays on its post and the posts' clock.
+    public mutating func take(read record: ProposalRecord) {
+        var read = record
+        if Self.stage(read.status) < Self.stage(self.record.status) {
+            read.status = self.record.status
+            read.decision = self.record.decision ?? read.decision
+            read.result = self.record.result ?? read.result
+        }
+        self = updated(with: read, at: readAt)
+    }
+
+    /// How far along `status` is: waiting, the step running, over.
+    private static func stage(_ status: ProposalRecord.Status) -> Int {
+        switch status {
+        case .pending: 0
+        case .accepted: 1
+        case .rejected, .applied, .failed: 2
+        }
     }
 
     /// A reply in the post's thread saying how it ended, or that the step

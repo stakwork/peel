@@ -253,8 +253,9 @@ Everything: it was written without building or running. To try on a device:
   callbacks and `NotificationCenter` closures were written to avoid main-actor
   isolation traps, but not compiled)
 - the unit tests (`VoiceCommandParserTests`, `SpokenTextTests`,
-  `VoiceModeStateTests`): written, not run; regexes in `SpokenText` are the
-  likeliest to need a fix
+  `VoiceModeStateTests`): written, not run; checked by hand only. One
+  mismatch was found that way and fixed: the sentence splitter does not break
+  before a lowercase word, so a quoted line is now its own sentence
 - Bluetooth HFP and a car stereo, in and out of range
 - the lock screen with voice mode running; the orange indicator
 - Siri and phone-call interruptions, with and without resume

@@ -108,6 +108,7 @@ public struct SpokenText: Equatable, Sendable {
                 continue
             }
             var body = line
+            let isQuote = body.hasPrefix(">")
             while let quote = body.range(of: #"^>\s?"#, options: .regularExpression) { body.removeSubrange(quote) }
             if let marker = body.range(of: #"^([-*+•]|\d{1,3}[.)])\s+"#, options: .regularExpression) {
                 flushPlain()
@@ -116,7 +117,11 @@ public struct SpokenText: Equatable, Sendable {
                 continue
             }
             let text = clean(body)
+            // A quoted line stands alone: the sentence splitter would not
+            // break before a lowercase word that follows a full stop.
+            if isQuote { flushPlain() }
             if !text.isEmpty { plain.append(text) }
+            if isQuote { flushPlain() }
         }
         if fence != nil { current.append(codeBlockPhrase(lines: codeLines)) }
         endParagraph()

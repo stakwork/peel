@@ -25,6 +25,11 @@ public actor Engine {
     var photoURL: String
     var server: ServerAddress?
     private var allowUntrustedCertificate = false
+    /// The route the last connection came by, and when the named one was last tried (see `connectFirstRoute`).
+    private var lastRoute: ServerAddress?
+    private var primaryProbedAt: ContinuousClock.Instant?
+    /// `Setting.lastRoute` has been read, at the first connect.
+    private var lastRouteRead = false
 
     private(set) var state: [String: Data]
     var clock: UniqueClock
@@ -318,6 +323,164 @@ public actor Engine {
         emit.finish()
     }
 
+    /// How long the fallback route is kept first before the named one is tried again.
+    static let primaryProbeInterval: Duration = .seconds(300)
+    /// How long a route has to connect before the next one is tried beside
+    /// it. A network that drops the MQTT port lets a connect hang for the
+    /// client's whole timeout (10 s); this caps that wait. A working route
+    /// connects well within it.
+    static let nextRouteAfter: Duration = .milliseconds(1500)
+
+    /// What happens while the routes race (`connectFirstRoute`).
+    private enum RouteEvent: Sendable {
+        case finished(Int, Result<Void, Error>)
+        case startNext
+    }
+
+    /// Connects by the first of the server's routes that answers (see
+    /// `ServerAddress.routes`), signing a fresh login for each, with full
+    /// certificate verification on every one. Each route has
+    /// `nextRouteAfter` to connect before the next starts beside it, and the
+    /// next starts at once when one fails; the first to connect is kept and
+    /// the others are closed once their connects end. Throws the last
+    /// route's error when none connects; the caller's backoff applies then.
+    private func connectFirstRoute(of server: ServerAddress, xpub: String) async throws -> Transport {
+        if !lastRouteRead {
+            lastRouteRead = true
+            // A route stored for another server, or one that is no longer a
+            // fallback, is ignored.
+            if let stored = try? storage.value(for: .lastRoute), let route = ServerAddress(stored),
+               route == server.fallback {
+                lastRoute = route
+                // The named route is tried again `primaryProbeInterval` after it
+                // was last tried, counted across launches; with no record, now.
+                if let tried = (try? storage.value(for: .primaryTriedAt)).flatMap({ $0.flatMap(Double.init) }) {
+                    let elapsed = max(0, Date.now.timeIntervalSince1970 - tried)
+                    primaryProbedAt = ContinuousClock.now - .seconds(elapsed)
+                }
+            }
+        }
+        let now = ContinuousClock.now
+        let probe = primaryProbedAt.map { now - $0 >= Self.primaryProbeInterval } ?? true
+        let routes = server.routes(lastWorked: lastRoute, probingPrimary: probe)
+        if routes.first == server {
+            primaryProbedAt = now
+            if lastRoute != nil, lastRoute == server.fallback { storePrimaryTried() }
+        }
+
+        if let testing = Self.connectingForTesting {
+            try await testing.connect()
+            if closed || Task.isCancelled { throw CancellationError() }
+            return testing
+        }
+
+        // A login signed for each route; its client is made only when the
+        // route starts, since every client made must be shut down.
+        var logins: [(time: String, signature: String)] = []
+        for _ in routes {
+            let loginTime = clock.next()
+            logins.append((loginTime, try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)))
+        }
+
+        let (events, sink) = AsyncStream.makeStream(of: RouteEvent.self)
+        var transports: [Transport] = []
+        var attempts: [Task<Result<Void, Error>, Never>] = []
+        var timer: Task<Void, Never>?
+        func start(_ index: Int) {
+            let transport = Transport(
+                server: routes[index], clientID: xpub, username: logins[index].time, password: logins[index].signature,
+                allowUntrustedCertificate: allowUntrustedCertificate
+            )
+            transports.append(transport)
+            attempts.append(Task {
+                let result: Result<Void, Error>
+                do {
+                    try await transport.connect()
+                    result = .success(())
+                } catch {
+                    result = .failure(error)
+                }
+                sink.yield(.finished(index, result))
+                return result
+            })
+            timer?.cancel()
+            if index + 1 < routes.count {
+                timer = Task {
+                    try? await Task.sleep(for: Self.nextRouteAfter)
+                    if !Task.isCancelled { sink.yield(.startNext) }
+                }
+            }
+        }
+
+        var winner: Int?
+        var failure: Error = Failure.noServer
+        var pending = 0
+        start(0)
+        pending += 1
+        for await event in events {
+            switch event {
+            case .startNext:
+                if attempts.count < routes.count {
+                    start(attempts.count)
+                    pending += 1
+                }
+            case .finished(let index, .success):
+                winner = index
+            case .finished(_, .failure(let error)):
+                pending -= 1
+                failure = error
+                if attempts.count < routes.count {
+                    start(attempts.count)
+                    pending += 1
+                }
+            }
+            if winner != nil || (pending == 0 && attempts.count == routes.count) { break }
+            if Task.isCancelled || closed { break }
+        }
+        timer?.cancel()
+        sink.finish()
+
+        // Every connect that is not kept is closed once it ends, connected or not.
+        for (index, attempt) in attempts.enumerated() where index != winner {
+            let transport = transports[index]
+            Task {
+                _ = await attempt.value
+                await transport.close()
+            }
+        }
+        guard let winner else {
+            if closed || Task.isCancelled { throw CancellationError() }
+            throw failure
+        }
+        let transport = transports[winner]
+        // Closed or disconnected while connecting.
+        if closed || Task.isCancelled {
+            await transport.close()
+            throw CancellationError()
+        }
+        rememberRoute(routes[winner], of: server)
+        return transport
+    }
+
+    /// Keeps the route that connected, in memory and in the profile, so the
+    /// next connect (after a relaunch too) starts with it.
+    private func rememberRoute(_ route: ServerAddress, of server: ServerAddress) {
+        guard route != lastRoute else { return }
+        lastRoute = route
+        let isFallback = route == server.fallback
+        let stored = isFallback ? route.description : ""
+        if (try? storage.value(for: .lastRoute)) != stored {
+            try? storage.set(stored, for: .lastRoute)
+        }
+        // Moving to the fallback means the named route was tried first on
+        // this connect and did not answer in time.
+        if isFallback { storePrimaryTried() }
+    }
+
+    private func storePrimaryTried() {
+        try? storage.set(String(Int(Date.now.timeIntervalSince1970)), for: .primaryTriedAt)
+    }
+
     private func establish() async throws {
         guard let server else { throw Failure.noServer }
         // A signup whose registration was never confirmed registers with
@@ -329,20 +492,7 @@ public actor Engine {
         do {
             try await run { _, _ in try Sphinxrs.setNetwork(network: network) }
             let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
-            let loginTime = clock.next()
-            let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-            let transport = Self.connectingForTesting ?? Transport(
-                server: server, clientID: xpub, username: loginTime, password: signature,
-                allowUntrustedCertificate: allowUntrustedCertificate
-            )
-            do {
-                try await transport.connect()
-                // Closed or disconnected while connecting.
-                if closed || Task.isCancelled { throw CancellationError() }
-            } catch {
-                await transport.close()
-                throw error
-            }
+            let transport = try await connectFirstRoute(of: server, xpub: xpub)
             self.transport = transport
             listener = Task { [weak self] in
                 for await message in transport.inbound {

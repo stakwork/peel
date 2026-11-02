@@ -8,6 +8,17 @@ import GRDB
 public enum Setting: String, Sendable {
     case network
     case server
+    /// The route the last connection came by when it was the server's
+    /// WebSocket fallback (`ServerAddress.fallback`, as its description);
+    /// "" when it was the server as named. Read at the first connect, so a
+    /// relaunch on a network that blocks the MQTT port starts with the
+    /// route that worked there.
+    case lastRoute
+    /// When the server as named was last tried while `lastRoute` held the
+    /// fallback, in seconds since 1970: a relaunch tries it again only once
+    /// `Engine.primaryProbeInterval` has passed since, not at every launch
+    /// and not never.
+    case primaryTriedAt
     case deviceID
     case alias
     case photoURL

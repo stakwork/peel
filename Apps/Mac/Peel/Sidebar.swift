@@ -57,6 +57,9 @@ struct Sidebar: View {
                             } accessory: {
                                 if unreadThreads > 0 { Badge(count: unreadThreads) }
                             }
+                            SidebarLink("Segments", to: .segments) {
+                                Image(systemName: "record.circle").font(.system(size: 13))
+                            }
                         }
                         if !sections.unread.isEmpty {
                             SidebarSection("Unread") {
@@ -162,7 +165,7 @@ struct Sidebar: View {
         let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
         return [(.apps, "Apps")]
             + shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
-            + [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads")]
+            + [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads"), (.segments, "Segments")]
             + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
             + agent
             + sections.direct.map { (.chat($0.chat), $0.name) }

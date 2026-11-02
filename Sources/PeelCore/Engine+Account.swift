@@ -224,13 +224,15 @@ extension Engine {
     }
 
     /// Hours after which an app asks for the PIN again; 0 means only at
-    /// launch, nil that this account has never set it.
+    /// launch, `PINTimeout.never` never after launch, nil that this account
+    /// has never set it. Kept in the official `pin_timeout`'s form and
+    /// converted here (`PINTimeout.peelHours(fromOfficial:)`).
     public func pinTimeoutHours() throws -> Int? {
-        try storage.preference(.pinTimeoutHours)
+        try storage.preference(.pinTimeout).map(PINTimeout.peelHours(fromOfficial:))
     }
 
     public func setPINTimeout(hours: Int) throws {
-        try set(.pinTimeoutHours, hours)
+        try set(.pinTimeout, PINTimeout.officialHours(fromPeel: hours))
     }
 
     /// Whether an app's notifications may show what a message says; on

@@ -106,6 +106,7 @@ private struct ComposerTextView: NSViewRepresentable {
         scrollView.documentView = textView
         textView.attach = { [weak coordinator = context.coordinator] in coordinator?.parent.attach($0) }
         textView.dropTargeted = { [weak coordinator = context.coordinator] in coordinator?.parent.dropTargeted($0) }
+        textView.widthChanged = { [weak coordinator = context.coordinator, unowned textView] in coordinator?.measure(textView) }
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.importsGraphics = false
@@ -232,6 +233,10 @@ private struct ComposerTextView: NSViewRepresentable {
             let line = layoutManager.defaultLineHeight(for: ComposerTextView.font)
             let content = max(line, layoutManager.usedRect(for: container).height)
             let height = min(content, line * ComposerTextView.maxLines) + ComposerTextView.padding * 2
+            #if DEBUG
+            NSLog("[PeelComposer] measure width=%.1f text=%d chars content=%.1f -> %.1f (was %.1f)",
+                  textView.frame.width, textView.string.count, content, height, parent.height)
+            #endif
             // Measuring can happen during a view update; change state after it.
             Task { @MainActor in
                 if abs(self.parent.height - height) > 0.5 {
@@ -250,8 +255,17 @@ private struct ComposerTextView: NSViewRepresentable {
 private final class AttachingTextView: NSTextView {
     var attach: (([PasteboardFiles.Item]) -> Void)?
     var dropTargeted: ((Bool) -> Void)?
+    /// Its width changed, so the text wraps anew: a draft put in before the
+    /// field had a width was measured as one line.
+    var widthChanged: (() -> Void)?
     /// The drag over the field holds files; decided once as it enters.
     private var takesDrag = false
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let old = frame.width
+        super.setFrameSize(newSize)
+        if abs(newSize.width - old) > 0.5 { widthChanged?() }
+    }
 
     /// A screenshot copied to the clipboard is image bytes with no text, and
     /// a plain-text field reads none of its types, so AppKit would grey out

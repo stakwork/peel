@@ -245,7 +245,7 @@ struct MessageBodyView: View {
                 if let giphy = row.giphy { GiphyPicture(giphy: giphy) }
                 if message.attachmentKind != nil { AttachmentBlock(row: row) }
                 if let call = row.call {
-                    CallBlock(link: call, chat: message.chat)
+                    CallBlock(link: call, message: message)
                 } else if !message.shownText.isEmpty {
                     // Link cards are the Mac's for now: the link stays in the text.
                     MessageText(text: message.shownText, chat: message.chat, size: PhoneFont.message.size)
@@ -303,17 +303,38 @@ private struct CallBlock: View {
     @Environment(PhoneRouter.self) private var router
     @State private var pending: PendingCall?
     let link: CallLink
-    let chat: String
+    let message: Message
+
+    private var chat: String { message.chat }
 
     var body: some View {
+        let presence = model.calls.presence(of: link.room)
+        let onIt = model.calls.isOnCall(link.room)
         PhoneCard {
             HStack(spacing: Theme.Space.md) {
-                Image(systemName: link.audioOnly ? "phone.fill" : "video.fill")
-                    .foregroundStyle(Theme.secondaryText)
-                    .accessibilityHidden(true)
-                Text(link.audioOnly ? "Audio call" : "Video call")
-                    .phoneFont(.row)
-                    .foregroundStyle(Theme.text)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: Theme.Space.sm) {
+                        Image(systemName: link.audioOnly ? "phone.fill" : "video.fill")
+                            .foregroundStyle(Theme.secondaryText)
+                            .accessibilityHidden(true)
+                        Text(link.audioOnly ? "Audio call" : "Video call")
+                            .phoneFont(.row)
+                            .foregroundStyle(Theme.text)
+                    }
+                    if message.notSent {
+                        status("Not sent")
+                    } else if onIt {
+                        who(presence.people ?? [], "You're on this call")
+                    } else {
+                        switch presence {
+                        case .live(let people) where !people.isEmpty:
+                            who(people, "\(people.count) on the call")
+                        case .live: status("No one on the call")
+                        case .ended: status("Call ended")
+                        case .unknown: EmptyView()
+                        }
+                    }
+                }
                 Spacer(minLength: Theme.Space.sm)
                 if model.calls.isOnCall(link.room) {
                     Button("Open") { router.callShown = true }
@@ -332,6 +353,28 @@ private struct CallBlock: View {
             .padding(.vertical, Theme.Space.sm)
         }
         .callSwitchConfirmation($pending, model: model, router: router)
+        // Only while the row is drawn, and only for a recent call.
+        .task(id: link.room) {
+            guard CallLink.mayBeLive(message) else { return }
+            await model.calls.watch(link, in: chat)
+        }
+    }
+
+    private func status(_ text: String) -> some View {
+        Text(text)
+            .phoneFont(.secondary)
+            .foregroundStyle(Theme.secondaryText)
+    }
+
+    private func who(_ people: [CallParticipant], _ text: String) -> some View {
+        HStack(spacing: 7) {
+            CallPeopleStack(people: people, size: Theme.AvatarSize.md, border: Theme.quote)
+            OnlineDot()
+            Text(text)
+                .phoneFont(.secondary)
+                .monospacedDigit()
+                .foregroundStyle(Theme.text)
+        }
     }
 }
 

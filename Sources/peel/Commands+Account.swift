@@ -95,10 +95,11 @@ extension Invocation {
                 print("time zone: \(try await engine.chosenTimeZone() ?? "auto (this Mac's)")")
             case "pin-timeout":
                 if let value {
-                    guard let hours = Int(value), hours >= 0 else { throw PeelError("pin-timeout takes hours, 0 for only at launch") }
+                    let hours = value == "never" ? PINTimeout.never : Int(value).flatMap { $0 >= 0 ? $0 : nil }
+                    guard let hours else { throw PeelError("pin-timeout takes hours, 0 for only at launch, or never") }
                     try await engine.setPINTimeout(hours: hours)
                 }
-                print("PIN timeout: \(try await engine.pinTimeoutHours().map { "\($0) hours" } ?? "not set")")
+                print("PIN timeout: \(try await engine.pinTimeoutHours().map { $0 == PINTimeout.never ? "never" : "\($0) hours" } ?? "not set")")
             case "notification-text":
                 if let value { try await engine.setNotificationShowsText(yesNo(value)) }
                 print("notification text: \(try await engine.notificationShowsText() ? "yes" : "no")")
@@ -119,5 +120,5 @@ extension Invocation {
     }
 
     static let prefNames = "confirm-over <sats, 0 for every payment>, time-zone <IANA name|auto>, "
-        + "pin-timeout <hours, 0 for only at launch>, notification-text <yes|no>"
+        + "pin-timeout <hours, 0 for only at launch, never>, notification-text <yes|no>"
 }

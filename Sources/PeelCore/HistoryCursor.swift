@@ -11,6 +11,11 @@ struct HistoryCursor: Equatable {
         var phase: Engine.HistoryPhase
         var next: UInt64
         var end: UInt64?
+        /// How many items the run will fetch, when counted (contacts). `end`
+        /// is then only a server index, to know when to stop paging.
+        var total: UInt64? = nil
+        /// Items fetched so far, for a run with a `total`.
+        var fetched: UInt64 = 0
     }
 
     /// How far a page moved its run, as the `.history` event reports it.
@@ -54,7 +59,8 @@ struct HistoryCursor: Equatable {
     static func plan(_ counts: Engine.MessageCounts) -> [Run] {
         var runs: [Run] = []
         if counts.firstForEachKey > 0 {
-            runs.append(Run(phase: .contacts, next: 0, end: counts.firstForEachKeyHighestIndex))
+            runs.append(Run(phase: .contacts, next: 0, end: counts.firstForEachKeyHighestIndex,
+                            total: counts.firstForEachKey))
         }
         if counts.total > 0 {
             runs.append(Run(phase: .messages, next: 0, end: counts.totalHighestIndex))
@@ -95,7 +101,14 @@ struct HistoryCursor: Equatable {
             takeLive()
         }
         run.next = reached + 1
-        let progress = Progress(phase: run.phase, reached: reached, end: run.end)
+        let progress: Progress
+        if run.phase == .contacts, let total = run.total {
+            // Contacts count items, not server indices.
+            run.fetched += UInt64(indices.count)
+            progress = Progress(phase: .contacts, reached: min(run.fetched, total), end: total)
+        } else {
+            progress = Progress(phase: run.phase, reached: reached, end: run.end)
+        }
         if let end = run.end, run.next > end {
             return (progress, finish())
         }

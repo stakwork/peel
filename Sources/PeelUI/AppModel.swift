@@ -65,7 +65,7 @@ public final class AppModel {
             }
             return [
                 Line(title: "Account", detail: connection.label, state: connection == .connected ? .done : .active),
-                Line(title: "Contacts", detail: label(contacts, noun: "checked"),
+                Line(title: "Contacts & Tribes", detail: label(contacts, noun: "checked"),
                      state: state(started: contacts != nil, done: messages != nil || finished)),
                 Line(title: "Messages", detail: label(messages, noun: "received"),
                      state: state(started: messages != nil, done: finished), fraction: messages?.fraction),
@@ -75,7 +75,7 @@ public final class AppModel {
 
     /// What the sidebar has selected.
     public enum Destination: Hashable, Sendable {
-        case threads, mentions, automations, payments, account
+        case threads, segments, mentions, automations, payments, account
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
@@ -90,7 +90,7 @@ public final class AppModel {
 
     /// Account's categories, listed where the sidebar was while it is open.
     public enum AccountPage: Hashable, Sendable, CaseIterable {
-        case profile, payments, assistant, brain, connections, dictation, recording, notifications, security
+        case profile, payments, assistant, brain, connections, dictation, notifications, security
     }
 
     public var phase: Phase = .loading {
@@ -771,8 +771,10 @@ public final class AppModel {
 
     /// Peel has gone unused for the PIN timeout, though it may not have
     /// locked yet; notifications already say nothing.
+    /// Never skips only this idle lock: launch (`start`) still needs the PIN to
+    /// decrypt the account secret, and the PIN is not stored.
     public var isLockDue: Bool {
-        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0, let lastActiveAt else { return false }
+        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours != PINTimeout.never, pinTimeoutHours > 0, let lastActiveAt else { return false }
         return Date.now.timeIntervalSince(lastActiveAt) > Double(pinTimeoutHours) * 3600
     }
 
@@ -1349,7 +1351,8 @@ public final class AppModel {
     }
 
     /// What this device adds to the account's synced preferences: Face ID
-    /// where the platform syncs it and the account has a PIN, the agent's
+    /// where the platform syncs it and the account has a PIN, the PIN timeout
+    /// where the account has a PIN, the agent's
     /// credential where there is an agent.
     private func preferenceCapabilities(for profile: Profile?) -> PreferenceCapabilities {
         let agentCredential = agentHost == nil ? nil : profile.map { profile in
@@ -1358,7 +1361,8 @@ public final class AppModel {
             }
         }
         return PreferenceCapabilities(
-            biometrics: platform.syncsBiometrics && profile?.biometrics != nil, agentCredential: agentCredential
+            biometrics: platform.syncsBiometrics && profile?.biometrics != nil,
+            pinTimeout: profile?.requiresPIN == true, agentCredential: agentCredential
         )
     }
 
@@ -1585,6 +1589,7 @@ public final class AppModel {
                 guard self.engine === engine else { break }
                 paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
                 boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+                if let hours = settings.pinTimeoutHours { pinTimeoutHours = hours }
                 await refreshSyncedPreferences(engine)
             case .sendStatus:
                 break

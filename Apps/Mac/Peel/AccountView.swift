@@ -75,8 +75,6 @@ struct AccountView: View {
             ConnectionsSection()
         case .dictation:
             DictationSettingsSection()
-        case .recording:
-            RecordingSettingsSection()
         case .notifications:
             SettingsSection {
                 NotificationsRow()
@@ -116,7 +114,6 @@ extension AccountPage {
         case .brain: "Always on"
         case .connections: "Connections"
         case .dictation: "Dictation"
-        case .recording: "Segments"
         case .notifications: "Notifications"
         case .security: "Privacy and security"
         }
@@ -130,7 +127,6 @@ extension AccountPage {
         case .brain: "house"
         case .connections: "powerplug"
         case .dictation: "mic"
-        case .recording: "record.circle"
         case .notifications: "bell"
         case .security: "lock"
         }
@@ -155,7 +151,6 @@ extension AccountPage {
         case .brain: ["Peel Home", "brain", "home server", "this Mac", "move", "turn off", "restore", "sync"]
         case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
-        case .recording: ["screen recording", "record screen", "camera", "video", "captions", "transcript", "Loom"]
         case .notifications: ["message text", "alerts"]
         case .security: ["PIN", "lock", "twelve words", "recovery", "website data", "forget account", "sign out"]
         }
@@ -426,7 +421,7 @@ private struct ChangePINRow: View {
 private struct PINTimeoutRow: View {
     @Environment(AppModel.self) private var model
 
-    private static let choices = [0, 1, 4, 12, 24]
+    private static let choices = [0, 1, 4, 12, 24, PINTimeout.never]
 
     var body: some View {
         Fact("Ask for the PIN") {
@@ -439,6 +434,7 @@ private struct PINTimeoutRow: View {
 
     private static func label(_ hours: Int) -> String {
         switch hours {
+        case PINTimeout.never: "Never ask for PIN"
         case 0: "Only when Peel opens"
         case 1: "After an hour"
         case 24: "After a day"

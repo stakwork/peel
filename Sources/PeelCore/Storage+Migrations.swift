@@ -577,6 +577,23 @@ extension Storage {
             // outcome comes. NULL: the post's own, as before.
             try db.execute(sql: "ALTER TABLE proposal ADD COLUMN thread TEXT")
         }
+        migrator.registerMigration("v32") { db in
+            // The PIN timeout becomes the official `pin_timeout`, in the
+            // file's form (hours 0 to 25, 25 = never): Peel's -1 (never)
+            // becomes 25, hours above 24 stay below never. The row keeps
+            // its date: 0 stays 0 (the file wins, nothing goes up), a
+            // timeout chosen on this device keeps the day it was chosen.
+            try db.execute(sql: """
+                INSERT OR IGNORE INTO preference (key, identifier, value, updatedAt)
+                    SELECT 'pin_timeout', '0',
+                        json_quote(CAST(CASE WHEN hours < 0 THEN 25 WHEN hours > 24 THEN 24 ELSE hours END AS TEXT)),
+                        updatedAt
+                    FROM (SELECT CAST(json_extract(value, '$') AS INTEGER) AS hours, updatedAt FROM preference
+                          WHERE key = 'device.pin_timeout_hours' AND identifier = '0'
+                            AND json_extract(value, '$') = CAST(CAST(json_extract(value, '$') AS INTEGER) AS TEXT));
+                DELETE FROM preference WHERE key = 'device.pin_timeout_hours';
+                """)
+        }
         return migrator
     }
 }

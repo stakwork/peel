@@ -561,6 +561,9 @@ private struct ComposerTextView: UIViewRepresentable {
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         // Asked for before it was here (opening the chat): the keyboard waits for a tap.
         context.coordinator.focusedRequest = focusRequest
+        // A restored draft is taller than one line: measure it now, and again once it has a width.
+        view.invalidateIntrinsicContentSize()
+        DispatchQueue.main.async { view.invalidateIntrinsicContentSize() }
         return view
     }
 
@@ -568,6 +571,7 @@ private struct ComposerTextView: UIViewRepresentable {
         context.coordinator.parent = self
         if view.markedTextRange == nil, view.text != text {
             view.text = text
+            view.invalidateIntrinsicContentSize()
             context.coordinator.styleMentions(view)
             context.coordinator.findMention(view)
         }
@@ -583,6 +587,9 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView view: UITextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 200
+        // Measure at the proposed width, not whatever the view last laid out at.
+        view.textContainer.size = CGSize(width: width, height: .greatestFiniteMagnitude)
+        view.layoutManager.ensureLayout(for: view.textContainer)
         let fitted = view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         let line = (view.font ?? Self.font).lineHeight
         let most = line * Self.maxLines + Self.inset * 2

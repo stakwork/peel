@@ -7,7 +7,9 @@ import Testing
 /// The proposals' watch (`ProposalWatch`): what it keeps and draws, how it
 /// reads Peel's own strut's records and the workspaces' lists, and how it
 /// decides a workspace's as the person.
-@MainActor
+/// Each test a minute at most: one that stops answering fails by its name
+/// rather than holding up the whole run.
+@MainActor @Suite(.timeLimit(.minutes(1)))
 struct ProposalWatchTests {
     let profile = TempProfile()
 

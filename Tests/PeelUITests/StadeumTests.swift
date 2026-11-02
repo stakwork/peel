@@ -9,7 +9,9 @@ import Testing
 /// the account, paired against a stand-in Hive, revoked, let go with the
 /// account, the apps it lists, and how something opens on an org's own
 /// strut for the iPhone.
-@MainActor
+/// Each test a minute at most: one that stops answering fails by its name
+/// rather than holding up the whole run.
+@MainActor @Suite(.timeLimit(.minutes(1)))
 struct StadeumTests {
     /// A peer record as Hive gives one.
     nonisolated static func peer(_ id: String, _ label: String) -> String {
@@ -492,7 +494,9 @@ struct StadeumTests {
 /// The sweep for the tribes an older Peel linked (`JamieSweep`, what
 /// `AppModel.markLinkedJamies` runs as the account opens and on each
 /// connection), on a real engine and a stand-in tribes server.
-@MainActor
+/// Each test a minute at most: one that stops answering fails by its name
+/// rather than holding up the whole run.
+@MainActor @Suite(.timeLimit(.minutes(1)))
 struct JamieSweepTests {
     let profile = TempProfile()
 
@@ -513,13 +517,14 @@ struct JamieSweepTests {
         }
         #expect(await run(connected: false) == nil)
         // No connection under the engine yet: the list is not read, nothing is settled.
-        let unread = try #require(await run(connected: true))
-        #expect(unread.unread == [club] && !unread.complete && server.commands.isEmpty)
+        let unread = await run(connected: true)
+        #expect(unread?.unread == [club] && unread?.complete == false && server.commands.isEmpty)
         await engine.useTransportForTesting(server.transport)
-        let marked = try #require(await run(connected: true))
-        #expect(marked.complete && marked.members[club]?.member(jamie)?.seesSenders == true)
+        let marked = await run(connected: true)
+        // Shut down whatever the expectations say: mqtt-nio requires it before its client is freed.
+        await engine.disconnect()
+        #expect(marked?.complete == true && marked?.members[club]?.member(jamie)?.seesSenders == true)
         #expect(server.commands == ["ListMembers", "ShowSenders on"])
         #expect(await run(connected: true) == nil && server.commands.count == 2)
-        await engine.disconnect()
     }
 }

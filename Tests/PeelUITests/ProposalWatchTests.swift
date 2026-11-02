@@ -184,8 +184,9 @@ struct ProposalWatchTests {
         #expect(watch.refused["acme"]?.hasPrefix("Acme no longer takes this device's token") == true && watch.unreachable.isEmpty)
         #expect(watch.orgCards.allSatisfy { $0.note == watch.refused["acme"] || $0.note == watch.notes[$0.key] })
         state.takeToken()
-        // A workspace that does not answer keeps what is shown and is marked.
-        strut.stop()
+        // A workspace that does not answer keeps what is shown and is marked. Its
+        // server stays up, failing: a stopped one's port may be handed to another test's.
+        state.silence()
         clock.advance(ProposalWatch.listEvery)
         await watch.tick()
         #expect(watch.unreachable == ["acme"] && watch.kept[a4] != nil)
@@ -435,7 +436,8 @@ struct ProposalWatchTests {
         #expect(ended.isOver && ended.post?.uuid == post && ended.record.card?.accept == "Install")
 
         // A strut that does not answer: tried again, longer apart, and never given up on.
-        strut.stop()
+        // Its server stays up, failing: a stopped one's port may be handed to another test's.
+        state.silence()
         let silent = ProposalKey(source: .org("acme"), id: "p-stub-9")
         watch.noticed(try Self.tribePost(uuid: uuid(43), in: tribe, proposals: Self.stub("p-stub-9"), at: t0 + 6_000))
         for _ in 0..<(ProposalWatch.givenUpAfter + 2) {
@@ -662,6 +664,7 @@ struct ProposalWatchTests {
         private var hidden: [String: Int] = [:]
         private var held: Set<String> = []
         private var refusing = false
+        private var silent = false
         private var decided: [String] = []
         private var read: [String] = []
         var decisions: [String] { lock.withLock { decided } }
@@ -676,10 +679,14 @@ struct ProposalWatchTests {
         /// `id` applies after another proposal, still pending.
         func hold(_ id: String) { lock.withLock { held.insert(id) } }
         func refuseToken() { lock.withLock { refusing = true } }
+        /// Every request answered 503 from now on, as a strut that is down
+        /// behind its gateway: no answer the watch can use.
+        func silence() { lock.withLock { silent = true } }
         func takeToken() { lock.withLock { refusing = false } }
 
         func answer(_ line: String, body: String, json: (ProposalRecord) -> String) -> (Int, String) {
             lock.withLock {
+                if silent { return (503, #"{"error":"unavailable"}"#) }
                 if refusing { return (401, #"{"error":"unauthorized"}"#) }
                 if line.hasPrefix("GET /proposals?status=pending ") {
                     // As a strut from before #404 answers: everyone's.

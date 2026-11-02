@@ -571,6 +571,12 @@ extension Storage {
                     PRIMARY KEY (source, id))
                 """)
         }
+        migrator.registerMigration("v31") { db in
+            // In a tribe, the thread the proposal's post is in when it is not
+            // its own (`TribePost.thread`): the mention's, where Jamie's
+            // outcome comes. NULL: the post's own, as before.
+            try db.execute(sql: "ALTER TABLE proposal ADD COLUMN thread TEXT")
+        }
         return migrator
     }
 }

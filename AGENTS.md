@@ -119,7 +119,7 @@ is a short plan. Update the status and the journal when you finish something.
     `finish` (only one run does it; a send's `sending` mark is in
     `Storage.apply`), the owed ones, forgetting expired ones
   - `Storage+Proposals.swift` — the proposals as last read (`KeptProposal`,
-    the `proposal` table, v30): strut's record, where it is (Peel's own
+    the `proposal` table, v30, the post's thread v31): strut's record, where it is (Peel's own
     strut, or a workspace by its peer id), for Peel's own strut's the
     device request whose card it is and that card's expiry, when it was
     read and answered here, and how it ended for Peel (`Ending`: final,
@@ -173,8 +173,9 @@ is a short plan. Update the status and the journal when you finish something.
     `PaymentHistory.swift` keeps its own)
   - `CallChat.swift` — the call's chat without LiveKit: `CallChatMessage`,
     `CallChatWire` (the `lk-chat-topic` JSON: messages, Jamie's status rows,
-    `mentionsJamie`) and `CallChatLog` (rows capped at 500, deduped, Jamie
-    thinking); tested in `CallChatTests`
+    `mentionsJamie`; who Jamie is, `isJamie`, and its voice, `jamieSpeaks`
+    and the `voice(on:)` toggle) and `CallChatLog` (rows capped at 500,
+    deduped, Jamie thinking); tested in `CallChatTests`
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one

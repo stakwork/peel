@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 @testable import PeelCore
+import Sphinxrs
 
 // Fixtures shared by the PeelCore and PeelAgent tests; each test target
 // imports this module @testable. The PeelCore tests keep their own in
@@ -163,4 +164,112 @@ func withTestEngine(_ storage: Storage, on transport: Transport, _ body: (Engine
         throw error
     }
     await engine.disconnect()
+}
+
+/// A core result with only the publish fields, the messages (with a total,
+/// a page of history), a page of payment history, the server's records, a
+/// tribes server's member list or tribe, and state set.
+func coreResult(
+    settle: String? = nil, register: String? = nil, newChildIdx: UInt64? = nil,
+    asyncpay: String? = nil, topics: [String] = [], asyncpayTag: String? = nil, payments: String? = nil,
+    tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil, state: [String: Data]? = nil,
+    tribeMembers: String? = nil, newTribe: String? = nil
+) -> RunReturn {
+    RunReturn(
+        msgs: msgs, msgsTotal: msgsTotal, msgsCounts: nil, subscriptionTopics: [],
+        settleTopic: settle, settlePayload: settle.map { _ in Data([1]) },
+        asyncpayTopic: asyncpay, asyncpayPayload: asyncpay.map { _ in Data([2]) },
+        registerTopic: register, registerPayload: register.map { _ in Data() },
+        topics: topics, payloads: topics.map { _ in Data([3]) },
+        stateMp: state.map(StateCodec.encode), stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil,
+        settledStatus: nil, registerResponse: nil, asyncpayTag: asyncpayTag, error: nil, newTribe: newTribe,
+        tribeMembers: tribeMembers, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil,
+        lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil, payments: payments,
+        paymentsTotal: nil, tags: tags, deletedMsgs: nil, newChildIdx: newChildIdx, ping: nil
+    )
+}
+
+/// A registered account owning `tribe` on its tribes host `host`, its
+/// tribes server (`key2G`) known: what an owner's commands need.
+func ownedTribeStorage(_ profile: TempProfile, tribe: String, host: String = "tribes.test") throws -> Storage {
+    let storage = try registeredStorage(profile)
+    _ = try storage.apply(Storage.Commit(state: ["default_tribe_server": hex(key2G)]))
+    try storage.save([Tribe(pubkey: tribe, host: host, isOwner: true)])
+    return storage
+}
+
+/// A tribes server on the transport (`transport`), for the owner's
+/// commands to one tribe: each as it gets it ("ListMembers", "ShowSenders
+/// on|off", "Update"), answered as the engine hears the real one's answers
+/// (`tribe_members`, `new_tribe`). Jamie (`jamie`) is listed as `listed`
+/// says at each list asked for (the last one stays), marked once a
+/// `ShowSenders` came. One from before the command (`knowsShowSenders`
+/// false) does not know it and answers nothing; the first `silentLists`
+/// lists asked for get no answer either, as from a slow server.
+final class TribesServer: @unchecked Sendable {
+    enum Listed: Sendable { case absent, pending, confirmed }
+
+    private let lock = NSLock()
+    private var heard: [String] = []
+    private var lists: [Listed]
+    private var marked: Bool
+    private var knows: Bool
+    private var silentLists: Int
+    private let tribe: String, jamie: String
+    var engine: Engine?
+
+    init(tribe: String, jamie: String, listed: [Listed], marked: Bool = false, knowsShowSenders: Bool = true,
+         silentLists: Int = 0) {
+        self.tribe = tribe
+        self.jamie = jamie
+        lists = listed
+        self.marked = marked
+        knows = knowsShowSenders
+        self.silentLists = silentLists
+    }
+
+    var commands: [String] { lock.withLock { heard } }
+    func upgrade() { lock.withLock { knows = true } }
+    func list(_ listed: Listed) { lock.withLock { lists = [listed] } }
+
+    var transport: Transport {
+        Transport(publishing: { [self] topic, payload in answer(topic, payload) })
+    }
+
+    private func answer(_ topic: String, _ payload: Data) {
+        guard topic.hasPrefix("tribe/"), let command = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+        // As words: a core result is not Sendable.
+        let reply: (members: String?, tribe: String?)? = lock.withLock {
+            if command["ListMembers"] != nil {
+                heard.append("ListMembers")
+                let listed = lists.count > 1 ? lists.removeFirst() : lists.first ?? .absent
+                guard silentLists == 0 else {
+                    silentLists -= 1
+                    return nil
+                }
+                return (members(listed), nil)
+            }
+            if command["Update"] != nil {
+                heard.append("Update")
+                return (nil, #"{"pubkey":"\#(tribe)","name":"Club"}"#)
+            }
+            guard let args = command["ShowSenders"] as? [Any], args.count == 3, let on = args[2] as? Bool else { return nil }
+            heard.append("ShowSenders \(on ? "on" : "off")")
+            let listed = lists.first ?? .absent
+            guard knows, listed == .confirmed, args[1] as? String == jamie else { return nil }
+            marked = on
+            return (members(listed), nil)
+        }
+        guard let reply else { return }
+        Task { [engine] in
+            _ = try? await engine?.commit(coreResult(tribeMembers: reply.members, newTribe: reply.tribe), time: "1", expectedSender: nil)
+        }
+    }
+
+    private func members(_ listed: Listed) -> String {
+        let owner = #"{"pubkey":"\#(keyG)","route_hint":"x","contact_key":"y","alias":"Owner"}"#
+        let jamie = #"{"pubkey":"\#(jamie)","route_hint":"x","contact_key":"y","alias":"Jamie"\#(marked ? #","sees_senders":true"# : "")}"#
+        let confirmed = listed == .confirmed ? [owner, jamie] : [owner]
+        return #"{"pubkey":"\#(tribe)","confirmed":[\#(confirmed.joined(separator: ","))],"pending":[\#(listed == .pending ? jamie : "")]}"#
+    }
 }

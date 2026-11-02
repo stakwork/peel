@@ -39,6 +39,11 @@ struct StadeumSection: View {
                     LabeledContent(error.name, value: error.reason)
                         .foregroundStyle(Theme.quietText(on: .raised))
                 }
+                if stadeum.identified, stadeum.status == .connected {
+                    Text(Stadeum.identifiedLine)
+                        .foregroundStyle(Theme.quietText(on: .raised))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Button("Disconnect") { stadeum.disconnect() }
                     .buttonStyle(.peel(.ghost, size: .touch))
             }

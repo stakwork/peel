@@ -68,6 +68,13 @@ public enum Setting: String, Sendable {
     /// until the agent's bridge is launched (PR 4).
     case deviceAgent
 
+    /// The tribes this device has settled whether a member knows who is
+    /// speaking in (`Engine.showSenders`), as "<tribe> <member>" keys in a
+    /// JSON array: marked at linking or when found linked, or the owner's
+    /// switch. Absent is unknown: a tribe linked to Jamie before Peel marked
+    /// at linking is marked once at launch (`Engine.markSendersOnce`).
+    case sendersMarked
+
     /// Who a call started in each chat brings Jamie from: the Stadeum
     /// workspace picked there, "" for none (`[chat: peer id]` as JSON,
     /// docs/hive-calls.md). This device's; a chat with no pick has none.

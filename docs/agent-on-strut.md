@@ -1877,15 +1877,19 @@ that sees and decides only its actor's proposals).
   workspace's at the end of the agent chat (`AgentListRow.proposal`,
   after the DM's rows), open or final for ten minutes.
 - **In a tribe** (docs/hive-tribes.md, "Proposals in a tribe"): what a
-  `@jamie` turn proposes is the tribe owner's to decide, on Jamie's post,
-  which carries the proposal in `metadata.strut.proposals`
-  (`Message.strutProposals`). The same card is drawn under the post for
-  everyone (`TribeProposalCards`); the owner's buttons send a reply to
-  the post with the card's own word, which Hive reads and decides on the
-  org's strut as the owner; Jamie's reply in the thread, from the same
-  member, ends the card. Kept per (workspace, id) with its post, so a
-  restart redraws it; never a card at the end of the agent chat too, nor
-  read from the org's strut by itself.
+  `@jamie` turn proposes is the asker's to decide when the turn ran as
+  them (the tribe told Jamie who is speaking, "Who is asking"), else the
+  tribe owner's, on Jamie's post, which names the proposal in
+  `metadata.strut.proposals` (`Message.strutProposals`): a stub, whose
+  card a member paired with the org reads from its strut with their own
+  token, at a few moments, never on a timer (an older Hive's post carries
+  the card). The same card is drawn under the post for everyone
+  (`TribeProposalCards`); its buttons go to the person strut's record
+  names (`TribeDecider`), or with none read to the owner, and send a reply
+  to the post with the card's own word, which Hive reads and decides on
+  the org's strut as that person; Jamie's reply in the thread, from the
+  same member, ends the card. Kept per (workspace, id) with its post, so a
+  restart redraws it; never a card at the end of the agent chat too.
 - **Not here.** "Accept again" on a failed proposal: the bridge decides
   each card once and treats a `failed` record as over, so a second accept
   of Peel's own strut's needs the bridge to relay a new card (sphinx); a

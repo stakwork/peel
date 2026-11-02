@@ -516,8 +516,11 @@ final class CallSession {
             let everyone = next.filter { !$0.isScreen }.map(\.person)
             if everyone != people { people = everyone }
             refocus()
-            followSpeaker()
         }
+        // On every refresh, not only when the tiles change: someone who
+        // started speaking during the hold still takes the stage once it ends
+        // although nothing about the tiles changed since.
+        followSpeaker()
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }

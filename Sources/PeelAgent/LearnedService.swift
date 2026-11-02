@@ -95,7 +95,7 @@ public actor LearnedService {
                                              kind: candidate.kind.rawValue, why: candidate.why, previousRef: candidate.previousRef,
                                              turnAt: candidate.turnAt)
                 var leaf = PersonalCause(id: Self.newPrefix + candidate.id, statement: statement, causeType: draft.causeType,
-                                         severity: draft.severity, mechanism: draft.mechanism, evidence: [evidence])
+                                         severity: draft.severity, mechanism: CauseRules.mechanism(draft.mechanism), evidence: [evidence])
                 guard !rejectedKeys.contains(leaf.identityKey) else { continue }
                 if let same = causes.first(where: { $0.identityKey == leaf.identityKey }) {
                     // A repeat: it attaches to the Cause that exists.

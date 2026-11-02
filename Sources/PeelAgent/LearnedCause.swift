@@ -67,7 +67,10 @@ public struct PersonalCause: Sendable, Equatable, Identifiable {
     public var causeType: CauseType
     public var severity: CauseSeverity
     public var mechanism: String?
+    /// Hive's `familyKey` for a leaf, its `parent` key for a theme.
     public var identityKey: String
+    /// A theme: a parent with no evidence, made by grouping.
+    public var isTheme: Bool
     public var status: CauseStatus
     /// The theme this one belongs to (`CAUSE_CHILD_OF`, pointing at the parent).
     public var parent: String?
@@ -75,13 +78,15 @@ public struct PersonalCause: Sendable, Equatable, Identifiable {
     public var evidence: [CauseEvidence]
 
     public init(id: String, statement: String, causeType: CauseType, severity: CauseSeverity, mechanism: String? = nil,
-                status: CauseStatus = .active, parent: String? = nil, evidence: [CauseEvidence] = []) {
+                status: CauseStatus = .active, parent: String? = nil, evidence: [CauseEvidence] = [], isTheme: Bool = false) {
         self.id = id
         self.statement = statement
         self.causeType = causeType
         self.severity = severity
         self.mechanism = mechanism
-        self.identityKey = CauseRules.identityKey(type: causeType, statement: statement)
+        self.isTheme = isTheme
+        self.identityKey = isTheme ? CauseRules.parentKey(mechanism: mechanism)
+            : CauseRules.identityKey(type: causeType, mechanism: mechanism, statement: statement)
         self.status = status
         self.parent = parent
         self.evidence = evidence
@@ -146,26 +151,89 @@ public enum CauseRules {
         return String(kept).split(separator: " ").joined(separator: " ")
     }
 
-    /// The statement as the identity key reads it: lower case, whitespace
-    /// collapsed, trailing punctuation off.
-    static func keyText(_ statement: String) -> String {
-        var text = statement.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        while let last = text.last, last.isPunctuation || last.isWhitespace { text.removeLast() }
-        return text
+    /// Hive's mechanisms (cause/families): what a theme explains. A leaf with
+    /// none is `other`.
+    public static let mechanisms = ["ignored_user_input", "over_building", "wrong_route", "unverified_claim", "misread_intent",
+                                    "wrong_direction", "style_or_naming", "design_choice", "other"]
+
+    /// `raw` as one of Hive's mechanisms: itself when it is one, else `other`.
+    public static func mechanism(_ raw: String?) -> String {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), mechanisms.contains(raw) else { return "other" }
+        return raw
     }
 
-    /// `"ck1_" + the first 16 hex characters of SHA-256(cause_type + "|" +
-    /// normalized statement)`: Hive's key's shape, so a repeat attaches to the
-    /// Cause it names. The one place the key is made. **UNVERIFIED**: it is NOT
-    /// known to equal the key Hive's `cause/primitive` step writes for the same
-    /// words (that step is closed). Seven known Hive keys were tried against
-    /// SHA-256/SHA-1/MD5/SHA-512/SHA-3/BLAKE2/CRC over cause_type (all seven
-    /// types and a few labels) and statement in both orders, many separators,
-    /// JSON forms, and normalizations (case, whitespace, punctuation, token
-    /// sets, stop words, first words); none reproduced any of them.
-    public static func identityKey(type: CauseType, statement: String) -> String {
-        let digest = SHA256.hash(data: Data((type.rawValue + "|" + keyText(statement)).utf8))
-        return "ck1_" + digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    /// A mechanism in words for the person.
+    public static func words(forMechanism mechanism: String?) -> String {
+        switch self.mechanism(mechanism) {
+        case "ignored_user_input": "It overlooked something you had already said."
+        case "over_building": "It did more than you asked."
+        case "wrong_route": "It went about it the wrong way."
+        case "unverified_claim": "It said something without checking."
+        case "misread_intent": "It misunderstood what you meant."
+        case "wrong_direction": "It chose a direction you did not want."
+        case "style_or_naming": "It got a style or a name wrong."
+        case "design_choice": "It made a design choice you did not want."
+        default: "Something else."
+        }
+    }
+
+    /// Hive's stop words (cause/families `STOP`).
+    static let stop: Set<String> = Set("""
+        a an the and or but if then of to in on at by for with from into onto as is are was were be been being it its this that these \
+        those when where which who whom whose than so such not no do does did doing done have has had having will would should could \
+        can may might must shall also just very more most other some any each every both either neither own same too again further \
+        once here there why how all few i you he she we they them his her their our your my me us
+        """.split(separator: " ").map(String.init))
+
+    /// Hive's `stem`: the first matching rule returns. Tokens are ASCII a-z.
+    static func stem(_ t: String) -> String {
+        let n = t.count
+        if n > 5, t.hasSuffix("ies") { return String(t.dropLast(3)) + "y" }
+        if n > 5, t.hasSuffix("ing") { return String(t.dropLast(3)) }
+        if n > 4, t.hasSuffix("ed") { return String(t.dropLast(2)) }
+        if n > 4, t.hasSuffix("es") { return String(t.dropLast(2)) }
+        if n > 3, t.hasSuffix("s"), !t.hasSuffix("ss") { return String(t.dropLast(1)) }
+        return t
+    }
+
+    /// Hive's `normalise` (cause/families): lower case; fenced code, inline
+    /// code and double-quoted spans out; digits and anything but a-z and
+    /// whitespace to a space; stop words out BEFORE stemming; stems of two or
+    /// more letters, sorted, joined by a space. Digits end up spaces either way,
+    /// so a token is a run of a-z.
+    public static func familyNormalise(_ statement: String) -> String {
+        var text = statement.lowercased()
+        for pattern in ["```[\\s\\S]*?```", "`[^`]*`", "\"[^\"]*\""] {
+            text = text.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+        }
+        var tokens: [String] = [], current = ""
+        for scalar in text.unicodeScalars {
+            if scalar.value >= 97 && scalar.value <= 122 { current.unicodeScalars.append(scalar) } else if !current.isEmpty {
+                tokens.append(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty { tokens.append(current) }
+        return tokens.filter { !stop.contains($0) }.map(stem).filter { $0.count > 1 }.sorted().joined(separator: " ")
+    }
+
+    /// Hive's `familyKey(causeType, mechanism, statement)` (cause/families):
+    /// `"ck1_" + sha256hex(causeType + "\n" + mechanism + "\n" + normalise(statement))`
+    /// first 16 hex characters. The one place a leaf's key is made; parity with
+    /// Hive's own code is tested against vectors computed by running it
+    /// (`LearnedTests`). A leaf with no mechanism takes `other`.
+    public static func identityKey(type: CauseType, mechanism: String? = nil, statement: String) -> String {
+        hash("\(type.rawValue)\n\(Self.mechanism(mechanism))\n\(familyNormalise(statement))")
+    }
+
+    /// A theme's key: `"ck1_" + sha256hex("parent\n" + mechanism)`, 16 hex. For
+    /// a parent only, never a leaf.
+    public static func parentKey(mechanism: String?) -> String {
+        hash("parent\n\(Self.mechanism(mechanism))")
+    }
+
+    private static func hash(_ text: String) -> String {
+        "ck1_" + String(SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined().prefix(16))
     }
 
     /// "When <situation>, the assistant <wrong behaviour>.": one sentence,

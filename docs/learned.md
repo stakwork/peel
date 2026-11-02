@@ -15,25 +15,39 @@ In use). Only the person sees it and only the person approves.
 - Cause: `statement` ("When <situation>, the assistant <wrong behaviour>.",
   one sentence, at most 25 words, no names), `cause_type`, `severity`,
   optional `mechanism`, `identity_key`.
-- `identity_key` is `"ck1_"` plus the first 16 hex characters of SHA-256 over
-  `cause_type + "|" + normalized statement` (lower case, whitespace collapsed,
-  trailing punctuation off), made in one function, `CauseRules.identityKey`.
-  **UNVERIFIED, and known not to be reproduced.** Hive's own step
-  (`cause/primitive`) could not be read, so the formula was searched for from
-  seven known Hive keys (`ck1_17b4c518f28a2180`, `ck1_a6bb5b9eed250a84`,
-  `ck1_2c05e5376fc9f6af`, `ck1_0d0ac1fd6a8b7e1c`, `ck1_5d83d811207e124f`,
-  `ck1_0d105e5e138a36d8`, `ck1_820f3acbbfc58cae`): SHA-256, SHA-1, MD5, SHA-512,
-  SHA-3, BLAKE2 and CRC; `correction` and the other cause types, and a few
-  labels, in both orders, with many separators, JSON forms and normalizations
-  (case, whitespace, punctuation, token sets, stop words, first words). None
-  matched any vector, so Peel's key is a guess in Hive's shape and there is no
-  parity test. Statements are not forced into Hive's 15-entry catalog.
+- `identity_key` mirrors Hive's `cause/families` `familyKey`, in
+  `CauseRules.identityKey`: `"ck1_"` plus the first 16 hex characters of
+  SHA-256 over `cause_type + "\n" + mechanism + "\n" + normalise(statement)`
+  (a real newline; UTF-8). `normalise` is Hive's: lower case; fenced code,
+  inline code and double-quoted spans out; digits and anything but a-z to a
+  space; stop words out **before** stemming; Hive's stem (first matching rule
+  only); stems of two or more letters, sorted, joined by a space
+  (`CauseRules.familyNormalise`). The mechanism is the Cause's, one of Hive's
+  (`ignored_user_input`, `over_building`, `wrong_route`, `unverified_claim`,
+  `misread_intent`, `wrong_direction`, `style_or_naming`, `design_choice`,
+  `other`), `other` when absent or not one of them; `cause_type` defaults to
+  `correction`. A theme's key is Hive's parent key, `"ck1_"` plus 16 hex of
+  SHA-256 over `"parent\n" + mechanism` (`CauseRules.parentKey`), for a parent
+  only. Parity is tested in `LearnedTests` against vectors computed by running
+  Hive's own code in node: four leaf keys and the `over_building` parent key
+  (`ck1_89f3278ea817e5c9`, `ck1_1371245500ebc20d`, `ck1_63b1441fd22954a4`,
+  `ck1_c2b47fd395661d9e`, `ck1_36e9426465411668`).
+- **Legacy keys are not familyKey outputs.** `ck1_5d83d811207e124f` was said
+  to be the key of the catalog entry `ob_more_than_asked`, but Hive's own code
+  gives `ck1_89f3278ea817e5c9` for it. `ck1_5d83d811207e124f`,
+  `ck1_17b4c518f28a2180`, `ck1_a6bb5b9eed250a84` and `ck1_0d0ac1fd6a8b7e1c` are
+  legacy keys of older Causes that Hive maps to catalog ids through its
+  `aliases` table. Peel does not try to produce them, and a test documents that
+  they are not the current key. Statements are not forced into Hive's
+  15-entry catalog.
 - Grouping (`GroupingRules`): a theme is one mechanism that explains two or
   more leaves (one only to join an existing theme). It need not share a
   `cause_type`; the judge's stated mechanism decides, with guards: a new theme
   must have a non-empty mechanism and a valid statement, and is refused when the
   judge says `needs_different_fixes`. Each leaf in at most one theme.
-  Near-duplicates are reported, never merged. A rejected grouping, and any
+  A new theme's mechanism is one of Hive's (its parent key follows from it), and
+  a second theme with a known mechanism the person already has is a duplicate,
+  reported, not merged. Near-duplicates are reported, never merged. A rejected grouping, and any
   superset of it, is never proposed again.
 
 ## How it is stored (memory entities and facts, no per-edge properties)
@@ -122,4 +136,3 @@ these names and strut keeps unknown ones as proposed until it does:
 - The automation create, update and run-now calls reuse `AutomationsClient`'s
   but were not run on a live strut with a non-`yours` workflow.
 - The strut migration above.
-- `identity_key` equality with Hive's.

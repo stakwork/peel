@@ -212,7 +212,7 @@ public actor GraphLearnedStore: LearnedStore {
         var record: [String: JSONValue] = [
             "kind": "cause", "statement": .string(cause.statement), "cause_type": .string(cause.causeType.rawValue),
             "severity": .string(cause.severity.rawValue), "identity_key": .string(cause.identityKey),
-            "status": .string(cause.status.rawValue),
+            "status": .string(cause.status.rawValue), "theme": .bool(cause.isTheme),
         ]
         if let mechanism = cause.mechanism { record["mechanism"] = .string(mechanism) }
         return record
@@ -252,7 +252,8 @@ public actor GraphLearnedStore: LearnedStore {
         return PersonalCause(id: node.ref, statement: statement, causeType: type, severity: severity, mechanism: record["mechanism"]?.string,
                              status: record["status"]?.string.flatMap(CauseStatus.init) ?? .active,
                              parent: node.facts("CAUSE_CHILD_OF").last?["object"]?["ref_id"]?.string,
-                             evidence: node.facts("EVIDENCED_BY").compactMap(evidence(from:)))
+                             evidence: node.facts("EVIDENCED_BY").compactMap(evidence(from:)),
+                             isTheme: record["theme"] == .bool(true))
     }
 
     private static func concept(_ node: Node) -> PersonalConcept? {
@@ -341,7 +342,8 @@ public actor GraphLearnedStore: LearnedStore {
             parent = found
         } else {
             let made = PersonalCause(id: "", statement: grouping.theme.statement, causeType: grouping.theme.causeType,
-                                     severity: grouping.theme.severity, mechanism: grouping.theme.mechanism, status: .active)
+                                     severity: grouping.theme.severity, mechanism: CauseRules.mechanism(grouping.theme.mechanism),
+                                     status: .active, isTheme: true)
             try CauseRules.validate(made.statement)
             // A parent has no evidence: that stays on the leaves.
             parent = made

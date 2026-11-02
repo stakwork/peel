@@ -62,6 +62,66 @@ struct LearnedTests {
         #expect(a != CauseRules.identityKey(type: .correction, statement: Self.good))
     }
 
+    // MARK: Parity with Hive's familyKey (cause/families)
+
+    /// Computed by running Hive's own `familyKey`, `normalise` and parent key in node, byte for byte.
+    static let vectors: [(mechanism: String, statement: String, key: String)] = [
+        ("over_building", "When asked for something, the agent adds or designs more than was requested instead of staying minimal.",
+         "ck1_89f3278ea817e5c9"),
+        ("ignored_user_input", "When the user has already given an instruction or context, the agent ignores or underuses it.",
+         "ck1_1371245500ebc20d"),
+        ("misread_intent", "When the user states what they want or mean, the agent misunderstands it and addresses something else.",
+         "ck1_63b1441fd22954a4"),
+        ("wrong_direction", "When the way forward is open, the agent commits to a direction the user rejects.", "ck1_c2b47fd395661d9e"),
+    ]
+
+    @Test(arguments: vectors) func aLeafKeyIsHivesFamilyKey(vector: (mechanism: String, statement: String, key: String)) {
+        #expect(CauseRules.identityKey(type: .correction, mechanism: vector.mechanism, statement: vector.statement) == vector.key)
+    }
+
+    @Test func aThemeKeyIsHivesParentKey() {
+        #expect(CauseRules.parentKey(mechanism: "over_building") == "ck1_36e9426465411668")
+        // Only a theme has one: the same mechanism is a different key for a leaf.
+        let leaf = PersonalCause(id: "l", statement: Self.good, causeType: .correction, severity: .low, mechanism: "over_building")
+        let theme = PersonalCause(id: "t", statement: Self.theme.statement, causeType: .correction, severity: .low,
+                                  mechanism: "over_building", isTheme: true)
+        #expect(theme.identityKey == "ck1_36e9426465411668" && leaf.identityKey != theme.identityKey)
+    }
+
+    /// Stop words go before stemming, numbers and quoted or code spans are dropped, the first stem rule wins, tokens sort.
+    @Test func theNormalisationIsHives() {
+        #expect(CauseRules.familyNormalise(Self.vectors[0].statement) == "add agent ask design instead minimal request someth stay")
+        #expect(CauseRules.familyNormalise("The bodies were 12 \"quoted words\" and `code` here ```fenced\nblock``` classes, boxes, passes.")
+                == "body box class pass")
+        // "ies" before "es"; "ing" before "s"; "ss" kept; the first matching rule only.
+        #expect(CauseRules.stem("studies") == "study" && CauseRules.stem("running") == "runn" && CauseRules.stem("class") == "class")
+        #expect(CauseRules.stem("used") == "used" && CauseRules.stem("goes") == "goe" && CauseRules.stem("bus") == "bus")
+        // Stop words out; a one-letter stem is dropped.
+        #expect(CauseRules.familyNormalise("Go to it so we do a b") == "go")
+    }
+
+    @Test func aLeafWithNoMechanismTakesOtherAndTheTypeDefaultsToCorrection() {
+        let statement = Self.vectors[0].statement
+        #expect(CauseRules.identityKey(type: .correction, statement: statement)
+                == CauseRules.identityKey(type: .correction, mechanism: "other", statement: statement))
+        // A mechanism that is not one of Hive's is `other` too.
+        #expect(CauseRules.identityKey(type: .correction, mechanism: "It ignores things.", statement: statement)
+                == CauseRules.identityKey(type: .correction, mechanism: "other", statement: statement))
+        #expect(CauseRules.identityKey(type: .correction, mechanism: "over_building", statement: statement)
+                != CauseRules.identityKey(type: .correction, mechanism: "other", statement: statement))
+    }
+
+    /// `ck1_5d83d811207e124f` was said to be the key of Hive's catalog entry ob_more_than_asked, but Hive's own code gives
+    /// `ck1_89f3278ea817e5c9` for it. It and `ck1_17b4c518f28a2180`, `ck1_a6bb5b9eed250a84` and `ck1_0d0ac1fd6a8b7e1c` are
+    /// legacy keys of older Causes, which Hive maps to catalog ids through its `aliases`: not familyKey outputs.
+    @Test func aLegacyAliasIsNotTheCurrentKey() {
+        let legacy = ["ck1_5d83d811207e124f", "ck1_17b4c518f28a2180", "ck1_a6bb5b9eed250a84", "ck1_0d0ac1fd6a8b7e1c"]
+        for vector in Self.vectors {
+            #expect(!legacy.contains(CauseRules.identityKey(type: .correction, mechanism: vector.mechanism, statement: vector.statement)))
+        }
+        #expect(CauseRules.identityKey(type: .correction, mechanism: "over_building", statement: Self.vectors[0].statement) != "ck1_5d83d811207e124f")
+    }
+
     // MARK: Grouping
 
     static func leaf(_ id: String, _ statement: String, _ type: CauseType = .promptGap) -> PersonalCause {
@@ -70,7 +130,7 @@ struct LearnedTests {
     }
 
     static let theme = ProposedTheme(statement: "When I ask for something small, the assistant does far more than asked.",
-                                     causeType: .promptGap, severity: .medium, mechanism: "It ignores the size asked for.", leaves: ["a", "b"])
+                                     causeType: .promptGap, severity: .medium, mechanism: "over_building", leaves: ["a", "b"])
 
     @Test func twoLeavesGroupOnlyWhenOneMechanismFits() {
         let a = Self.leaf("a", Self.good), b = Self.leaf("b", Self.other)
@@ -109,7 +169,7 @@ struct LearnedTests {
 
         // A second theme that wants a leaf the first took loses it, and with one left it is not a theme.
         let second = ProposedTheme(statement: "When I name a file, the assistant picks a nearby one.", causeType: .promptGap,
-                                   severity: .low, mechanism: "m", leaves: ["a", "b"])
+                                   severity: .low, mechanism: "wrong_route", leaves: ["a", "b"])
         let both = GroupingRules.admit([Self.theme, second], leaves: [a, b], themes: [], rejected: [])
         #expect(both.groupings.count == 1)
     }
@@ -145,7 +205,7 @@ struct LearnedTests {
         func group(leaves: [PersonalCause], themes: [PersonalCause], rejected: [RejectedGrouping]) async throws -> [ProposedTheme] {
             guard leaves.count >= 2 else { return [] }
             return [ProposedTheme(statement: LearnedTests.theme.statement, causeType: .promptGap, severity: .medium,
-                                  mechanism: "It ignores the size asked for.", leaves: leaves.map(\.id))]
+                                  mechanism: "over_building", leaves: leaves.map(\.id))]
         }
         func concept(for theme: PersonalCause, leaves: [PersonalCause]) async throws -> ConceptDraft {
             ConceptDraft(name: "Keep it short", statement: "Match the length the person asks for.")

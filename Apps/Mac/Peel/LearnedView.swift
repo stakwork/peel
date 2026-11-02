@@ -111,7 +111,7 @@ struct LearnedView: View {
                         Spacer(minLength: 0)
                         Badge(Formatting.count(theme.children.count, "example"), .outline)
                     }
-                    if let mechanism = theme.parent.mechanism { Text(mechanism).muted() }
+                    if theme.parent.mechanism != nil { Text(CauseRules.words(forMechanism: theme.parent.mechanism)).muted() }
                     ForEach(theme.children) { Examples(habit: $0) }
                     HStack {
                         if let concept = theme.concept {
@@ -150,7 +150,7 @@ struct LearnedView: View {
         ForEach(report.groupings) { grouping in
             let id = grouping.id
             Waiting(title: "These look like one habit", words: grouping.theme.existing == nil ? grouping.theme.statement
-                    : "They fit a habit you already have", detail: grouping.theme.mechanism, working: learned.working.contains(id),
+                    : "They fit a habit you already have", detail: CauseRules.words(forMechanism: grouping.theme.mechanism), working: learned.working.contains(id),
                     approve: { learned.answer(id) { try await $0.approve(grouping: grouping) } },
                     reject: { learned.answer(id) { try await $0.reject(grouping: grouping) } }) {
                 ForEach(grouping.leaves) { Examples(habit: $0) }

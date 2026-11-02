@@ -64,7 +64,7 @@ public enum LearnedWorkflows {
         A habit is one repeated way the assistant falls short, written as "When <situation>, the assistant <wrong \
         behaviour>." in at most \(CauseRules.maxWords) words, naming no product and no person. cause_type is one of \
         \(CauseType.allCases.map(\.rawValue).joined(separator: ", ")); severity one of \
-        \(CauseSeverity.allCases.map(\.rawValue).joined(separator: ", ")).
+        \(CauseSeverity.allCases.map(\.rawValue).joined(separator: ", ")); mechanism one of \(CauseRules.mechanisms.joined(separator: ", ")).
         """
 
     static let prompts: [String: String] = [

@@ -104,15 +104,17 @@ public enum GroupingRules {
             // One mechanism decides, not the leaves' types; the judge's own "different fixes" stops it.
             guard !theme.needsDifferentFixes else { result.dropped.append((theme, .differentFixes)); continue }
             if theme.existing == nil {
-                guard let mechanism = theme.mechanism, !mechanism.trimmingCharacters(in: .whitespaces).isEmpty else {
+                guard let named = theme.mechanism, !named.trimmingCharacters(in: .whitespaces).isEmpty else {
                     result.dropped.append((theme, .noMechanism)); continue
                 }
                 do { try CauseRules.validate(theme.statement) } catch {
                     result.dropped.append((theme, .badStatement("\(error)"))); continue
                 }
-                let key = CauseRules.identityKey(type: theme.causeType, statement: theme.statement)
+                // Hive's rule: one mechanism, one parent (`other` is no one mechanism, so only wording tells).
+                let key = CauseRules.parentKey(mechanism: theme.mechanism)
+                let known = CauseRules.mechanism(theme.mechanism) != "other"
                 if let same = themes.first(where: {
-                    $0.identityKey == key || ($0.causeType == theme.causeType
+                    (known && $0.identityKey == key) || ($0.causeType == theme.causeType
                         && CauseRules.similarity($0.statement, theme.statement) >= CauseRules.nearDuplicate)
                 }) {
                     result.dropped.append((theme, .duplicate(of: same.id))); continue

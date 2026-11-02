@@ -367,21 +367,24 @@ public actor Engine {
             return testing
         }
 
-        var transports: [Transport] = []
-        for route in routes {
+        // A login signed for each route; its client is made only when the
+        // route starts, since every client made must be shut down.
+        var logins: [(time: String, signature: String)] = []
+        for _ in routes {
             let loginTime = clock.next()
-            let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-            transports.append(Transport(
-                server: route, clientID: xpub, username: loginTime, password: signature,
-                allowUntrustedCertificate: allowUntrustedCertificate
-            ))
+            logins.append((loginTime, try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)))
         }
 
         let (events, sink) = AsyncStream.makeStream(of: RouteEvent.self)
+        var transports: [Transport] = []
         var attempts: [Task<Result<Void, Error>, Never>] = []
         var timer: Task<Void, Never>?
         func start(_ index: Int) {
-            let transport = transports[index]
+            let transport = Transport(
+                server: routes[index], clientID: xpub, username: logins[index].time, password: logins[index].signature,
+                allowUntrustedCertificate: allowUntrustedCertificate
+            )
+            transports.append(transport)
             attempts.append(Task {
                 let result: Result<Void, Error>
                 do {
@@ -394,7 +397,7 @@ public actor Engine {
                 return result
             })
             timer?.cancel()
-            if index + 1 < transports.count {
+            if index + 1 < routes.count {
                 timer = Task {
                     try? await Task.sleep(for: Self.nextRouteAfter)
                     if !Task.isCancelled { sink.yield(.startNext) }
@@ -410,7 +413,7 @@ public actor Engine {
         for await event in events {
             switch event {
             case .startNext:
-                if attempts.count < transports.count {
+                if attempts.count < routes.count {
                     start(attempts.count)
                     pending += 1
                 }
@@ -419,12 +422,12 @@ public actor Engine {
             case .finished(_, .failure(let error)):
                 pending -= 1
                 failure = error
-                if attempts.count < transports.count {
+                if attempts.count < routes.count {
                     start(attempts.count)
                     pending += 1
                 }
             }
-            if winner != nil || (pending == 0 && attempts.count == transports.count) { break }
+            if winner != nil || (pending == 0 && attempts.count == routes.count) { break }
             if Task.isCancelled || closed { break }
         }
         timer?.cancel()

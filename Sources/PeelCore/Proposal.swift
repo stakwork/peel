@@ -461,12 +461,21 @@ public struct TribePost: Sendable, Equatable {
     public var uuid: String
     /// Who posted it, by alias.
     public var poster: String?
+    /// The thread the post is in when it is not its own (`Message.threadRoot`):
+    /// Jamie's post replies to the mention, so it is the mention's, which the
+    /// owner's answer and Jamie's outcome share. Nil for a post that starts
+    /// its thread, and for one kept before Peel recorded it.
+    public var thread: String?
 
-    public init(tribe: String, uuid: String, poster: String? = nil) {
+    public init(tribe: String, uuid: String, poster: String? = nil, thread: String? = nil) {
         self.tribe = tribe
         self.uuid = uuid
         self.poster = poster
+        self.thread = thread
     }
+
+    /// The thread its outcome comes in.
+    public var threadRoot: String { thread ?? uuid }
 }
 
 // MARK: - On a workspace's strut

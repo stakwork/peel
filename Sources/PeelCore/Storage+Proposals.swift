@@ -137,6 +137,9 @@ public struct KeptProposal: Sendable, Equatable {
         if self.post == nil {
             self.post = post
             readAt = date
+        } else if self.post?.uuid == post.uuid, self.post?.thread == nil {
+            // The same post, kept before Peel recorded its thread.
+            self.post?.thread = post.thread
         }
         var known = record
         known.status = self.record.status
@@ -228,6 +231,8 @@ struct ProposalRow: Codable, FetchableRecord, PersistableRecord {
     var tribe: String?
     var post: String?
     var poster: String?
+    /// In a tribe: the thread the post is in when it is not its own (v31).
+    var thread: String?
     /// In a tribe: the owner's answer sent here.
     var answer: Bool?
 
@@ -244,6 +249,7 @@ struct ProposalRow: Codable, FetchableRecord, PersistableRecord {
         tribe = kept.post?.tribe
         post = kept.post?.uuid
         poster = kept.post?.poster
+        thread = kept.post?.thread
         answer = kept.answer
     }
 
@@ -253,7 +259,7 @@ struct ProposalRow: Codable, FetchableRecord, PersistableRecord {
         var over: KeptProposal.Ending?
         if let ending, let endedAt { over = KeptProposal.Ending(word: ending, at: Date(millisecondsSince1970: endedAt)) }
         var on: TribePost?
-        if let tribe, let post { on = TribePost(tribe: tribe, uuid: post, poster: poster) }
+        if let tribe, let post { on = TribePost(tribe: tribe, uuid: post, poster: poster, thread: thread) }
         return KeptProposal(source: ProposalSource(rawValue: source), record: record, request: request, notAfter: notAfter,
                             readAt: Date(millisecondsSince1970: readAt), answeredAt: answeredAt.map(Date.init(millisecondsSince1970:)),
                             ending: over, post: on, answer: answer)
@@ -294,8 +300,10 @@ extension Storage {
 
     /// Changed when a look left out posts it read, so the next one reads
     /// every stored row again. "2": the first watch opened before the
-    /// account listed its tribes and took none of the posts it read.
-    static let proposalPostsVersion = "2"
+    /// account listed its tribes and took none of the posts it read. "3":
+    /// a post's thread was not kept (v31), so an outcome in the mention's
+    /// thread never ended its card; the posts again give it, and the outcomes end it.
+    static let proposalPostsVersion = "3"
 
     /// Where the last `proposalPosts(after:)` got to; 0 when another
     /// `proposalPostsVersion` made it.

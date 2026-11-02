@@ -385,6 +385,51 @@ struct ProposalWatchTests {
         #expect(watch.kept.count == 1)
     }
 
+    /// A tribe as the daemon threads it: Jamie's post replies to the
+    /// member's mention, and so does Jamie's outcome, so the card's post,
+    /// the owner's answer to it and the outcome are all in the mention's
+    /// thread, not the post's. The answer and the outcome still reach the
+    /// card, across a restart; a card kept before its thread was (v30) ends
+    /// once its stored posts are read again.
+    @Test func aCardOnAPostInTheMentionsThreadIsAnsweredAndEnded() async throws {
+        let storage = try profile.storage()
+        let tribe = "02tribe"
+        let key = ProposalKey(source: .org("acme"), id: "p-install-1")
+        let (mention, post, answer, outcome) = (uuid(41), uuid(42), uuid(43), uuid(44))
+        let t0 = Int64(1_800_000_000_000)
+        let rejected = #"[{"id":"p-install-1","status":"rejected","title":"Install the package acme/linear","step":"package/install"}]"#
+        let watch = await makeWatch(storage)
+
+        watch.noticed(try Self.tribePost(uuid: post, in: tribe, proposals: Self.proposedEntries, replyTo: mention, at: t0))
+        #expect(watch.kept[key]?.post == TribePost(tribe: tribe, uuid: post, poster: "Jamie", thread: mention))
+        watch.answered(byOwn: Self.ownReply("Don't install", uuid: answer, in: tribe, replyTo: post, thread: mention, at: t0 + 1_000))
+        #expect(watch.kept[key]?.answer == false && watch.kept[key]?.answeredAt == Date(millisecondsSince1970: t0 + 1_000))
+        await watch.open(storage)
+        watch.noticed(try Self.tribePost(uuid: outcome, in: tribe, proposals: rejected, replyTo: mention, at: t0 + 2_000))
+        let ended = try #require(watch.kept[key])
+        #expect(ended.record.status == .rejected && ended.ending == .final(Date(millisecondsSince1970: t0 + 2_000)))
+        #expect(ended.post?.uuid == post && ended.answer == false)
+
+        // Kept with no thread, its post and outcome stored meanwhile: read again as the watch opens.
+        let node = ProposalKey(source: .org("acme"), id: "p-node-2")
+        let (mention2, post2, outcome2) = (uuid(45), uuid(46), uuid(47))
+        let applied = #"[{"id":"p-node-2","status":"applied","title":"Create a node","step":"graph/create-node"}]"#
+        let carried = try #require(try Self.tribePost(uuid: post2, in: tribe, proposals: Self.nodeEntries, at: t0).strutProposals?.proposed.first)
+        try storage.keepProposal(KeptProposal(source: .org("acme"), record: carried, readAt: Date(millisecondsSince1970: t0 + 3_000),
+                                              post: TribePost(tribe: tribe, uuid: post2, poster: "Jamie")))
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(pubkey: tribe, ready: true)],
+            messages: [
+                (try Self.tribePost(uuid: post2, in: tribe, proposals: Self.nodeEntries, replyTo: mention2, at: t0 + 3_000), false, nil),
+                (try Self.tribePost(uuid: outcome2, in: tribe, proposals: applied, replyTo: mention2, at: t0 + 4_000), false, nil),
+            ],
+            tribes: [Tribe(pubkey: tribe, name: "jamie", isOwner: true)]
+        ))
+        await watch.open(storage)
+        #expect(watch.kept[node]?.post == TribePost(tribe: tribe, uuid: post2, poster: "Jamie", thread: mention2))
+        #expect(watch.kept[node]?.record.status == .applied && watch.kept[node]?.isOver == true)
+    }
+
     /// A post that sends a stub (strut's plans/proposal-links.md: id, step,
     /// title, status, url), with this Peel paired to its workspace: the card
     /// is read from that strut with the person's token as the post is taken
@@ -580,9 +625,10 @@ struct ProposalWatchTests {
         #expect(watch.tribeDecider(key("p-tom")) == .someone("tom"))
     }
 
-    /// Your own reply in a post's thread.
-    nonisolated private static func ownReply(_ text: String, uuid: String, in tribe: String, replyTo: String, at timestamp: Int64) -> Message {
-        Message.fixture(uuid: uuid, chat: tribe, fromMe: true, content: text, timestamp: timestamp, replyUUID: replyTo, threadUUID: replyTo)
+    /// Your own reply to a post, in its thread (`thread`, when the post is in another's).
+    nonisolated private static func ownReply(_ text: String, uuid: String, in tribe: String, replyTo: String, thread: String? = nil,
+                                             at timestamp: Int64) -> Message {
+        Message.fixture(uuid: uuid, chat: tribe, fromMe: true, content: text, timestamp: timestamp, replyUUID: replyTo, threadUUID: thread ?? replyTo)
     }
 
     /// Jamie's post in a tribe, or a reply of Jamie's (or `alias`'s) in a thread.

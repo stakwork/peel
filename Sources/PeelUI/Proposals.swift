@@ -275,9 +275,10 @@ public final class ProposalWatch {
         let date = message.date
         let source = ProposalSource.org(proposals.workspace)
         let poster = message.senderAlias
+        let thread = message.threadRoot
         for record in proposals.proposed {
             let key = ProposalKey(source: source, id: record.id)
-            let post = TribePost(tribe: message.chat, uuid: uuid, poster: poster)
+            let post = TribePost(tribe: message.chat, uuid: uuid, poster: poster, thread: thread == uuid ? nil : thread)
             let current = kept[key]
             // Another post claiming the same proposal is not its card: the first keeps it.
             if let on = current?.post, on.uuid != uuid { continue }
@@ -295,14 +296,14 @@ public final class ProposalWatch {
             if proposal.record.isStub, !unreadHere.contains(key), failures[key] == nil { readCard(key) }
         }
         // Only a reply by the member who posted the card (by alias, which the tribes
-        // server keeps unique while they are in the tribe), in that post's thread, ends it.
-        let thread = message.threadRoot
+        // server keeps unique while they are in the tribe), in that post's thread, ends it:
+        // the mention's, when the post replies to one (Jamie's outcome replies to the mention too).
         guard thread != uuid, let poster else { return }
         for record in proposals.outcomes {
             let key = ProposalKey(source: source, id: record.id)
             var proposal: KeptProposal
             if let current = kept[key] {
-                guard let post = current.post, post.tribe == message.chat, post.uuid == thread, post.poster == poster else { continue }
+                guard let post = current.post, post.tribe == message.chat, post.threadRoot == thread, post.poster == poster else { continue }
                 proposal = current
                 proposal.take(outcome: record, at: date)
                 store(proposal, at: now)
@@ -316,10 +317,12 @@ public final class ProposalWatch {
         }
     }
 
-    /// Your own reply in a post's thread, as any message of yours arrives
-    /// (sent here, or from your other device): with a card's own word on an
-    /// open proposal of that post, it is your answer to it, dated as the
-    /// reply is.
+    /// Your own reply to a post, or in the thread it starts, as any message
+    /// of yours arrives (sent here, or from your other device): with a
+    /// card's own word on an open proposal of that post, it is your answer
+    /// to it, dated as the reply is. A post in the mention's thread is
+    /// answered by a reply to it alone, as Hive decides the post a reply
+    /// names: the thread holds the turn's other posts and their proposals.
     public func answered(byOwn message: Message) {
         guard storage != nil, message.fromMe, !message.deleted, message.type == MessageType.text, let uuid = message.uuid,
               isTribe(message.chat) else { return }
@@ -328,7 +331,8 @@ public final class ProposalWatch {
         guard thread != uuid, !word.isEmpty else { return }
         let now = now()
         for proposal in kept.values
-        where proposal.post?.tribe == message.chat && proposal.post?.uuid == thread && !proposal.isOver && proposal.record.status == .pending {
+        where proposal.post.map({ $0.tribe == message.chat && (message.replyUUID == $0.uuid || thread == $0.uuid) }) == true
+            && !proposal.isOver && proposal.record.status == .pending {
             let card = proposal.record.shownCard
             let accept: Bool
             if word == card.accept { accept = true } else if word == card.reject { accept = false } else { continue }

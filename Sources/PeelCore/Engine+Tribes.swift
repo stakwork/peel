@@ -350,8 +350,7 @@ extension Engine {
     /// owner; anyone else gets the people seen posting.
     public func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
         guard let tribe = tribes[pubkey], !tribe.left else { throw Failure.notInTribe }
-        let seen = try storage.tribeSenders(pubkey)
-        guard tribe.isOwner else { return TribeMembers(members: seen, complete: false) }
+        guard tribe.isOwner else { return TribeMembers(members: try storage.tribeSenders(pubkey), complete: false) }
         let server = try tribeServer()
         tribeWork.memberLists[pubkey] = nil
         try await run { time, state in
@@ -360,12 +359,127 @@ extension Engine {
             )
         }
         let list = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { tribeWork.memberLists[pubkey] }
-        // The server's list has no photos; take them from what members posted.
-        let photos = Dictionary(seen.map { ($0.alias, $0.photoURL) }, uniquingKeysWith: { $1 })
+        return try members(of: pubkey, from: list)
+    }
+
+    /// The tribes server's list of `pubkey`'s members as the owner reads it,
+    /// with each one's photo from what they posted (the list has none).
+    private func members(of pubkey: String, from list: TribeMembers.List) throws -> TribeMembers {
+        let photos = Dictionary(try storage.tribeSenders(pubkey).map { ($0.alias, $0.photoURL) }, uniquingKeysWith: { $1 })
         func members(_ entries: [TribeMembers.List.Entry], pending: Bool) -> [TribeMember] {
-            entries.map { TribeMember(alias: $0.alias, photoURL: photos[$0.alias] ?? nil, pubkey: $0.pubkey, pending: pending) }
+            entries.map {
+                TribeMember(alias: $0.alias, photoURL: photos[$0.alias] ?? nil, pubkey: $0.pubkey, pending: pending,
+                            seesSenders: $0.seesSenders)
+            }
         }
         return TribeMembers(members: members(list.confirmed, pending: false) + members(list.pending, pending: true), complete: true)
+    }
+
+    /// The owner marks `member` (a key) of tribe `pubkey` to be told who
+    /// sent each message there, or stops it (`on: false`): the tribes server
+    /// then sends that member, and no one else, the sender's key after each
+    /// message it forwards (`ShowSenders`, stakwork/sphinx
+    /// docs/tribe-sender-identity.md). Jamie is the member a linking owner
+    /// marks (docs/hive-tribes.md, "Who is asking"). The server answers with
+    /// its member list, which says it per member: the list once it does,
+    /// with `wait`; without, as soon as the command has gone (an unlink, which
+    /// does not wait on it). A tribes server from before the command does not
+    /// know it and answers nothing, as does one that will not take it (the
+    /// member not in the tribe, commands off on its broker): `sendersNotShown`.
+    @discardableResult
+    public func showSenders(_ member: String, in pubkey: String, on: Bool, wait: Bool = true) async throws -> TribeMembers? {
+        guard member.isPubkey else { throw Failure.notAMemberKey }
+        let key = member.lowercased()
+        return try await changeOwnedTribe(pubkey) { _, _, server in
+            tribeWork.memberLists[pubkey] = nil
+            try await run { time, state in
+                try Sphinxrs.showSenders(
+                    seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey,
+                    memberPubkey: key, on: on
+                )
+            }
+            // Not waited on (an unlink): this device's settlement of it ends with the link.
+            guard wait else {
+                try settleSenders(key, in: pubkey, settled: false)
+                return nil
+            }
+            // A list asked for meanwhile (`tribeMembers`) may answer first, from before the change.
+            let list = try await poll(timeout: .seconds(15), failure: .sendersNotShown) {
+                tribeWork.memberLists[pubkey].flatMap { list in
+                    list.confirmed.first { $0.pubkey.lowercased() == key }?.seesSenders == on ? list : nil
+                }
+            }
+            try settleSenders(key, in: pubkey, settled: true)
+            return try members(of: pubkey, from: list)
+        }
+    }
+
+    /// Marks `member` once in each tribe of `linked` this account owns that
+    /// this device has not settled yet (`Setting.sendersMarked`): the tribes
+    /// linked to Jamie before Peel marked it at linking, at the first launch
+    /// that can, and after that only those still unsettled. Each: its member
+    /// list, read once; the member confirmed and unmarked is marked
+    /// (`showSenders`), marked already is settled as it is. Not confirmed,
+    /// a tribes server that does not answer the mark (one from before it),
+    /// or anything else that fails: nothing is settled, and the next launch
+    /// asks again. The lists read, by tribe, and the tribes whose server did
+    /// not answer the mark.
+    public func markSendersOnce(
+        _ member: String, in linked: [String]
+    ) async -> (members: [String: TribeMembers], silent: [String]) {
+        guard member.isPubkey else { return ([:], []) }
+        let key = member.lowercased()
+        let settled = (try? sendersSettled()) ?? []
+        var read: [String: TribeMembers] = [:], silent: [String] = []
+        for pubkey in linked where tribes[pubkey]?.canManage == true && tribes[pubkey]?.host != nil
+            && !settled.contains(Self.sendersKey(key, in: pubkey)) {
+            do {
+                // Marked now or already, it is settled; not listed in, it is not.
+                guard let members = try await showSendersOnceConfirmed(key, in: pubkey, tries: 1, every: .zero) else { continue }
+                read[pubkey] = members
+            } catch Failure.sendersNotShown {
+                silent.append(pubkey)
+            } catch {
+                continue
+            }
+        }
+        return (read, silent)
+    }
+
+    /// The "<tribe> <member>" keys this device has settled (`Setting.sendersMarked`).
+    private func sendersSettled() throws -> Set<String> {
+        JSON.decode(Set<String>.self, from: try storage.value(for: .sendersMarked)) ?? []
+    }
+
+    private func settleSenders(_ member: String, in pubkey: String, settled: Bool) throws {
+        var keys = try sendersSettled()
+        let key = Self.sendersKey(member, in: pubkey)
+        guard settled ? keys.insert(key).inserted : keys.remove(key) != nil else { return }
+        try storage.set(String(decoding: try JSONEncoder().encode(keys.sorted()), as: UTF8.self), for: .sendersMarked)
+    }
+
+    private static func sendersKey(_ member: String, in pubkey: String) -> String { "\(pubkey.lowercased()) \(member)" }
+
+    /// Marks `member` (`showSenders`) once the tribes server lists it as a
+    /// confirmed member of `pubkey`, asking for the list up to `tries` times,
+    /// `every` apart: Jamie joins a public tribe by itself a few seconds
+    /// after it is linked, and a private one once the owner approved it. The
+    /// list it is marked on; nil when it was not listed in time. One marked
+    /// already is left as it is, and settled (`Setting.sendersMarked`).
+    public func showSendersOnceConfirmed(
+        _ member: String, in pubkey: String, tries: Int, every: Duration
+    ) async throws -> TribeMembers? {
+        guard member.isPubkey else { throw Failure.notAMemberKey }
+        let key = member.lowercased()
+        for attempt in 0..<tries {
+            if attempt > 0 { try await Task.sleep(for: every) }
+            let members = try await tribeMembers(pubkey)
+            guard let listed = members.members.first(where: { !$0.pending && $0.pubkey?.lowercased() == key }) else { continue }
+            guard listed.seesSenders else { return try await showSenders(key, in: pubkey, on: true) }
+            try settleSenders(key, in: pubkey, settled: true)
+            return members
+        }
+        return nil
     }
 
     /// Creates a tribe on the account's tribes server, owned by this account,

@@ -3,9 +3,101 @@ import PeelCore
 
 /// Jamie in Sphinx tribes (docs/hive-tribes.md): a tribe its owner linked
 /// to one of their Stadeum orgs, where `@jamie` is a turn of that org's
-/// assistant, run as the owner. The links are `Stadeum`'s; this is what
-/// the account does around them.
+/// assistant, run as the person asking when the tribe tells Jamie who is
+/// speaking and Stadeum knows them, else as the owner. The links are
+/// `Stadeum`'s; this is what the account does around them.
 extension AppModel {
+    /// Links `tribe` to `peer`'s org, or with nil unlinks it
+    /// (`Stadeum.setJamie`). Linking marks Jamie to know who is speaking
+    /// there once it is in (`markJamie`): part of the link, never a second
+    /// step. Unlinking takes the mark off first, best effort and without
+    /// waiting on the tribes server, which drops it with the member anyway
+    /// once Hive has told Jamie to leave; this device then no longer counts
+    /// it settled (`Engine.markSendersOnce`). A throw is Hive's refusal.
+    public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws {
+        if peer == nil, stadeum.jamiePick(of: tribe.pubkey)?.isEmpty == false,
+           let jamie = stadeum.jamieLinks?.jamie.pubkey, let engine {
+            _ = try? await engine.showSenders(jamie, in: tribe.pubkey, on: false, wait: false)
+        }
+        try await stadeum.setJamie(peer, for: tribe)
+        if peer != nil { markJamie(in: tribe.pubkey) }
+    }
+
+    /// Whether Jamie knows who is speaking in `tribe` (`TribeMember.seesSenders`),
+    /// as its owner's member list last said; nil while that list has no
+    /// Jamie in it, confirmed (not joined yet, or not read).
+    public func jamieSeesSenders(in tribe: String) -> Bool? {
+        guard let jamie = stadeum.jamieLinks?.jamie.pubkey,
+              let member = knownMembers[tribe]?.members.first(where: { !$0.pending && $0.pubkey?.lowercased() == jamie })
+        else { return nil }
+        return member.seesSenders
+    }
+
+    /// The owner's switch in a tribe's Jamie row: Jamie knows who is
+    /// speaking in `tribe`, or not. A tribes server that does not answer is
+    /// said in the row (`jamieMarkNotes`), the switch as it was; a throw is
+    /// anything else that went wrong.
+    public func setJamieSeesSenders(_ on: Bool, in tribe: String) async throws {
+        guard let jamie = stadeum.jamieLinks?.jamie.pubkey else { throw PeelError("Jamie isn't in this tribe.") }
+        do {
+            if let members = try await signedIn().showSenders(jamie, in: tribe, on: on) { knownMembers[tribe] = members }
+            jamieMarkNotes[tribe] = nil
+        } catch Engine.Failure.sendersNotShown {
+            jamieMarkNotes[tribe] = Self.sendersNotShown
+        }
+    }
+
+    /// What a tribe's Jamie row says when its tribes server does not answer
+    /// the mark: one from before it does not know it. The link stands.
+    static let sendersNotShown = "This tribe's server can't tell Jamie who is speaking yet, so everyone here asks with your access."
+
+    /// As the account opens with a pairing (`Stadeum.opened`), once a run
+    /// of Peel per pairing: Jamie marked to know who is speaking in each
+    /// tribe this person linked and owns that this device has not settled
+    /// (`Engine.markSendersOnce`), which marks the tribes linked before Peel
+    /// marked at linking, the first time this build opens. One whose server
+    /// did not answer is said in its Jamie row and asked again at the next
+    /// launch. Hive is asked which tribes are linked only when the account
+    /// owns one.
+    func markLinkedJamies() {
+        guard let engine, let credential = stadeum.link?.credential, !stadeum.revoked,
+              !jamieApprovals.swept.contains(credential) else { return }
+        Task {
+            guard (try? engine.storage.tribes())?.contains(where: { $0.canManage && $0.host != nil }) == true,
+                  let links = await stadeum.readJamieLinks(ifOlderThan: 60), self.engine === engine else { return }
+            jamieApprovals.swept.insert(credential)
+            let marked = await engine.markSendersOnce(links.jamie.pubkey, in: links.tribes.map(\.pubkey))
+            guard self.engine === engine else { return }
+            for (tribe, members) in marked.members { knownMembers[tribe] = members }
+            for tribe in marked.silent { jamieMarkNotes[tribe] = Self.sendersNotShown }
+        }
+    }
+
+    /// Marks Jamie in `tribe` to know who is speaking once the tribes server
+    /// lists it in (`Engine.showSendersOnceConfirmed`): Jamie joins a public
+    /// tribe by itself a few seconds after the link, and a private one once
+    /// approved (`checkJamie`). The list is asked for a minute at most, one
+    /// look at a time per tribe. A tribes server that does not answer the
+    /// mark cannot do it yet: said in the Jamie row (`jamieMarkNotes`); the
+    /// link stands.
+    func markJamie(in tribe: String) {
+        guard let engine, tribes[tribe]?.canManage == true, let jamie = stadeum.jamieLinks?.jamie.pubkey,
+              jamieApprovals.marking.insert(tribe).inserted else { return }
+        Task {
+            defer { jamieApprovals.marking.remove(tribe) }
+            do {
+                guard let members = try await engine.showSendersOnceConfirmed(jamie, in: tribe, tries: 12, every: .seconds(5)),
+                      self.engine === engine else { return }
+                knownMembers[tribe] = members
+                jamieMarkNotes[tribe] = nil
+            } catch Engine.Failure.sendersNotShown {
+                if self.engine === engine { jamieMarkNotes[tribe] = Self.sendersNotShown }
+            } catch {
+                if self.engine === engine { jamieMarkNotes[tribe] = PeelError.noted(error, couldNot: "tell Jamie who is speaking") }
+            }
+        }
+    }
+
     /// Whether `tribe`'s details offer its Jamie: to its owner, still in
     /// it, on a tribes server Hive can name for Jamie to join.
     public func offersJamie(in tribe: Tribe) -> Bool {
@@ -83,6 +175,8 @@ extension AppModel {
             do {
                 if try await engine.approveWaitingMember(links.jamie.pubkey, in: tribe) {
                     jamieApprovals.approved.insert(approval)
+                    // In now, or once the server has the approval: marked to know who is speaking.
+                    markJamie(in: tribe)
                     return
                 }
             } catch Engine.Failure.alreadyAnswered {
@@ -104,4 +198,9 @@ struct JamieApprovals {
     var again: Set<String> = []
     /// Approvals sent, as "<tribe> <Jamie's key>".
     var approved: Set<String> = []
+    /// Tribes Jamie is being marked in (`markJamie`).
+    var marking: Set<String> = []
+    /// The pairings (by credential) whose linked tribes were looked at as
+    /// the account opened this run of Peel (`markLinkedJamies`).
+    var swept: Set<String> = []
 }

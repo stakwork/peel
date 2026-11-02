@@ -821,6 +821,8 @@ public actor Engine {
                 landedPings.append(hash)
             }
             guard let decoded = Self.message(from: msg, expectedSender: expectedSender, state: newState, accountKey: accountKey) else { continue }
+            // A tribes server's record, commands and who-sent notes are no message: never a row.
+            if MessageType.tribeServerTypes.contains(decoded.message.type) { continue }
             var (message, trustSender) = (decoded.message, decoded.trustSender)
             // A member's replay of our tag: dropped before it can name a
             // tribe, change our membership or aliases, or be stored.

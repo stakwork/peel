@@ -316,3 +316,153 @@ struct TribeTests {
         }
     }
 }
+
+/// The owner marks Jamie to be told who sent each message in a tribe they
+/// linked (`Engine.showSenders`, docs/hive-tribes.md, "Who is asking"):
+/// against a stand-in tribes server on the transport, which answers the
+/// owner's commands as the real one does, with its member list.
+struct TribeSendersTests {
+    let profile = TempProfile()
+    /// Real curve points, which the core parses: the tribe, and Jamie's key.
+    let club = strangerKey
+    let jamie = key3G
+
+    /// How the stand-in lists Jamie.
+    enum Listed: Sendable { case absent, pending, confirmed }
+
+    /// A tribes server on the transport: the owner's commands as it gets
+    /// them ("ListMembers", "ShowSenders on|off"), answered with the member
+    /// list as the engine hears one (`tribe_members`). Jamie is listed as
+    /// `listed` says at each list asked for (the last one stays), marked
+    /// once a `ShowSenders` came; one from before the command
+    /// (`knowsShowSenders` false) does not know it and answers nothing.
+    final class TribesServer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var heard: [String] = []
+        private var lists: [Listed]
+        private var marked: Bool
+        private var knows: Bool
+        private let tribe: String, jamie: String
+        var engine: Engine?
+
+        init(tribe: String, jamie: String, listed: [Listed], marked: Bool = false, knowsShowSenders: Bool = true) {
+            self.tribe = tribe
+            self.jamie = jamie
+            lists = listed
+            self.marked = marked
+            knows = knowsShowSenders
+        }
+
+        var commands: [String] { lock.withLock { heard } }
+        func upgrade() { lock.withLock { knows = true } }
+        func list(_ listed: Listed) { lock.withLock { lists = [listed] } }
+
+        var transport: Transport {
+            Transport(publishing: { [self] topic, payload in answer(topic, payload) })
+        }
+
+        private func answer(_ topic: String, _ payload: Data) {
+            guard topic.hasPrefix("tribe/"), let command = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+            let reply: String? = lock.withLock {
+                if command["ListMembers"] != nil {
+                    heard.append("ListMembers")
+                    let listed = lists.count > 1 ? lists.removeFirst() : lists.first ?? .absent
+                    return members(listed)
+                }
+                guard let args = command["ShowSenders"] as? [Any], args.count == 3, let on = args[2] as? Bool else { return nil }
+                heard.append("ShowSenders \(on ? "on" : "off")")
+                let listed = lists.first ?? .absent
+                guard knows, listed == .confirmed, args[1] as? String == jamie else { return nil }
+                marked = on
+                return members(listed)
+            }
+            guard let reply else { return }
+            Task { [engine] in _ = try? await engine?.commit(coreResult(tribeMembers: reply), time: "1", expectedSender: nil) }
+        }
+
+        private func members(_ listed: Listed) -> String {
+            let owner = #"{"pubkey":"\#(keyG)","route_hint":"x","contact_key":"y","alias":"Owner"}"#
+            let jamie = #"{"pubkey":"\#(jamie)","route_hint":"x","contact_key":"y","alias":"Jamie"\#(marked ? #","sees_senders":true"# : "")}"#
+            let confirmed = listed == .confirmed ? [owner, jamie] : [owner]
+            return #"{"pubkey":"\#(tribe)","confirmed":[\#(confirmed.joined(separator: ","))],"pending":[\#(listed == .pending ? jamie : "")]}"#
+        }
+    }
+
+    /// An engine owning `club` on its tribes host, its tribes server known, on `server`.
+    private func withEngine(_ server: TribesServer, in profile: TempProfile? = nil, _ body: (Engine) async throws -> Void) async throws {
+        let storage = try registeredStorage(profile ?? self.profile)
+        _ = try storage.apply(Storage.Commit(state: ["default_tribe_server": hex(key2G)]))
+        try storage.save([Tribe(pubkey: club, host: "tribes.test", isOwner: true)])
+        try await withTestEngine(storage, on: server.transport) { engine in
+            server.engine = engine
+            try await body(engine)
+        }
+    }
+
+    /// Jamie joins a public tribe by itself, and a private one once the
+    /// owner approved it: it is marked once the list shows it in, not before.
+    @Test(arguments: [Listed.absent, .pending])
+    func jamieIsMarkedOnceTheServerListsItIn(first: Listed) async throws {
+        let server = TribesServer(tribe: club, jamie: jamie, listed: [first, .confirmed])
+        try await withEngine(server) { engine throws in
+            let members = try #require(try await engine.showSendersOnceConfirmed(jamie, in: club, tries: 3, every: .milliseconds(10)))
+            #expect(server.commands == ["ListMembers", "ListMembers", "ShowSenders on"])
+            #expect(members.members.first { $0.pubkey == jamie }?.seesSenders == true)
+            #expect(members.members.first { $0.pubkey == keyG }?.seesSenders == false)
+        }
+    }
+
+    /// Not listed in time: nothing is sent but the lists.
+    @Test func jamieNeverListedIsNotMarked() async throws {
+        let server = TribesServer(tribe: club, jamie: jamie, listed: [.pending])
+        try await withEngine(server) { engine throws in
+            #expect(try await engine.showSendersOnceConfirmed(jamie, in: club, tries: 2, every: .milliseconds(10)) == nil)
+            #expect(server.commands == ["ListMembers", "ListMembers"])
+        }
+    }
+
+    /// A tribe linked before Peel marked at linking: marked at the first
+    /// launch that can, and settled, so a later launch sends nothing; one
+    /// marked already is settled without a command. Unlinking takes the
+    /// mark off without waiting and unsettles it, so it is looked at again.
+    @Test func aLinkedTribeIsMarkedOnceAndNotAgainAtTheNextLaunch() async throws {
+        let server = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed])
+        try await withEngine(server) { engine throws in
+            let first = await engine.markSendersOnce(jamie, in: [club, key3G])
+            #expect(server.commands == ["ListMembers", "ShowSenders on"] && first.silent.isEmpty)
+            #expect(first.members[club]?.members.first { $0.pubkey == jamie }?.seesSenders == true)
+            let again = await engine.markSendersOnce(jamie, in: [club])
+            #expect(server.commands.count == 2 && again.members.isEmpty)
+
+            try await engine.showSenders(jamie, in: club, on: false, wait: false)
+            #expect(server.commands.last == "ShowSenders off")
+            server.list(.absent)
+            _ = await engine.markSendersOnce(jamie, in: [club])
+            #expect(server.commands == ["ListMembers", "ShowSenders on", "ShowSenders off", "ListMembers"])
+        }
+        let marked = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed], marked: true)
+        try await withEngine(marked, in: TempProfile()) { engine throws in
+            _ = await engine.markSendersOnce(jamie, in: [club])
+            _ = await engine.markSendersOnce(jamie, in: [club])
+            #expect(marked.commands == ["ListMembers"])
+        }
+    }
+
+    /// A tribes server from before the command answers nothing: the mark is
+    /// left off, said as such (`sendersNotShown`), and the next launch asks
+    /// again, when an upgraded server takes it.
+    @Test func aServerThatDoesNotKnowTheMarkLeavesItUnmarkedAndTheNextLaunchAsksAgain() async throws {
+        let server = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed], knowsShowSenders: false)
+        try await withEngine(server) { engine throws in
+            let first = await engine.markSendersOnce(jamie, in: [club])
+            #expect(first.silent == [club] && first.members.isEmpty)
+            #expect(server.commands == ["ListMembers", "ShowSenders on"])
+            server.upgrade()
+            let next = await engine.markSendersOnce(jamie, in: [club])
+            #expect(next.silent.isEmpty && next.members[club] != nil)
+            #expect(server.commands == ["ListMembers", "ShowSenders on", "ListMembers", "ShowSenders on"])
+        }
+        #expect(PeelError.readable(Engine.Failure.sendersNotShown)
+            == "the tribes server did not confirm it; it may not tell a member who is speaking yet")
+    }
+}

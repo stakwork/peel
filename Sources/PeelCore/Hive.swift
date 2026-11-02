@@ -1,4 +1,5 @@
 import Foundation
+import Sphinxrs
 
 // A device paired with Hive (the person knows it as Stadeum) by the device
 // flow (strut's specs/DESKTOP.md §2; stakwork/hive#5602): it keeps the
@@ -146,6 +147,14 @@ public struct HiveLink: Codable, Sendable, Equatable {
     /// renewal): kept with the link, so its tokens stay unused across a
     /// restart or an unlock until it is paired again.
     public var revokedAt: Date?
+    /// Whether Hive knows the person's Sphinx account (`sphinx` on the
+    /// renewal, or this device registered it, `HiveClient.registerSphinx`):
+    /// a tribe that tells Jamie who is speaking then runs their `@jamie` as
+    /// them (docs/hive-tribes.md, "Who is asking"). Nil until Hive has said.
+    public var identified: Bool?
+    /// The account key Hive would not link (409), with its words: said
+    /// once, and not asked about again on this pairing.
+    public var sphinxRefused: SphinxRefusal?
 
     public static func read(from item: any SecretItem) throws -> HiveLink? {
         guard let data = try item.read() else { return nil }
@@ -160,6 +169,46 @@ public struct HiveLink: Codable, Sendable, Equatable {
     public func due(at now: Date = Date()) -> Bool {
         now.timeIntervalSince(renewedAt) >= HiveClient.renewEvery
             || expiresAt.map { $0.timeIntervalSince(now) < HiveClient.renewEvery } ?? false
+    }
+}
+
+/// What proves to Hive that this device's account holds its Sphinx key
+/// (`HiveClient.registerSphinx`): the account key and the token the Sphinx
+/// apps sign for Hive's own Sphinx sign-in, which Hive checks as it checks
+/// theirs (`verifySphinxToken`: a 4-byte big-endian unix time and the key's
+/// recoverable signature over "Lightning Signed Message:" and those bytes,
+/// base64). `Engine.sphinxProof` makes one. Never logged.
+public struct SphinxProof: Sendable, Equatable {
+    public let pubkey: String
+    public let token: String
+
+    public init(pubkey: String, token: String) {
+        self.pubkey = pubkey
+        self.token = token
+    }
+}
+
+/// A Sphinx key Hive would not link to the person, and why in Hive's words.
+public struct SphinxRefusal: Codable, Sendable, Equatable {
+    public var pubkey: String
+    public var reason: String
+
+    public init(pubkey: String, reason: String) {
+        self.pubkey = pubkey
+        self.reason = reason
+    }
+}
+
+extension Engine {
+    /// This account's `SphinxProof`, signed `at` by its account key (child
+    /// 0, the key a tribe names its members by) with the core's
+    /// `signed_timestamp`. Signed half a minute back: Hive refuses a token
+    /// from its future and takes one up to five minutes old, so a clock a
+    /// little ahead of Hive's still proves it.
+    public func sphinxProof(at now: Date = Date()) throws -> SphinxProof {
+        let time = UInt64(max(0, now.timeIntervalSince1970 - 30) * 1000)
+        let token = try Sphinxrs.signedTimestamp(seed: seed, idx: 0, time: String(time), network: network)
+        return SphinxProof(pubkey: accountKey, token: token)
     }
 }
 
@@ -301,7 +350,37 @@ public struct HiveClient: Sendable {
         link.errors = (renewed.errors ?? []) + refused
         link.expiresAt = renewed.expiresAt
         link.renewedAt = now
+        link.identified = renewed.sphinx
         return link
+    }
+
+    /// What Hive said to `registerSphinx`.
+    public enum SphinxRegistration: Sendable, Equatable {
+        /// Hive knows the person by this key now, or already did.
+        case linked
+        /// A Hive from before the route (a 404, or its middleware's 401 on a
+        /// path it does not know): asked again at the next renewal.
+        case notYet
+        /// Another Hive user holds the key, or the person holds another one:
+        /// Hive's words.
+        case refused(String)
+    }
+
+    /// Tells Hive the Sphinx account of `link`'s person, proved by `proof`
+    /// (`POST /api/strut-devices/sphinx`): from then on a tribe that tells
+    /// Jamie who is speaking runs their `@jamie` as them, with their own
+    /// access (docs/hive-tribes.md, "Who is asking").
+    public func registerSphinx(_ link: HiveLink, proof: SphinxProof) async throws -> SphinxRegistration {
+        let (status, data) = try await request("POST", "api/strut-devices/sphinx", ["pubkey": proof.pubkey, "token": proof.token],
+                                               bearer: link.credential)
+        switch status {
+        case 200: return .linked
+        case 401, 404: return .notYet
+        case 409:
+            let said = (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"].map { TextLine.clean($0, max: 200) }
+            return .refused(said?.nilIfEmpty ?? "This Sphinx account is linked to another Stadeum user.")
+        default: throw Self.failure(status, data, couldNot: "link your Sphinx account")
+        }
     }
 
     /// A call with Jamie in it, for `workspace` (a peer's id: the org's
@@ -417,6 +496,8 @@ public struct HiveClient: Sendable {
         let peers: [HivePeer]
         let expiresAt: Date?
         let errors: [HiveOrgError]?
+        /// Hive knows the person's Sphinx pubkey; nil from a Hive before it.
+        let sphinx: Bool?
     }
 
     /// `GET /api/strut-devices/tribes` (`tribes`) and its `POST` (`tribe`).

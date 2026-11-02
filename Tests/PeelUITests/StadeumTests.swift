@@ -78,6 +78,125 @@ struct StadeumTests {
         }
     }
 
+    /// This account's Sphinx key and its proof, as its engine would sign them.
+    nonisolated static let proof = SphinxProof(pubkey: String(repeating: "02", count: 33), token: "dG9rZW4")
+
+    /// Paired, the device tells Stadeum the person's Sphinx account
+    /// (`POST /api/strut-devices/sphinx`), with the device credential,
+    /// never in the pairing's way; linked, it is identified, kept with the link.
+    @Test func aPairingTellsStadeumTheSphinxAccount() async throws {
+        let hive = try await HTTPStub { port, request in
+            if request.hasPrefix("POST /api/strut-devices/pair/token") {
+                return (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
+            }
+            if request.hasPrefix("POST /api/strut-devices/pair") {
+                return (200, #"{"deviceCode":"dc","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"http://127.0.0.1:\#(port)/pair?code=BCDF-GHJK","expiresIn":600,"interval":1}"#)
+            }
+            if request.hasPrefix("POST /api/strut-devices/sphinx ") { return (200, #"{"linked":true}"#) }
+            return (404, "{}")
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        let stadeum = Stadeum()
+        stadeum.client = { _ in HiveClient(hive: URL(string: "http://127.0.0.1:\(hive.port)")!) }
+        stadeum.sphinxProof = { Self.proof }
+        stadeum.open(profile)
+        stadeum.connect(as: "Mac")
+        await until { stadeum.identified }
+        #expect(stadeum.status == .connected && stadeum.identified)
+        let told = try #require(hive.requests.first { $0.hasPrefix("POST /api/strut-devices/sphinx ") })
+        #expect(told.contains("Authorization: Bearer hivedev_abc") && told.hasSuffix(#"{"pubkey":"\#(Self.proof.pubkey)","token":"dG9rZW4"}"#))
+        stadeum.close()
+        let again = Stadeum()
+        again.open(profile, renewNow: false)
+        #expect(again.identified)
+        again.close()
+    }
+
+    /// While Stadeum does not know the person's Sphinx account, the device
+    /// tells it once a launch (the iPhone opens it at every unlock) and
+    /// after each renewal that says so: a Stadeum without the route is asked
+    /// again at the next renewal, a refusal is said once and that key never
+    /// asked about again on this pairing, and none goes out once a renewal
+    /// says Stadeum knows it.
+    @Test func theSphinxAccountIsToldAtLaunchAndAfterARenewalWhileStadeumDoesNotKnowIt() async throws {
+        let told = Mutex(0)
+        let answer = Mutex((404, #"{"error":"Not found"}"#))
+        let knows = Mutex(false)
+        let hive = try await HTTPStub { _, request in
+            if request.hasPrefix("POST /api/strut-devices/sphinx ") {
+                told.withLock { $0 += 1 }
+                return answer.withLock { $0 }
+            }
+            if request.hasPrefix("GET /api/strut-devices/peers ") {
+                return (200, #"{"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))],"errors":[],"sphinx":\#(knows.withLock { $0 })}"#)
+            }
+            return (404, "{}")
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        let hiveURL = URL(string: "http://127.0.0.1:\(hive.port)")!
+        var kept = try link(hive: hiveURL, peers: [Self.peer("acme", "Acme")])
+        kept.identified = false
+        try kept.write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.sphinxProof = { Self.proof }
+        // A launch, the link not due: Stadeum asked once, and it has no route yet.
+        stadeum.open(profile, renewNow: false)
+        await until { told.withLock { $0 } == 1 }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 1 && !stadeum.identified && stadeum.problem == nil)
+        // Opened again in the same run of Peel (an unlock): not asked again.
+        stadeum.open(profile, renewNow: false)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 1)
+
+        /// The kept link, due for renewal.
+        func due() throws {
+            var link = try #require(try HiveLink.read(from: profile.hive))
+            link.renewedAt = Date(timeIntervalSinceNow: -2 * 24 * 3600)
+            try link.write(to: profile.hive)
+        }
+        // A renewal saying Stadeum does not know it: asked again; refused, said once.
+        answer.withLock { $0 = (409, #"{"error":"This Sphinx account is linked to another Hive user."}"#) }
+        try due()
+        stadeum.open(profile, renewNow: false)
+        await until { stadeum.problem != nil }
+        #expect(told.withLock { $0 } == 2 && stadeum.problem == "This Sphinx account is linked to another Hive user.")
+        #expect(try HiveLink.read(from: profile.hive)?.sphinxRefused?.pubkey == Self.proof.pubkey)
+        // The next renewal says the same: that key is not asked about again, and the refusal is not said again.
+        try due()
+        stadeum.open(profile, renewNow: false)
+        await until { stadeum.link?.renewedAt ?? .distantPast > Date(timeIntervalSinceNow: -60) }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 2 && stadeum.problem == nil)
+        // Nor at the next launch.
+        let next = Stadeum()
+        next.sphinxProof = { Self.proof }
+        next.open(profile, renewNow: false)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 2)
+        next.close()
+
+        // Another key (another account) is asked about; a renewal saying Stadeum knows the person asks nothing.
+        let other = Stadeum()
+        other.sphinxProof = { SphinxProof(pubkey: String(repeating: "03", count: 33), token: "dG9rZW4") }
+        knows.withLock { $0 = true }
+        answer.withLock { $0 = (200, #"{"linked":true}"#) }
+        try due()
+        other.open(profile, renewNow: false)
+        await until { other.identified }
+        #expect(told.withLock { $0 } == 3 && other.identified)
+        try due()
+        let after = told.withLock { $0 }
+        stadeum.open(profile, renewNow: false)
+        await until { stadeum.link?.renewedAt ?? .distantPast > Date(timeIntervalSinceNow: -60) }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == after && stadeum.identified)
+        other.close()
+        stadeum.close()
+    }
+
     /// Back in front (from Safari, where the person approved it), a pairing
     /// polls Hive at once rather than at its next interval.
     @Test func comingBackToTheFrontPollsHiveAtOnce() async throws {

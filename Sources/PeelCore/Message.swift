@@ -472,6 +472,18 @@ public enum MessageType {
     public static let call = 32
     /// This account telling its other devices about a contact.
     public static let contactKeyRecord = 33
+    /// A tribes server's own words, which are no one's message
+    /// (stakwork/sphinx `MsgType`, docs/tribe-sender-identity.md): the
+    /// tribe's signed record, which an upgraded server sends on a join and
+    /// on every change; an owner's command and the server's answer as
+    /// onions; and who sent a message it forwarded, to a member the owner
+    /// marked (Jamie). Peel reads none of them yet: `Engine.commit` drops
+    /// each before it is stored, so none is a line or counts as unread.
+    public static let tribeRecord = 35
+    public static let tribeCommand = 36
+    public static let tribeReply = 37
+    public static let sentBy = 38
+    static let tribeServerTypes: Set<Int> = [tribeRecord, tribeCommand, tribeReply, sentBy]
     /// Someone adding this account: the first message of a key exchange,
     /// which the core answers on its own (type 11, `contactKeyConfirmation`).
     /// From someone who used one of our invites, its sender names the code.

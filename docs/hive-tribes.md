@@ -2,17 +2,26 @@
 
 Status: Peel's side built 2026-10-29. It waits for Hive's routes to be
 switched on (`JAMIE_SERVICE_TOKEN`, `JAMIE_SPHINX_PUBKEY`) and for Jamie's
-account to run. Not yet checked in the running app.
+account to run. Not yet checked in the running app. Who is asking
+(below): Peel's side built 2026-11-02 on sphinx-rs v0.8.41; it needs a
+tribes server with sphinx#419 and Hive with #5688, and is safe without
+either.
 
 A tribe's owner links the tribe to one of the orgs Peel is paired with
 (Stadeum). From then on anyone in the tribe can write `@jamie …`, and
 Jamie, that org's orchestrator, answers in the tribe with its
-deliverables. The turns run as the owner.
+deliverables. A turn runs as the person who asked when the tribe tells
+Jamie who is speaking and Stadeum knows them; otherwise as the owner
+("Who is asking", below; built 2026-11-02).
 
 - The design is Hive's `docs/plans/jamie-in-tribes.md`.
 - Hive's routes are stakwork/hive#5667.
 - Jamie is one ordinary Sphinx account in every linked tribe, run by
   stakwork/sphinx `wasm/daemon` (#401).
+- Who is asking is stakwork/sphinx `docs/tribe-sender-identity.md`:
+  sphinx#419 (the tribes server's `ShowSenders` and `SentBy`, sphinx-rs
+  v0.8.41's `showSenders`) and hive#5688 (the turn as the asker, and
+  `POST /api/strut-devices/sphinx`).
 - The twin of this file is `hive-calls.md`: a call with Jamie in it.
 
 ## What the owner does
@@ -41,6 +50,8 @@ Every route takes `Authorization: Bearer hivedev_…`, the device credential
 | `GET /api/strut-devices/tribes` | `{ jamie: { pubkey, alias }, tribes: [{ pubkey, host, name, workspace, org, createdAt }] }` |
 | `POST /api/strut-devices/tribes` with `{ workspace, tribe: { pubkey, host, name } }` | `{ jamie, tribe }` |
 | `DELETE /api/strut-devices/tribes/<pubkey>` | `{ unlinked: true }`, or 404 when the person has no such link |
+| `POST /api/strut-devices/sphinx` with `{ pubkey, token }` | `{ linked: true }`; 400 a token that does not verify; 409 `{ error }` the key is another Hive user's, or the person has another |
+| `GET /api/strut-devices/peers` (the daily renewal) | carries `sphinx`: whether Hive knows the person's Sphinx key |
 
 `workspace` is a `HivePeer.id`, the org's central workspace.
 
@@ -115,6 +126,63 @@ and `TribeJamie` in the iPhone's `ChatDetails.swift`, over one model,
   server's list): approving or keeping it sends what is said in the tribe
   to that org.
 
+**Who is asking.** The tribes server rewrites every message it forwards
+as the tribe's, so Jamie sees an alias. Since sphinx#419 it tells a member
+the owner marks, and no one else, who sent each one (a type-38 `SentBy`
+after it), and Hive runs that person's `@jamie` as them when it knows their
+Sphinx key and they are in the linked workspace (hive#5688): their actor,
+their delegation, their access. Anyone else asks with the owner's, as before.
+- **Identified.** Peel tells Stadeum the account's Sphinx key
+  (`HiveClient.registerSphinx`, through `Stadeum.identify`) after a
+  pairing, once each launch, and after each renewal while Stadeum says it
+  does not know it (`sphinx: false`). The proof is the token the Sphinx apps
+  sign for Hive's own Sphinx sign-in, made by the core's `signedTimestamp`
+  with the account key (`Engine.sphinxProof`, signed half a minute back so a
+  clock a little ahead of Hive's still passes). Linked, the link is kept as
+  `identified` and Account › Connections (the iPhone's You › Stadeum) says
+  so. A Hive without the route (404, or its middleware's 401) is asked again
+  next time, as is one that fails. A 409 (the key is another Stadeum user's,
+  or the person has another) is said once, in Hive's words, and that key is
+  not asked about again on this pairing (`HiveLink.sphinxRefused`). Never in
+  the pairing's way.
+- **The mark.** Linking marks Jamie (`AppModel.setJamie`, `markJamie`):
+  once the tribes server lists Jamie in, confirmed (a public tribe a few
+  seconds after the link, a private one once approved; the list is asked
+  for every five seconds, a minute at most, and again after the approval),
+  the owner's Peel sends `ShowSenders(tribe, Jamie, on)`
+  (`Engine.showSenders`, sphinx-rs's `showSenders`, over the tribes
+  server's topic like the owner's other commands) and waits for the member
+  list, which says it per member (`sees_senders`, `TribeMember.seesSenders`;
+  absent is false). Unlinking sends it off first, not waiting: the server
+  drops the mark with the member anyway once Jamie leaves.
+- **Tribes linked before.** As the account opens, once a run of Peel, the
+  tribes this person linked and owns are looked at (`markLinkedJamies`,
+  `Engine.markSendersOnce`): one this device has not settled
+  (`Setting.sendersMarked`, per tribe and Jamie key) gets its member list
+  read; Jamie confirmed and unmarked is marked, marked already is settled.
+  So the first launch after updating marks every tribe linked by an older
+  Peel, and later launches send nothing. Hive is asked for the links only
+  when the account owns a tribe.
+- **An older tribes server** knows no `ShowSenders` and answers nothing;
+  nor does one whose broker takes no commands, or one asked about someone
+  not in the tribe. After 15 seconds that is `sendersNotShown`: the Jamie row
+  says "This tribe's server can't tell Jamie who is speaking yet, so everyone
+  here asks with your access." The link stands, nothing is settled, and the
+  next launch asks again.
+- **The row.** Once Jamie is in, the owner's Jamie row says "Jamie knows
+  who is speaking here" in its line when the list says so, and has a switch,
+  Knows who is speaking (`TribeJamiePicker.showSenders`). The switch shows
+  the list, never the settled flag. Only the owner sees the row: a
+  member's Peel cannot read the list (the server gives it to the owner
+  alone), so it shows nothing of the mark, nor do the official apps.
+- **Types 35–38.** An upgraded tribes server sends its signed record (35)
+  on a join and on every change, and a marked member `SentBy` (38); 36 and
+  37 are commands and answers as onions. `Engine.commit` drops all four
+  before they are stored (`MessageType.tribeServerTypes`): before, Peel
+  stored a row for each, though no timeline or unread count showed it.
+  Peel reads none of them yet (the record and link v3 are the sovereign
+  tribes work).
+
 **Deliverables.** Jamie's replies carry `metadata` with
 `{ "strut": { workspace, artifacts } }`.
 - `Message.strutArtifacts` (`ControlEnvelope.swift`) reads it, and each
@@ -144,11 +212,12 @@ The stub (strut's `plans/proposal-links.md`, stakwork/strut#406): Peel's
 side built 2026-11-01; a member's read of another person's proposal needs
 strut#407 on the org's swarm.
 
-A `@jamie` turn in a tribe runs as the owner, so what it proposes (a
-`package/install`, an `app/grant`, a delete: strut's proposals,
-docs/agent-on-strut.md, "Built: proposal cards") is the owner's to
-decide. The owner decides it in the tribe, on Jamie's post, and everyone
-there sees the card and how it ended.
+A `@jamie` turn in a tribe runs as the person who asked when the tribe
+told Jamie and Stadeum knows them, else as the owner ("Who is asking"), so
+what it proposes (a `package/install`, an `app/grant`, a delete: strut's
+proposals, docs/agent-on-strut.md, "Built: proposal cards") is that
+person's to decide. They decide it in the tribe, on Jamie's post, and
+everyone there sees the card and how it ended.
 
 **The carrier.** Hive's post "Waiting for <owner> to approve: <title>"
 names each proposal in `metadata.strut`, beside the deliverables, as a
@@ -185,10 +254,20 @@ fields do not cover the input. A stub's card, read from the org's strut
 older Hive carries the card and never the input, so a field strut cut ends
 in "…" (`Field.shownValue`, not strut's "(see full input)", which is no
 link) and the line says the rest wasn't sent; shut, the card takes no key.
-The tribe's owner (`Tribe.canManage`, the list's `canAnswer`) gets the
-card's own two buttons, and Return and Escape as in the agent chat;
-everyone else sees the card, its badge, and "The tribe's owner decides
-this." Not on the iPhone yet, as #464 left it.
+Whose buttons they are is `TribeDecider`'s (`ProposalWatch.tribeDecider`,
+PeelCore `Storage+Proposals.swift`): strut's record, once read, names the
+person the turn ran as (`by.actor`), and the viewer whose Stadeum actor
+(`HiveLink.actor`) it is gets the card's own two buttons, and Return and
+Escape as in the agent chat, the owner or not. With no record of strut's
+read (a stub not read yet, or one strut would not show; a post that carried
+its card), the tribe's owner gets them (`Tribe.canManage`, the list's
+`isOwner`), as before. Everyone else sees the card, its badge, and whose
+it is: "tom's to decide." (the actor's GitHub login, the part of Hive's
+`<login>-<id>` before the id), "The person who asked decides this." for an
+actor with no login, or "The tribe's owner decides this." with no record
+read. So the owner gets no buttons on a card strut says is a member's: Hive
+would answer their reply "<name>'s to decide." Not on the iPhone yet, as
+#464 left it.
 
 **Reading the card.** A stub's card (`ProposalRecord.isStub`: no card, no
 input) is the org's strut's record, read with the person's own token for
@@ -220,21 +299,22 @@ again a few times, longer apart, then left until the next moment; it never
 ends the card. A post that carries a card is drawn as it came and never
 read.
 
-**Deciding.** The owner's click sends a plain reply in the tribe to
-Jamie's post (`Engine.sendText(_:to:replyTo:)`, `ProposalWatch.answerInTribe`
-through `sendReply`, installed by `AppModel`) whose text is the card's
-own word (`actions.accept` or `actions.reject`, else Accept and Reject).
-Nothing else goes with it: the daemon forwards a reply to a Jamie post
-with its `replyTo` and `owner: true`, and Hive matches the text against
-the card's words and decides on the org's strut as the owner. The reply
-itself, arriving like any message of the owner's (sent here, or from
-their other device), is the answer (`ProposalWatch.answered(byOwn:)`: a
-reply of yours in the post's thread whose text is a card's own word;
-kept as `KeptProposal.answeredAt` and `answer`, so a restart shows it
-still): the card shows Accepting… or Rejecting…, the buttons gone, on
-every device of the owner's. Peel never decides a tribe's proposal with
-the person token, though the owner holds one: one path, through Hive, so
-the outcome is in the tribe for everyone. After ten minutes with no word
+**Deciding.** The click sends a plain reply in the tribe to Jamie's post
+(`Engine.sendText(_:to:replyTo:)`, `ProposalWatch.answerInTribe` through
+`sendReply`, installed by `AppModel`) whose text is the card's own word
+(`actions.accept` or `actions.reject`, else Accept and Reject). Nothing
+else goes with it: the daemon forwards a reply to a Jamie post with its
+`replyTo`, `owner` and, from a tribes server that names senders, `sender`,
+and Hive matches the text against the card's words and decides on the
+org's strut as the person the turn ran as, when the reply is theirs. The
+reply itself, arriving like any message of yours (sent here, or from your
+other device), is the answer (`ProposalWatch.answered(byOwn:)`: a reply of
+yours in the post's thread whose text is a card's own word; kept as
+`KeptProposal.answeredAt` and `answer`, so a restart shows it still): the
+card shows Accepting… or Rejecting…, the buttons gone, on every device of
+yours. Peel never decides a tribe's proposal with the person token, though
+the person holds one: one path, through Hive, so the outcome is in the
+tribe for everyone. After ten minutes with no word
 from Jamie (`KeptProposal.answerPatience`) the card says "No answer yet:
 the reply may not have reached Jamie" and offers the buttons again; a
 second answer is another reply.
@@ -319,10 +399,27 @@ in `docs/testing.md`, "Proposal cards in a tribe".
 ## Tests
 
 - `HiveTests`: linking, listing and unlinking with the device credential,
-  the request shapes, and Hive's refusals in words.
+  the request shapes, and Hive's refusals in words; the Sphinx key told to
+  Hive and each of its answers, the renewal's `sphinx`, and the proof as a
+  vector Hive's own `verifySphinxToken` takes.
 - `StadeumTests`: the links as Hive keeps them, the pick and the options,
   the minute's cache, a read answered after a link not taking it back, and
-  that a tribe's deliverable opens only on a paired org.
+  that a tribe's deliverable opens only on a paired org; the Sphinx key
+  told after a pairing, once a launch and after a renewal while Stadeum
+  does not know it, a 404 asked again, a 409 said once and never asked
+  again for that key, nothing once a renewal says Stadeum knows it.
+- `TribeSendersTests` (in `TribeTests.swift`, against a stand-in tribes
+  server on the transport): Jamie marked once listed in, public (absent
+  first) or private (pending first), and not before; the lists with and
+  without `sees_senders`; a tribe linked before marked once and not at the
+  next launch, one marked already settled with no command, an unlink
+  unsettling it; a server from before the command leaving it unmarked,
+  `sendersNotShown`, and the next launch asking again.
+- `SenderTests`: types 35 and 38 never stored, live or from history, so no
+  line and no unread, the text beside them both.
+- `ProposalWatchTests`: whose a tribe's card is, by strut's record (the
+  member's own, the linker's, an actor with no login) or with none read
+  the owner's, and the line everyone else reads.
 - `ControlRowTests`: a tribe member's deliverables on their row, never
   yours or a DM's; an app's confirm names what it opens.
 - `EngineFailureTests`: `approveWaitingMember`'s refusals.
@@ -333,3 +430,12 @@ in `docs/testing.md`, "Proposal cards in a tribe".
 - The approval against a real tribes server. Its refusals are tested;
   approving a waiting member by key is the same `answerJoinRequest` path
   the Members panel uses.
+- Who is asking, live: a tribe on a tribes server with sphinx#419 and a
+  Hive with #5688, a member paired with the org asking `@jamie` as
+  themself and answering their own card, another member refused; the mark
+  at linking and at the first launch after updating; an older tribes
+  server's line. `AppModel`'s part (`setJamie`, `markJamie`,
+  `markLinkedJamies`, `Stadeum.opened`) has no test of its own; the engine
+  and Stadeum parts it calls do.
+- The iPhone's Jamie row and You › Stadeum line were not compiled here (the
+  iOS slices of the core were not built).

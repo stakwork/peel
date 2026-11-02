@@ -51,11 +51,13 @@ func goneTransport() -> Transport {
 }
 
 /// A core result with only the publish fields, the messages (with a total,
-/// a page of history), a page of payment history, the server's records and state set.
+/// a page of history), a page of payment history, the server's records, a
+/// tribes server's member list and state set.
 func coreResult(
     settle: String? = nil, register: String? = nil, newChildIdx: UInt64? = nil,
     asyncpay: String? = nil, topics: [String] = [], asyncpayTag: String? = nil, payments: String? = nil,
-    tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil, state: [String: Data]? = nil
+    tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil, state: [String: Data]? = nil,
+    tribeMembers: String? = nil
 ) -> RunReturn {
     RunReturn(
         msgs: msgs, msgsTotal: msgsTotal, msgsCounts: nil, subscriptionTopics: [],
@@ -65,7 +67,7 @@ func coreResult(
         topics: topics, payloads: topics.map { _ in Data([3]) },
         stateMp: state.map(StateCodec.encode), stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil,
         settledStatus: nil, registerResponse: nil, asyncpayTag: asyncpayTag, error: nil, newTribe: nil,
-        tribeMembers: nil, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil,
+        tribeMembers: tribeMembers, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil,
         lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil, payments: payments,
         paymentsTotal: nil, tags: tags, deletedMsgs: nil, newChildIdx: newChildIdx, ping: nil
     )

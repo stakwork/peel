@@ -1605,6 +1605,31 @@ stakwork/hive#5667.
 - Built and tested offline; the Mac and iPhone apps build. Not checked in
   the running app, nor against a Hive with the routes on.
 
+### Who is asking (2026-11-02)
+
+stakwork/sphinx `docs/tribe-sender-identity.md` §6: Peel's half, on
+sphinx-rs v0.8.41. Details in `../hive-tribes.md`, "Who is asking".
+
+- Done: the Sphinx key told to Stadeum after a pairing, once a launch and
+  after a renewal saying `sphinx: false` (`Stadeum.identify`,
+  `HiveClient.registerSphinx`, `Engine.sphinxProof` over the core's
+  `signedTimestamp`); Jamie marked with `ShowSenders` at linking and, once
+  per tribe, for tribes linked by an older Peel (`Engine.showSenders`,
+  `markSendersOnce`); the owner's switch and line; a tribe card's buttons
+  for the person strut's record names (`TribeDecider`); types 35–38
+  dropped before they are stored.
+- Learned: the core writes the token in URL-safe base64 without padding,
+  which Hive reads; an older Hive's middleware turns the device credential
+  away with 401 on a path it does not know (as `startCall` notes), so a
+  missing route is a 401 or a 404; an older tribes server answers an
+  unknown command with nothing, so "cannot do it yet" is a 15-second
+  silence.
+- Open: the live check; members other than the owner cannot read the mark
+  (the server lists members to the owner alone); the command goes over the
+  tribes server's topic, not as an onion (`showSendersOnion`), like the
+  owner's other commands; the iPhone's part was not compiled with this
+  change (Mac-only core build).
+
 ## Shared screen at full size (2026-10-30)
 
 Tom found a shared screen soft and jumpy on the other end. The share was

@@ -207,10 +207,11 @@ struct TribeDetailsPanel: View {
 }
 
 /// "Jamie", for the tribe's owner (docs/hive-tribes.md): which of your
-/// Stadeum orgs answers `@jamie` here, as you: one of them or No Jamie,
-/// as Hive has it (`TribeJamiePicker`), and with no Jamie yet the org the
-/// tribe's app or second brain is on, in one click. Unpaired, Connect
-/// Stadeum pairs this Mac from here.
+/// Stadeum orgs answers `@jamie` here: one of them or No Jamie, as Hive
+/// has it (`TribeJamiePicker`), and with no Jamie yet the org the tribe's
+/// app or second brain is on, in one click; once Jamie is in, whether it
+/// knows who is speaking (the members list's word, and your switch).
+/// Unpaired, Connect Stadeum pairs this Mac from here.
 private struct TribeJamieSection: View {
     @Environment(AppModel.self) private var model
     let tribe: Tribe
@@ -243,7 +244,9 @@ private struct TribeJamieSection: View {
                 }
             case .connected:
                 if let pick = stadeum.jamiePick(of: tribe.pubkey) {
-                    FormItem(label: "Answers from", helper: TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum),
+                    let seesSenders = pick.isEmpty ? nil : model.jamieSeesSenders(in: tribe.pubkey)
+                    FormItem(label: "Answers from",
+                             helper: TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum, seesSenders: seesSenders),
                              problem: picker.problem ?? model.othersJamie(in: tribe.pubkey)) {
                         HStack(spacing: Theme.Space.sm) {
                             PeelDropdown(selection: pick, options: stadeum.jamieOptions(for: tribe.pubkey).map { (value: $0.id, label: $0.name) }) { id in
@@ -261,6 +264,13 @@ private struct TribeJamieSection: View {
                                 ProgressView().controlSize(.small)
                             }
                         }
+                    }
+                    if let seesSenders {
+                        FormSwitchRow(label: TribeJamiePicker.showsSenders, detail: model.jamieMarkNotes[tribe.pubkey],
+                                      isOn: Binding(get: { seesSenders }, set: { on in
+                                          Task { await picker.showSenders(on, in: tribe, with: model) }
+                                      }))
+                            .disabled(picker.working)
                     }
                 } else {
                     FormItem(label: "Answers from", helper: stadeum.jamieProblem == nil ? "Asking Stadeum…" : nil,

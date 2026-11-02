@@ -352,14 +352,21 @@ public actor Engine {
             if let stored = try? storage.value(for: .lastRoute), let route = ServerAddress(stored),
                route == server.fallback {
                 lastRoute = route
-                // Kept first for a while before the named route is tried again.
-                primaryProbedAt = ContinuousClock.now
+                // The named route is tried again `primaryProbeInterval` after it
+                // was last tried, counted across launches; with no record, now.
+                if let tried = (try? storage.value(for: .primaryTriedAt)).flatMap({ $0.flatMap(Double.init) }) {
+                    let elapsed = max(0, Date.now.timeIntervalSince1970 - tried)
+                    primaryProbedAt = ContinuousClock.now - .seconds(elapsed)
+                }
             }
         }
         let now = ContinuousClock.now
         let probe = primaryProbedAt.map { now - $0 >= Self.primaryProbeInterval } ?? true
         let routes = server.routes(lastWorked: lastRoute, probingPrimary: probe)
-        if routes.first == server { primaryProbedAt = now }
+        if routes.first == server {
+            primaryProbedAt = now
+            if lastRoute != nil, lastRoute == server.fallback { storePrimaryTried() }
+        }
 
         if let testing = Self.connectingForTesting {
             try await testing.connect()
@@ -460,10 +467,18 @@ public actor Engine {
     private func rememberRoute(_ route: ServerAddress, of server: ServerAddress) {
         guard route != lastRoute else { return }
         lastRoute = route
-        let stored = route == server.fallback ? route.description : ""
+        let isFallback = route == server.fallback
+        let stored = isFallback ? route.description : ""
         if (try? storage.value(for: .lastRoute)) != stored {
             try? storage.set(stored, for: .lastRoute)
         }
+        // Moving to the fallback means the named route was tried first on
+        // this connect and did not answer in time.
+        if isFallback { storePrimaryTried() }
+    }
+
+    private func storePrimaryTried() {
+        try? storage.set(String(Int(Date.now.timeIntervalSince1970)), for: .primaryTriedAt)
     }
 
     private func establish() async throws {

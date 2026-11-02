@@ -14,6 +14,11 @@ public enum Setting: String, Sendable {
     /// relaunch on a network that blocks the MQTT port starts with the
     /// route that worked there.
     case lastRoute
+    /// When the server as named was last tried while `lastRoute` held the
+    /// fallback, in seconds since 1970: a relaunch tries it again only once
+    /// `Engine.primaryProbeInterval` has passed since, not at every launch
+    /// and not never.
+    case primaryTriedAt
     case deviceID
     case alias
     case photoURL

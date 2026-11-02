@@ -1628,6 +1628,34 @@ cost is one 2.5 Mbit/s stream per viewer, and a sharper low layer
 (`screenShareSimulcastLayers`) would still be picked by points, so it
 would not fix a laptop's call window.
 
+## Jamie's voice (2026-11-01)
+
+sphinx-voice can say Jamie's replies aloud (`src/tts.ts`, Deepgram), but
+every call starts with the voice off (`tts: off` on Jamie's attributes),
+and only `{"type":"tts-toggle","enabled":…}` on the chat topic turns it
+on. Peel never sent it, so Jamie on a Peel call only wrote in the call's
+chat, and on the iPhone, which has no call chat, said nothing at all.
+
+- `CallChatWire.voice(on:)` is the toggle; `CallChatWire.isJamie` (moved
+  from the Mac's `CallSession`) and `jamieSpeaks` read Jamie's attributes.
+- The toggle goes to Jamie alone (`destinationIdentities`), so no other
+  client sees it as a message. It is still the whole call's: sphinx-voice
+  keeps one voice for the room.
+- What the menu shows is what Jamie says (its `tts` attribute), never
+  what was asked.
+- Kept out of the bar. On the Mac it is a "Jamie" section in the device
+  menu (the chevron beside the microphone or camera), shown only while
+  Jamie is on the call; on the iPhone, a long press on Jamie's tile. On
+  both, Jamie's tile shows the muted mark while its voice is off.
+- Not here: starting with the voice on, or a call with Jamie alone and no
+  wake word. Both need Hive and sphinx-voice (a flag in the dispatch).
+- Checked: `swift test` (the toggle's JSON is what sphinx-voice's
+  `typeof msg.enabled === 'boolean'` needs; who is Jamie and when it
+  speaks), and the Mac app builds. The iPhone app compiled and linked
+  against the v0.8.39 iOS slices, with stubs for v0.8.40's two push-token
+  symbols in a scratch copy: there are no v0.8.40 iOS slices on this Mac.
+  Not checked on a live call.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

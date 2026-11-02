@@ -486,10 +486,16 @@ private struct CallControls: View {
                 ? [.view(AnyView(Text("None found").font(Theme.font(13)).foregroundStyle(Theme.secondaryText).padding(.horizontal, 33).padding(.vertical, Theme.Space.xs)))]
                 : devices.map { device in .button(device.name, checked: device.id == chosen) { choose(device.id) } })
         }
+        // Jamie's voice, for the whole call, while Jamie is on it.
+        let speaks = call.jamieSpeaks
+        let jamie: [MenuEntry] = call.jamieInCall
+            ? [.header("Jamie"), .button("Speak replies aloud", checked: speaks) { call.setJamieSpeaks(!speaks) }]
+            : []
         let entries = [MenuEntry].sections(
             section("Microphone", call.microphones, chosen: call.microphone, choose: call.chooseMicrophone),
             section("Speaker", call.speakers, chosen: call.speaker, choose: call.chooseSpeaker),
-            section("Camera", call.cameras, chosen: call.camera, choose: call.chooseCamera)
+            section("Camera", call.cameras, chosen: call.camera, choose: call.chooseCamera),
+            jamie
         )
         presenter?.show(entries, at: anchor, source: "call-devices", minWidth: 268)
     }

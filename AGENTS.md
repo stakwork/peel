@@ -173,8 +173,9 @@ is a short plan. Update the status and the journal when you finish something.
     `PaymentHistory.swift` keeps its own)
   - `CallChat.swift` — the call's chat without LiveKit: `CallChatMessage`,
     `CallChatWire` (the `lk-chat-topic` JSON: messages, Jamie's status rows,
-    `mentionsJamie`) and `CallChatLog` (rows capped at 500, deduped, Jamie
-    thinking); tested in `CallChatTests`
+    `mentionsJamie`; who Jamie is, `isJamie`, and its voice, `jamieSpeaks`
+    and the `voice(on:)` toggle) and `CallChatLog` (rows capped at 500,
+    deduped, Jamie thinking); tested in `CallChatTests`
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one

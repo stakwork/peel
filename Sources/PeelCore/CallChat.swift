@@ -129,6 +129,31 @@ public enum CallChatWire {
     public static func mentionsJamie(_ text: String) -> Bool {
         text.range(of: #"(?i)(^|\s)@jamie\b"#, options: .regularExpression) != nil
     }
+
+    /// Whether a participant is Jamie, the call's voice agent: named Jamie,
+    /// with the `tts` attribute sphinx-voice sets once it joins. Without the
+    /// attribute it is a person who happens to be called Jamie.
+    public static func isJamie(name: String?, attributes: [String: String]) -> Bool {
+        name?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Jamie") == .orderedSame
+            && attributes["tts"] != nil
+    }
+
+    /// Whether Jamie says its replies aloud, as its `tts` attribute has it.
+    /// sphinx-voice starts every call with it `off`.
+    public static func jamieSpeaks(_ attributes: [String: String]) -> Bool {
+        attributes["tts"] == "on"
+    }
+
+    /// Turns Jamie's voice on or off for the whole call:
+    /// `{"type":"tts-toggle","enabled":…}`, which sphinx-voice answers by
+    /// setting its `tts` attribute. `decode` never reads it as a message.
+    public static func voice(on: Bool) -> Data {
+        struct Toggle: Encodable {
+            let type: String
+            let enabled: Bool
+        }
+        return (try? JSONEncoder().encode(Toggle(type: "tts-toggle", enabled: on))) ?? Data()
+    }
 }
 
 /// A call's chat as a value: the rows in order, what Jamie is doing, and the

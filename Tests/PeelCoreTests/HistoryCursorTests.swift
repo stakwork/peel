@@ -167,16 +167,27 @@ struct HistoryCursorTests {
     /// messages run waits for the contacts run to end.
     @Test func aRestoreQueuesMessagesBehindContacts() throws {
         let runs = HistoryCursor.plan(counts(total: 30, highest: 31, keys: 2, keysHighest: 11))
-        #expect(runs == [Run(phase: .contacts, next: 0, end: 11), Run(phase: .messages, next: 0, end: 31)])
+        #expect(runs == [Run(phase: .contacts, next: 0, end: 11, total: 2), Run(phase: .messages, next: 0, end: 31)])
         var cursor = HistoryCursor()
         let started = cursor.start(runs)
         #expect(started == runs[0])
         #expect(cursor.queued == [runs[1]])
         let page = try advance(&cursor, [11], total: nil)
-        #expect(page.progress == HistoryCursor.Progress(phase: .contacts, reached: 11, end: 11))
+        #expect(page.progress == HistoryCursor.Progress(phase: .contacts, reached: 1, end: 2))
         #expect(page.step == .request(runs[1]))
         #expect(cursor.active == runs[1])
         #expect(cursor.queued.isEmpty)
+    }
+
+    /// Contacts progress counts items, not server indices, clamped to the total.
+    @Test func contactsProgressCountsItemsNotIndices() throws {
+        var cursor = HistoryCursor()
+        _ = cursor.start([Run(phase: .contacts, next: 0, end: 1000, total: 3)])
+        let first = try advance(&cursor, [100, 200], total: nil)
+        #expect(first.progress == HistoryCursor.Progress(phase: .contacts, reached: 2, end: 3))
+        let second = try advance(&cursor, [300, 400], total: nil)
+        #expect(second.progress == HistoryCursor.Progress(phase: .contacts, reached: 3, end: 3))
+        #expect(cursor.active?.next == 401)
     }
 
     /// A run started while another is in flight waits its turn.
@@ -216,9 +227,9 @@ struct HistoryCursorTests {
         _ = cursor.advance(indices: [4], total: nil)
         let early = cursor.stalled(at: 0)
         #expect(early == nil)
-        #expect(cursor.active == Run(phase: .contacts, next: 5, end: 11))
+        #expect(cursor.active == Run(phase: .contacts, next: 5, end: 11, total: 2, fetched: 1))
         let stalled = cursor.stalled(at: 5)
-        #expect(stalled == Run(phase: .contacts, next: 5, end: 11))
+        #expect(stalled == Run(phase: .contacts, next: 5, end: 11, total: 2, fetched: 1))
         #expect(cursor.active == nil)
         #expect(cursor.queued.isEmpty)
         #expect(!cursor.isSyncing)

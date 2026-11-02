@@ -221,8 +221,11 @@ whatever metadata the joiner sends. So a paired Peel asks Hive for its
 ticket instead.
 
 - **Which calls.** A room Hive made, `sphinx.call.-<host>-.<stamp>`
-  (`CallLink.isHive`): Peel's own rooms and the apps' never start with
-  `-`. A plain call in a DM never reaches Hive.
+  (`CallLink.isHive`, the whole shape): Peel's own rooms and the apps'
+  never start with `-`. A plain call in a DM never reaches Hive.
+- **How long.** 5 s for Hive to answer, then the call server: a Hive that
+  is down never holds a join for long. A join given up meanwhile stays
+  given up.
 - **The request.** `POST /api/strut-devices/calls/ticket { room,
   participantName, metadata? }` with the device credential
   (`HiveClient.callTicket`): the same name and photo the call server would
@@ -244,6 +247,13 @@ ticket instead.
   (`Stadeum.callTicket`), `CallStore.join` hands one to the other
   (`CallStore.hiveTicket`, wired by `AppModel`). The CLI's `call-ticket`
   asks the call server only.
+
+Review (2026-11-02, /code-review): fixed the cancel (URLSession's own
+error was taken for a failure), the 30 s wait (now 5 s) and a prefix-only
+room check. Not applied: a 401 here does not mark Stadeum revoked (its
+renewal does); a misconfigured Hive is only an error kind in the ring (the
+join still works, and the ring keeps no words); AppModel's three-line
+wiring has no test of its own (a real join is its owner).
 
 Done when: a Hive room's join asks Hive first and uses its ticket, any
 failure falls back to the call server, another room never asks Hive, and

@@ -29,7 +29,9 @@ public struct CallLink: Sendable, Equatable {
     /// `LIVEKIT_CALL_BASE_URL`): only then is Hive asked for the ticket
     /// (`Engine.callTicket(for:in:hive:)`). Peel's own rooms and the apps'
     /// never start with `-`.
-    public var isHive: Bool { room.hasPrefix(Self.roomPrefix + "-") }
+    public var isHive: Bool {
+        room.hasPrefix(Self.roomPrefix + "-") && room.range(of: #"-\.[0-9]+(\.[0-9]+)?$"#, options: .regularExpression) != nil
+    }
     /// `server` as a URL: https, or http for this machine.
     private let base: URL
 

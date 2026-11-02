@@ -412,7 +412,8 @@ public struct HiveClient: Sendable {
     ) async throws -> HiveCallTicket {
         var body = ["room": room, "participantName": participantName]
         if let metadata { body["metadata"] = metadata }
-        let (status, data) = try await request("POST", "api/strut-devices/calls/ticket", body, bearer: link.credential)
+        // Short: every second spent here is a second before the join falls back to the call server.
+        let (status, data) = try await request("POST", "api/strut-devices/calls/ticket", body, bearer: link.credential, timeout: 5)
         guard status == 200 else { throw Self.failure(status, data, couldNot: "give a call ticket") }
         guard let ticket = try? JSONDecoder.hive.decode(HiveCallTicket.self, from: data) else {
             throw PeelError("Stadeum's call ticket could not be read.")
@@ -560,14 +561,16 @@ public struct HiveClient: Sendable {
     }
 
     private func request(
-        _ method: String, _ path: String, _ body: [String: String]?, bearer: String? = nil
+        _ method: String, _ path: String, _ body: [String: String]?, bearer: String? = nil, timeout: TimeInterval = 30
     ) async throws -> (Int, Data) {
-        try await request(method, path, json: try body.map { try JSONEncoder.hive.encode($0) }, bearer: bearer)
+        try await request(method, path, json: try body.map { try JSONEncoder.hive.encode($0) }, bearer: bearer, timeout: timeout)
     }
 
-    private func request(_ method: String, _ path: String, json: Data?, bearer: String?) async throws -> (Int, Data) {
+    private func request(
+        _ method: String, _ path: String, json: Data?, bearer: String?, timeout: TimeInterval = 30
+    ) async throws -> (Int, Data) {
         try await Web.requestStrut(method, hive.appending(path: path), json: json,
-                                   bearer: bearer, limit: Self.limit, what: "Stadeum", timeout: 30)
+                                   bearer: bearer, limit: Self.limit, what: "Stadeum", timeout: timeout)
     }
 
     private static func failure(_ status: Int, _ data: Data, couldNot what: String) -> PeelError {

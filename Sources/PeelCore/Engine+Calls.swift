@@ -69,9 +69,10 @@ extension Engine {
             do {
                 let answer = try await hive(link.room, name, photo.flatMap(CallServer.metadata(photoURL:)))
                 return try await server.ticket(fromHive: answer, room: link.room, participantName: name)
-            } catch is CancellationError {
-                throw CancellationError()
             } catch {
+                // A join given up while Hive answered stays given up; URLSession
+                // reports that as its own error, not a CancellationError.
+                try Task.checkCancellation()
                 Diagnostics.note(error: error)
             }
         }

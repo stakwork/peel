@@ -387,7 +387,7 @@ struct CallTicketFromHiveTests {
     }
 
     /// Peel's own rooms and the apps' are never told to Hive.
-    @Test(arguments: [room, "sphinx.call.1729000000.512"])
+    @Test(arguments: [room, "sphinx.call.1729000000.512", "sphinx.call.-not-a-hive-room"])
     func anotherRoomNeverAsksHive(other: String) async throws {
         let stub = try await callServer(room: other)
         defer { stub.stop() }
@@ -413,9 +413,15 @@ struct CallTicketFromHiveTests {
         let engine = try await engine(callServer: stub.port, profile)
         let link = try #require(CallLink(link: "http://127.0.0.1:\(stub.port)/rooms/\(Self.hiveRoom)", server: "127.0.0.1:\(stub.port)"))
 
-        await #expect(throws: CancellationError.self) {
-            try await engine.callTicket(for: link, in: nil) { _, _, _ in throw CancellationError() }
+        let join = Task {
+            try await engine.callTicket(for: link, in: nil) { _, _, _ in
+                try await Task.sleep(for: .seconds(30))
+                throw PeelError("Stadeum could not give a call ticket.")
+            }
         }
+        try await Task.sleep(for: .milliseconds(50))
+        join.cancel()
+        await #expect(throws: CancellationError.self) { try await join.value }
         #expect(stub.requests.isEmpty)
     }
 }

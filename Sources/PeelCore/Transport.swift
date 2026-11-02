@@ -10,9 +10,28 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
     public var host: String
     public var port: Int
     public var tls: Bool
+    /// Whether MQTT runs over a WebSocket (`ws://`, `wss://`), as through
+    /// networks that let only the web's ports out.
+    public var webSocket = false
+    /// The WebSocket's URL path; unused unless `webSocket`.
+    public var path = Self.defaultPath
+
+    public static let defaultPath = "/mqtt"
+    /// The port `wss://` takes when none is given.
+    public static let webSocketPort = 443
+
+    init(host: String, port: Int, tls: Bool, webSocket: Bool = false, path: String = ServerAddress.defaultPath) {
+        self.host = host
+        self.port = port
+        self.tls = tls
+        self.webSocket = webSocket
+        self.path = path
+    }
 
     /// Parses "host:port" with an optional scheme. TLS is on unless the scheme is
-    /// `mqtt://` or the host is this machine.
+    /// `mqtt://` or the host is this machine. `wss://host[:port][/path]` is MQTT
+    /// over a secure WebSocket (port 443, path `/mqtt` unless given); `ws://` is
+    /// the same in the clear and only for this machine.
     public init?(_ string: String) {
         var rest = string.trimmingCharacters(in: .whitespacesAndNewlines)
         var scheme: String?
@@ -20,16 +39,34 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
             scheme = rest[..<range.lowerBound].lowercased()
             rest = String(rest[range.upperBound...])
         }
+        let isWebSocket = scheme == "ws" || scheme == "wss"
+        if isWebSocket, let slash = rest.firstIndex(of: "/") {
+            let urlPath = String(rest[slash...])
+            guard !urlPath.contains(where: \.isWhitespace) else { return nil }
+            path = urlPath
+            rest = String(rest[..<slash])
+        } else if rest.contains("/") {
+            return nil
+        }
         let parts = rest.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 2, !parts[0].isEmpty, let port = Int(parts[1]) else {
+        guard !parts.isEmpty, parts.count <= 2, !parts[0].isEmpty else { return nil }
+        if parts.count == 2 {
+            guard let port = Int(parts[1]) else { return nil }
+            self.port = port
+        } else if scheme == "wss" {
+            port = Self.webSocketPort
+        } else {
             return nil
         }
         host = String(parts[0])
-        self.port = port
+        webSocket = isWebSocket
         switch scheme {
         case nil: tls = !Self.isLoopback(host: host)
-        case "mqtts", "ssl", "tls": tls = true
+        case "mqtts", "ssl", "tls", "wss": tls = true
         case "mqtt", "tcp": tls = false
+        case "ws":
+            guard Self.isLoopback(host: host) else { return nil }
+            tls = false
         default: return nil
         }
     }
@@ -52,7 +89,28 @@ public struct ServerAddress: Sendable, Equatable, CustomStringConvertible {
     }
 
     /// Round-trips through `init`, so what is stored keeps its TLS setting.
-    public var description: String { "\(tls ? "mqtts" : "mqtt")://\(host):\(port)" }
+    public var description: String {
+        if webSocket { return "\(tls ? "wss" : "ws")://\(host):\(port)\(path)" }
+        return "\(tls ? "mqtts" : "mqtt")://\(host):\(port)"
+    }
+
+    /// The route for networks that let only the web's ports out: secure
+    /// WebSocket on 443, same host. Derived when connecting and never stored
+    /// (so `agentAccount` still sees the address as named). Only for a TLS
+    /// address off this machine, and none for one that is already a WebSocket.
+    var fallback: ServerAddress? {
+        guard tls, !webSocket, !Self.isLoopback(host: host) else { return nil }
+        return ServerAddress(host: host, port: Self.webSocketPort, tls: true, webSocket: true)
+    }
+
+    /// The routes to try, in order. The address as named comes first, except
+    /// that when the fallback was the last to work it comes first, unless
+    /// `probingPrimary` asks to check whether the named one works again.
+    func routes(lastWorked: ServerAddress? = nil, probingPrimary: Bool = false) -> [ServerAddress] {
+        guard let fallback else { return [self] }
+        if let lastWorked, lastWorked == fallback, !probingPrimary { return [fallback, self] }
+        return [self, fallback]
+    }
 }
 
 struct Inbound: Sendable {
@@ -119,7 +177,8 @@ final class Transport: Sendable {
                 userName: username,
                 password: password,
                 useSSL: server.tls,
-                tlsConfiguration: tls
+                tlsConfiguration: tls,
+                webSocketConfiguration: server.webSocket ? .init(urlPath: server.path) : nil
             )
         )
         self.client = client

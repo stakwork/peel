@@ -25,6 +25,9 @@ public actor Engine {
     var photoURL: String
     var server: ServerAddress?
     private var allowUntrustedCertificate = false
+    /// The route the last connection came by, and when the named one was last tried (see `connectFirstRoute`).
+    private var lastRoute: ServerAddress?
+    private var primaryProbedAt: ContinuousClock.Instant?
 
     private(set) var state: [String: Data]
     var clock: UniqueClock
@@ -318,6 +321,41 @@ public actor Engine {
         emit.finish()
     }
 
+    /// How long the fallback route is kept first before the named one is tried again.
+    static let primaryProbeInterval: Duration = .seconds(300)
+
+    /// Connects by the first of the server's routes that answers (see
+    /// `ServerAddress.routes`), signing a fresh login for each, with full
+    /// certificate verification on every one. Throws the last route's error
+    /// when none does; the caller's backoff applies after that.
+    private func connectFirstRoute(of server: ServerAddress, xpub: String) async throws -> Transport {
+        let now = ContinuousClock.now
+        let probe = primaryProbedAt.map { now - $0 >= Self.primaryProbeInterval } ?? true
+        let routes = server.routes(lastWorked: lastRoute, probingPrimary: probe)
+        if routes.first == server { primaryProbedAt = now }
+        var failure: Error = Failure.noServer
+        for route in routes {
+            let loginTime = clock.next()
+            let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
+            let transport = Self.connectingForTesting ?? Transport(
+                server: route, clientID: xpub, username: loginTime, password: signature,
+                allowUntrustedCertificate: allowUntrustedCertificate
+            )
+            do {
+                try await transport.connect()
+                // Closed or disconnected while connecting.
+                if closed || Task.isCancelled { throw CancellationError() }
+                lastRoute = route
+                return transport
+            } catch {
+                await transport.close()
+                if error is CancellationError || closed || Task.isCancelled { throw error }
+                failure = error
+            }
+        }
+        throw failure
+    }
+
     private func establish() async throws {
         guard let server else { throw Failure.noServer }
         // A signup whose registration was never confirmed registers with
@@ -329,20 +367,7 @@ public actor Engine {
         do {
             try await run { _, _ in try Sphinxrs.setNetwork(network: network) }
             let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
-            let loginTime = clock.next()
-            let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-            let transport = Self.connectingForTesting ?? Transport(
-                server: server, clientID: xpub, username: loginTime, password: signature,
-                allowUntrustedCertificate: allowUntrustedCertificate
-            )
-            do {
-                try await transport.connect()
-                // Closed or disconnected while connecting.
-                if closed || Task.isCancelled { throw CancellationError() }
-            } catch {
-                await transport.close()
-                throw error
-            }
+            let transport = try await connectFirstRoute(of: server, xpub: xpub)
             self.transport = transport
             listener = Task { [weak self] in
                 for await message in transport.inbound {

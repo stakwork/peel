@@ -218,7 +218,8 @@ struct StadeumTests {
 
         /// The kept link, due for renewal.
         func due() throws {
-            var link = try #require(HiveLink.read(from: profile.hive))
+            let stored = try HiveLink.read(from: profile.hive)
+            var link = try #require(stored)
             link.renewedAt = Date(timeIntervalSinceNow: -2 * 24 * 3600)
             try link.write(to: profile.hive)
         }

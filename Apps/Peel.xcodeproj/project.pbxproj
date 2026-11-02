@@ -274,14 +274,6 @@
 		};
 /* End PBXNativeTarget section */
 
-/* Begin PBXTargetDependency section */
-		B50000000000000000000C01 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = B50000000000000000000601 /* PeelNotificationService */;
-			targetProxy = B50000000000000000000A01 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin PBXProject section */
 		B20000000000000000000001 /* Project object */ = {
 			isa = PBXProject;
@@ -380,6 +372,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B50000000000000000000C01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B50000000000000000000601 /* PeelNotificationService */;
+			targetProxy = B50000000000000000000A01 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B20000000000000000000802 /* Debug */ = {
@@ -573,7 +573,7 @@
 				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 8297M44YTW;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = iOS/NotificationService-Info.plist;
+				INFOPLIST_FILE = "iOS/NotificationService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Peel Notifications";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -601,7 +601,7 @@
 				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 8297M44YTW;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = iOS/NotificationService-Info.plist;
+				INFOPLIST_FILE = "iOS/NotificationService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Peel Notifications";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (

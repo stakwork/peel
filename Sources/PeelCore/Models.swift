@@ -8,6 +8,12 @@ import GRDB
 public enum Setting: String, Sendable {
     case network
     case server
+    /// The route the last connection came by when it was the server's
+    /// WebSocket fallback (`ServerAddress.fallback`, as its description);
+    /// "" when it was the server as named. Read at the first connect, so a
+    /// relaunch on a network that blocks the MQTT port starts with the
+    /// route that worked there.
+    case lastRoute
     case deviceID
     case alias
     case photoURL

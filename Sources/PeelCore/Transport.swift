@@ -121,6 +121,9 @@ struct Inbound: Sendable {
 /// One MQTT connection. The login is a signed timestamp, so a connection is never
 /// reused: reconnecting means signing a fresh timestamp and making a new Transport.
 final class Transport: Sendable {
+    /// The largest WebSocket frame taken from the broker (16 MB).
+    static let webSocketMaxFrameSize = 1 << 24
+
     private let client: MQTTClient
     /// When the broker last sent anything; see `answersPing`.
     private let lastHeard: LastHeard
@@ -179,7 +182,11 @@ final class Transport: Sendable {
                 useSSL: server.tls,
                 useWebSockets: server.webSocket,
                 tlsConfiguration: tls,
-                webSocketURLPath: server.webSocket ? server.path : nil
+                webSocketURLPath: server.webSocket ? server.path : nil,
+                // A page of history or a large message is one frame, well
+                // over the client's 16 KB default, which closes the
+                // WebSocket as soon as one arrives.
+                webSocketMaxFrameSize: Self.webSocketMaxFrameSize
             )
         )
         self.client = client

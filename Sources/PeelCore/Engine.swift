@@ -28,6 +28,8 @@ public actor Engine {
     /// The route the last connection came by, and when the named one was last tried (see `connectFirstRoute`).
     private var lastRoute: ServerAddress?
     private var primaryProbedAt: ContinuousClock.Instant?
+    /// `Setting.lastRoute` has been read, at the first connect.
+    private var lastRouteRead = false
 
     private(set) var state: [String: Data]
     var clock: UniqueClock
@@ -323,37 +325,142 @@ public actor Engine {
 
     /// How long the fallback route is kept first before the named one is tried again.
     static let primaryProbeInterval: Duration = .seconds(300)
+    /// How long a route has to connect before the next one is tried beside
+    /// it. A network that drops the MQTT port lets a connect hang for the
+    /// client's whole timeout (10 s); this caps that wait. A working route
+    /// connects well within it.
+    static let nextRouteAfter: Duration = .milliseconds(1500)
+
+    /// What happens while the routes race (`connectFirstRoute`).
+    private enum RouteEvent: Sendable {
+        case finished(Int, Result<Void, Error>)
+        case startNext
+    }
 
     /// Connects by the first of the server's routes that answers (see
     /// `ServerAddress.routes`), signing a fresh login for each, with full
-    /// certificate verification on every one. Throws the last route's error
-    /// when none does; the caller's backoff applies after that.
+    /// certificate verification on every one. Each route has
+    /// `nextRouteAfter` to connect before the next starts beside it, and the
+    /// next starts at once when one fails; the first to connect is kept and
+    /// the others are closed once their connects end. Throws the last
+    /// route's error when none connects; the caller's backoff applies then.
     private func connectFirstRoute(of server: ServerAddress, xpub: String) async throws -> Transport {
+        if !lastRouteRead {
+            lastRouteRead = true
+            // A route stored for another server, or one that is no longer a
+            // fallback, is ignored.
+            if let stored = try? storage.value(for: .lastRoute), let route = ServerAddress(stored),
+               route == server.fallback {
+                lastRoute = route
+                // Kept first for a while before the named route is tried again.
+                primaryProbedAt = ContinuousClock.now
+            }
+        }
         let now = ContinuousClock.now
         let probe = primaryProbedAt.map { now - $0 >= Self.primaryProbeInterval } ?? true
         let routes = server.routes(lastWorked: lastRoute, probingPrimary: probe)
         if routes.first == server { primaryProbedAt = now }
-        var failure: Error = Failure.noServer
+
+        if let testing = Self.connectingForTesting {
+            try await testing.connect()
+            if closed || Task.isCancelled { throw CancellationError() }
+            return testing
+        }
+
+        var transports: [Transport] = []
         for route in routes {
             let loginTime = clock.next()
             let signature = try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)
-            let transport = Self.connectingForTesting ?? Transport(
+            transports.append(Transport(
                 server: route, clientID: xpub, username: loginTime, password: signature,
                 allowUntrustedCertificate: allowUntrustedCertificate
-            )
-            do {
-                try await transport.connect()
-                // Closed or disconnected while connecting.
-                if closed || Task.isCancelled { throw CancellationError() }
-                lastRoute = route
-                return transport
-            } catch {
-                await transport.close()
-                if error is CancellationError || closed || Task.isCancelled { throw error }
-                failure = error
+            ))
+        }
+
+        let (events, sink) = AsyncStream.makeStream(of: RouteEvent.self)
+        var attempts: [Task<Result<Void, Error>, Never>] = []
+        var timer: Task<Void, Never>?
+        func start(_ index: Int) {
+            let transport = transports[index]
+            attempts.append(Task {
+                let result: Result<Void, Error>
+                do {
+                    try await transport.connect()
+                    result = .success(())
+                } catch {
+                    result = .failure(error)
+                }
+                sink.yield(.finished(index, result))
+                return result
+            })
+            timer?.cancel()
+            if index + 1 < transports.count {
+                timer = Task {
+                    try? await Task.sleep(for: Self.nextRouteAfter)
+                    if !Task.isCancelled { sink.yield(.startNext) }
+                }
             }
         }
-        throw failure
+
+        var winner: Int?
+        var failure: Error = Failure.noServer
+        var pending = 0
+        start(0)
+        pending += 1
+        for await event in events {
+            switch event {
+            case .startNext:
+                if attempts.count < transports.count {
+                    start(attempts.count)
+                    pending += 1
+                }
+            case .finished(let index, .success):
+                winner = index
+            case .finished(_, .failure(let error)):
+                pending -= 1
+                failure = error
+                if attempts.count < transports.count {
+                    start(attempts.count)
+                    pending += 1
+                }
+            }
+            if winner != nil || (pending == 0 && attempts.count == transports.count) { break }
+            if Task.isCancelled || closed { break }
+        }
+        timer?.cancel()
+        sink.finish()
+
+        // Every connect that is not kept is closed once it ends, connected or not.
+        for (index, attempt) in attempts.enumerated() where index != winner {
+            let transport = transports[index]
+            Task {
+                _ = await attempt.value
+                await transport.close()
+            }
+        }
+        guard let winner else {
+            if closed || Task.isCancelled { throw CancellationError() }
+            throw failure
+        }
+        let transport = transports[winner]
+        // Closed or disconnected while connecting.
+        if closed || Task.isCancelled {
+            await transport.close()
+            throw CancellationError()
+        }
+        rememberRoute(routes[winner], of: server)
+        return transport
+    }
+
+    /// Keeps the route that connected, in memory and in the profile, so the
+    /// next connect (after a relaunch too) starts with it.
+    private func rememberRoute(_ route: ServerAddress, of server: ServerAddress) {
+        guard route != lastRoute else { return }
+        lastRoute = route
+        let stored = route == server.fallback ? route.description : ""
+        if (try? storage.value(for: .lastRoute)) != stored {
+            try? storage.set(stored, for: .lastRoute)
+        }
     }
 
     private func establish() async throws {

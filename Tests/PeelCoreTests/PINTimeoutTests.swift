@@ -83,7 +83,8 @@ struct PINTimeoutTests {
     // MARK: Sync
 
     @Test func neverIsUploadedAs25() throws {
-        let storage = try TempProfile().storage()
+        let profile = TempProfile()
+        let storage = try profile.storage()
         try storage.setPreference(.pinTimeout, PINTimeout.officialHours(fromPeel: PINTimeout.never), at: Date(timeIntervalSince1970: 1000))
         #expect(try hours(storage) == PINTimeout.never)
         let server = try file(#"{"key":"x_future","identifier":"0","date":"9","value":"keep"}"#)
@@ -95,7 +96,8 @@ struct PINTimeoutTests {
     }
 
     @Test func aNewerFileItemIsTakenNearest() throws {
-        let storage = try TempProfile().storage()
+        let profile = TempProfile()
+        let storage = try profile.storage()
         try storage.setPreference(.pinTimeout, 24, at: Date(timeIntervalSince1970: 1000))
         let server = try file(item("8", at: 2000))
         let merge = server.merged(with: try storage.preferenceRows(), keys: Self.synced)
@@ -107,7 +109,8 @@ struct PINTimeoutTests {
     }
 
     @Test func anOlderFileItemDoesNotOverride() throws {
-        let storage = try TempProfile().storage()
+        let profile = TempProfile()
+        let storage = try profile.storage()
         try storage.setPreference(.pinTimeout, 12, at: Date(timeIntervalSince1970: 3000))
         let merge = try file(item("0", at: 2000)).merged(with: try storage.preferenceRows(), keys: Self.synced)
         #expect(merge.apply.isEmpty)
@@ -117,7 +120,8 @@ struct PINTimeoutTests {
     }
 
     @Test func aGarbageFileItemIsNotTaken() throws {
-        let storage = try TempProfile().storage()
+        let profile = TempProfile()
+        let storage = try profile.storage()
         try storage.setPreference(.pinTimeout, 4, at: Date(timeIntervalSince1970: 1000))
         let merge = try file(item("1.5", at: 2000)).merged(with: try storage.preferenceRows(), keys: Self.synced)
         #expect(try storage.applyPreferences(merge.apply.filter { $0.row.value != $0.expected?.value }) == 0)
@@ -125,7 +129,8 @@ struct PINTimeoutTests {
     }
 
     @Test func aDeviceWithoutTheOptInLeavesTheItemUntouched() throws {
-        let storage = try TempProfile().storage()
+        let profile = TempProfile()
+        let storage = try profile.storage()
         try storage.setPreference(.pinTimeout, 12, at: Date(timeIntervalSince1970: 9000))
         let items = item("8", at: 2000) + #","# + #"{"key":"x_future","identifier":"0","date":"9","value":"anything","note":"kept"}"#
         let server = try file(items)
@@ -139,8 +144,10 @@ struct PINTimeoutTests {
     }
 
     @Test func neverGoesAcrossAsTwentyFiveAndBackToNever() throws {
-        let phone = try TempProfile().storage()
-        let mac = try TempProfile().storage()
+        let phoneProfile = TempProfile()
+        let phone = try phoneProfile.storage()
+        let macProfile = TempProfile()
+        let mac = try macProfile.storage()
         try phone.setPreference(.pinTimeout, PINTimeout.officialHours(fromPeel: PINTimeout.never), at: Date(timeIntervalSince1970: 1000))
         let up = PreferencesFile().merged(with: try phone.preferenceRows(), keys: Self.synced)
         #expect(up.file.items.first?["value"] == .string("25"))

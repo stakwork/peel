@@ -409,7 +409,6 @@ struct MigrationTests {
             #"pin_timeout 0 "4" 0"#,
             #"timezone 02aa {"timezone_enabled":"false","timezone_identifier":""} 1760000000"#,
             #"timezone 02bb {"timezone_enabled":"true","timezone_identifier":"Asia/Bangkok"} 1760000100"#,
-            #"pin_timeout 0 "4" 0"#,
             #"tip_amount 0 "250" 0"#,
         ])
         #expect(try storage.preference(.boostAmountMsat) == 250_000)

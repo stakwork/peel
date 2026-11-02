@@ -75,7 +75,7 @@ public final class AppModel {
 
     /// What the sidebar has selected.
     public enum Destination: Hashable, Sendable {
-        case threads, mentions, automations, payments, account
+        case threads, segments, mentions, automations, payments, account
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
@@ -90,7 +90,7 @@ public final class AppModel {
 
     /// Account's categories, listed where the sidebar was while it is open.
     public enum AccountPage: Hashable, Sendable, CaseIterable {
-        case profile, payments, assistant, brain, connections, dictation, recording, notifications, security
+        case profile, payments, assistant, brain, connections, dictation, notifications, security
     }
 
     public var phase: Phase = .loading {

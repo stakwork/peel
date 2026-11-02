@@ -3,7 +3,7 @@ import SwiftUI
 import PeelCore
 import PeelUI
 
-/// Account › Segments: record your screen, the camera switch, and the
+/// Segments (the sidebar's row): record your screen, the camera switch, and the
 /// recordings made, each dragged into a chat to send it (docs/recording.md).
 struct RecordingSettingsSection: View {
     private var recording: RecordingController { .shared }
@@ -96,5 +96,26 @@ private struct RecordingRow: View {
         let captions = controller.captions[recording.url]
         let fits = sendable ? nil : "Too large to send in Peel"
         return [Formatting.dateAndTime(recording.created), size, captions, fits].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// The sidebar's Segments row: screen recording and your segments, in the detail column.
+struct SegmentsView: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            DetailHeader(title: "Segments")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    RecordingSettingsSection()
+                }
+                .frame(maxWidth: 640, alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 40)
+                .frame(maxWidth: .infinity)
+                .endsEditingOnClick()
+            }
+        }
+        .font(Theme.font(13))
     }
 }

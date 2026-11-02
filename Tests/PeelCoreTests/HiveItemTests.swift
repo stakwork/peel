@@ -58,7 +58,9 @@ struct HiveItemTests {
     @Test func aLinkStoredWithoutAPubkeyStillDecodes() throws {
         let item = MemoryItem()
         try link(pubkey: "02aa").write(to: item)
-        var json = try #require(JSONSerialization.jsonObject(with: try #require(item.value)) as? [String: Any])
+        let stored = try #require(item.value)
+        let object = try JSONSerialization.jsonObject(with: stored)
+        var json = try #require(object as? [String: Any])
         json["sphinxPubkey"] = nil
         try item.write(try JSONSerialization.data(withJSONObject: json))
         #expect(try HiveLink.read(from: item)?.sphinxPubkey == nil)

@@ -218,7 +218,7 @@ struct StadeumTests {
 
         /// The kept link, due for renewal.
         func due() throws {
-            var link = try #require(try HiveLink.read(from: profile.hive))
+            var link = try #require(HiveLink.read(from: profile.hive))
             link.renewedAt = Date(timeIntervalSinceNow: -2 * 24 * 3600)
             try link.write(to: profile.hive)
         }
@@ -374,8 +374,10 @@ struct StadeumTests {
         }
         #expect(titled.title == "Plan" && titled.workspace == "Acme")
         #expect(!"\(titled)".contains("jwt") && !"\(titled)".contains("Plan") && !String(reflecting: titled).contains("jwt"))
-        #expect(stadeum.opening(try #require(AgentArtifact.Handle(path: "/peers/globex/jobs/j/files/a.md"))) == .notPaired("globex"))
-        #expect(stadeum.opening(try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))) == .onMac)
+        let handle1 = try #require(AgentArtifact.Handle(path: "/peers/globex/jobs/j/files/a.md"))
+        #expect(stadeum.opening(handle1) == .notPaired("globex"))
+        let handle2 = try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))
+        #expect(stadeum.opening(handle2) == .onMac)
         #expect(stadeum.opening(WorkspaceApp(peer: nil, name: "mine", title: "Mine", about: nil)) == .onMac)
         stadeum.close()
     }
@@ -420,9 +422,12 @@ struct StadeumTests {
         try await stadeum.setJamie(nil, for: record)
         #expect(stadeum.jamiePick(of: tribe) == "" && stadeum.jamieOptions(for: tribe).map(\.id) == ["acme", ""])
 
-        #expect(stadeum.opensFromTribe(try #require(AgentArtifact.Handle(app: "@acme/board"))))
-        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/peers/initech/jobs/j/files/a.md"))))
-        #expect(!stadeum.opensFromTribe(try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))))
+        let handle3 = try #require(AgentArtifact.Handle(app: "@acme/board"))
+        #expect(stadeum.opensFromTribe(handle3))
+        let handle4 = try #require(AgentArtifact.Handle(path: "/peers/initech/jobs/j/files/a.md"))
+        #expect(!stadeum.opensFromTribe(handle4))
+        let handle5 = try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))
+        #expect(!stadeum.opensFromTribe(handle5))
         stadeum.close()
         #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
     }

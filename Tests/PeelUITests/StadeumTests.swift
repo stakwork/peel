@@ -255,6 +255,8 @@ struct StadeumTests {
         #expect(told.withLock { $0 } == 3 && other.identified)
         try due()
         let after = told.withLock { $0 }
+        // The pairing now belongs to that key, so a renewal that says Stadeum knows it asks nothing.
+        stadeum.sphinxProof = other.sphinxProof
         stadeum.open(profile, renewNow: false)
         await until { stadeum.link?.renewedAt ?? .distantPast > Date(timeIntervalSinceNow: -60) }
         try await Task.sleep(for: .milliseconds(200))

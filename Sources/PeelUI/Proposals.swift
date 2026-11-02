@@ -216,6 +216,13 @@ public final class ProposalWatch {
         return "This card opens for members of \(orgName(key.source) ?? id)."
     }
 
+    /// Who answers the card on a tribe's post (`KeptProposal.tribeDecider`):
+    /// the person strut's record says its turn ran as, by this person's
+    /// actor on its workspace; with none read, the tribe's owner.
+    public func tribeDecider(_ key: ProposalKey) -> TribeDecider {
+        kept[key]?.tribeDecider(actor: orgs().actor) ?? .owner
+    }
+
     /// A card on a tribe's post was opened: one still the post's stub is
     /// read from the workspace's strut now (`fillCard`).
     public func opened(_ key: ProposalKey) {

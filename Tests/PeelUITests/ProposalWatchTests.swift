@@ -7,7 +7,9 @@ import Testing
 /// The proposals' watch (`ProposalWatch`): what it keeps and draws, how it
 /// reads Peel's own strut's records and the workspaces' lists, and how it
 /// decides a workspace's as the person.
-@MainActor
+/// Each test a minute at most: one that stops answering fails by its name
+/// rather than holding up the whole run.
+@MainActor @Suite(.timeLimit(.minutes(1)))
 struct ProposalWatchTests {
     let profile = TempProfile()
 
@@ -184,8 +186,9 @@ struct ProposalWatchTests {
         #expect(watch.refused["acme"]?.hasPrefix("Acme no longer takes this device's token") == true && watch.unreachable.isEmpty)
         #expect(watch.orgCards.allSatisfy { $0.note == watch.refused["acme"] || $0.note == watch.notes[$0.key] })
         state.takeToken()
-        // A workspace that does not answer keeps what is shown and is marked.
-        strut.stop()
+        // A workspace that does not answer keeps what is shown and is marked. Its
+        // server stays up, failing: a stopped one's port may be handed to another test's.
+        state.silence()
         clock.advance(ProposalWatch.listEvery)
         await watch.tick()
         #expect(watch.unreachable == ["acme"] && watch.kept[a4] != nil)
@@ -435,7 +438,8 @@ struct ProposalWatchTests {
         #expect(ended.isOver && ended.post?.uuid == post && ended.record.card?.accept == "Install")
 
         // A strut that does not answer: tried again, longer apart, and never given up on.
-        strut.stop()
+        // Its server stays up, failing: a stopped one's port may be handed to another test's.
+        state.silence()
         let silent = ProposalKey(source: .org("acme"), id: "p-stub-9")
         watch.noticed(try Self.tribePost(uuid: uuid(43), in: tribe, proposals: Self.stub("p-stub-9"), at: t0 + 6_000))
         for _ in 0..<(ProposalWatch.givenUpAfter + 2) {
@@ -527,6 +531,55 @@ struct ProposalWatchTests {
         #expect(state.reads.isEmpty)
     }
 
+    /// Whose buttons a card on Jamie's post has (`TribeDecider`, docs/hive-tribes.md,
+    /// "Who is asking"): strut's record, read with the person's own token,
+    /// names who the turn ran as, and only they answer it, the tribe's owner
+    /// included, since Hive decides a reply from them alone; everyone else
+    /// is told whose it is, by name when the actor carries one. With no
+    /// record of strut's read (a post that carried its card), the owner's.
+    @Test func aTribesCardIsAnsweredByThePersonItsTurnRanAs() async throws {
+        let storage = try profile.storage()
+        let state = StrutState()
+        state.keep(record("p-ann", actor: "ann-lee-cm9", step: "package/install"))
+        state.keep(record("p-tom", actor: "tom-cm1", step: "package/install"))
+        state.keep(record("p-cm7", actor: "cm7", step: "package/install"))
+        let strut = try await HTTPStub { _, request in state.answer(String(request.prefix { $0 != "\r" }), body: "", json: Self.strutsRecord) }
+        defer { strut.stop() }
+        let watch = await makeWatch(storage)
+        let acme = HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)", token: "t", label: "Acme")
+        // No actor while the cards are read: no list to read, so the reads are the cards' alone.
+        watch.orgs = { ([acme], nil) }
+        let t0 = Int64(1_800_000_000_000)
+        for (n, id) in ["p-ann", "p-tom", "p-cm7"].enumerated() {
+            watch.noticed(try Self.tribePost(uuid: uuid(60 + n), in: "02tribe", proposals: Self.stub(id), at: t0 + Int64(n)))
+        }
+        watch.noticed(try Self.tribePost(uuid: uuid(63), in: "02tribe", proposals: Self.proposedEntries, at: t0 + 3))
+        await watch.tick()
+        let key = { (id: String) in ProposalKey(source: .org("acme"), id: id) }
+        #expect(["p-ann", "p-tom", "p-cm7"].allSatisfy { watch.kept[key($0)]?.record.isStrutsRecord == true })
+
+        watch.orgs = { ([acme], "ann-lee-cm9") }
+        // Ann, a member: hers is hers; the linker's is his, by name; one whose actor names no one, the asker's.
+        #expect(watch.tribeDecider(key("p-ann")) == .you && TribeDecider.you.answers(isOwner: false))
+        let toms = watch.tribeDecider(key("p-tom"))
+        #expect(toms == .someone("tom") && !toms.answers(isOwner: false) && toms.line == "tom's to decide.")
+        let unnamed = watch.tribeDecider(key("p-cm7"))
+        #expect(unnamed == .someone(nil) && unnamed.line == "The person who asked decides this.")
+        // A post with strut's card, never read: the owner's, as before.
+        let carded = watch.tribeDecider(key("p-install-1"))
+        #expect(carded == .owner && carded.answers(isOwner: true) && !carded.answers(isOwner: false))
+        #expect(carded.line == "The tribe's owner decides this.")
+
+        // Tom, the owner who linked the tribe: his own, and the post's card; Ann's is hers, not his.
+        watch.orgs = { ([acme], "tom-cm1") }
+        #expect(watch.tribeDecider(key("p-tom")) == .you)
+        let anns = watch.tribeDecider(key("p-ann"))
+        #expect(anns == .someone("ann-lee") && !anns.answers(isOwner: true) && anns.line == "ann-lee's to decide.")
+        // Not paired at all: no one is you.
+        watch.orgs = { ([], nil) }
+        #expect(watch.tribeDecider(key("p-tom")) == .someone("tom"))
+    }
+
     /// Your own reply in a post's thread.
     nonisolated private static func ownReply(_ text: String, uuid: String, in tribe: String, replyTo: String, at timestamp: Int64) -> Message {
         Message.fixture(uuid: uuid, chat: tribe, fromMe: true, content: text, timestamp: timestamp, replyUUID: replyTo, threadUUID: replyTo)
@@ -568,7 +621,7 @@ struct ProposalWatchTests {
             ? #","decision":{"action":"accept","by":"tom","at":"2026-10-31T10:05:00Z"},"result":{"at":"2026-10-31T10:05:03Z"}"# : ""
         return """
         {"id":"\(record.id)","step":"\(record.step)","title":"Install the package acme/linear","status":"\(record.status.rawValue)",
-         "by":{"workflow":"orchestrator","runId":"r1","actor":"tom"},"input":{"name":"\(record.id)"},"rationale":"You asked for Linear.",
+         "by":{"workflow":"orchestrator","runId":"r1"\(record.by.actor.map { #","actor":"\#($0)""# } ?? "")},"input":{"name":"\(record.id)"},"rationale":"You asked for Linear.",
          "card":{"v":1,"title":"Install the package acme/linear","fields":[{"label":"Runs code","value":"Yes","danger":true}],
                  "actions":{"accept":"Install","reject":"Don't install"},"full":true}\(ended)}
         """
@@ -613,6 +666,7 @@ struct ProposalWatchTests {
         private var hidden: [String: Int] = [:]
         private var held: Set<String> = []
         private var refusing = false
+        private var silent = false
         private var decided: [String] = []
         private var read: [String] = []
         var decisions: [String] { lock.withLock { decided } }
@@ -627,10 +681,14 @@ struct ProposalWatchTests {
         /// `id` applies after another proposal, still pending.
         func hold(_ id: String) { lock.withLock { held.insert(id) } }
         func refuseToken() { lock.withLock { refusing = true } }
+        /// Every request answered 503 from now on, as a strut that is down
+        /// behind its gateway: no answer the watch can use.
+        func silence() { lock.withLock { silent = true } }
         func takeToken() { lock.withLock { refusing = false } }
 
         func answer(_ line: String, body: String, json: (ProposalRecord) -> String) -> (Int, String) {
             lock.withLock {
+                if silent { return (503, #"{"error":"unavailable"}"#) }
                 if refusing { return (401, #"{"error":"unauthorized"}"#) }
                 if line.hasPrefix("GET /proposals?status=pending ") {
                     // As a strut from before #404 answers: everyone's.

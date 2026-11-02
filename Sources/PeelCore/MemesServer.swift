@@ -8,10 +8,14 @@ struct MemesServer: Sendable {
         case unreadableReply(String)
         /// An upload over the server's size limit (HTTP 413).
         case tooLarge
+        /// A sign-in challenge shorter than the server's own: its bytes, never signed.
+        case shortChallenge(Int)
 
         var description: String {
             switch self {
             case .tooLarge: "the file is too large for Peel to send"
+            case .shortChallenge(let count):
+                "the memes server asked to sign \(count) bytes, too few to be its own challenge; nothing was signed"
             case .unreadableHost(let host): "unreadable memes host \(host)"
             case .refused(let what, let status): "the memes server refused \(what) (HTTP \(status))"
             case .unreadableReply(let what): "the memes server's reply to \(what) was unreadable"
@@ -251,6 +255,16 @@ struct MemesServer: Sendable {
         let name = String(clean.drop(while: { $0 == "." || $0 == " " }).prefix(200))
         return name.nilIfEmpty
     }
+
+    /// The fewest bytes of a sign-in challenge Peel signs. The memes server
+    /// sends the unix time in decimal digits, 10 bytes (stakwork/sphinx-meme
+    /// `challenger.go`; the local stub, 32 random ones). The account key also
+    /// signs a Hive token, a 4-byte time (`Engine.sphinxProof`, which Hive
+    /// takes only at 4 + 65 bytes), with the same scheme, so a 4-byte
+    /// challenge could be one, asked for by a memes server to sign in to
+    /// Hive as this person. The real fix is Hive's: a token bound to its
+    /// purpose and audience.
+    static let minChallengeBytes = 8
 
     /// The challenge's bytes, read as the Mac app's `nonBase64Data` reads
     /// them: cut to a multiple of four characters, either base64 alphabet.

@@ -227,6 +227,9 @@ extension Engine {
         case amountTooLarge
         case notAMemberKey
         case memberNotWaiting
+        /// The tribes server did not confirm `showSenders`: one from before
+        /// the command knows nothing of it.
+        case sendersNotShown
         case alreadyAnswered
         case notPinnable
         case invalidPrice
@@ -344,6 +347,7 @@ extension Engine {
             case .amountTooLarge: "an amount is too large"
             case .notAMemberKey: "that is not a member's key"
             case .memberNotWaiting: "that member is not waiting for an answer"
+            case .sendersNotShown: "the tribes server did not confirm it; it may not tell a member who is speaking yet"
             case .alreadyAnswered: "that request has already been answered"
             case .notPinnable: "only a message the tribe has delivered can be pinned"
             case .invalidPrice: "a price must be from 1 to \(Engine.maxAttachmentPriceSats.formatted()) sats"

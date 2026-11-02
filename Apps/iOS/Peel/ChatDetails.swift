@@ -309,9 +309,10 @@ private struct TribeDetailsView: View {
 
 /// "Jamie", for the tribe's owner (docs/hive-tribes.md), as on the Mac
 /// (`TribeJamiePicker`): which of your Stadeum orgs answers `@jamie` here,
-/// as you, or No Jamie, as Hive has it; with no Jamie yet, the org the
-/// tribe's app or second brain is on, in one tap. Unpaired, Connect
-/// Stadeum pairs this iPhone from here.
+/// or No Jamie, as Hive has it; with no Jamie yet, the org the tribe's app
+/// or second brain is on, in one tap; once Jamie is in, whether it knows
+/// who is speaking, with your switch. Unpaired, Connect Stadeum pairs
+/// this iPhone from here.
 private struct TribeJamie: View {
     @Environment(AppModel.self) private var model
     let tribe: Tribe
@@ -335,6 +336,7 @@ private struct TribeJamie: View {
                 StadeumPairingCode(pairing: pairing)
             case .connected:
                 if let pick = stadeum.jamiePick(of: tribe.pubkey) {
+                    let seesSenders = model.jamieSeesSenders(in: tribe.pubkey)
                     PhoneCard {
                         HStack(spacing: Theme.Space.md) {
                             Text("Answers from").phoneFont(.row)
@@ -361,10 +363,17 @@ private struct TribeJamie: View {
                         .buttonStyle(.peel(.outline, size: .touch))
                         .disabled(picker.working)
                     }
+                    if let seesSenders {
+                        SwitchRow(label: TribeJamiePicker.showsSenders, detail: model.jamieMarkNotes[tribe.pubkey],
+                                  isOn: Binding(get: { seesSenders }, set: { on in
+                                      Task { await picker.showSenders(on, in: tribe, with: model) }
+                                  }))
+                            .disabled(picker.working)
+                    }
                     if let problem = picker.problem ?? model.othersJamie(in: tribe.pubkey) {
                         ProblemText(problem)
                     } else {
-                        note(TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum))
+                        note(TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum, seesSenders: seesSenders))
                     }
                 } else if let problem = stadeum.jamieProblem {
                     ProblemText(problem)

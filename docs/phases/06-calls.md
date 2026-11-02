@@ -1605,6 +1605,86 @@ stakwork/hive#5667.
 - Built and tested offline; the Mac and iPhone apps build. Not checked in
   the running app, nor against a Hive with the routes on.
 
+### Who is asking (2026-11-02)
+
+stakwork/sphinx `docs/tribe-sender-identity.md` §6: Peel's half, on
+sphinx-rs v0.8.41. Details in `../hive-tribes.md`, "Who is asking".
+
+- Done: the Sphinx key told to Stadeum after a pairing, once a launch and
+  after a renewal saying `sphinx: false` (`Stadeum.identify`,
+  `HiveClient.registerSphinx`, `Engine.sphinxProof` over the core's
+  `signedTimestamp`); Jamie marked with `ShowSenders` at linking and, once
+  per tribe, for tribes linked by an older Peel (`Engine.showSenders`,
+  `markSendersOnce`); the owner's switch and line; a tribe card's buttons
+  for the person strut's record names (`TribeDecider`).
+- Learned: the core writes the token in URL-safe base64 without padding,
+  which Hive reads; an older Hive's middleware turns the device credential
+  away with 401 on a path it does not know (as `startCall` notes), so a
+  missing route is a 401 or a 404; an older tribes server answers an
+  unknown command with nothing, so "cannot do it yet" is a 15-second
+  silence.
+- Open: the live check; members other than the owner cannot read the mark
+  (the server lists members to the owner alone); the command goes over the
+  tribes server's topic, not as an onion (`showSendersOnion`), like the
+  owner's other commands; the iPhone's part was not compiled with this
+  change (Mac-only core build).
+- Independent review (2026-11-01). Its /simplify cleanups are f660fde.
+  Fixed after it, each with a test:
+  - **The read marker stops short of a tribe's record** (f7cd796). Types
+    35–38 were dropped before they were stored, so `markRead` (the highest
+    stored index) and `isBehind` never reached past the signed record a
+    tribes server sends on a join and on each edit, and the official apps
+    and the mixer's push count showed the tribe unread. They are stored
+    again; the type lists keep them out of the timeline, unread counts,
+    notifications, previews, search and mentions.
+  - **The launch sweep ran before the connection** (11d0f79). On the Mac
+    `openHive` runs before `engine.start()`, so the first sweep's lists
+    failed with `notConnected` and the pairing was still recorded as swept.
+    The sweep (`JamieSweep`) now runs only while connected, also on each
+    `.connected` event, one at a time per pairing, and is recorded only
+    once it read every list (`SendersSweep.unread`).
+  - **Unlink unmarked before Hive answered** (7c9e9c5). Jamie is unmarked
+    only once Hive took the unlink (`Stadeum.setJamie` answers Jamie's
+    key); a refusal leaves it linked and marked, the switch on.
+  - **One slow list ended markJamie's minute** (1f05b4f). A list that does
+    not come is tried again as an empty one is; only the last try's
+    silence is thrown, so the sweep still counts it unread.
+  - **The mark held the tribe's change lock for 15 s** (df3f0a4). The
+    command goes under the lock and its answer is waited for outside it,
+    so an edit meanwhile is not refused; the launch sweep waits 3 s
+    (`Engine.sweepPatience`), so an old tribes server costs little.
+  - **Security, medium: a Hive login from a memes challenge**, Peel's half
+    (478b0f9). `memesSignIn` signed any `/ask` bytes with the account key,
+    the scheme a Hive token uses (a 4-byte time); a memes server that asked
+    for one got a Hive login as the person `registerSphinx` links. Peel now
+    signs no challenge under 8 bytes. Not 32, as the review proposed: the
+    real memes server's challenge is the unix time in decimal, 10 bytes
+    (stakwork/sphinx-meme `challenger.go`), so 32 would refuse every
+    sign-in; only the local stub sends 32 random bytes. The real fix is
+    Hive's, a follow-up there: a registration proof and a Sphinx sign-in
+    bound to their purpose and audience, not a bare timestamp, so no other
+    service's challenge can be one.
+- Found and not fixed, each with why:
+  - **The sweep undoes the owner's off.** `Setting.sendersMarked` is per
+    device, the mark is the tribe's: after the owner turns the switch off
+    on one device, another device's first launch with this build (or any
+    device after a restore) finds Jamie confirmed and unmarked and marks
+    it again, silently. The list cannot tell "never marked" from "turned
+    off"; the choice needs a shared home. Follow-up: the flag on Hive's
+    link record.
+  - **A 409 that says what to do is never asked again.** Hive's "unlink it
+    in Hive's settings first" is kept as `sphinxRefused` for the pairing,
+    so doing what it says changes nothing until the person pairs again.
+  - **An owner who disconnected Stadeum loses the buttons on their own
+    cards**: with no actor, strut's record names `.someone`.
+  - **A member's answer pays the tribe's price**: the card's answer is a
+    reply in the tribe, which costs its price per message, and the buttons
+    do not say so.
+  - Smaller: `identify` writes the link past `keep()`, so a renewal
+    answered before the registration overwrites `identified` and costs a
+    second POST; on the Mac `open` registers in parallel with the renewal
+    that would say whether it is needed.
+
 ## Shared screen at full size (2026-10-30)
 
 Tom found a shared screen soft and jumpy on the other end. The share was

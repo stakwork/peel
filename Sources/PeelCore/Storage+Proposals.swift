@@ -319,3 +319,52 @@ extension Storage {
         }
     }
 }
+
+/// Who answers a card on Jamie's post in a tribe (docs/hive-tribes.md, "Who
+/// is asking"): the person its turn ran as, by the actor strut's record
+/// names (`ProposalRecord.By.actor`, read with the person's own token),
+/// since Hive decides a reply only from them; with no record of strut's
+/// read, the tribe's owner, as Hive decides a turn that ran as the person
+/// who linked the tribe.
+public enum TribeDecider: Sendable, Equatable {
+    /// strut's record names this person: theirs, whoever owns the tribe.
+    case you
+    /// strut's record has not been read here: the owner's, as before a
+    /// tribe told Jamie who is speaking.
+    case owner
+    /// strut's record names someone else: their name, when their actor has one.
+    case someone(String?)
+
+    /// Whether the buttons are this viewer's (`isOwner`: they own the tribe).
+    public func answers(isOwner: Bool) -> Bool {
+        self == .you || (isOwner && self == .owner)
+    }
+
+    /// The line under the card for everyone it is not.
+    public var line: String {
+        switch self {
+        case .you, .owner: "The tribe's owner decides this."
+        case .someone(let name?): "\(name)'s to decide."
+        case .someone(nil): "The person who asked decides this."
+        }
+    }
+}
+
+extension KeptProposal {
+    /// Who answers it in its tribe, for a viewer whose actor on its
+    /// workspace is `actor` (`HiveLink.actor`): a post's own `by` is never
+    /// read, so only a record strut gave names anyone.
+    public func tribeDecider(actor: String?) -> TribeDecider {
+        guard record.isStrutsRecord, let by = record.by.actor, !by.isEmpty else { return .owner }
+        if let actor, by == actor { return .you }
+        return .someone(Self.person(ofActor: by))
+    }
+
+    /// The person a Hive actor names: the GitHub login before its user id
+    /// (`<login>-<id>`, Hive's `buildBifrostName`); nil for an id alone.
+    static func person(ofActor actor: String) -> String? {
+        guard let dash = actor.lastIndex(of: "-") else { return nil }
+        let name = TextLine.clean(String(actor[..<dash]), max: TextLine.maxName)
+        return name.isEmpty ? nil : name
+    }
+}

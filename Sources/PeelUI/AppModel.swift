@@ -428,6 +428,8 @@ public final class AppModel {
         }
         notifier.model = self
         proposals.orgs = { [weak self] in (self?.stadeum.live ?? [], self?.stadeum.link?.actor) }
+        stadeum.sphinxProof = { [weak self] in try await self?.engine?.sphinxProof() }
+        stadeum.opened = { [weak self] in self?.markLinkedJamies() }
         proposals.inFront = { [weak self] in self?.platform.presence.isFrontmost ?? false }
         calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
         calls.hiveCall = { [weak self] peer in
@@ -525,10 +527,15 @@ public final class AppModel {
     public private(set) var linkedTribes: [TribeLink: LinkedTribe] = [:]
     /// Each tribe's members as last read (`tribeMembers`), for the counts
     /// shown outside the Members panel (`TribeMembers.countLabel`).
-    public private(set) var knownMembers: [String: TribeMembers] = [:]
+    public internal(set) var knownMembers: [String: TribeMembers] = [:]
     @ObservationIgnored private var readingMembers: Set<String> = []
-    /// Jamie's approvals this session (`approveJamie`).
+    /// Jamie's approvals and marks this session (`approveJamie`, `markJamie`).
     @ObservationIgnored var jamieApprovals = JamieApprovals()
+    /// The sweep for the tribes an older Peel linked (`markLinkedJamies`).
+    @ObservationIgnored let jamieSweep = JamieSweep()
+    /// What marking Jamie to know who is speaking said this session, by
+    /// tribe, for its Jamie row (`markJamie`, `setJamieSeesSenders`).
+    public internal(set) var jamieMarkNotes: [String: String] = [:]
     /// The open tribe's pinned message, read from storage however old.
     public private(set) var pinnedMessage: Message?
     /// Invites made here by code, and those still waiting to be used,
@@ -1381,6 +1388,7 @@ public final class AppModel {
         tribes = [:]
         linkedTribes = [:]
         knownMembers = [:]
+        jamieMarkNotes = [:]
         invites = [:]
         pendingInvites = []
         focus = nil
@@ -1500,6 +1508,8 @@ public final class AppModel {
                 if state == .connected {
                     connectionError = nil
                     if notice != nil, notice == serverCheckNotice { notice = nil }
+                    // The tribes an older Peel linked: their lists need the connection.
+                    markLinkedJamies()
                 }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))

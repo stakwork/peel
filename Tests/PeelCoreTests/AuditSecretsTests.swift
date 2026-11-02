@@ -10,6 +10,44 @@ import Testing
 struct AuditSecretsTests {
     let profile = TempProfile()
 
+    // MARK: The account key's signatures
+
+    /// The account key signs a memes server's sign-in challenge with the
+    /// scheme a Hive token uses (`sign_message`), and a Hive token is a
+    /// 4-byte time (`Engine.sphinxProof`): a challenge shorter than 8 bytes
+    /// is refused before it is signed and nothing goes back, so a memes
+    /// server cannot ask for a Hive login as this person. The real server's
+    /// (the unix time in decimal, 10 bytes) and the local stub's (32
+    /// random bytes) sign and sign in as before.
+    @Test(arguments: [
+        Data([0x6B, 0x49, 0xD1, 0xE2]), Data(count: 7), Data("1793000000".utf8), Data((0..<32).map { UInt8($0) }),
+    ])
+    func aMemesChallengeTooShortToBeOneIsNeverSigned(bytes: Data) async throws {
+        let count = bytes.count
+        let challenge = MediaToken.base64URLEncode(bytes)
+        let memes = try await HTTPStub { _, request in
+            if request.hasPrefix("GET /ask ") { return (200, #"{"id":"c1","challenge":"\#(challenge)"}"#) }
+            if request.hasPrefix("POST /verify?") { return (200, #"{"token":"e30.e30.sig"}"#) }
+            return (404, "{}")
+        }
+        defer { memes.stop() }
+        let storage = try registeredStorage(profile)
+        try storage.set("127.0.0.1:\(memes.port)", for: .memesHost)
+        let engine = try testEngine(storage)
+        let server = try await engine.memesServer()
+        if count < MemesServer.minChallengeBytes {
+            await #expect(throws: MemesServer.Failure.self) { try await engine.withMemes(server) { $0.value } }
+            #expect(memes.requests.count == 1 && !memes.requests.contains { $0.hasPrefix("POST /verify") })
+            #expect(PeelError.readable(MemesServer.Failure.shortChallenge(count))
+                == "the memes server asked to sign \(count) bytes, too few to be its own challenge; nothing was signed")
+        } else {
+            #expect(try await engine.withMemes(server) { $0.value } == "e30.e30.sig")
+            let verify = try #require(memes.requests.first { $0.hasPrefix("POST /verify?") })
+            let key = await engine.accountKey
+            #expect(verify.contains("id=c1&sig=") && verify.contains("&pubkey=\(key)"))
+        }
+    }
+
     // MARK: The PIN box
 
     /// Each seal derives a key (about 0.4 s), so the box is opened sparingly.

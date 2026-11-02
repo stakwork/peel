@@ -177,11 +177,14 @@ their delegation, their access. Anyone else asks with the owner's, as before.
   alone), so it shows nothing of the mark, nor do the official apps.
 - **Types 35–38.** An upgraded tribes server sends its signed record (35)
   on a join and on every change, and a marked member `SentBy` (38); 36 and
-  37 are commands and answers as onions. `Engine.commit` drops all four
-  before they are stored (`MessageType.tribeServerTypes`): before, Peel
-  stored a row for each, though no timeline or unread count showed it.
-  Peel reads none of them yet (the record and link v3 are the sovereign
-  tribes work).
+  37 are commands and answers as onions. Each is stored as every type is,
+  so the read marker (`Engine.markRead`, the highest stored index) and
+  `isBehind` reach past it: the server's marker is what the official apps
+  and the mixer's push count read, and one left behind a record would
+  count the tribe unread there. The type lists keep them out of every
+  reader: no line (`shownInChats`), no unread or notification
+  (`unreadTypes`), no preview, search or mention (`content`). Peel reads
+  none of them yet (the record and link v3 are the sovereign tribes work).
 
 **Deliverables.** Jamie's replies carry `metadata` with
 `{ "strut": { workspace, artifacts } }`.
@@ -415,8 +418,9 @@ in `docs/testing.md`, "Proposal cards in a tribe".
   next launch, one marked already settled with no command, an unlink
   unsettling it; a server from before the command leaving it unmarked,
   `sendersNotShown`, and the next launch asking again.
-- `SenderTests`: types 35 and 38 never stored, live or from history, so no
-  line and no unread, the text beside them both.
+- `SenderTests`: types 35 and 38 stored, live or from history, yet no line,
+  no unread and no preview, the texts beside them all three; the read
+  marker reaching past the record.
 - `ProposalWatchTests`: whose a tribe's card is, by strut's record (the
   member's own, the linker's, an actor with no login) or with none read
   the owner's, and the line everyone else reads.

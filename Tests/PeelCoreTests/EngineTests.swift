@@ -638,25 +638,31 @@ struct SenderTests {
 
     /// What an upgraded tribes server sends that is no one's message: the
     /// tribe's signed record (type 35, on a join and on every change) and,
-    /// to a member the owner marked, who sent a message (type 38). Neither
-    /// is stored, so neither is a line in the chat nor unread, live or from
-    /// history; the member's text beside them is both.
-    @Test func aTribesRecordAndWhoSentAMessageAreNeverLinesNorUnread() async throws {
+    /// to a member the owner marked, who sent a message (type 38), live or
+    /// from history. Each is stored, so the read marker reaches past it (the
+    /// server's marker is what the official apps and push counts read);
+    /// it is no line, counts no unread and is no preview, while the
+    /// member's texts beside them are all three.
+    @Test func aTribesRecordAndWhoSentAMessageAreStoredButNeverLinesNorUnread() async throws {
         let club = "02c1ab"
         let storage = try profile.storage()
         try storage.save([Tribe(pubkey: club)])
         // A tribe the core knows, so its history is taken.
         _ = try storage.apply(Storage.Commit(state: registeredState.merging(coreContact(club, contactKey: nil)) { $1 }))
         let engine = try testEngine(storage)
-        let record = msg(1, claims: club, type: MessageType.tribeRecord, body: #"{"content":"{\"tribe\":{\"name\":\"Club\"}}"}"#)
         let sentBy = msg(2, claims: club, type: MessageType.sentBy, body: #"{"content":"{\"uuid\":\"u1\",\"pubkey\":\"\#(keyG)\"}"}"#)
-        _ = try await engine.commit(coreResult(msgs: [record, sentBy, msg(3, claims: club)]), time: "1", expectedSender: club)
-        _ = try await engine.commit(coreResult(msgs: [msg(4, claims: club, type: MessageType.sentBy), msg(5, claims: club)], msgsTotal: 5),
-                                    time: "2", expectedSender: nil)
-        #expect(try rows(profile, "SELECT uuid, type FROM message ORDER BY id").map { [$0["uuid"] as String, String($0["type"] as Int)] }
-            == [[uuid(3), "0"], [uuid(5), "0"]])
-        let states = try #require(try await first(storage.readStates()))
-        #expect(states[club]?.unread == 2)
+        _ = try await engine.commit(coreResult(msgs: [msg(1, claims: club), sentBy]), time: "1", expectedSender: club)
+        let record = msg(4, claims: club, type: MessageType.tribeRecord, body: #"{"content":"{\"tribe\":{\"name\":\"Club\"}}"}"#)
+        _ = try await engine.commit(coreResult(msgs: [msg(3, claims: club), record], msgsTotal: 4), time: "2", expectedSender: nil)
+        #expect(try rows(profile, "SELECT uuid, type FROM message ORDER BY serverIndex").map { [$0["uuid"] as String, String($0["type"] as Int)] }
+            == [[uuid(1), "0"], [uuid(2), "38"], [uuid(3), "0"], [uuid(4), "35"]])
+        #expect(try await first(storage.timeline(in: club))?.messages.map(\.uuid) == [uuid(1), uuid(3)])
+        #expect(try await first(storage.conversations())?.first { $0.chat == club }?.lastContent == "hi")
+        #expect(try await first(storage.readStates())?[club]?.unread == 2)
+        // Read: the marker is the record's, past the last text.
+        try await engine.markRead(club)
+        let read = try #require(try await first(storage.readStates())?[club])
+        #expect(read.lastRead == 4 && read.unread == 0)
     }
 
     /// A payment request asks for what its invoice says, whatever its JSON claims.

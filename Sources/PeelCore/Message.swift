@@ -477,13 +477,15 @@ public enum MessageType {
     /// tribe's signed record, which an upgraded server sends on a join and
     /// on every change; an owner's command and the server's answer as
     /// onions; and who sent a message it forwarded, to a member the owner
-    /// marked (Jamie). Peel reads none of them yet: `Engine.commit` drops
-    /// each before it is stored, so none is a line or counts as unread.
+    /// marked (Jamie). Peel reads none of them yet. Each is stored as every
+    /// type is, so a read marker (`Engine.markRead`, the highest stored
+    /// index) reaches past it, and the type lists keep it out of every
+    /// reader: no line (`shownInChats`), no unread or notification
+    /// (`unreadTypes`), no preview, search or mention (`content`).
     public static let tribeRecord = 35
     public static let tribeCommand = 36
     public static let tribeReply = 37
     public static let sentBy = 38
-    static let tribeServerTypes: Set<Int> = [tribeRecord, tribeCommand, tribeReply, sentBy]
     /// Someone adding this account: the first message of a key exchange,
     /// which the core answers on its own (type 11, `contactKeyConfirmation`).
     /// From someone who used one of our invites, its sender names the code.

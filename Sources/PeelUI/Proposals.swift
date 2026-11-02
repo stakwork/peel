@@ -556,7 +556,9 @@ public final class ProposalWatch {
         let generation = generation
         let results = await withTaskGroup(of: (String, Result<(mine: [ProposalRecord], others: Int), Error>).self) { group in
             for peer in peers {
-                group.addTask { (peer.id, await Result { try await peer.pendingProposals(actor: actor) }) }
+                group.addTask {
+                    do { return (peer.id, .success(try await peer.pendingProposals(actor: actor))) } catch { return (peer.id, .failure(error)) }
+                }
             }
             var results: [(String, Result<(mine: [ProposalRecord], others: Int), Error>)] = []
             for await result in group { results.append(result) }

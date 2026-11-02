@@ -354,8 +354,9 @@ extension Engine {
         return try members(of: pubkey, from: try await memberList(pubkey))
     }
 
-    /// The tribes server's list of `pubkey`'s members, asked for now: the owner's alone.
-    private func memberList(_ pubkey: String) async throws -> TribeMembers.List {
+    /// The tribes server's list of `pubkey`'s members, asked for now: the
+    /// owner's alone. Waited for `patience`, then `tribeServerTimedOut`.
+    private func memberList(_ pubkey: String, patience: Duration = .seconds(15)) async throws -> TribeMembers.List {
         let server = try tribeServer()
         tribeWork.memberLists[pubkey] = nil
         try await run { time, state in
@@ -363,7 +364,7 @@ extension Engine {
                 seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey
             )
         }
-        return try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { tribeWork.memberLists[pubkey] }
+        return try await poll(timeout: patience, failure: .tribeServerTimedOut) { tribeWork.memberLists[pubkey] }
     }
 
     /// The tribes server's list of `pubkey`'s members as the owner reads it,
@@ -485,11 +486,14 @@ extension Engine {
     /// Marks `member` (`showSenders`) once the tribes server lists it as a
     /// confirmed member of `pubkey`, asking for the list up to `tries` times,
     /// `every` apart: Jamie joins a public tribe by itself a few seconds
-    /// after it is linked, and a private one once the owner approved it. The
-    /// list it is marked on; nil when it was not listed in time. One marked
-    /// already is left as it is, and settled (`Setting.sendersMarked`).
+    /// after it is linked, and a private one once the owner approved it. A
+    /// list that does not come within `patience` is tried again as an
+    /// empty one is; only the last try's silence is thrown
+    /// (`tribeServerTimedOut`). The list it is marked on; nil when it was
+    /// not listed in time. One marked already is left as it is, and settled
+    /// (`Setting.sendersMarked`).
     public func showSendersOnceConfirmed(
-        _ member: String, in pubkey: String, tries: Int, every: Duration
+        _ member: String, in pubkey: String, tries: Int, every: Duration, patience: Duration = .seconds(15)
     ) async throws -> TribeMembers? {
         guard member.isPubkey else { throw Failure.notAMemberKey }
         guard let tribe = tribes[pubkey], !tribe.left else { throw Failure.notInTribe }
@@ -499,7 +503,12 @@ extension Engine {
         for attempt in 0..<tries {
             if attempt > 0 { try await Task.sleep(for: every) }
             // The raw list: its photos are read once, for the list returned.
-            let list = try await memberList(pubkey)
+            let list: TribeMembers.List
+            do {
+                list = try await memberList(pubkey, patience: patience)
+            } catch Failure.tribeServerTimedOut where attempt < tries - 1 {
+                continue
+            }
             guard let listed = list.confirmed(key) else { continue }
             guard listed.seesSenders else { return try await showSenders(key, in: pubkey, on: true) }
             try settleSenders(key, in: pubkey, settled: true)

@@ -351,6 +351,26 @@ struct TribeSendersTests {
         }
     }
 
+    /// A list the server did not send in time is tried again, as an empty
+    /// one is, until the tries run out: one slow answer does not end the
+    /// minute after a link. The last try's silence is said.
+    @Test func aListThatDoesNotComeIsAskedAgainUntilTheTriesRunOut() async throws {
+        let slow = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed], silentLists: 1)
+        try await withEngine(slow) { engine throws in
+            let members = try await engine.showSendersOnceConfirmed(jamie, in: club, tries: 3, every: .milliseconds(10),
+                                                                     patience: .milliseconds(300))
+            #expect(members?.member(jamie)?.seesSenders == true)
+            #expect(slow.commands == ["ListMembers", "ListMembers", "ShowSenders on"])
+        }
+        let silent = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed], silentLists: 9)
+        try await withEngine(silent, in: TempProfile()) { engine throws in
+            await #expect(throws: Engine.Failure.tribeServerTimedOut) {
+                try await engine.showSendersOnceConfirmed(jamie, in: club, tries: 2, every: .milliseconds(10), patience: .milliseconds(300))
+            }
+            #expect(silent.commands == ["ListMembers", "ListMembers"])
+        }
+    }
+
     /// Not listed in time: nothing is sent but the lists.
     @Test func jamieNeverListedIsNotMarked() async throws {
         let server = TribesServer(tribe: club, jamie: jamie, listed: [.pending])

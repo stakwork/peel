@@ -148,7 +148,8 @@ their delegation, their access. Anyone else asks with the owner's, as before.
 - **The mark.** Linking marks Jamie (`AppModel.setJamie`, `markJamie`):
   once the tribes server lists Jamie in, confirmed (a public tribe a few
   seconds after the link, a private one once approved; the list is asked
-  for every five seconds, a minute at most, and again after the approval),
+  for every five seconds, a minute at most, a list that does not come
+  asked for again as an empty one is, and again after the approval),
   the owner's Peel sends `ShowSenders(tribe, Jamie, on)`
   (`Engine.showSenders`, sphinx-rs's `showSenders`, over the tribes
   server's topic like the owner's other commands) and waits for the member

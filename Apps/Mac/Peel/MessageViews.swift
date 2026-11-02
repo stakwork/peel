@@ -308,9 +308,10 @@ struct MessageRow: View, Equatable {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Theme.Space.xl)
-        // Inside a run, 8 pt between messages: more than a message's 3 pt
-        // line spacing, so two read as two (design README, Flat rows).
-        .padding(.top, row.startsRun ? 8 : 6)
+        // Inside a run, 6.5 pt (4.5 top + 2 bottom) between messages: more
+        // than a message's 3 pt line spacing, so two read as two (design
+        // README, Flat rows).
+        .padding(.top, row.startsRun ? 8 : 4.5)
         .padding(.bottom, row.endsRun ? 4 : 2)
         .rowChrome(row, lit: flashed || openThread, hovering: hovering)
     }

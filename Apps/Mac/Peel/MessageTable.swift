@@ -1283,7 +1283,7 @@ extension ChatRow: TableRow {
         switch kind {
         case .message:
             let lines = max(1, (message.shownText.count + 69) / 70)
-            height += CGFloat(lines) * 18 + (startsRun ? 30 : 9)
+            height += CGFloat(lines) * 18 + (startsRun ? 30 : 7.5)
             if message.attachmentKind != nil { height += 220 }
             if summary != nil { height += 28 }
             height += CGFloat(agentArtifacts.count) * 24

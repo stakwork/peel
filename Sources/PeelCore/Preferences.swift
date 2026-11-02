@@ -194,12 +194,18 @@ extension Preference where Value == TimeZoneSharing {
 
 extension Preference where Value == Int {
     /// Hours without use before the app asks for the PIN again; 0 means
-    /// only at launch. This device only: the PIN is this device's, and the
+    /// only at launch, `PINTimeout.never` never after launch. This device only: the PIN is this device's, and the
     /// official `pin_timeout` has another scale (decision 4 of phase 11).
     public static var pinTimeoutHours: Self {
         Self(key: "device.pin_timeout_hours", scope: .device, read: { $0.wholeNumber.flatMap { Int(exactly: $0) } },
-             write: { .string(String(max(0, $0))) })
+             write: { .string(String(max(PINTimeout.never, $0))) })
     }
+}
+
+public enum PINTimeout {
+    /// Never ask again after launch. Stored as -1; 0 and positive hours keep
+    /// their meaning so stored values stay backward compatible.
+    public static let never = -1
 }
 
 extension Preference where Value == Bool {

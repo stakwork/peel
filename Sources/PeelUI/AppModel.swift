@@ -771,8 +771,10 @@ public final class AppModel {
 
     /// Peel has gone unused for the PIN timeout, though it may not have
     /// locked yet; notifications already say nothing.
+    /// Never skips only this idle lock: launch (`start`) still needs the PIN to
+    /// decrypt the account secret, and the PIN is not stored.
     public var isLockDue: Bool {
-        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0, let lastActiveAt else { return false }
+        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours != PINTimeout.never, pinTimeoutHours > 0, let lastActiveAt else { return false }
         return Date.now.timeIntervalSince(lastActiveAt) > Double(pinTimeoutHours) * 3600
     }
 

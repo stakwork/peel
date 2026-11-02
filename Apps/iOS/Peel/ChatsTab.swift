@@ -81,9 +81,7 @@ struct ChatList: View {
                             NavRow(title: "Apps", icon: WorkspaceAppIcon(nil, size: 20))
                         }
                     }
-                    NavigationLink(value: ChatsRoute.automations) {
-                        NavRow(title: "Automations", systemImage: "clock.arrow.circlepath")
-                    }
+                    // Automations is Mac-only for now; hidden on iOS until ready.
                     NavigationLink(value: ChatsRoute.threads) {
                         NavRow(title: "Threads", systemImage: "bubble.left", count: model.unreadThreads)
                     }

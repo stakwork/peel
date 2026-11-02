@@ -1629,6 +1629,71 @@ sphinx-rs v0.8.41. Details in `../hive-tribes.md`, "Who is asking".
   tribes server's topic, not as an onion (`showSendersOnion`), like the
   owner's other commands; the iPhone's part was not compiled with this
   change (Mac-only core build).
+- Independent review (2026-11-01), found and not fixed here, each with
+  why (the review was time-boxed; the fixes it made are /simplify's
+  cleanups):
+  - **Security, medium: a Hive login from a memes challenge.**
+    `Engine.memesSignIn` signs whatever bytes the memes server's `/ask`
+    returns with the account key (idx 0, `signBase64`, the same
+    `sign_message` as `signedTimestamp`), and `MemesServer.challengeBytes`
+    takes any length. A memes server (its operator, or whoever takes it
+    over) that asks for a 4-byte timestamp gets back a valid Sphinx token,
+    which Hive's `POST /api/auth/sphinx/token` exchanges for a 30-day
+    session as the Hive user holding that key. Before this PR a Peel key
+    was not Hive's; `registerSphinx` makes it so for every paired Peel,
+    and the same token can link the key to someone else's Hive user first
+    (the victim then gets the 409). Not fixed: the real fix is Hive's (a
+    registration proof and a sign-in bound to their purpose and audience,
+    not a bare timestamp). Peel's cheap half: refuse a memes challenge
+    shorter than the server's own (32 bytes) before signing it.
+  - **The read marker stops short of a tribe's record.** Dropping types
+    35–38 before they are stored means `markRead` (highest stored index)
+    and `isBehind` never see them, so the server's marker stays behind the
+    signed record a tribes server sends on a join (usually as type-34
+    chunks, reassembled as one 35 at the last fragment's index) and to
+    every member on each edit. The official apps and the mixer's push
+    count (`count_onions_for_scids_reads`) then count the tribe unread;
+    `Reads.markersAndMutesAcrossDevices` exists for exactly this. Fix:
+    store them as before (every reader filters by type already), or keep
+    the dropped index per chat for `markRead` and `isBehind`.
+  - **The launch sweep runs before the connection.** On the Mac,
+    `openHive` (and so `Stadeum.opened` → `markLinkedJamies`) runs in
+    `attach` before `engine.start()`; `markSendersOnce`'s first
+    `tribeMembers` throws `notConnected`, every tribe is skipped, and the
+    pairing is already in `swept`, so the tribes an older Peel linked are
+    not marked this run, and likely not the next. Fix: start the sweep on
+    `.connection(.connected)` as well, with `connection == .connected` in
+    its guard. No AppModel test harness exists, so this wants a journey.
+  - **The sweep undoes the owner's off.** `Setting.sendersMarked` is per
+    device, the mark is the tribe's: after the owner turns the switch off
+    on one device, another device's first launch with this build (or any
+    device after a restore) finds Jamie confirmed and unmarked and marks
+    it again, silently. The list cannot tell "never marked" from "turned
+    off"; the choice needs a shared home (Hive's link record, or the
+    synced preferences file).
+  - **Unlink unmarks before Hive answers.** `AppModel.setJamie(nil)`
+    sends the off first; when Hive then refuses the unlink, Jamie stays
+    linked but unmarked and `knownMembers` still shows the switch on.
+    Fix: unlink at Hive first, then `stopShowingSenders`.
+  - **One slow list ends markJamie's minute.** A `tribeServerTimedOut`
+    from `memberList` leaves `showSendersOnceConfirmed`'s loop instead of
+    trying again at the next interval; the twelve tries stop at the first.
+  - **The mark holds the tribe's change lock for 15 s.** On a tribes
+    server from before the command (every one today), each launch's
+    `markSendersOnce` waits out `sendersNotShown` inside
+    `changeOwnedTribe`, one tribe after another, so an edit of that tribe
+    in those seconds fails with `tribeChangeInProgress`, at every launch
+    until the server is upgraded.
+  - **A 409 that says what to do is never asked again.** Hive's "unlink it
+    in Hive's settings first" is kept as `sphinxRefused` for the pairing,
+    so doing what it says changes nothing until the person pairs again.
+  - Smaller: `identify` writes the link past `keep()`, so a renewal
+    answered before the registration overwrites `identified` and costs a
+    second POST; on the Mac `open` registers in parallel with the renewal
+    that would say whether it is needed; an owner who disconnected Stadeum
+    loses the buttons on their own cards (`actor` nil, `.someone`); a
+    member's answer is a reply that pays the tribe's price per message,
+    which the card's buttons do not say.
 
 ## Shared screen at full size (2026-10-30)
 

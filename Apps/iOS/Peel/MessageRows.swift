@@ -166,7 +166,7 @@ struct RowFrame<Leading: View, Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, Theme.phoneGutter)
-        .padding(.top, row.startsRun ? 8 : 3)
+        .padding(.top, row.startsRun ? 8 : 6)
         .padding(.bottom, row.endsRun ? 5 : 2)
         .background {
             if flashed {

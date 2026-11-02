@@ -386,23 +386,26 @@ extension Engine {
     /// message it forwards (`ShowSenders`, stakwork/sphinx
     /// docs/tribe-sender-identity.md). Jamie is the member a linking owner
     /// marks (docs/hive-tribes.md, "Who is asking"). The server answers with
-    /// its member list, which says it per member: the list once it does. A
-    /// tribes server from before the command does not know it and answers
-    /// nothing, as does one that will not take it (the member not in the
-    /// tribe, commands off on its broker): `sendersNotShown`.
+    /// its member list, which says it per member: the list once it does,
+    /// waited for `patience`. A tribes server from before the command does
+    /// not know it and answers nothing, as does one that will not take it
+    /// (the member not in the tribe, commands off on its broker):
+    /// `sendersNotShown`. The command goes under the tribe's change lock
+    /// (`changeOwnedTribe`), its answer is waited for outside it, so an
+    /// owner's edit in the meantime is not refused.
     @discardableResult
-    public func showSenders(_ member: String, in pubkey: String, on: Bool) async throws -> TribeMembers {
+    public func showSenders(
+        _ member: String, in pubkey: String, on: Bool, patience: Duration = .seconds(15)
+    ) async throws -> TribeMembers {
         guard member.isPubkey else { throw Failure.notAMemberKey }
         let key = member.lowercased()
-        return try await changeOwnedTribe(pubkey) { _, _, server in
-            try await sendShowSenders(key, in: pubkey, on: on, server: server)
-            // A list asked for meanwhile (`tribeMembers`) may answer first, from before the change.
-            let list = try await poll(timeout: .seconds(15), failure: .sendersNotShown) {
-                tribeWork.memberLists[pubkey].flatMap { $0.confirmed(key)?.seesSenders == on ? $0 : nil }
-            }
-            try settleSenders(key, in: pubkey, settled: true)
-            return try members(of: pubkey, from: list)
+        try await changeOwnedTribe(pubkey) { _, _, server in try await sendShowSenders(key, in: pubkey, on: on, server: server) }
+        // A list asked for meanwhile (`tribeMembers`) may answer first, from before the change.
+        let list = try await poll(timeout: patience, failure: .sendersNotShown) {
+            tribeWork.memberLists[pubkey].flatMap { $0.confirmed(key)?.seesSenders == on ? $0 : nil }
         }
+        try settleSenders(key, in: pubkey, settled: true)
+        return try members(of: pubkey, from: list)
     }
 
     /// An unlink's half: `member` is no longer told who is speaking in
@@ -446,7 +449,8 @@ extension Engine {
             && !settled.contains(Self.sendersKey(key, in: pubkey)) {
             do {
                 // Marked now or already, it is settled; not listed in, it is not.
-                guard let members = try await showSendersOnceConfirmed(key, in: pubkey, tries: 1, every: .zero) else { continue }
+                guard let members = try await showSendersOnceConfirmed(key, in: pubkey, tries: 1, every: .zero,
+                                                                       patience: Self.sweepPatience) else { continue }
                 sweep.members[pubkey] = members
             } catch Failure.sendersNotShown {
                 sweep.silent.append(pubkey)
@@ -456,6 +460,11 @@ extension Engine {
         }
         return sweep
     }
+
+    /// How long `markSendersOnce` waits for each answer: a tribes server
+    /// from before `ShowSenders` (every one at first) answers it nothing,
+    /// and each launch would wait that out, tribe after tribe.
+    static let sweepPatience: Duration = .seconds(3)
 
     /// What `markSendersOnce` did, by tribe.
     public struct SendersSweep: Sendable, Equatable {
@@ -510,7 +519,7 @@ extension Engine {
                 continue
             }
             guard let listed = list.confirmed(key) else { continue }
-            guard listed.seesSenders else { return try await showSenders(key, in: pubkey, on: true) }
+            guard listed.seesSenders else { return try await showSenders(key, in: pubkey, on: true, patience: patience) }
             try settleSenders(key, in: pubkey, settled: true)
             return try members(of: pubkey, from: list)
         }

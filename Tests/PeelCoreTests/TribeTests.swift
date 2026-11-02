@@ -407,6 +407,24 @@ struct TribeSendersTests {
         }
     }
 
+    /// The mark's answer is waited for outside the tribe's change lock: on a
+    /// tribes server from before the command, which never answers, an
+    /// owner's edit (here a pin taken off) meanwhile goes through rather
+    /// than being refused as another change still being saved.
+    @Test func anEditWhileTheMarkWaitsIsNotRefused() async throws {
+        let registry = try await HTTPStub(status: 200) { _ in #"{"pubkey":"\#(strangerKey)","name":"Club","owner_alias":"Owner"}"# }
+        defer { registry.stop() }
+        let server = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed], knowsShowSenders: false)
+        try await withEngine(server, host: "127.0.0.1:\(registry.port)") { engine throws in
+            let mark = Task { [club, jamie] in try await engine.showSenders(jamie, in: club, on: true, patience: .seconds(3)) }
+            for _ in 0..<100 where server.commands.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(server.commands == ["ShowSenders on"])
+            try await engine.pinMessage(nil, in: club)
+            #expect(server.commands == ["ShowSenders on", "Update"])
+            await #expect(throws: Engine.Failure.sendersNotShown) { try await mark.value }
+        }
+    }
+
     /// A tribes server from before the command answers nothing: the mark is
     /// left off, said as such (`sendersNotShown`), and the next launch asks
     /// again, when an upgraded server takes it.

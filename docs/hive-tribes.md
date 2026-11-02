@@ -172,10 +172,13 @@ their delegation, their access. Anyone else asks with the owner's, as before.
   tribe.
 - **An older tribes server** knows no `ShowSenders` and answers nothing;
   nor does one whose broker takes no commands, or one asked about someone
-  not in the tribe. After 15 seconds that is `sendersNotShown`: the Jamie row
-  says "This tribe's server can't tell Jamie who is speaking yet, so everyone
-  here asks with your access." The link stands, nothing is settled, and the
-  next launch asks again.
+  not in the tribe. After 15 seconds at linking or the switch, 3 in the
+  launch's sweep (`Engine.sweepPatience`), that is `sendersNotShown`: the
+  Jamie row says "This tribe's server can't tell Jamie who is speaking yet,
+  so everyone here asks with your access." The link stands, nothing is
+  settled, and the next launch asks again. The command goes under the
+  tribe's change lock and its answer is waited for outside it, so an edit
+  of the tribe meanwhile is not refused.
 - **The row.** Once Jamie is in, the owner's Jamie row says "Jamie knows
   who is speaking here" in its line when the list says so, and has a switch,
   Knows who is speaking (`TribeJamiePicker.showSenders`). The switch shows

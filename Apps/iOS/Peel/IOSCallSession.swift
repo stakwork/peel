@@ -38,11 +38,13 @@ final class IOSCallSession {
         var muted: Bool
         /// Their camera while it is on and arriving, or the screen they share.
         var video: VideoTrack?
+        /// Jamie, the call's voice agent (`CallChatWire.isJamie`), not its screen.
+        var isJamie = false
         var id: ID { ID(identity: person.identity, isScreen: isScreen) }
 
         static func == (a: Tile, b: Tile) -> Bool {
             a.person == b.person && a.isYou == b.isYou && a.isScreen == b.isScreen && a.speaking == b.speaking
-                && a.muted == b.muted && a.video === b.video
+                && a.muted == b.muted && a.video === b.video && a.isJamie == b.isJamie
         }
     }
 
@@ -79,6 +81,12 @@ final class IOSCallSession {
     /// Everyone on the call, for the bar over the chats; apart from the
     /// tiles so speaking and muting do not redraw it.
     private(set) var people: [CallParticipant] = []
+    /// Jamie says its replies aloud, as its `tts` attribute has it; false
+    /// while Jamie is not in the call.
+    private(set) var jamieSpeaks = false
+    /// Jamie's identity on the call, the one participant the voice toggle
+    /// goes to.
+    @ObservationIgnored private var jamieIdentity: Participant.Identity?
 
     @ObservationIgnored private let room = Room(roomOptions: RoomOptions(adaptiveStream: true, dynacast: true))
     @ObservationIgnored private var connecting: Task<Void, Never>?
@@ -206,6 +214,22 @@ final class IOSCallSession {
         Task { _ = try? await capturer.switchCameraPosition() }
     }
 
+    /// Asks Jamie to say its replies aloud, or to stop, for everyone on the
+    /// call. `jamieSpeaks` changes when Jamie answers, not here.
+    func setJamieSpeaks(_ on: Bool) {
+        guard let jamie = jamieIdentity, !leaving else { return }
+        Task {
+            do {
+                try await room.localParticipant.publish(
+                    data: CallChatWire.voice(on: on),
+                    options: DataPublishOptions(destinationIdentities: [jamie], topic: CallChatWire.topic, reliable: true)
+                )
+            } catch {
+                deviceNotice = "Could not reach Jamie"
+            }
+        }
+    }
+
     private func setMicrophone(_ on: Bool) async {
         guard !switchingMic, !leaving else { return }
         switchingMic = true
@@ -299,6 +323,10 @@ final class IOSCallSession {
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
         if room.isRecording != isRecording { isRecording = room.isRecording }
+        let jamie = others.first(where: Self.isJamie)
+        jamieIdentity = jamie?.identity
+        let speaks = jamie.map { CallChatWire.jamieSpeaks($0.attributes) } ?? false
+        if speaks != jamieSpeaks { jamieSpeaks = speaks }
 
         let now: State
         switch room.connectionState {
@@ -337,10 +365,17 @@ final class IOSCallSession {
         guard !screen || video != nil, let id = isYou ? identity : participant.identity?.stringValue,
               let person = person(id, name: participant.name, metadata: participant.metadata)
         else { return nil }
+        let jamie = !isYou && Self.isJamie(participant)
+        // Jamie keeps its track published with its voice off: muted is what it says.
+        let quiet = jamie ? !CallChatWire.jamieSpeaks(participant.attributes) : !participant.isMicrophoneEnabled()
         return Tile(
             person: person, isYou: isYou, isScreen: screen, speaking: !screen && participant.isSpeaking,
-            muted: !screen && !participant.isMicrophoneEnabled(), video: video
+            muted: !screen && quiet, video: video, isJamie: !screen && jamie
         )
+    }
+
+    private static func isJamie(_ participant: Participant) -> Bool {
+        CallChatWire.isJamie(name: participant.name, attributes: participant.attributes)
     }
 
     /// The screen they share, or their camera: the first video that is not

@@ -111,6 +111,12 @@ final class CallSession {
     /// `tts` attribute a sphinx-voice agent sets. Nil attribute: a person who
     /// happens to be called Jamie.
     private(set) var jamieInCall = false
+    /// Jamie says its replies aloud, as its `tts` attribute has it; false
+    /// while Jamie is not in the call.
+    private(set) var jamieSpeaks = false
+    /// Jamie's identity on the call, the one participant the voice toggle
+    /// goes to.
+    @ObservationIgnored private var jamieIdentity: Participant.Identity?
     /// Jamie is still on the last request, so another may be skipped.
     var jamieBusy: Bool { jamieThinking }
     /// A short-lived hint above the composer.
@@ -504,12 +510,15 @@ final class CallSession {
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
         if room.isRecording != isRecording { isRecording = room.isRecording }
-        let jamie = others.contains(where: Self.isJamie)
-        if jamie != jamieInCall {
-            jamieInCall = jamie
+        let jamie = others.first(where: Self.isJamie)
+        jamieIdentity = jamie?.identity
+        if (jamie != nil) != jamieInCall {
+            jamieInCall = jamie != nil
             // Jamie left: nothing is coming.
-            if !jamie { log.stopThinking() }
+            if jamie == nil { log.stopThinking() }
         }
+        let speaks = jamie.map { CallChatWire.jamieSpeaks($0.attributes) } ?? false
+        if speaks != jamieSpeaks { jamieSpeaks = speaks }
 
         let now: State
         switch room.connectionState {
@@ -552,9 +561,12 @@ final class CallSession {
         guard !screen || video != nil, let id = isYou ? identity : participant.identity?.stringValue,
               let person = person(id, name: participant.name, metadata: participant.metadata)
         else { return nil }
+        // Jamie keeps its track published with its voice off: muted is what it says.
+        let quiet = Self.isJamie(participant)
+            ? !CallChatWire.jamieSpeaks(participant.attributes) : !participant.isMicrophoneEnabled()
         return Tile(
             person: person, isYou: isYou, isScreen: screen, speaking: !screen && participant.isSpeaking,
-            muted: !screen && !participant.isMicrophoneEnabled(), video: video
+            muted: !screen && quiet, video: video
         )
     }
 
@@ -635,11 +647,25 @@ extension CallSession {
         }
     }
 
-    /// Jamie, the call's voice agent: named Jamie, with the `tts` attribute
-    /// its token gives it.
+    /// Jamie, the call's voice agent (`CallChatWire.isJamie`).
     nonisolated static func isJamie(_ participant: Participant) -> Bool {
-        participant.name?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Jamie") == .orderedSame
-            && participant.attributes["tts"] != nil
+        CallChatWire.isJamie(name: participant.name, attributes: participant.attributes)
+    }
+
+    /// Asks Jamie to say its replies aloud, or to stop, for everyone on the
+    /// call. `jamieSpeaks` changes when Jamie answers, not here.
+    func setJamieSpeaks(_ on: Bool) {
+        guard let jamie = jamieIdentity, !leaving else { return }
+        Task {
+            do {
+                try await room.localParticipant.publish(
+                    data: CallChatWire.voice(on: on),
+                    options: DataPublishOptions(destinationIdentities: [jamie], topic: CallChatWire.topic, reliable: true)
+                )
+            } catch {
+                deviceNotice = "Could not reach Jamie"
+            }
+        }
     }
 
     fileprivate func receiveChat(_ incoming: CallChatWire.Incoming) {

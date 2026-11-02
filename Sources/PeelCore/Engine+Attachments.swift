@@ -436,6 +436,8 @@ extension Engine {
         guard let bytes = MemesServer.challengeBytes(challenge) else {
             throw MemesServer.Failure.unreadableReply("sign-in")
         }
+        // Never a Hive token's 4 bytes, or anything else short (`minChallengeBytes`).
+        guard bytes.count >= MemesServer.minChallengeBytes else { throw MemesServer.Failure.shortChallenge(bytes.count) }
         let signature = try Sphinxrs.signBase64(
             seed: seed, idx: 0, time: clock.next(), network: network, msg: MediaToken.base64URLEncode(bytes)
         )

@@ -36,6 +36,8 @@ struct WorkspaceAppView: View {
                                        change: change)
                 }
                 AppPinButton(app: app)
+                IconButton("arrow.up.forward.app", help: "Open in new window") { openInNewWindow() }
+                    .disabled(model.memoryServer == nil)
                 IconButton("arrow.clockwise", help: "Reload") { loads += 1 }
             }
             if let previewing, let versions {
@@ -64,6 +66,14 @@ struct WorkspaceAppView: View {
                              server: model.memoryServer, loads: loads)) {
             await readVersions()
         }
+    }
+
+    private func openInNewWindow() {
+        let place = model.appPlaces[app.id] ?? AppPlace()
+        guard let server = model.memoryServer,
+              let page = server.page(of: app, version: previewing, input: place.input) else { return }
+        StrutAppWindows.shared.show(StrutPage(url: page, server: server, name: app.title), link: model.web.linkAction,
+                                    openApp: { [model] in model.open($0) })
     }
 
     /// The source when several are listed; the version is the chip's to show.

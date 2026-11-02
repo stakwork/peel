@@ -7,8 +7,9 @@ import Foundation
 // `approve` device request (`proposal:<id>`, `DeviceActions`), and the
 // person's own on each Stadeum workspace's strut, read and decided with the
 // person token Peel holds (`HivePeer`), and in a tribe on Jamie's post,
-// which carries the proposal in its metadata (`StrutProposals`,
-// docs/hive-tribes.md, "Proposals in a tribe"), where the tribe's owner
+// which names the proposal in its metadata (`StrutProposals`,
+// docs/hive-tribes.md, "Proposals in a tribe"; its card read from the
+// workspace's strut when the post sends none), where the tribe's owner
 // decides it by a reply. The record is strut's; every word in it was
 // written by a model or another host, so it is read bounded and cleaned,
 // and nothing in it is acted on but by the person's click.
@@ -192,6 +193,15 @@ public struct ProposalRecord: Codable, Sendable, Equatable {
 
     /// Whether it still waits on someone, or runs.
     public var isOpen: Bool { !status.isFinal }
+
+    /// A tribe post's reference to it alone (Hive's stub, strut's
+    /// plans/proposal-links.md: id, step, title, status, url): no card and
+    /// no input, so its card is the workspace's strut's to give.
+    public var isStub: Bool { card == nil && !cardUnreadable && input == nil && !inputCut }
+
+    /// Whether this is strut's own record, read from it or listed: strut
+    /// writes the run that proposed it, a post never does.
+    public var isStrutsRecord: Bool { !by.runId.isEmpty }
 
     /// The card drawn for it: strut's, else one from the title, the summary
     /// and the input, as strut builds a generic one; never whole when strut's
@@ -391,8 +401,10 @@ public struct ProposalKey: Hashable, Sendable {
 /// What a post in a tribe says of strut's proposals
 /// (`metadata.strut.proposals`, docs/hive-tribes.md, "Proposals in a
 /// tribe"): Jamie's post that a turn made one carries each, with its `url`
-/// on the workspace's strut, as the record the post has of it (id, step,
-/// title, summary, strut's card, status, the model's rationale); Jamie's
+/// on the workspace's strut, as the record the post has of it: a stub (id,
+/// step, title, status: `ProposalRecord.isStub`, whose card is read from the
+/// workspace's strut), or, from a Hive before the stub, the summary, strut's
+/// card and the model's rationale too; Jamie's
 /// reply once the owner decided carries how each ended (no url: id, step,
 /// title, status, the error). Whoever posted wrote it, as with a
 /// deliverable: a card is drawn under the post, its words are the post's,
@@ -424,6 +436,8 @@ public struct StrutProposals: Sendable, Equatable {
         var ids: Set<String> = []
         for entry in entries.prefix(Self.most) {
             guard case .object(var given) = entry else { continue }
+            // Who proposed it is strut's record's to say (`isStrutsRecord`), never a post's.
+            given["by"] = nil
             // A proposal has its address on the workspace's strut; an outcome names none.
             let carried = given["url"]?.string != nil
             if !carried, let error = given["error"], given["result"] == nil { given["result"] = .object(["error": error]) }
@@ -447,12 +461,21 @@ public struct TribePost: Sendable, Equatable {
     public var uuid: String
     /// Who posted it, by alias.
     public var poster: String?
+    /// The thread the post is in when it is not its own (`Message.threadRoot`):
+    /// Jamie's post replies to the mention, so it is the mention's, which the
+    /// owner's answer and Jamie's outcome share. Nil for a post that starts
+    /// its thread, and for one kept before Peel recorded it.
+    public var thread: String?
 
-    public init(tribe: String, uuid: String, poster: String? = nil) {
+    public init(tribe: String, uuid: String, poster: String? = nil, thread: String? = nil) {
         self.tribe = tribe
         self.uuid = uuid
         self.poster = poster
+        self.thread = thread
     }
+
+    /// The thread its outcome comes in.
+    public var threadRoot: String { thread ?? uuid }
 }
 
 // MARK: - On a workspace's strut

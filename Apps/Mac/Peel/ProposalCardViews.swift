@@ -31,8 +31,6 @@ struct ProposalCardView: View {
 
     /// Under a tribe's card the owner answered that Jamie has not ended in time.
     static let noAnswerYet = "No answer yet: the reply may not have reached Jamie. You can answer again."
-    /// A tribe's card for everyone but its owner.
-    static let ownersLine = "The tribe's owner decides this."
 
     let proposal: KeptProposal
     /// The workspace it is on, by name; nil for Peel's own strut.
@@ -47,6 +45,9 @@ struct ProposalCardView: View {
     /// Everything under the title, opened by a click on it; nil where it
     /// always shows. A tribe's card starts shut: the post is someone else's.
     var details: AgentDisclosure?
+    /// In a tribe, who answers it, for the line under a card that is not
+    /// yours (`TribeDecider.line`).
+    var decider = TribeDecider.owner
 
     @Environment(\.listRowExpanding) private var expanding
 
@@ -95,7 +96,7 @@ struct ProposalCardView: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let line = Self.outcomeLine(shown, record: proposal.record) {
+                if let line = Self.outcomeLine(shown, record: proposal.record, decider: decider) {
                     Text(line).muted().textSelection(.enabled)
                 }
                 if let note = note ?? (proposal.isAnswerStale(at: now) ? Self.noAnswerYet : nil) {
@@ -195,7 +196,7 @@ struct ProposalCardView: View {
         case waiting
         /// Pending; this Mac's card is not up (not asked again yet), or it is being decided elsewhere.
         case pending
-        /// Pending, and the tribe's owner's to decide, not yours.
+        /// Pending, and in a tribe someone else's to decide: the owner's, or the person who asked.
         case theirs
         /// Answered here; strut is being told.
         case telling(accepted: Bool)
@@ -285,11 +286,11 @@ struct ProposalCardView: View {
 
     /// The line under the facts once it is over, or on its way; the watch's
     /// note says why for gone, not yours and unreadable.
-    static func outcomeLine(_ state: State, record: ProposalRecord) -> String? {
+    static func outcomeLine(_ state: State, record: ProposalRecord, decider: TribeDecider) -> String? {
         switch state {
         case .waiting, .telling, .running, .gone, .notYours, .unreadable: return nil
         case .pending: return "Waiting for a decision."
-        case .theirs: return ownersLine
+        case .theirs: return decider.line
         case .applied: return "Done" + (record.result?.at.map { " at \(Formatting.time($0))" } ?? "") + "."
         case .rejected: return "Not done" + (record.decision?.reason.map { ": \($0)" } ?? ".")
         case .failed: return "The step did not work" + (record.result?.error.map { ": \($0)" } ?? ".")
@@ -408,14 +409,18 @@ struct OrgProposalRow: View {
 /// "Proposals in a tribe"), as the watch keeps it from the tribe's posts
 /// (`AppModel.proposals`): a card only for a proposal whose post this is
 /// (a later post claiming one draws none). Each starts shut to its title
-/// and how it stands; a click on the title opens it. The tribe's owner (`canAnswer`)
-/// gets the card's buttons, and answers by a reply to the post
-/// (`ProposalWatch.answerInTribe`); everyone else sees the card, how it
-/// stands, and that the owner decides it.
+/// and how it stands; a click on the title opens it, and reads a stub's
+/// card from the workspace's strut when it has not been read
+/// (`ProposalWatch.opened`); one that cannot be read here says it opens
+/// for the workspace's members (`tribeNote`). Whose buttons they are is
+/// `TribeDecider`'s: the person strut's record says the turn ran as, or
+/// with no record read the tribe's owner (`isOwner`). They answer by a
+/// reply to the post (`ProposalWatch.answerInTribe`); everyone else sees
+/// the card, how it stands, and who decides it.
 struct TribeProposalCards: View {
     @Environment(AppModel.self) private var model
     let row: ChatRow
-    let canAnswer: Bool
+    let isOwner: Bool
 
     var body: some View {
         if let proposals = row.strutProposals {
@@ -433,18 +438,24 @@ struct TribeProposalCards: View {
         let watch = model.proposals
         let disclosures = AgentDisclosures(rowID: row.id, rows: model.agentOpenRows)
         if let proposal = watch.kept[key], proposal.post?.uuid == row.message.uuid {
+            let decider = watch.tribeDecider(key)
+            let canAnswer = decider.answers(isOwner: isOwner)
             let stance: ProposalCardView.Stance = if let accept = watch.deciding[key] {
                 .deciding(accept: accept)
             } else {
                 canAnswer ? .waiting : .theirs
             }
+            let details = disclosures.open("card-\(key.id)")
             ProposalCardView(
-                proposal: proposal, org: watch.orgName(key.source), stance: stance, note: watch.notes[key],
+                proposal: proposal, org: watch.orgName(key.source), stance: stance, note: watch.tribeNote(key),
                 input: disclosures.open("input-\(key.id)"),
                 answer: canAnswer && !proposal.isOver
                     ? { accept in Task { await watch.answerInTribe(key, accept: accept, on: row.message) } } : nil,
-                details: disclosures.open("card-\(key.id)")
+                details: details, decider: decider
             )
+            .onChange(of: details.isOpen) { _, open in
+                if open { watch.opened(key) }
+            }
         }
     }
 }

@@ -1300,7 +1300,7 @@ extension ChatRow: TableRow {
         // proposals its post made as cards, which the tribe's owner decides.
         let below = inTribe ? AnyView(VStack(alignment: .leading, spacing: 0) {
             agentArtifactLines(agentArtifacts, inTribe: true)
-            TribeProposalCards(row: self, canAnswer: canAnswer)
+            TribeProposalCards(row: self, isOwner: canAnswer)
         }) : nil
         return AnyView(ListRowContent(row: self, composer: list, canAnswer: canAnswer, below: below))
     }

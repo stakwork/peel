@@ -180,6 +180,9 @@ public struct TribeMember: Sendable, Identifiable, Equatable {
     public var pubkey: String?
     /// Waiting for the owner's approval in a private tribe.
     public var pending: Bool
+    /// The owner marked them to be told who sent each message (Jamie,
+    /// docs/hive-tribes.md, "Who is asking"): known only on the owner's list.
+    public var seesSenders = false
 
     public var id: String { pubkey ?? alias }
 }
@@ -195,11 +198,30 @@ public struct TribeMembers: Sendable, Equatable {
         struct Entry: Decodable {
             let pubkey: String
             let alias: String
+            /// Written only when true (`MemberJson`), so absent, as from a
+            /// tribes server before it, is false.
+            private let marked: Bool?
+            var seesSenders: Bool { marked ?? false }
+
+            private enum CodingKeys: String, CodingKey {
+                case pubkey, alias
+                case marked = "sees_senders"
+            }
         }
 
         let pubkey: String
         let confirmed: [Entry]
         var pending: [Entry]
+
+        /// `key`'s entry among the confirmed members, matched without case.
+        func confirmed(_ key: String) -> Entry? {
+            confirmed.first { $0.pubkey.lowercased() == key.lowercased() }
+        }
+    }
+
+    /// `key`'s entry, confirmed or waiting, matched without case.
+    public func member(_ key: String) -> TribeMember? {
+        members.first { $0.pubkey?.lowercased() == key.lowercased() }
     }
 }
 

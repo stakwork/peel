@@ -244,12 +244,12 @@ private struct IOSCallStage: View {
             if let focus = call.focus, let main = call.tiles.first(where: { $0.id == focus }) {
                 let others = call.tiles.filter { $0.id != focus }
                 VStack(spacing: Self.gap) {
-                    IOSCallTile(tile: main, avatarSize: 96) { call.toggleFocus(main.id) }
+                    IOSCallTile(call: call, tile: main, avatarSize: 96) { call.toggleFocus(main.id) }
                     if !others.isEmpty {
                         ScrollView(.horizontal) {
                             LazyHStack(spacing: Self.gap) {
                                 ForEach(others) { tile in
-                                    IOSCallTile(tile: tile, avatarSize: 44) { call.toggleFocus(tile.id) }
+                                    IOSCallTile(call: call, tile: tile, avatarSize: 44) { call.toggleFocus(tile.id) }
                                         .frame(width: 120)
                                 }
                             }
@@ -274,7 +274,7 @@ private struct IOSCallStage: View {
         return ScrollView {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Self.gap), count: columns), spacing: Self.gap) {
                 ForEach(tiles) { tile in
-                    IOSCallTile(tile: tile, avatarSize: min(96, height * 0.4)) { call.toggleFocus(tile.id) }
+                    IOSCallTile(call: call, tile: tile, avatarSize: min(96, height * 0.4)) { call.toggleFocus(tile.id) }
                         .frame(height: height)
                 }
             }
@@ -284,14 +284,32 @@ private struct IOSCallStage: View {
 }
 
 /// A person or a shared screen. A tap focuses it, or, on the focused tile,
-/// goes back to the grid.
+/// goes back to the grid. A long press on Jamie's turns its voice on or off.
 private struct IOSCallTile: View {
     @Environment(AppModel.self) private var model
+    let call: IOSCallSession
     let tile: IOSCallSession.Tile
     let avatarSize: CGFloat
     let tap: () -> Void
 
     var body: some View {
+        if tile.isJamie {
+            let speaks = call.jamieSpeaks
+            content
+                .contextMenu {
+                    Toggle(isOn: Binding(get: { speaks }, set: { call.setJamieSpeaks($0) })) {
+                        Label("Speak replies aloud", systemImage: "speaker.wave.2")
+                    }
+                }
+                .accessibilityAction(named: speaks ? "Stop speaking replies" : "Speak replies aloud") {
+                    call.setJamieSpeaks(!speaks)
+                }
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder private var content: some View {
         let shown = model.avatar(of: tile.person)
         let name = tile.isScreen
             ? (tile.isYou ? "Your screen" : "\(shown.name)’s screen")

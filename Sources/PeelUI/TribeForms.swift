@@ -248,10 +248,11 @@ public final class TribeIdentityDraft {
 }
 
 /// A tribe's Jamie row, on the Mac and the iPhone (docs/hive-tribes.md):
-/// which of the owner's Stadeum orgs answers `@jamie` in the tribe, as
-/// them, or none. What is linked is Hive's, read through Stadeum
-/// (`jamiePick`), so the owner's devices agree; a pick links or unlinks
-/// at once, and Hive's refusal is said in place.
+/// which of the owner's Stadeum orgs answers `@jamie` in the tribe, or
+/// none, and whether Jamie knows who is speaking there. What is linked is
+/// Hive's, read through Stadeum (`jamiePick`), so the owner's devices
+/// agree; a pick links or unlinks at once (`AppModel.setJamie`, which
+/// marks Jamie once it is in), and Hive's refusal is said in place.
 @MainActor @Observable
 public final class TribeJamiePicker {
     public private(set) var working = false
@@ -271,22 +272,44 @@ public final class TribeJamiePicker {
             if !id.isEmpty, peer == nil {
                 throw PeelError("Connect Stadeum to add Jamie from \(stadeum.workspaceName(id)).")
             }
-            try await stadeum.setJamie(peer, for: tribe)
+            try await model.setJamie(peer, for: tribe)
         } catch {
             problem = PeelError.noted(error, couldNot: id.isEmpty ? "remove Jamie" : "add Jamie")
         }
     }
 
+    /// The owner's switch: whether Jamie knows who is speaking here
+    /// (`AppModel.setJamieSeesSenders`).
+    public func showSenders(_ on: Bool, in tribe: Tribe, with model: AppModel) async {
+        guard !working else { return }
+        working = true
+        problem = nil
+        defer { working = false }
+        do {
+            try await model.setJamieSeesSenders(on, in: tribe.pubkey)
+        } catch {
+            problem = PeelError.noted(error, couldNot: on ? "tell Jamie who is speaking" : "stop telling Jamie who is speaking")
+        }
+    }
+
     /// The line under the row: which org Jamie answers `@jamie` from here,
-    /// and that its turns use the person's access there (they run as the
-    /// person who linked the tribe); or what a pick does. Jamie itself
+    /// and whose access its turns use: the person asking, when the tribe
+    /// tells Jamie who is speaking (`seesSenders`) and Stadeum knows them,
+    /// else the person who linked it; or what a pick does. Jamie itself
     /// always posts the reply.
-    public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum) -> String {
+    public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum, seesSenders: Bool?) -> String {
         guard !pick.isEmpty else {
             return "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it."
         }
-        return "Anyone in #\(tribe.displayName) can ask @jamie. Jamie answers from \(stadeum.workspaceName(pick)), using your access to it."
+        let org = stadeum.workspaceName(pick)
+        guard seesSenders == true else {
+            return "Anyone in #\(tribe.displayName) can ask @jamie. Jamie answers from \(org), using your access to it."
+        }
+        return "Jamie knows who is speaking here. Anyone in #\(tribe.displayName) can ask @jamie: someone in \(org) asks as themself, anyone else with your access."
     }
+
+    /// The switch's label in the Jamie row.
+    public static let showsSenders = "Knows who is speaking"
 }
 
 /// A chat's time zone switch, on the Mac and the iPhone: whether your

@@ -9,7 +9,9 @@ import Testing
 /// the account, paired against a stand-in Hive, revoked, let go with the
 /// account, the apps it lists, and how something opens on an org's own
 /// strut for the iPhone.
-@MainActor
+/// Each test a minute at most: one that stops answering fails by its name
+/// rather than holding up the whole run.
+@MainActor @Suite(.timeLimit(.minutes(1)))
 struct StadeumTests {
     /// A peer record as Hive gives one.
     nonisolated static func peer(_ id: String, _ label: String) -> String {
@@ -67,15 +69,133 @@ struct StadeumTests {
     }
 
     /// A stand-in Hive whose code lasts `expiresIn` and is polled every
-    /// `interval`, answering each poll with `token`.
-    private func hive(interval: Int, expiresIn: Int = 600, token: @escaping @Sendable () -> (Int, String)) async throws -> HTTPStub {
+    /// `interval`, answering each poll with `token`, and anything else with
+    /// `other`'s answer (a 404 when it has none).
+    private func hive(
+        interval: Int, expiresIn: Int = 600, token: @escaping @Sendable () -> (Int, String),
+        other: @escaping @Sendable (String) -> (Int, String)? = { _ in nil }
+    ) async throws -> HTTPStub {
         try await HTTPStub { port, request in
             if request.hasPrefix("POST /api/strut-devices/pair/token") { return token() }
             if request.hasPrefix("POST /api/strut-devices/pair") {
                 return (200, #"{"deviceCode":"dc","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"http://127.0.0.1:\#(port)/pair?code=BCDF-GHJK","expiresIn":\#(expiresIn),"interval":\#(interval)}"#)
             }
+            return other(request) ?? (404, "{}")
+        }
+    }
+
+    /// This account's Sphinx key and its proof, as its engine would sign them.
+    nonisolated static let proof = SphinxProof(pubkey: String(repeating: "02", count: 33), token: "dG9rZW4")
+
+    /// Paired, the device tells Stadeum the person's Sphinx account
+    /// (`POST /api/strut-devices/sphinx`), with the device credential,
+    /// never in the pairing's way; linked, it is identified, kept with the link.
+    @Test func aPairingTellsStadeumTheSphinxAccount() async throws {
+        let hive = try await hive(interval: 1) {
+            (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
+        } other: { request in
+            request.hasPrefix("POST /api/strut-devices/sphinx ") ? (200, #"{"linked":true}"#) : nil
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        let stadeum = Stadeum()
+        stadeum.client = { _ in HiveClient(hive: URL(string: "http://127.0.0.1:\(hive.port)")!) }
+        stadeum.sphinxProof = { Self.proof }
+        stadeum.open(profile)
+        stadeum.connect(as: "Mac")
+        await until { stadeum.identified }
+        #expect(stadeum.status == .connected && stadeum.identified)
+        let told = try #require(hive.requests.first { $0.hasPrefix("POST /api/strut-devices/sphinx ") })
+        #expect(told.contains("Authorization: Bearer hivedev_abc") && told.hasSuffix(#"{"pubkey":"\#(Self.proof.pubkey)","token":"dG9rZW4"}"#))
+        stadeum.close()
+        let again = Stadeum()
+        again.open(profile, renewNow: false)
+        #expect(again.identified)
+        again.close()
+    }
+
+    /// While Stadeum does not know the person's Sphinx account, the device
+    /// tells it once a launch (the iPhone opens it at every unlock) and
+    /// after each renewal that says so: a Stadeum without the route is asked
+    /// again at the next renewal, a refusal is said once and that key never
+    /// asked about again on this pairing, and none goes out once a renewal
+    /// says Stadeum knows it.
+    @Test func theSphinxAccountIsToldAtLaunchAndAfterARenewalWhileStadeumDoesNotKnowIt() async throws {
+        let told = Mutex(0)
+        let answer = Mutex((404, #"{"error":"Not found"}"#))
+        let knows = Mutex(false)
+        let hive = try await HTTPStub { _, request in
+            if request.hasPrefix("POST /api/strut-devices/sphinx ") {
+                told.withLock { $0 += 1 }
+                return answer.withLock { $0 }
+            }
+            if request.hasPrefix("GET /api/strut-devices/peers ") {
+                return (200, #"{"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))],"errors":[],"sphinx":\#(knows.withLock { $0 })}"#)
+            }
             return (404, "{}")
         }
+        defer { hive.stop() }
+        let profile = try profile()
+        let hiveURL = URL(string: "http://127.0.0.1:\(hive.port)")!
+        var kept = try link(hive: hiveURL, peers: [Self.peer("acme", "Acme")])
+        kept.identified = false
+        try kept.write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.sphinxProof = { Self.proof }
+        // A launch, the link not due: Stadeum asked once, and it has no route yet.
+        stadeum.open(profile, renewNow: false)
+        await until { told.withLock { $0 } == 1 }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 1 && !stadeum.identified && stadeum.problem == nil)
+        // Opened again in the same run of Peel (an unlock): not asked again.
+        stadeum.open(profile, renewNow: false)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 1)
+
+        /// The kept link, due for renewal.
+        func due() throws {
+            var link = try #require(try HiveLink.read(from: profile.hive))
+            link.renewedAt = Date(timeIntervalSinceNow: -2 * 24 * 3600)
+            try link.write(to: profile.hive)
+        }
+        // A renewal saying Stadeum does not know it: asked again; refused, said once.
+        answer.withLock { $0 = (409, #"{"error":"This Sphinx account is linked to another Hive user."}"#) }
+        try due()
+        stadeum.open(profile, renewNow: false)
+        await until { stadeum.problem != nil }
+        #expect(told.withLock { $0 } == 2 && stadeum.problem == "This Sphinx account is linked to another Hive user.")
+        #expect(try HiveLink.read(from: profile.hive)?.sphinxRefused?.pubkey == Self.proof.pubkey)
+        // The next renewal says the same: that key is not asked about again, and the refusal is not said again.
+        try due()
+        stadeum.open(profile, renewNow: false)
+        await until { stadeum.link?.renewedAt ?? .distantPast > Date(timeIntervalSinceNow: -60) }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 2 && stadeum.problem == nil)
+        // Nor at the next launch.
+        let next = Stadeum()
+        next.sphinxProof = { Self.proof }
+        next.open(profile, renewNow: false)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == 2)
+        next.close()
+
+        // Another key (another account) is asked about; a renewal saying Stadeum knows the person asks nothing.
+        let other = Stadeum()
+        other.sphinxProof = { SphinxProof(pubkey: String(repeating: "03", count: 33), token: "dG9rZW4") }
+        knows.withLock { $0 = true }
+        answer.withLock { $0 = (200, #"{"linked":true}"#) }
+        try due()
+        other.open(profile, renewNow: false)
+        await until { other.identified }
+        #expect(told.withLock { $0 } == 3 && other.identified)
+        try due()
+        let after = told.withLock { $0 }
+        stadeum.open(profile, renewNow: false)
+        await until { stadeum.link?.renewedAt ?? .distantPast > Date(timeIntervalSinceNow: -60) }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(told.withLock { $0 } == after && stadeum.identified)
+        other.close()
+        stadeum.close()
     }
 
     /// Back in front (from Safari, where the person approved it), a pairing
@@ -243,6 +363,40 @@ struct StadeumTests {
         #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
     }
 
+    /// An unlink Hive refuses changes nothing: the tribe stays linked, so
+    /// Jamie keeps its mark (`AppModel.setJamie` unmarks only on Hive's
+    /// yes). One Hive takes answers Jamie's key, the member to unmark; a
+    /// tribe that was not linked here answers none.
+    @Test func anUnlinkHiveRefusesKeepsTheLinkAndOnlyATakenOneNamesJamie() async throws {
+        let tribe = String(repeating: "ab", count: 33), other = String(repeating: "cd", count: 33)
+        let jamie = String(repeating: "0c", count: 33)
+        let refusing = Mutex(true)
+        let hive = try await HTTPStub { _, request in
+            if request.hasPrefix("GET /api/strut-devices/tribes ") {
+                return (200, #"{"jamie":{"pubkey":"\#(jamie)","alias":"Jamie"},"tribes":[{"pubkey":"\#(tribe)","host":"h","workspace":"acme"}]}"#)
+            }
+            if request.hasPrefix("DELETE /api/strut-devices/tribes/") {
+                return refusing.withLock { $0 } ? (500, #"{"error":"Failed to unlink"}"#) : (200, #"{"unlinked":true}"#)
+            }
+            return (404, "{}")
+        }
+        defer { hive.stop() }
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile, renewNow: false)
+        await stadeum.readJamieLinks()
+        let record = Tribe(pubkey: tribe, host: "h", isOwner: true)
+
+        await #expect(throws: PeelError.self) { try await stadeum.setJamie(nil, for: record) }
+        #expect(stadeum.jamiePick(of: tribe) == "acme")
+        refusing.withLock { $0 = false }
+        #expect(try await stadeum.setJamie(nil, for: record) == jamie)
+        #expect(stadeum.jamiePick(of: tribe) == "")
+        #expect(try await stadeum.setJamie(nil, for: Tribe(pubkey: other, host: "h", isOwner: true)) == nil)
+        stadeum.close()
+    }
+
     /// A read of the links that Hive answers after this device linked the
     /// tribe does not take the link back, and the next read asks again.
     @Test func aReadAnsweredAfterALinkDoesNotTakeItBack() async throws {
@@ -334,5 +488,43 @@ struct StadeumTests {
         // A file opened in place, or anywhere else: not this.
         #expect(request.request(at: URL(string: "https://acme.sphinx.chat/lab/jobs/j/files/a.pdf?t=1")!) == nil)
         #expect(request.request(at: URL(string: "https://evil.example/lab/?app=x")!) == nil)
+    }
+}
+
+/// The sweep for the tribes an older Peel linked (`JamieSweep`, what
+/// `AppModel.markLinkedJamies` runs as the account opens and on each
+/// connection), on a real engine and a stand-in tribes server.
+/// Each test a minute at most: one that stops answering fails by its name
+/// rather than holding up the whole run.
+@MainActor @Suite(.timeLimit(.minutes(1)))
+struct JamieSweepTests {
+    let profile = TempProfile()
+
+    /// On the Mac the account opens before the engine connects: that sweep
+    /// does nothing and records nothing. One run on a connection whose
+    /// lists cannot be read (none yet) records nothing either; the
+    /// connection then marks Jamie once, and a later one sends nothing more.
+    @Test func theSweepWaitsForTheConnectionAndMarksOnce() async throws {
+        let (club, jamie) = (strangerKey, key3G)
+        let server = TribesServer(tribe: club, jamie: jamie, listed: [.confirmed])
+        let engine = try testEngine(try ownedTribeStorage(profile, tribe: club))
+        server.engine = engine
+        let links = JamieLinks(jamie: JamieAccount(pubkey: jamie, alias: "Jamie"),
+                               tribes: [JamieLink(pubkey: club, host: "tribes.test", workspace: "acme")])
+        let sweep = JamieSweep()
+        func run(connected: Bool) async -> Engine.SendersSweep? {
+            await sweep.run(on: engine, pairing: "hivedev_abc", connected: connected, owns: { true }, links: { links })
+        }
+        #expect(await run(connected: false) == nil)
+        // No connection under the engine yet: the list is not read, nothing is settled.
+        let unread = await run(connected: true)
+        #expect(unread?.unread == [club] && unread?.complete == false && server.commands.isEmpty)
+        await engine.useTransportForTesting(server.transport)
+        let marked = await run(connected: true)
+        // Shut down whatever the expectations say: mqtt-nio requires it before its client is freed.
+        await engine.disconnect()
+        #expect(marked?.complete == true && marked?.members[club]?.member(jamie)?.seesSenders == true)
+        #expect(server.commands == ["ListMembers", "ShowSenders on"])
+        #expect(await run(connected: true) == nil && server.commands.count == 2)
     }
 }

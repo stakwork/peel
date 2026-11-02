@@ -123,6 +123,7 @@ extension NavRow where Icon == Image {
 /// after the agent's name. The caller wraps it in its `NavigationLink`
 /// and adds the swipe actions.
 struct ChatListRow: View {
+    @Environment(AppModel.self) private var model
     let conversation: Conversation
     /// `model.readStates[chat]`.
     let state: ChatReadState?
@@ -136,6 +137,7 @@ struct ChatListRow: View {
         let unread = state?.sidebarCount ?? 0
         let mentionsYou = (state?.mentions ?? 0) > 0
         let lit = unread > 0 || waiting > 0
+        let onCall = model.calls.liveCount(in: conversation.chat)
         RowLayout {
             icon
         } title: {
@@ -147,6 +149,12 @@ struct ChatListRow: View {
                 if isAgent { AgentTag() }
             }
         } trailing: {
+            if onCall > 0 {
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.confirmed)
+                    .accessibilityHidden(true)
+            }
             if waiting > 0 {
                 CountBadge(count: waiting, style: .attention)
             } else if unread > 0 {
@@ -163,7 +171,7 @@ struct ChatListRow: View {
         .opacity(level == .muted && !lit ? 0.6 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(conversation.name + (isAgent ? ", agent" : ""))
-        .accessibilityValue(spoken(unread: unread, mentionsYou: mentionsYou, level: level))
+        .accessibilityValue(spoken(unread: unread, mentionsYou: mentionsYou, level: level, onCall: onCall))
     }
 
     @ViewBuilder private var icon: some View {
@@ -175,9 +183,10 @@ struct ChatListRow: View {
     }
 
     /// "3 unread, mentions you", "waiting on you", "muted".
-    private func spoken(unread: Int, mentionsYou: Bool, level: MuteLevel) -> String {
+    private func spoken(unread: Int, mentionsYou: Bool, level: MuteLevel, onCall: Int) -> String {
         if waiting > 0 { return "waiting on you" }
         var parts: [String] = []
+        if onCall > 0 { parts.append("call in progress, \(Formatting.people(onCall))") }
         if unread > 0 { parts.append("\(unread) unread") }
         if mentionsYou, unread > 0 { parts.append("mentions you") }
         if state?.isNew == true, unread == 0 { parts.append("new") }

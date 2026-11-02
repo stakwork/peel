@@ -376,9 +376,7 @@ public struct HiveClient: Sendable {
         switch status {
         case 200: return .linked
         case 401, 404: return .notYet
-        case 409:
-            let said = (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"].map { TextLine.clean($0, max: 200) }
-            return .refused(said?.nilIfEmpty ?? "This Sphinx account is linked to another Stadeum user.")
+        case 409: return .refused(Self.said(data)?.nilIfEmpty ?? "This Sphinx account is linked to another Stadeum user.")
         default: throw Self.failure(status, data, couldNot: "link your Sphinx account")
         }
     }
@@ -554,8 +552,12 @@ public struct HiveClient: Sendable {
     }
 
     private static func failure(_ status: Int, _ data: Data, couldNot what: String) -> PeelError {
-        let said = (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"]
-        return PeelError("Stadeum could not \(what): \(said.map { TextLine.clean($0, max: 200) } ?? "HTTP \(status)").")
+        PeelError("Stadeum could not \(what): \(said(data) ?? "HTTP \(status)").")
+    }
+
+    /// Hive's own words in an answer (`{ "error": … }`), cleaned for showing.
+    private static func said(_ data: Data) -> String? {
+        (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"].map { TextLine.clean($0, max: 200) }
     }
 }
 

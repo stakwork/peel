@@ -67,14 +67,18 @@ struct StadeumTests {
     }
 
     /// A stand-in Hive whose code lasts `expiresIn` and is polled every
-    /// `interval`, answering each poll with `token`.
-    private func hive(interval: Int, expiresIn: Int = 600, token: @escaping @Sendable () -> (Int, String)) async throws -> HTTPStub {
+    /// `interval`, answering each poll with `token`, and anything else with
+    /// `other`'s answer (a 404 when it has none).
+    private func hive(
+        interval: Int, expiresIn: Int = 600, token: @escaping @Sendable () -> (Int, String),
+        other: @escaping @Sendable (String) -> (Int, String)? = { _ in nil }
+    ) async throws -> HTTPStub {
         try await HTTPStub { port, request in
             if request.hasPrefix("POST /api/strut-devices/pair/token") { return token() }
             if request.hasPrefix("POST /api/strut-devices/pair") {
                 return (200, #"{"deviceCode":"dc","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"http://127.0.0.1:\#(port)/pair?code=BCDF-GHJK","expiresIn":\#(expiresIn),"interval":\#(interval)}"#)
             }
-            return (404, "{}")
+            return other(request) ?? (404, "{}")
         }
     }
 
@@ -85,15 +89,10 @@ struct StadeumTests {
     /// (`POST /api/strut-devices/sphinx`), with the device credential,
     /// never in the pairing's way; linked, it is identified, kept with the link.
     @Test func aPairingTellsStadeumTheSphinxAccount() async throws {
-        let hive = try await HTTPStub { port, request in
-            if request.hasPrefix("POST /api/strut-devices/pair/token") {
-                return (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
-            }
-            if request.hasPrefix("POST /api/strut-devices/pair") {
-                return (200, #"{"deviceCode":"dc","userCode":"BCDF-GHJK","verificationUri":"http://127.0.0.1:\#(port)/pair","verificationUriComplete":"http://127.0.0.1:\#(port)/pair?code=BCDF-GHJK","expiresIn":600,"interval":1}"#)
-            }
-            if request.hasPrefix("POST /api/strut-devices/sphinx ") { return (200, #"{"linked":true}"#) }
-            return (404, "{}")
+        let hive = try await hive(interval: 1) {
+            (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)
+        } other: { request in
+            request.hasPrefix("POST /api/strut-devices/sphinx ") ? (200, #"{"linked":true}"#) : nil
         }
         defer { hive.stop() }
         let profile = try profile()

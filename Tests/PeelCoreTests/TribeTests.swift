@@ -434,7 +434,7 @@ struct TribeSendersTests {
             let again = await engine.markSendersOnce(jamie, in: [club])
             #expect(server.commands.count == 2 && again.members.isEmpty)
 
-            try await engine.showSenders(jamie, in: club, on: false, wait: false)
+            try await engine.stopShowingSenders(jamie, in: club)
             #expect(server.commands.last == "ShowSenders off")
             server.list(.absent)
             _ = await engine.markSendersOnce(jamie, in: [club])

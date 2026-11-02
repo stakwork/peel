@@ -200,24 +200,28 @@ public struct TribeMembers: Sendable, Equatable {
             let alias: String
             /// Written only when true (`MemberJson`), so absent, as from a
             /// tribes server before it, is false.
-            let seesSenders: Bool
+            private let marked: Bool?
+            var seesSenders: Bool { marked ?? false }
 
-            init(from decoder: any Decoder) throws {
-                let fields = try decoder.container(keyedBy: Keys.self)
-                pubkey = try fields.decode(String.self, forKey: .pubkey)
-                alias = try fields.decode(String.self, forKey: .alias)
-                seesSenders = try fields.decodeIfPresent(Bool.self, forKey: .seesSenders) ?? false
-            }
-
-            private enum Keys: String, CodingKey {
+            private enum CodingKeys: String, CodingKey {
                 case pubkey, alias
-                case seesSenders = "sees_senders"
+                case marked = "sees_senders"
             }
         }
 
         let pubkey: String
         let confirmed: [Entry]
         var pending: [Entry]
+
+        /// `key`'s entry among the confirmed members, matched without case.
+        func confirmed(_ key: String) -> Entry? {
+            confirmed.first { $0.pubkey.lowercased() == key.lowercased() }
+        }
+    }
+
+    /// `key`'s entry, confirmed or waiting, matched without case.
+    public func member(_ key: String) -> TribeMember? {
+        members.first { $0.pubkey?.lowercased() == key.lowercased() }
     }
 }
 

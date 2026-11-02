@@ -297,7 +297,7 @@ public final class TribeJamiePicker {
     /// tells Jamie who is speaking (`seesSenders`) and Stadeum knows them,
     /// else the person who linked it; or what a pick does. Jamie itself
     /// always posts the reply.
-    public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum, seesSenders: Bool? = nil) -> String {
+    public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum, seesSenders: Bool?) -> String {
         guard !pick.isEmpty else {
             return "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it."
         }

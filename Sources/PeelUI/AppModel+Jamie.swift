@@ -17,18 +17,19 @@ extension AppModel {
     public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws {
         if peer == nil, stadeum.jamiePick(of: tribe.pubkey)?.isEmpty == false,
            let jamie = stadeum.jamieLinks?.jamie.pubkey, let engine {
-            _ = try? await engine.showSenders(jamie, in: tribe.pubkey, on: false, wait: false)
+            try? await engine.stopShowingSenders(jamie, in: tribe.pubkey)
         }
         try await stadeum.setJamie(peer, for: tribe)
         if peer != nil { markJamie(in: tribe.pubkey) }
     }
 
     /// Whether Jamie knows who is speaking in `tribe` (`TribeMember.seesSenders`),
-    /// as its owner's member list last said; nil while that list has no
-    /// Jamie in it, confirmed (not joined yet, or not read).
+    /// as its owner's member list last said; nil while the tribe has no
+    /// Jamie of the person's, or the list has no Jamie in it, confirmed
+    /// (not joined yet, or not read).
     public func jamieSeesSenders(in tribe: String) -> Bool? {
-        guard let jamie = stadeum.jamieLinks?.jamie.pubkey,
-              let member = knownMembers[tribe]?.members.first(where: { !$0.pending && $0.pubkey?.lowercased() == jamie })
+        guard stadeum.jamiePick(of: tribe)?.isEmpty == false, let jamie = stadeum.jamieLinks?.jamie.pubkey,
+              let member = knownMembers[tribe]?.member(jamie), !member.pending
         else { return nil }
         return member.seesSenders
     }
@@ -40,7 +41,7 @@ extension AppModel {
     public func setJamieSeesSenders(_ on: Bool, in tribe: String) async throws {
         guard let jamie = stadeum.jamieLinks?.jamie.pubkey else { throw PeelError("Jamie isn't in this tribe.") }
         do {
-            if let members = try await signedIn().showSenders(jamie, in: tribe, on: on) { knownMembers[tribe] = members }
+            knownMembers[tribe] = try await signedIn().showSenders(jamie, in: tribe, on: on)
             jamieMarkNotes[tribe] = nil
         } catch Engine.Failure.sendersNotShown {
             jamieMarkNotes[tribe] = Self.sendersNotShown
@@ -63,7 +64,7 @@ extension AppModel {
         guard let engine, let credential = stadeum.link?.credential, !stadeum.revoked,
               !jamieApprovals.swept.contains(credential) else { return }
         Task {
-            guard (try? engine.storage.tribes())?.contains(where: { $0.canManage && $0.host != nil }) == true,
+            guard (try? engine.storage.tribes())?.contains(where: offersJamie(in:)) == true,
                   let links = await stadeum.readJamieLinks(ifOlderThan: 60), self.engine === engine else { return }
             jamieApprovals.swept.insert(credential)
             let marked = await engine.markSendersOnce(links.jamie.pubkey, in: links.tribes.map(\.pubkey))
@@ -119,7 +120,7 @@ extension AppModel {
     /// the words a tribe's Jamie row and its notice show; nil otherwise.
     public func othersJamie(in tribe: String) -> String? {
         guard stadeum.jamiePick(of: tribe) == "", let jamie = stadeum.jamieLinks?.jamie,
-              let member = knownMembers[tribe]?.members.first(where: { $0.pubkey?.lowercased() == jamie.pubkey }) else { return nil }
+              let member = knownMembers[tribe]?.member(jamie.pubkey) else { return nil }
         return member.pending
             ? "\(jamie.alias) is asking to join for an org you didn't pick: someone else linked this tribe. Approving it sends what's said here to that org."
             : "\(jamie.alias) is in this tribe for an org you didn't pick: someone else linked it, and that org reads what's said here. Remove it in Members."

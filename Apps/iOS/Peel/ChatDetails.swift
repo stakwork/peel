@@ -336,7 +336,7 @@ private struct TribeJamie: View {
                 StadeumPairingCode(pairing: pairing)
             case .connected:
                 if let pick = stadeum.jamiePick(of: tribe.pubkey) {
-                    let seesSenders = pick.isEmpty ? nil : model.jamieSeesSenders(in: tribe.pubkey)
+                    let seesSenders = model.jamieSeesSenders(in: tribe.pubkey)
                     PhoneCard {
                         HStack(spacing: Theme.Space.md) {
                             Text("Answers from").phoneFont(.row)

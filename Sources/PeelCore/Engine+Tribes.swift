@@ -351,6 +351,11 @@ extension Engine {
     public func tribeMembers(_ pubkey: String) async throws -> TribeMembers {
         guard let tribe = tribes[pubkey], !tribe.left else { throw Failure.notInTribe }
         guard tribe.isOwner else { return TribeMembers(members: try storage.tribeSenders(pubkey), complete: false) }
+        return try members(of: pubkey, from: try await memberList(pubkey))
+    }
+
+    /// The tribes server's list of `pubkey`'s members, asked for now: the owner's alone.
+    private func memberList(_ pubkey: String) async throws -> TribeMembers.List {
         let server = try tribeServer()
         tribeWork.memberLists[pubkey] = nil
         try await run { time, state in
@@ -358,8 +363,7 @@ extension Engine {
                 seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey
             )
         }
-        let list = try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { tribeWork.memberLists[pubkey] }
-        return try members(of: pubkey, from: list)
+        return try await poll(timeout: .seconds(15), failure: .tribeServerTimedOut) { tribeWork.memberLists[pubkey] }
     }
 
     /// The tribes server's list of `pubkey`'s members as the owner reads it,
@@ -381,36 +385,44 @@ extension Engine {
     /// message it forwards (`ShowSenders`, stakwork/sphinx
     /// docs/tribe-sender-identity.md). Jamie is the member a linking owner
     /// marks (docs/hive-tribes.md, "Who is asking"). The server answers with
-    /// its member list, which says it per member: the list once it does,
-    /// with `wait`; without, as soon as the command has gone (an unlink, which
-    /// does not wait on it). A tribes server from before the command does not
-    /// know it and answers nothing, as does one that will not take it (the
-    /// member not in the tribe, commands off on its broker): `sendersNotShown`.
+    /// its member list, which says it per member: the list once it does. A
+    /// tribes server from before the command does not know it and answers
+    /// nothing, as does one that will not take it (the member not in the
+    /// tribe, commands off on its broker): `sendersNotShown`.
     @discardableResult
-    public func showSenders(_ member: String, in pubkey: String, on: Bool, wait: Bool = true) async throws -> TribeMembers? {
+    public func showSenders(_ member: String, in pubkey: String, on: Bool) async throws -> TribeMembers {
         guard member.isPubkey else { throw Failure.notAMemberKey }
         let key = member.lowercased()
         return try await changeOwnedTribe(pubkey) { _, _, server in
-            tribeWork.memberLists[pubkey] = nil
-            try await run { time, state in
-                try Sphinxrs.showSenders(
-                    seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey,
-                    memberPubkey: key, on: on
-                )
-            }
-            // Not waited on (an unlink): this device's settlement of it ends with the link.
-            guard wait else {
-                try settleSenders(key, in: pubkey, settled: false)
-                return nil
-            }
+            try await sendShowSenders(key, in: pubkey, on: on, server: server)
             // A list asked for meanwhile (`tribeMembers`) may answer first, from before the change.
             let list = try await poll(timeout: .seconds(15), failure: .sendersNotShown) {
-                tribeWork.memberLists[pubkey].flatMap { list in
-                    list.confirmed.first { $0.pubkey.lowercased() == key }?.seesSenders == on ? list : nil
-                }
+                tribeWork.memberLists[pubkey].flatMap { $0.confirmed(key)?.seesSenders == on ? $0 : nil }
             }
             try settleSenders(key, in: pubkey, settled: true)
             return try members(of: pubkey, from: list)
+        }
+    }
+
+    /// An unlink's half: `member` is no longer told who is speaking in
+    /// `pubkey`, sent without waiting on the tribes server's answer, and
+    /// this device no longer counts the tribe settled (`markSendersOnce`).
+    public func stopShowingSenders(_ member: String, in pubkey: String) async throws {
+        guard member.isPubkey else { throw Failure.notAMemberKey }
+        let key = member.lowercased()
+        try await changeOwnedTribe(pubkey) { _, _, server in
+            try await sendShowSenders(key, in: pubkey, on: false, server: server)
+            try settleSenders(key, in: pubkey, settled: false)
+        }
+    }
+
+    private func sendShowSenders(_ key: String, in pubkey: String, on: Bool, server: String) async throws {
+        tribeWork.memberLists[pubkey] = nil
+        try await run { time, state in
+            try Sphinxrs.showSenders(
+                seed: seed, uniqueTime: time, state: state, tribeServerPubkey: server, tribePubkey: pubkey,
+                memberPubkey: key, on: on
+            )
         }
     }
 
@@ -470,14 +482,18 @@ extension Engine {
         _ member: String, in pubkey: String, tries: Int, every: Duration
     ) async throws -> TribeMembers? {
         guard member.isPubkey else { throw Failure.notAMemberKey }
+        guard let tribe = tribes[pubkey], !tribe.left else { throw Failure.notInTribe }
+        // Only the owner is given the list.
+        guard tribe.isOwner else { return nil }
         let key = member.lowercased()
         for attempt in 0..<tries {
             if attempt > 0 { try await Task.sleep(for: every) }
-            let members = try await tribeMembers(pubkey)
-            guard let listed = members.members.first(where: { !$0.pending && $0.pubkey?.lowercased() == key }) else { continue }
+            // The raw list: its photos are read once, for the list returned.
+            let list = try await memberList(pubkey)
+            guard let listed = list.confirmed(key) else { continue }
             guard listed.seesSenders else { return try await showSenders(key, in: pubkey, on: true) }
             try settleSenders(key, in: pubkey, settled: true)
-            return members
+            return try members(of: pubkey, from: list)
         }
         return nil
     }

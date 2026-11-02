@@ -244,7 +244,7 @@ private struct TribeJamieSection: View {
                 }
             case .connected:
                 if let pick = stadeum.jamiePick(of: tribe.pubkey) {
-                    let seesSenders = pick.isEmpty ? nil : model.jamieSeesSenders(in: tribe.pubkey)
+                    let seesSenders = model.jamieSeesSenders(in: tribe.pubkey)
                     FormItem(label: "Answers from",
                              helper: TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum, seesSenders: seesSenders),
                              problem: picker.problem ?? model.othersJamie(in: tribe.pubkey)) {

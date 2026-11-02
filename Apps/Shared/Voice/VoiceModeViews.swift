@@ -28,25 +28,28 @@ struct VoicePanel: View {
 
     var body: some View {
         let phase = voice.phase
+        let muted = voice.isMuted
+        let status = muted ? "Muted — say Peel unmute" : phase.label
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Image(systemName: icon(phase))
+                Image(systemName: muted ? "mic.slash.fill" : icon(phase))
                     .accessibilityHidden(true)
-                Text(phase.label)
+                Text(status)
                     .font(.headline)
                 Spacer(minLength: 0)
-                LevelMeter(level: phase == .speaking ? 0 : voice.level)
+                LevelMeter(level: phase == .speaking || muted ? 0 : voice.level)
+                    .opacity(muted ? 0.35 : 1)
                     .accessibilityHidden(true)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(phase.label)
+            .accessibilityLabel(muted ? "Muted. Say Peel unmute to listen again." : phase.label)
             if !voice.draft.isEmpty {
                 Text(voice.draft)
                     .lineLimit(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("What you said: \(voice.draft)")
-            } else if phase == .listening {
-                Text("Say send it when you are done.")
+            } else if phase == .listening, !muted {
+                Text("Say Peel send when you are done.")
                     .foregroundStyle(.secondary)
                     .font(.callout)
             }
@@ -65,7 +68,13 @@ struct VoicePanel: View {
                     .buttonStyle(.bordered)
                     .accessibilityLabel("Stop speaking")
                 }
-                if phase == .hearing {
+                Button { voice.toggleMute() } label: {
+                    Label(muted ? "Unmute" : "Mute", systemImage: muted ? "mic.fill" : "mic.slash.fill")
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel(muted ? "Unmute the microphone" : "Mute the microphone")
+                if phase == .hearing, !muted {
                     Button { voice.sendNow() } label: {
                         Label("Send", systemImage: "arrow.up.circle.fill")
                             .frame(maxWidth: .infinity, minHeight: 36)
@@ -120,8 +129,8 @@ struct VoiceModeSettingsFields: View {
         Toggle("Spoken replies", isOn: $spokenReplies)
         Toggle("Send after a pause", isOn: $autoSend)
         if autoSend {
-            Stepper(value: $seconds, in: VoiceDefaults.autoSendRange, step: 0.5) {
-                Text("Pause: \(seconds.formatted(.number.precision(.fractionLength(1)))) s")
+            Stepper(value: $seconds, in: VoiceDefaults.autoSendRange, step: 1) {
+                Text("Pause: \(seconds.formatted(.number.precision(.fractionLength(0)))) s")
             }
         }
         Toggle("Listen for \"Hey Peel\" while this chat is open", isOn: $wakeListen)

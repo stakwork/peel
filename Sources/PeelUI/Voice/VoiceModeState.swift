@@ -76,6 +76,9 @@ public enum VoiceEffect: Equatable, Sendable {
     case speakLastReply
     case speakFullReply
     case stopAgent
+    /// Muted: the draft is frozen and the input is matched only for unmute.
+    case mute
+    case unmute
 }
 
 /// The transitions of voice mode as a reducer: no audio, no model, so it is
@@ -83,8 +86,17 @@ public enum VoiceEffect: Equatable, Sendable {
 public struct VoiceMachine: Equatable, Sendable {
     public private(set) var phase = VoicePhase.idle
     public private(set) var draft = ""
+    /// Muted is a flag over the phase, so unmuting returns to whatever phase
+    /// it was (listening, waiting, speaking) without remembering it.
+    public private(set) var isMuted = false
 
     public init() {}
+
+    /// The context transcripts are heard in: `.muted` while muted.
+    public var context: VoiceContext? {
+        guard phase.isActive else { return nil }
+        return isMuted ? .muted : phase.context
+    }
 
     private var hasDraft: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -94,19 +106,38 @@ public struct VoiceMachine: Equatable, Sendable {
             guard !phase.isActive else { return [] }
             phase = .listening
             draft = ""
+            isMuted = false
             return [.begin]
         case .stop, .command(.deactivate):
             guard phase.isActive else { return [] }
             phase = .idle
             draft = ""
+            isMuted = false
             return [.end]
         case .failure(let problem):
             guard phase.isActive else { return [] }
             phase = .failed(problem)
             draft = ""
+            isMuted = false
             return [.end]
         default:
             guard phase.isActive else { return [] }
+        }
+
+        switch event {
+        case .command(.mute):
+            guard !isMuted else { return [] }
+            isMuted = true
+            return [.mute]
+        case .command(.unmute):
+            guard isMuted else { return [] }
+            isMuted = false
+            return [.unmute]
+        case .transcript, .silence, .command(.send), .command(.discard):
+            // Muted: the draft is frozen and nothing is sent.
+            if isMuted { return [] }
+        default:
+            break
         }
 
         switch (phase, event) {
@@ -169,16 +200,19 @@ public struct VoiceMachine: Equatable, Sendable {
 /// (docs/voice-mode.md, "Settings").
 public enum VoiceDefaults {
     public static let spokenRepliesKey = "voice.spokenReplies"
-    public static let autoSendKey = "voice.autoSend"
-    public static let autoSendSecondsKey = "voice.autoSendSeconds"
+    // ".v2": auto-send used to default to on, with 1–5 s; values stored under
+    // the old keys are not read, so nobody is silently cut off by a stale 2 s.
+    public static let autoSendKey = "voice.autoSend.v2"
+    public static let autoSendSecondsKey = "voice.autoSendSeconds.v2"
     public static let wakeListenKey = "voice.wakeListen"
     public static let speechRateKey = "voice.speechRate"
 
     public static let spokenReplies = true
-    public static let autoSend = true
-    /// No new words for this long sends the draft.
-    public static let autoSendSeconds: Double = 2.0
-    public static let autoSendRange: ClosedRange<Double> = 1.0...5.0
+    /// Off: "Peel send" is the way to send; a pause can cut you off.
+    public static let autoSend = false
+    /// No new words for this long sends the draft, when auto-send is on.
+    public static let autoSendSeconds: Double = 5.0
+    public static let autoSendRange: ClosedRange<Double> = 2.0...15.0
     public static let wakeListen = false
     /// A factor of the system's default speaking rate.
     public static let speechRate: Double = 1.0

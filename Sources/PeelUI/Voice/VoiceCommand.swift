@@ -7,9 +7,9 @@ public enum VoiceCommand: String, Sendable, CaseIterable, Hashable {
     /// Turns voice mode on; heard only while the wake listener is armed.
     case activate
     case deactivate
-    /// Sends the draft. Also said as the last words of a sentence.
+    /// Sends the draft. Said as the last words of a sentence.
     case send
-    /// Throws the draft away. Also said as the last words of a sentence.
+    /// Throws the draft away. Said as the last words of a sentence.
     case discard
     /// Barge-in: stops the speech now.
     case stopSpeaking
@@ -20,39 +20,71 @@ public enum VoiceCommand: String, Sendable, CaseIterable, Hashable {
     case readAll
     /// Stops the agent's running turn (`AppModel.stopAgentTurn`).
     case stopAgent
+    /// The microphone input is ignored until `unmute`.
+    case mute
+    case unmute
 }
 
 /// The phrases for each command, normalised (lowercase, no punctuation).
-/// `trailing` commands are also recognised as the last words of an
-/// utterance, so the text before them is kept as the draft; the rest only
-/// as the whole utterance, so a word inside a sentence never fires them.
+/// Every command but `activate` is introduced by the wake word ("peel send"):
+/// `phrases` holds what follows the wake word, and the command must be the
+/// last words of the utterance, so the text before it is kept as dictation.
+/// Without the wake word everything is dictation.
 public struct VoiceCommandPhrases: Sendable, Equatable {
     public var phrases: [VoiceCommand: [String]]
+    /// Commands (only `activate` uses it) that also fire as the last words
+    /// of an utterance; the others are matched whole.
     public var trailing: Set<VoiceCommand>
+    /// The wake word that introduces a command.
+    public var wakeWord: String
+    /// What the recogniser mishears the wake word as; accepted only when a
+    /// known command follows.
+    public var wakeVariants: [String]
 
-    public init(phrases: [VoiceCommand: [String]], trailing: Set<VoiceCommand>) {
+    public init(
+        phrases: [VoiceCommand: [String]], trailing: Set<VoiceCommand>,
+        wakeWord: String = "peel", wakeVariants: [String] = ["pill", "peal", "feel"]
+    ) {
         self.phrases = phrases
         self.trailing = trailing
+        self.wakeWord = wakeWord
+        self.wakeVariants = wakeVariants
     }
 
     /// English. Edit here to add a phrase.
     public static let english = VoiceCommandPhrases(
         phrases: [
-            .activate: ["hey peel", "voice mode", "start voice mode"],
-            .deactivate: ["exit voice mode", "stop voice mode", "end voice mode", "goodbye peel"],
-            .send: ["send it", "send message", "send that", "over"],
-            .discard: ["scratch that", "cancel message", "never mind", "start over"],
-            .stopSpeaking: ["stop", "quiet", "stop talking", "pause"],
-            .repeatReply: ["say that again", "repeat that", "repeat", "what did it say"],
-            .skip: ["skip", "next"],
-            .readAll: ["read it all", "read everything", "full version"],
-            .stopAgent: ["stop the agent", "cancel the agent", "abort"],
+            // Not prefixed: the opt-in wake listener's.
+            .activate: ["hey peel", "voice mode", "start voice mode", "peel start voice mode"],
+            // Everything below follows the wake word.
+            .deactivate: [
+                "end voice mode", "end voice session", "stop voice mode", "exit voice mode", "goodbye",
+            ],
+            .send: ["send", "send it", "send message", "over"],
+            .discard: ["scratch that", "cancel message", "never mind"],
+            .stopSpeaking: ["stop"],
+            .repeatReply: ["repeat that", "say that again", "repeat"],
+            .skip: ["skip"],
+            .readAll: ["read it all", "read everything"],
+            .stopAgent: ["stop the agent", "cancel the agent"],
+            .mute: ["mute"],
+            .unmute: ["unmute"],
         ],
-        trailing: [.send, .discard]
+        trailing: []
     )
 
-    /// Every phrase, for the recogniser's contextual strings.
-    public var all: [String] { phrases.values.flatMap { $0 } }
+    /// The wake word and its variants.
+    var wakeWords: [String] { [wakeWord] + wakeVariants }
+
+    /// What the user says for `command`'s `phrase`, with the wake word.
+    public func spoken(_ phrase: String, of command: VoiceCommand) -> String {
+        command == .activate ? phrase : "\(wakeWord) \(phrase)"
+    }
+
+    /// Every phrase as said, prefixed, for the recogniser's contextual strings.
+    public var all: [String] {
+        phrases.flatMap { command, list in list.map { spoken($0, of: command) } }
+    }
 }
 
 /// What the parser found.
@@ -71,15 +103,18 @@ public enum VoiceContext: Sendable {
     case dictating
     /// Waiting for the agent.
     case waiting
-    /// The speech is playing: only whole-utterance controls.
+    /// The speech is playing.
     case speaking
+    /// Muted: only unmute and end voice mode.
+    case muted
 
     public var accepts: Set<VoiceCommand> {
         switch self {
         case .armed: [.activate]
-        case .dictating: [.send, .discard, .deactivate, .stopAgent, .repeatReply, .readAll]
-        case .waiting: [.deactivate, .stopAgent, .repeatReply, .readAll]
-        case .speaking: [.stopSpeaking, .repeatReply, .skip, .readAll, .stopAgent, .deactivate]
+        case .dictating: [.send, .discard, .deactivate, .stopAgent, .repeatReply, .readAll, .mute]
+        case .waiting: [.deactivate, .stopAgent, .repeatReply, .readAll, .mute]
+        case .speaking: [.stopSpeaking, .repeatReply, .skip, .readAll, .stopAgent, .mute, .deactivate]
+        case .muted: [.unmute, .deactivate]
         }
     }
 }
@@ -95,9 +130,10 @@ public struct VoiceCommandParser: Sendable {
         words(of: text).joined(separator: " ")
     }
 
-    /// The command `transcript` ends with (`send`, `discard`) or is
-    /// (all), among those `accepted`. Longer phrases win over shorter ones
-    /// ("start over" is a discard, not an "over").
+    /// The command `transcript` ends with, among those `accepted`: the wake
+    /// word and the command phrase are its last words ("add a screen peel
+    /// send"). Only `activate` needs no wake word. A bare "send it" is
+    /// `.none`: it is dictation. Longer phrases win.
     public func parse(_ transcript: String, accepting accepted: Set<VoiceCommand>) -> VoiceCommandMatch {
         // Whitespace-separated words as spoken, with their normalised form;
         // a word of pure punctuation has none and is skipped in matching.
@@ -109,19 +145,28 @@ public struct VoiceCommandParser: Sendable {
         guard !tokens.isEmpty else { return .none }
         let said = tokens.map(\.word)
 
-        var best: (command: VoiceCommand, words: [String])?
+        var best: (command: VoiceCommand, count: Int)?
         for command in VoiceCommand.allCases where accepted.contains(command) {
             for phrase in table.phrases[command] ?? [] {
                 let words = Self.words(of: phrase)
-                guard !words.isEmpty, words.count <= said.count else { continue }
-                let whole = words == said
-                let ending = table.trailing.contains(command) && Array(said.suffix(words.count)) == words
-                guard whole || ending else { continue }
-                if best == nil || words.count > best!.words.count { best = (command, words) }
+                guard !words.isEmpty else { continue }
+                let candidates: [[String]]
+                if command == .activate {
+                    candidates = [words]
+                } else {
+                    candidates = table.wakeWords.map { Self.words(of: $0) + words }
+                }
+                for candidate in candidates {
+                    guard candidate.count <= said.count else { continue }
+                    let ending = Array(said.suffix(candidate.count)) == candidate
+                    let whole = candidate == said
+                    guard whole || (ending && (command != .activate || table.trailing.contains(.activate))) else { continue }
+                    if best == nil || candidate.count > best!.count { best = (command, candidate.count) }
+                }
             }
         }
         guard let best else { return .none }
-        let firstIndex = tokens[said.count - best.words.count].index
+        let firstIndex = tokens[said.count - best.count].index
         let before = spoken[..<firstIndex].joined(separator: " ")
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;:-–—")))
         return .command(best.command, textBefore: before)
@@ -129,7 +174,7 @@ public struct VoiceCommandParser: Sendable {
 
     /// Lowercased words: letters and digits only, so "Send it!" is
     /// ["send", "it"] and "that's" is ["thats"].
-    private static func words(of text: String) -> [String] {
+    static func words(of text: String) -> [String] {
         text.lowercased().split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'" || $0 == "’") })
             .map { $0.filter { $0 != "'" && $0 != "’" } }
             .filter { !$0.isEmpty }

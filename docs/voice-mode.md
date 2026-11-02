@@ -19,8 +19,8 @@ controls the agent: voice mode sends and stops it only on your words).
 reducer: events in, effects out. `VoiceModeController` runs the effects.
 
 ```
-idle ──start──▶ listening ──words──▶ hearing ──send it / silence──▶ sending
-  ▲                ▲  ▲                 │ scratch that                 │ sent
+idle ──start──▶ listening ──words──▶ hearing ──Peel send / silence──▶ sending
+  ▲                ▲  ▲                 │ Peel scratch that            │ sent
   │                │  └─────────────────┘                              ▼
   │                │◀──── speech ends ──── speaking ◀──reply──── waiting
   └── exit / error / interruption, from any state (failed(reason) on error)
@@ -28,13 +28,18 @@ idle ──start──▶ listening ──words──▶ hearing ──send it /
 
 - listening: nothing said yet; hearing: a draft, shown live.
 - sending: the draft is going out. waiting: the agent is answering.
-- speaking: the reply is read; only whole-utterance controls are heard.
+- speaking: the reply is read; only the speaking controls are heard (below).
+- muted is a flag over the phase, not a phase (`VoiceMachine.isMuted`): "Peel
+  mute" from any active phase freezes the draft, "Peel unmute" clears the
+  flag, and the phase underneath (listening, waiting, speaking) carries on
+  and is what you come back to.
 
 ### Files
 
 | File | What |
 |---|---|
 | `Sources/PeelUI/Voice/VoiceCommand.swift` | `VoiceCommand`, the phrase table `VoiceCommandPhrases`, `VoiceCommandParser`, `VoiceContext` |
+| `Sources/PeelUI/Voice/EchoFilter.swift` | `EchoFilter`: tells Peel's own speech heard back from the user |
 | `Sources/PeelUI/Voice/SpokenText.swift` | markdown reply to sentence chunks, the short version |
 | `Sources/PeelUI/Voice/VoiceModeState.swift` | `VoicePhase`, `VoiceMachine`, `VoiceDefaults`, `VoiceSettings` |
 | `Apps/Shared/Voice/VoiceSpeaker.swift` | `SpeechSynthesizing` seam, `VoiceSpeaker` (`AVSpeechSynthesizer`), voice quality |
@@ -44,8 +49,8 @@ idle ──start──▶ listening ──words──▶ hearing ──send it /
 | `Apps/iOS/Peel/ConversationScreen.swift`, `YouTab.swift` | the phone's button, panel and settings |
 | `Apps/Mac/Peel/AgentViews.swift`, `AgentSettings.swift` | the Mac's |
 
-Tests: `VoiceCommandParserTests`, `SpokenTextTests`, `VoiceModeStateTests`
-(`Tests/PeelUITests`).
+Tests: `VoiceCommandParserTests`, `EchoFilterTests`, `SpokenTextTests`,
+`VoiceModeStateTests` (`Tests/PeelUITests`).
 
 ### Flow
 
@@ -53,9 +58,9 @@ Tests: `VoiceCommandParserTests`, `SpokenTextTests`, `VoiceModeStateTests`
    (`model.calls.call`) or a Mac dictation (`hooks.blocked`), asks for the
    microphone and speech permissions (a denied one leaves a notice in
    `model.conversationNotices[agentChat]`), configures the audio session,
-   starts the listener, says "Voice mode on. Say send it when you are done."
-2. The transcript is the draft, live. Send happens on a trailing send phrase
-   or after the pause (default 2.0 s, a setting, can be off).
+   starts the listener, says "Voice mode on. Say Peel send when you are done."
+2. The transcript is the draft, live. Send happens on a trailing "Peel send"
+   (primary), or after a pause if the user turned that on (off by default).
 3. The draft goes through `AppModel.send(_:from: .chat(agentChat))`, the
    composer's own path. No new send path.
 4. `pollReply` (every 0.25 s with the meter) finds the message just sent in
@@ -67,9 +72,10 @@ Tests: `VoiceCommandParserTests`, `SpokenTextTests`, `VoiceModeStateTests`
    decision 9). A turn stopped on the Mac that never answers is given up
    after 3 s.
 5. The reply goes through `SpokenText`, then `VoiceSpeaker`. While it plays,
-   the listener runs for barge-in; anything that is not a whole-utterance
-   control is ignored (not user speech: it may be the speech itself).
-6. After the speech: listening again; the transcript is reset.
+   nothing reaches the draft; the listener runs only for barge-in, under the
+   echo rules below.
+6. After the speech: listening again with a fresh recognition task (empty
+   text), the draft cleared.
 
 The phone has no `agentAnswering`, `agentWaiting` or `stopAgentTurn` (they are
 the Mac's, `AppModel+Bridge.swift`): the phone uses `agentUnanswered` and
@@ -82,30 +88,119 @@ does not speak when it gives up: the session is already released.)
 
 ## Phrases
 
-English, in `VoiceCommandPhrases.english`: edit or add a table to localise.
-Text is lowercased, punctuation removed, spaces collapsed before matching.
+English, in `VoiceCommandPhrases.english` (one table: edit or add a table to
+localise). Text is lowercased, punctuation removed, spaces collapsed before
+matching.
 
-"Trailing" commands also fire as the last words of an utterance, and the text
-before them is kept ("add a login screen send it" sends "add a login
-screen"); "whole" ones only as the whole utterance, so a word in a sentence
-never fires. The longest phrase wins ("start over" is a discard, not "over").
+**The prefix rule (the Alexa/Siri pattern).** A command is recognised only
+when introduced by the wake word "peel", and the wake word plus the command
+must be the **final words** of the utterance. The text before it is kept as
+dictation: "add a login page to the backlog peel send" sends "add a login page
+to the backlog". Without the prefix everything is dictation, including a bare
+"send it" or "stop". Prose with "peel" that does not end in a command phrase
+("peel the potatoes and then send") stays dictation. A command in the middle
+of a sentence ("peel send it to the team") does not fire. The longest phrase
+wins ("peel stop the agent" is not "peel stop").
 
-| Command | Phrases | Match | Heard |
-|---|---|---|---|
-| activate | hey peel, voice mode, start voice mode | trailing, in the wake listener only | wake listener armed |
-| deactivate | exit voice mode, stop voice mode, end voice mode, goodbye peel | whole | any time |
-| send | send it, send message, send that, over | trailing | listening |
-| discard | scratch that, cancel message, never mind, start over | trailing | listening |
-| stop speaking | stop, quiet, stop talking, pause | whole | speaking |
-| repeat | say that again, repeat that, repeat, what did it say | whole | listening, waiting, speaking |
-| skip | skip, next | whole | speaking |
-| read it all | read it all, read everything, full version | whole | listening, waiting, speaking |
-| stop the agent | stop the agent, cancel the agent, abort | whole | listening, waiting, speaking |
+The recogniser's variants of the wake word, "pill", "peal" and "feel", count
+only as the wake word when a known command follows ("pill send"); "I feel fine"
+is dictation. The variants are in the same table (`wakeVariants`).
 
-Known edges: "over" is a loose send word (a draft that ends in "over" sends);
-a barge-in "stop the agent" is first heard as "stop" in a partial result and
-stops the speech, then is lost. Whole-utterance controls need a transcript
-that is only that phrase, which the recogniser gives after a pause.
+| Command | Say | Heard |
+|---|---|---|
+| send | peel send, peel send it, peel send message, peel over | listening |
+| discard the draft | peel scratch that, peel cancel message, peel never mind | listening |
+| stop speaking | peel stop | speaking |
+| repeat | peel repeat that, peel say that again, peel repeat | listening, waiting, speaking |
+| skip | peel skip | speaking |
+| read it all | peel read it all, peel read everything | listening, waiting, speaking |
+| stop the agent | peel stop the agent, peel cancel the agent | listening, waiting, speaking |
+| mute | peel mute | listening, waiting, speaking |
+| unmute | peel unmute | muted |
+| end voice mode | peel end voice mode, peel end voice session, peel stop voice mode, peel exit voice mode, peel goodbye | any time, muted too |
+| activate | hey peel, voice mode, start voice mode, peel start voice mode | the opt-in wake listener only (no prefix; "hey peel" alone is fine) |
+
+`VoiceContext` decides which commands count: `dictating` (send, discard, end,
+stop the agent, repeat, read all, mute), `waiting` (the same without send and
+discard), `speaking` (stop, repeat, skip, read all, stop the agent, mute, end),
+`muted` (unmute and end only), `armed` (activate). `contextualStrings` gets the
+prefixed phrases.
+
+Known edges: "peel over" is a loose send (a draft that ends in "peel over"
+sends). A command said while the recogniser is still building the sentence is
+first seen as a partial: "peel stop" can be heard as "peel" and then
+"peel stop", which is fine, but "peel stop the agent" is first "peel stop" and
+stops the speech, then is lost.
+
+## Mute
+
+"Peel mute" (or the panel's Mute button) freezes the draft: its text is kept
+untouched, nothing more is appended, nothing is sent, nothing is said. A local
+recogniser loop keeps running and its transcripts are matched solely against
+the `muted` commands ("peel unmute", "peel end voice mode"); every other
+transcript is discarded and never stored or sent (the loop's text is reset
+when it grows past 120 characters, and at each mute and unmute). "Peel unmute"
+resumes appending to the same draft (`VoiceModeController.draftBase` holds the
+frozen text, because the recogniser's own text starts again at each mute and
+unmute). The silence timer does not run while muted.
+
+Muting is about the user's microphone input: spoken replies still play if they
+are on. (Muting the speech too would be easy, but "mute" is taken to be the
+mic; use the spoken-replies setting for the other.) The panel, on the phone
+and the Mac, shows a mic.slash icon, "Muted — say Peel unmute", a dimmed
+meter, and a Mute / Unmute button as the tappable alternative, with
+accessibility labels.
+
+## Echo: Peel's speech heard back
+
+Replies read aloud must never be transcribed as dictation.
+
+1. **Dictation is paused while speaking.** While `VoiceSpeaker` speaks, no
+   transcript reaches the draft (the machine ignores them in `speaking`, and
+   the controller does not forward them). The recogniser keeps running, only
+   as a barge-in listener, and starts a **fresh task** when the speech ends
+   (`resetTranscript`, empty text), the draft cleared.
+2. **Barge-in by route**, decided when a speech starts
+   (`VoiceModeController.isEchoSafeRoute`):
+   - headphones / Bluetooth / CarPlay / USB audio out (iOS: `currentRoute`
+     outputs `.headphones`, `.bluetoothA2DP`, `.bluetoothHFP`, `.bluetoothLE`,
+     `.carAudio`, `.usbAudio`; Mac: the default output device's transport
+     is Bluetooth, Bluetooth LE or USB): the speech does not come back into
+     the microphone, so every `speaking` control works.
+   - otherwise (built-in speaker, and anything that cannot be told
+     confidently, including Mac wired headphones on the built-in device): only
+     the exact "peel stop" counts, when the transcript, normalised, is that
+     command alone (no text before it) and is not a substring of the text being
+     spoken. On this route a transcript of more than six words is discarded
+     and the recogniser's text reset, so the echo cannot pile up in front of the
+     command. Mute and unmute use the same exact rule on the speaker. The
+     panel's Stop speaking button is the reliable way.
+3. **`EchoFilter` (fallback, pure and tested).** A transcript is an echo when
+   its normalised words have a run of three words (the whole transcript when
+   shorter) that is a contiguous run of the normalised text being spoken, or
+   spoken in the last 3 seconds. The controller applies it to every transcript
+   while speaking and for 1.5 s after the speech ends (the tail echo); in the
+   tail an echo also resets the recogniser, so leftovers never join the
+   draft. The session mode stays `.voiceChat` (echo cancellation).
+
+Still risky on the speaker: the filter matches words as recognised, so a
+badly misheard echo can get through; a user saying something that also
+occurs in the reply is dropped while speaking; room reverb longer than 1.5 s;
+a real "peel stop" mixed with echo words is not heard on the speaker route.
+
+## Silence timeout
+
+Auto-send after silence is secondary: "Peel send" is primary. A pause can cut
+a driver off mid-thought (a road sign, a mirror check), and a message sent
+half-formed to an agent that acts is worse than one that waits, so the default
+is **off**. When switched on the timeout is 2–15 s (stepper, shown only when
+on), 5 s when first switched on. `VoiceSettings` clamps it. The keys are new
+(`voice.autoSend.v2`, `voice.autoSendSeconds.v2`): the first version stored
+on / 1–5 s under the old keys, which are not read, so a stale 2 s is never
+silently carried over. The timer restarts on every new partial result and does
+not run while muted or while speaking. The settings footnote says: Say "Peel
+send" to send. Auto-send after silence can cut you off, so it is off by
+default.
 
 ## Long replies, markdown, code and links
 
@@ -133,7 +228,7 @@ iPhone session (`VoiceModeController.activateSession`): category
 `.interruptSpokenAudioAndMixWithOthers` (music pauses or ducks while Peel
 speaks; not `.duckOthers`). Active on entering, deactivated with
 `.notifyOthersOnDeactivation` on leaving. `.voiceChat` gives echo
-cancellation, so barge-in and speech coexist; the trade-off is that speech is
+cancellation (best effort; see "Echo" for what is done on top); the trade-off is that speech is
 a little quieter and flatter than in `.spokenAudio`, which would suit a
 speech-only moment but not listening. The engine's input also asks for voice
 processing (`setVoiceProcessingEnabled(true)`). The speaker keeps
@@ -167,7 +262,7 @@ recording and ends if one starts.
 ## Settings
 
 Voice mode (iOS You tab, Mac Account › Agent): spoken replies, send after a
-pause (and the seconds), "Listen for Hey Peel while this chat is open",
+pause (off by default; the seconds, 2–15, only when on), "Listen for Hey Peel while this chat is open",
 speaking speed, and which voice quality is installed with the hint to
 download one (iOS: Settings > Accessibility > Spoken Content > Voices; Mac:
 System Settings > Accessibility > Spoken Content). Stored in `UserDefaults`
@@ -252,7 +347,7 @@ Everything: it was written without building or running. To try on a device:
 - the build itself (Swift 6 strictness around the audio tap, the recogniser's
   callbacks and `NotificationCenter` closures were written to avoid main-actor
   isolation traps, but not compiled)
-- the unit tests (`VoiceCommandParserTests`, `SpokenTextTests`,
+- the unit tests (`VoiceCommandParserTests`, `EchoFilterTests`, `SpokenTextTests`,
   `VoiceModeStateTests`): written, not run; checked by hand only. One
   mismatch was found that way and fixed: the sentence splitter does not break
   before a lowercase word, so a quoted line is now its own sentence
@@ -260,7 +355,16 @@ Everything: it was written without building or running. To try on a device:
 - the lock screen with voice mode running; the orange indicator
 - Siri and phone-call interruptions, with and without resume
 - echo and barge-in on the speaker (does `.voiceChat` with voice processing
-  keep the speech out of the transcript; does it lower the volume too much)
+  keep the speech out of the transcript; does it lower the volume too much);
+  the tail-echo window (1.5 s) and recent window (3 s) are guesses to tune
+- route detection: iOS port types, and the Mac default-output transport type
+  (Bluetooth, BLE, USB); a wrong "echo safe" lets echo commands through
+- wake-word misrecognitions: "pill", "peal", "feel" are guesses; others
+  ("peal", "pele", "pearl") may show up and are not accepted
+- the mute listener: that it keeps running and only matches unmute / end, that
+  "peel unmute" is heard against a long muted transcript, and the draft base
+  after unmute
+- the silence timer and the new keys on a device with the first version
 - Premium and Enhanced voice availability and the Settings line
 - the one-minute recogniser restart, and the 50 s rotation, with no lost words
 - the Mac microphone and speech permission prompts, and a default-input change

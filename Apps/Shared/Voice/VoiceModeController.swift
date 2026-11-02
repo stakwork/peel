@@ -3,6 +3,9 @@ import Foundation
 import Observation
 import PeelCore
 import PeelUI
+#if os(macOS)
+import CoreAudio
+#endif
 
 /// Voice mode for the DM with the Peel agent (docs/voice-mode.md): listens,
 /// sends what was said through the composer's own send path
@@ -26,6 +29,8 @@ final class VoiceModeController {
 
     var phase: VoicePhase { machine.phase }
     var draft: String { machine.draft }
+    /// Muted: the input is ignored but for "Peel unmute" (docs/voice-mode.md).
+    var isMuted: Bool { machine.isMuted }
     /// 0…1 for the meter.
     private(set) var level: Float = 0
     /// The "Hey Peel" listener is on.
@@ -48,6 +53,14 @@ final class VoiceModeController {
     @ObservationIgnored private var retry: Task<Void, Never>?
     @ObservationIgnored private var retries = 0
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
+    /// What the speech says now and just said, to tell it from the user.
+    @ObservationIgnored private var echo = EchoFilter()
+    /// The output is headphones, Bluetooth, a car or USB: the speech does not
+    /// come back into the microphone, so barge-in may use any control.
+    @ObservationIgnored private var routeEchoSafe = false
+    /// The draft held while muted; what is heard after unmuting is added to it
+    /// (the listener's own text starts again at each mute and unmute).
+    @ObservationIgnored private var draftBase = ""
 
     /// A message sent and not yet answered.
     private struct PendingTurn {
@@ -60,7 +73,7 @@ final class VoiceModeController {
         var announcedApproval = false
     }
 
-    private static let confirmation = "Voice mode on. Say send it when you are done."
+    private static let confirmation = "Voice mode on. Say Peel send when you are done."
     private static let approval = "Peel is waiting for your approval. Approve it on your Mac."
     /// How long a sent message may take to show in the chat before voice mode stops waiting for it.
     private static let findTimeout: TimeInterval = 20
@@ -107,6 +120,8 @@ final class VoiceModeController {
         }
         settings = VoiceSettings(defaults: .standard)
         retries = 0
+        draftBase = ""
+        echo.reset()
         perform(machine.apply(.start))
         do {
             try activateSession()
@@ -130,6 +145,11 @@ final class VoiceModeController {
         perform(machine.apply(.command(.send)))
     }
 
+    /// The panel's Mute and Unmute, the same as saying "Peel mute".
+    func toggleMute() {
+        perform(machine.apply(.command(machine.isMuted ? .unmute : .mute)))
+    }
+
     /// The panel's Stop speaking.
     func stopSpeaking() {
         perform(machine.apply(.command(.stopSpeaking)))
@@ -149,6 +169,8 @@ final class VoiceModeController {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
         pendingTurn = nil
+        draftBase = ""
+        echo.reset()
         level = 0
         deactivateSession()
         rearmIfWanted()
@@ -172,11 +194,24 @@ final class VoiceModeController {
             case .begin: break
             case .end: teardown()
             case .send(let text): send(text)
-            case .clearDraft: listener?.resetTranscript()
-            case .stopSpeech: speaker.stop()
+            case .clearDraft:
+                draftBase = ""
+                listener?.resetTranscript()
+            case .stopSpeech:
+                speaker.stop()
+                echo.speechEnded(now: Date())
             case .skipSpeech:
                 speaker.stop()
                 speechEnded()
+            case .mute:
+                // Frozen: the draft stays as it is; what is heard from now
+                // on is only matched for "unmute".
+                silence?.cancel()
+                draftBase = machine.draft
+                listener?.resetTranscript()
+            case .unmute:
+                // What was heard while muted is forgotten.
+                listener?.resetTranscript()
             case .speakLastReply:
                 if let lastReply, !lastReply.chunks.isEmpty { say(lastReply.chunks) } else { say(["There is nothing to repeat."]) }
             case .speakFullReply:
@@ -200,6 +235,7 @@ final class VoiceModeController {
             guard phase.isActive else { return }
             if sent {
                 pendingTurn = PendingTurn(chat: chat, text: text, before: before)
+                draftBase = ""
                 listener?.resetTranscript()
             } else {
                 say(["I could not send that."])
@@ -212,12 +248,18 @@ final class VoiceModeController {
     private func say(_ chunks: [String]) {
         guard phase.isActive, !chunks.isEmpty else { return }
         speaker.stop()
+        silence?.cancel()
+        routeEchoSafe = Self.isEchoSafeRoute()
+        echo.speechStarted(chunks: chunks, now: Date())
         perform(machine.apply(.speechStarted))
         speaker.speak(chunks, rate: settings.speechRate)
     }
 
     private func speechEnded() {
         guard phase == .speaking else { return }
+        echo.speechEnded(now: Date())
+        // `.speechEnded` clears the draft and the listener's text: a fresh
+        // recognition task, so what the room heard is never dictation.
         perform(machine.apply(.speechEnded))
         if pendingTurn != nil { perform(machine.apply(.awaitReply)) }
     }
@@ -233,28 +275,87 @@ final class VoiceModeController {
     }
 
     private func heard(_ text: String) {
-        guard let context = phase.context else { return }
-        switch parser.parse(text, accepting: context.accepts) {
+        guard let context = machine.context else { return }
+        let now = Date()
+        let speaking = phase == .speaking
+        // The speech itself, heard back: dropped, and in the tail after it
+        // the listener starts over, so leftovers never join the dictation.
+        if echo.isGuarding(now: now), echo.isEcho(text, now: now) {
+            if !speaking { listener?.resetTranscript() }
+            return
+        }
+        var accepted = context.accepts
+        if speaking, !routeEchoSafe {
+            // On the speaker the microphone may still hear the speech: only
+            // the whole, exact control counts (and not if it is in the text).
+            if context != .muted { accepted = [.stopSpeaking] }
+            guard case .command(_, let before) = parser.parse(text, accepting: accepted), before.isEmpty,
+                  !echo.currentlyContains(text)
+            else {
+                if VoiceCommandParser.normalize(text).split(separator: " ").count > 6 { listener?.resetTranscript() }
+                return
+            }
+        }
+        switch parser.parse(text, accepting: accepted) {
         case .command(let command, let before):
             silence?.cancel()
-            if command == .send {
-                perform(machine.apply(.transcript(before)))
+            // The words before "Peel send" or "Peel mute" are dictation.
+            if command == .send || command == .mute {
+                perform(machine.apply(.transcript(compose(before))))
             }
             perform(machine.apply(.command(command)))
             // What was said is the command, not the next draft.
             if command != .send, command != .deactivate { listener?.resetTranscript() }
         case .none:
-            // Only the user's message is taken as text; while the agent
-            // answers or the speech plays, anything else is noise or echo.
-            guard context == .dictating else { return }
-            perform(machine.apply(.transcript(text)))
+            // Only the user's message is taken as text; while muted, while the
+            // agent answers or the speech plays, anything else is discarded
+            // (muted: never stored or sent).
+            guard context == .dictating else {
+                if context == .muted, text.count > 120 { listener?.resetTranscript() }
+                return
+            }
+            perform(machine.apply(.transcript(compose(text))))
             scheduleSilence()
         }
     }
 
+    /// The listener's text after what was held while muted.
+    private func compose(_ text: String) -> String {
+        guard !draftBase.isEmpty else { return text }
+        let added = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return added.isEmpty ? draftBase : draftBase + " " + added
+    }
+
+    /// Headphones, Bluetooth, a car or USB audio out. Unsure counts as the speaker.
+    private static func isEchoSafeRoute() -> Bool {
+        #if os(iOS)
+        let safe: [AVAudioSession.Port] = [.headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .carAudio, .usbAudio]
+        return AVAudioSession.sharedInstance().currentRoute.outputs.contains { safe.contains($0.portType) }
+        #else
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var device = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr,
+              device != AudioObjectID(kAudioObjectUnknown)
+        else { return false }
+        var transportAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType, mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transport: UInt32 = 0
+        size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(device, &transportAddress, 0, nil, &size, &transport) == noErr else { return false }
+        return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+            || transport == kAudioDeviceTransportTypeUSB
+        #endif
+    }
+
     private func scheduleSilence() {
         silence?.cancel()
-        guard settings.autoSend, phase == .hearing else { return }
+        guard settings.autoSend, phase == .hearing, !machine.isMuted else { return }
         let seconds = settings.autoSendSeconds
         silence = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))

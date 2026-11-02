@@ -21,6 +21,8 @@ struct AgentSettingsSection: View {
                 Fact("Voice mode") {
                     VStack(alignment: .leading, spacing: 8) {
                         VoiceModeSettingsFields()
+                        Text("Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default.")
+                            .muted()
                     }
                 }
                 Fact("Provider") {

@@ -97,7 +97,8 @@ private struct AgentChatColumn: View {
             isWaitingApproval: { model.agentWaiting },
             stopAgentTurn: { model.stopAgentTurn() },
             blocked: { DictationController.shared.isListening ? "Voice mode is off while dictating." : nil },
-            lexicon: { DictationController.shared.lingo.lexicon }
+            lexicon: { DictationController.shared.lingo.lexicon },
+            refreshLexicon: { Task { await DictationController.shared.lingo.refresh() } }
         ))
     }
 

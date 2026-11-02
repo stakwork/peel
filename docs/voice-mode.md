@@ -114,8 +114,10 @@ engine and the lexicon is applied around it:
    (`VoiceModeController.draft`) and the message is rewritten when sent. The
    machine keeps the raw words.
 3. **The seam.** `VoiceModeController.Hooks.lexicon` returns the lexicon or nil.
-   The Mac gives `DictationController.shared.lingo.lexicon`, read-only (kept
-   fresh by dictation's own refresh). **The iPhone has no source**: the
+   The Mac gives `DictationController.shared.lingo.lexicon`, read-only, and
+   asks `DictationLingo.refresh()` (`Hooks.refreshLexicon`) whenever a listener
+   starts. The lexicon is empty while the account is locked or the strut is
+   down; voice mode then simply runs without vocabulary. **The iPhone has no source**: the
    vocabulary lives in the memory graph on the Mac's strut and the phone has no
    strut (and makes no call to one). TODO: sync the vocabulary to the phone
    through Peel Home, or a strut it can reach. Until then voice mode on the

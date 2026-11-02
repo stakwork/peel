@@ -31,6 +31,9 @@ final class VoiceModeController {
         /// must be synced to it), so it gives nil and voice mode there is
         /// generic-vocabulary.
         var lexicon: @MainActor () -> LingoLexicon? = { nil }
+        /// Asks the source to read the vocabulary again; called when a
+        /// listener starts (the next recognition task picks up the result).
+        var refreshLexicon: (@MainActor () -> Void)?
     }
 
     var phase: VoicePhase { machine.phase }
@@ -278,6 +281,7 @@ final class VoiceModeController {
     // MARK: Listening
 
     private func startListener() throws {
+        hooks?.refreshLexicon?()
         let listener = VoiceListener(contextualStrings: { [weak self] in self?.contextualStrings ?? [] })
         listener.onTranscript = { [weak self] transcript in self?.heard(transcript.text) }
         listener.onProblem = { [weak self] problem in self?.recognizerProblem(problem) }
@@ -494,6 +498,7 @@ final class VoiceModeController {
             guard await VoiceAuthorization.request() == .granted, wantsWake, !isArmed, !phase.isActive else { return }
             do {
                 try activateWakeSession()
+                hooks.refreshLexicon?()
                 let wake = VoiceListener(contextualStrings: { [weak self] in self?.contextualStrings ?? [] })
                 wake.onTranscript = { [weak self] transcript in self?.heardWake(transcript.text) }
                 wake.onProblem = { [weak self] _ in self?.stopWake() }

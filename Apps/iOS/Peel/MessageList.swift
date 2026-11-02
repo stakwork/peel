@@ -41,6 +41,9 @@ struct MessageList: View {
     /// A row just gone to from a quote or a jump, lit for a moment.
     @State private var flashed: String?
     @State private var layout = Layout()
+    /// The pin by the last row after the container's height stops changing
+    /// (the keyboard's animation), replaced by each change.
+    @State private var settledPin: Task<Void, Never>?
 
     /// Where a list opens.
     enum Start: Equatable {
@@ -164,6 +167,7 @@ struct MessageList: View {
             // Not while it opens, which places it at its own row.
             if new.container != old.container, following, reachesNewest, !userScrolling, !opening {
                 keepLastRowInView()
+                repinOnceSettled()
                 var pinned = new
                 pinned.atBottom = true
                 pinned.far = false
@@ -342,6 +346,18 @@ struct MessageList: View {
     private func keepLastRowInView() {
         guard let last = rows.last?.id else { return }
         position.scrollTo(id: last, anchor: .bottom)
+    }
+
+    /// Once the container's height has stopped changing, by the last row
+    /// again: the pins made mid-animation land among rows the stack has
+    /// not yet laid out for the final height, and can leave a blank list.
+    private func repinOnceSettled() {
+        settledPin?.cancel()
+        settledPin = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, following, reachesNewest, !userScrolling, !opening else { return }
+            keepLastRowInView()
+        }
     }
 
     private func scrollToNewest() {

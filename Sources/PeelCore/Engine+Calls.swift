@@ -1,4 +1,5 @@
 import Foundation
+import PeelDiagnostics
 
 extension Engine {
     // MARK: - Calls
@@ -39,18 +40,43 @@ extension Engine {
         return CallLink(in: message, server: server)
     }
 
+    /// Where a paired device asks Hive for its ticket to a call Hive made
+    /// (`HiveClient.callTicket`, through Stadeum): the room, the name and
+    /// the metadata the call server would get.
+    public typealias HiveTicketSource = @Sendable (
+        _ room: String, _ participantName: String, _ metadata: String?
+    ) async throws -> HiveCallTicket
+
     /// A ticket to join a call: the LiveKit server and a token, asked of
     /// this account's call server under the name `chat` knows this account
     /// by (the tribe alias in a tribe), with its photo and a Hive link's
     /// key. Memory only; never store or log it.
-    public func callTicket(for link: CallLink, in chat: String?) async throws -> CallTicket {
+    ///
+    /// With `hive`, a room Hive made (`CallLink.isHive`) is asked of Hive
+    /// first, with the same name and photo: its ticket names this device's
+    /// person, so what they ask Jamie runs as them (docs/hive-calls.md, "Who
+    /// is speaking"). It is checked as the call server's would be, and any
+    /// failure joins through the call server as before, as the call's starter.
+    public func callTicket(for link: CallLink, in chat: String?, hive: HiveTicketSource? = nil) async throws -> CallTicket {
         let tribe = chat.flatMap { tribes[$0] }
         // A blank account name joins as "Peel user", not the tribes' "Unknown",
         // which the call chat and Jamie would take for the speaker.
         let name = tribe?.sentAlias(account: alias)
             ?? (alias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Peel user" : alias)
         let photo = (tribe?.sentPhoto(account: photoURL) ?? photoURL).httpsOnly
-        return try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: photo)
+        let server = try await callConnection(for: link)
+        if let hive, link.isHive {
+            do {
+                let answer = try await hive(link.room, name, photo.flatMap(CallServer.metadata(photoURL:)))
+                return try await server.ticket(fromHive: answer, room: link.room, participantName: name)
+            } catch {
+                // A join given up while Hive answered stays given up; URLSession
+                // reports that as its own error, not a CancellationError.
+                try Task.checkCancellation()
+                Diagnostics.note(error: error)
+            }
+        }
+        return try await server.ticket(for: link, participantName: name, photoURL: photo)
     }
 
     /// Who is on a call, from the call server's presence feed, until the

@@ -203,6 +203,54 @@ struct HiveTests {
         }
     }
 
+    /// A ticket to a call Hive made: asked with the device credential, the
+    /// room, the name and the metadata in the body the route reads
+    /// (stakwork/hive#5699), answered in the call server's shape.
+    @Test func aCallTicketIsAskedOfHiveWithTheDeviceCredential() async throws {
+        let room = "sphinx.call.-acme-hive.sphinx.chat-.1792900000"
+        let hive = try await HTTPStub { _, request in
+            guard path(request) == "/api/strut-devices/calls/ticket", request.contains("Authorization: Bearer hivedev_abc") else {
+                return (404, "{}")
+            }
+            return (200, #"{"serverUrl":"wss://livekit.sphinx.chat","roomName":"\#(room)","participantToken":"eyJ.eyJ.sig","participantName":"Evan"}"#)
+        }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        let client = HiveClient(hive: link.hive)
+        let metadata = #"{"profilePictureUrl":"https://x.io/e.png"}"#
+
+        let ticket = try await client.callTicket(link, room: room, participantName: "Evan", metadata: metadata)
+        _ = try await client.callTicket(link, room: room, participantName: "Evan", metadata: nil)
+
+        #expect(ticket.serverUrl == "wss://livekit.sphinx.chat" && ticket.participantToken == "eyJ.eyJ.sig")
+        #expect(!"\(ticket)".contains("eyJ.eyJ.sig") && !String(reflecting: ticket).contains("eyJ.eyJ.sig"))
+        #expect(hive.requests.allSatisfy { $0.hasPrefix("POST ") })
+        #expect(hive.requests.map(body) == [
+            #"{"metadata":"{\"profilePictureUrl\":\"https://x.io/e.png\"}","participantName":"Evan","room":"\#(room)"}"#,
+            #"{"participantName":"Evan","room":"\#(room)"}"#,
+        ])
+    }
+
+    /// What Hive answers instead of a ticket, in words: the join goes
+    /// through the call server then (`Engine.callTicket(for:in:hive:)`).
+    @Test(arguments: [
+        (404, #"{"error":"No Hive call in that room"}"#, "Stadeum could not give a call ticket: No Hive call in that room."),
+        (403, #"{"error":"Access denied"}"#, "Stadeum could not give a call ticket: Access denied."),
+        (503, #"{"error":"LiveKit call service not configured"}"#,
+         "Stadeum could not give a call ticket: LiveKit call service not configured."),
+        (200, #"{"url":"x"}"#, "Stadeum's call ticket could not be read."),
+    ])
+    func aTicketHiveCannotGiveIsSaid(status: Int, answer: String, said: String) async throws {
+        let hive = try await HTTPStub { _, _ in (status, answer) }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        await #expect {
+            try await HiveClient(hive: link.hive).callTicket(link, room: "sphinx.call.-a-.1", participantName: "Evan", metadata: nil)
+        } throws: { error in
+            "\(error)" == said
+        }
+    }
+
     // MARK: Jamie in tribes (docs/hive-tribes.md)
 
     static let tribeKey = String(repeating: "ab", count: 33)

@@ -148,6 +148,16 @@ actor CallServer {
         return try Self.ticket(serverURL: reply.serverUrl, token: reply.participantToken, room: link.room, callServer: base, participantName: participantName)
     }
 
+    /// A ticket Hive minted for this device's person (`HiveClient.callTicket`),
+    /// checked as this server's own are (`ticket(serverURL:…)`): the media
+    /// host allowed for this server, the room, the expiry.
+    func ticket(fromHive answer: HiveCallTicket, room: String, participantName: String) throws -> CallTicket {
+        try Self.ticket(
+            serverURL: answer.serverUrl, token: answer.participantToken, room: room, callServer: base,
+            participantName: participantName
+        )
+    }
+
     /// `GET /api/connection-details` with every value percent-encoded to
     /// unreserved characters, as the official apps' `urlEncode` does, so a
     /// `+` arrives as `+` and never as a space.

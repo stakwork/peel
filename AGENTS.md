@@ -189,6 +189,11 @@ is a short plan. Update the status and the journal when you finish something.
     the player's progress and seek maths, `Engine.sendVoiceMessage` (tested in
     `VoiceMessageTests`); the shared `Apps/Shared/Voice` (`VoiceRecorder`, `VoicePlayer`,
     `VoiceControls`) use it on the phone and the Mac
+  - Voice mode with the agent (`docs/voice-mode.md`): the pure parts are in
+    `Sources/PeelUI/Voice/` (`VoiceCommandParser`, `SpokenText`, `VoiceMachine`,
+    `VoiceSettings`; tested in `VoiceCommandParserTests`, `SpokenTextTests`,
+    `VoiceModeStateTests`); the shared `Apps/Shared/Voice` has `VoiceModeController`,
+    `VoiceListener`, `VoiceSpeaker` and `VoiceModeViews`
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,

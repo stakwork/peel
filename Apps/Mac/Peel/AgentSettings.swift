@@ -18,6 +18,11 @@ struct AgentSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             SettingsSection {
                 AgentNameRow(agent: agent)
+                Fact("Voice mode") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        VoiceModeSettingsFields()
+                    }
+                }
                 Fact("Provider") {
                     VStack(alignment: .leading, spacing: 4) {
                         if let connection = agent.connection {

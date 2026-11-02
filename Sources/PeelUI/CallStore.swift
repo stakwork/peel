@@ -257,7 +257,9 @@ public final class CallStore {
             let ticket = try await engine.callTicket(for: link, in: chat)
             guard self.engine === engine else { return false }
             leave()
-            call = try provider.join(ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
+            let joined = try provider.join(ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
+            joined.movedAway = { [weak self, weak joined] in if let joined { self?.movedAway(joined) } }
+            call = joined
             return true
         } catch {
             if failureInChat {
@@ -318,6 +320,14 @@ public final class CallStore {
             await earlier?.value
             await call.leave()
         }
+    }
+
+    /// Another device on this account joined the call: it keeps it, and
+    /// this one leaves, saying so in the chat.
+    func movedAway(_ moved: any OngoingCall) {
+        guard call === moved else { return }
+        leave()
+        chatNotice(moved.chat) { _ in "The call moved to your other device." }
     }
 
     /// Leaves, and waits until every room left has said goodbye: when Peel quits.

@@ -50,7 +50,9 @@ extension Engine {
         let name = tribe?.sentAlias(account: alias)
             ?? (alias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Peel user" : alias)
         let photo = (tribe?.sentPhoto(account: photoURL) ?? photoURL).httpsOnly
-        return try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: photo)
+        var ticket = try await callConnection(for: link).ticket(for: link, participantName: name, photoURL: photo)
+        ticket.handoff = CallHandoff(seed: seed)
+        return ticket
     }
 
     /// Who is on a call, from the call server's presence feed, until the

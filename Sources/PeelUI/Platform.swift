@@ -148,6 +148,9 @@ public protocol OngoingCall: AnyObject {
     /// Whether the call server is recording the call: only an indicator, Peel
     /// neither starts nor stops it.
     var isRecording: Bool { get }
+    /// Called when a newer device on this account joined the same call
+    /// (`CallHandoff`): this one should leave it.
+    var movedAway: (() -> Void)? { get set }
     /// Leaves the room, saying goodbye.
     func leave() async
 }

@@ -425,14 +425,22 @@ in `docs/testing.md`, "Proposal cards in a tribe".
   that a tribe's deliverable opens only on a paired org; the Sphinx key
   told after a pairing, once a launch and after a renewal while Stadeum
   does not know it, a 404 asked again, a 409 said once and never asked
-  again for that key, nothing once a renewal says Stadeum knows it.
+  again for that key, nothing once a renewal says Stadeum knows it; an
+  unlink Hive refuses keeping the link, only a taken one naming Jamie.
+  `JamieSweepTests` (same file): the sweep before the connection doing and
+  recording nothing, one whose list could not be read recording nothing,
+  the connection marking once, a later one nothing more.
 - `TribeSendersTests` (in `TribeTests.swift`, against a stand-in tribes
-  server on the transport): Jamie marked once listed in, public (absent
-  first) or private (pending first), and not before; the lists with and
-  without `sees_senders`; a tribe linked before marked once and not at the
-  next launch, one marked already settled with no command, an unlink
-  unsettling it; a server from before the command leaving it unmarked,
-  `sendersNotShown`, and the next launch asking again.
+  server on the transport, `TribesServer` in PeelTestSupport): Jamie
+  marked once listed in, public (absent first) or private (pending first),
+  and not before; a list that does not come asked for again until the
+  tries run out; the lists with and without `sees_senders`; a tribe linked
+  before marked once and not at the next launch, one marked already
+  settled with no command, an unlink unsettling it; a server from before
+  the command leaving it unmarked, `sendersNotShown`, and the next launch
+  asking again; an edit while the mark waits not refused.
+- `AuditSecretsTests`: no memes challenge under 8 bytes (a Hive token's 4)
+  signed, the real server's and the stub's signed as before.
 - `SenderTests`: types 35 and 38 stored, live or from history, yet no line,
   no unread and no preview, the texts beside them all three; the read
   marker reaching past the record.

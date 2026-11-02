@@ -1,4 +1,6 @@
 import AppKit
+import PeelAgent
+import PeelCore
 import SwiftUI
 import WebKit
 

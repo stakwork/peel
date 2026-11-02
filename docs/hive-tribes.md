@@ -144,7 +144,12 @@ their delegation, their access. Anyone else asks with the owner's, as before.
   next time, as is one that fails. A 409 (the key is another Stadeum user's,
   or the person has another) is said once, in Hive's words, and that key is
   not asked about again on this pairing (`HiveLink.sphinxRefused`). Never in
-  the pairing's way.
+  the pairing's way. The account key signs a memes server's sign-in
+  challenge with the same scheme, and a Hive token is a 4-byte time, so
+  Peel signs no challenge shorter than 8 bytes
+  (`MemesServer.minChallengeBytes`; the real server's is the time in
+  decimal, 10 bytes). The real fix is Hive's: a token bound to its purpose
+  and audience.
 - **The mark.** Linking marks Jamie (`AppModel.setJamie`, `markJamie`):
   once the tribes server lists Jamie in, confirmed (a public tribe a few
   seconds after the link, a private one once approved; the list is asked

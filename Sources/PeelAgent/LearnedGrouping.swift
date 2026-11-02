@@ -14,15 +14,19 @@ public struct ProposedTheme: Sendable, Equatable {
     public var leaves: [String]
     /// Join this theme instead of making one.
     public var existing: String?
+    /// The judge's own word that the leaves would need different fixes, so one
+    /// theme would hide that: never grouped.
+    public var needsDifferentFixes: Bool
 
     public init(statement: String, causeType: CauseType, severity: CauseSeverity, mechanism: String? = nil,
-                leaves: [String], existing: String? = nil) {
+                leaves: [String], existing: String? = nil, needsDifferentFixes: Bool = false) {
         self.statement = statement
         self.causeType = causeType
         self.severity = severity
         self.mechanism = mechanism
         self.leaves = leaves
         self.existing = existing
+        self.needsDifferentFixes = needsDifferentFixes
     }
 }
 
@@ -71,8 +75,9 @@ public enum GroupingRules {
     /// - at least two leaves, or one only to join an existing theme;
     /// - each leaf in at most one theme (a leaf already under a parent, or in an
     ///   earlier theme here, is left out);
-    /// - leaves of one theme share a `cause_type`: failures needing different
-    ///   fixes are not glued;
+    /// - a theme is a mechanism that explains its leaves, whatever their
+    ///   `cause_type`: a new one has a non-empty mechanism, and one the judge
+    ///   says needs different fixes is refused;
     /// - a new theme has a mechanism and a valid statement, and is not a
     ///   near-duplicate of a habit that exists (reported, not merged);
     /// - a grouping the person rejected, or any larger one that holds it, is
@@ -96,7 +101,8 @@ public enum GroupingRules {
                 guard theme.leaves.count >= 2 else { result.dropped.append((theme, .tooFew)); continue }
             }
             let members = theme.leaves.compactMap { byID[$0] }
-            guard Set(members.map(\.causeType)).count == 1 else { result.dropped.append((theme, .differentFixes)); continue }
+            // One mechanism decides, not the leaves' types; the judge's own "different fixes" stops it.
+            guard !theme.needsDifferentFixes else { result.dropped.append((theme, .differentFixes)); continue }
             if theme.existing == nil {
                 guard let mechanism = theme.mechanism, !mechanism.trimmingCharacters(in: .whitespaces).isEmpty else {
                     result.dropped.append((theme, .noMechanism)); continue

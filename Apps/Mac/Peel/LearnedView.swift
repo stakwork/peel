@@ -15,7 +15,7 @@ struct LearnedView: View {
     static let source = "On this Mac \u{00B7} only you"
     static let about = "Habits your assistant noticed from the times you corrected it. You decide what it keeps in mind."
 
-    enum Tab: Hashable { case habits, waiting, live }
+    enum Tab: Hashable { case habits, waiting, inUse }
 
     @Environment(AppModel.self) private var model
     @State private var tab = Tab.habits
@@ -41,12 +41,13 @@ struct LearnedView: View {
                 SegmentedChoice(selection: $tab, options: [
                     (.habits, "Habits"),
                     (.waiting, waiting == 0 ? "Waiting for you" : "Waiting for you \(waiting)"),
-                    (.live, "Live"),
+                    (.inUse, "In use"),
                 ])
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, Theme.Space.xl)
             .padding(.top, Theme.Space.md)
+            daily
             if case .unavailable(let words) = learned.phase {
                 Callout(.attention, detail: words) { EmptyView() }
                     .padding(.horizontal, Theme.Space.xl)
@@ -61,7 +62,7 @@ struct LearnedView: View {
                     switch tab {
                     case .habits: habits
                     case .waiting: waitingForYou
-                    case .live: liveConcepts(live)
+                    case .inUse: liveConcepts(live)
                     }
                 }
                 .padding(Theme.Space.xl)
@@ -70,6 +71,27 @@ struct LearnedView: View {
         }
         // Opening the screen runs the check: a dry run, nothing saved.
         .task { learned.open() }
+    }
+
+    // MARK: The daily check
+
+    /// Its switch and Run now: strut runs the check on its schedule once the person turns it on.
+    /// Opening this screen never does; the check only proposes, never makes anything live.
+    @ViewBuilder private var daily: some View {
+        if let schedule = learned.schedule {
+            HStack(spacing: Theme.Space.md) {
+                Toggle("Check every day", isOn: Binding(get: { schedule.enabled }, set: { learned.setDaily($0) }))
+                    .toggleStyle(.switch)
+                    .disabled(learned.schedulePending)
+                Text(schedule.enabled ? schedule.summary : "Off. Runs \(schedule.summary.lowercased()) when on.").muted()
+                Spacer(minLength: 0)
+                Button("Run now") { learned.runDailyNow() }
+                    .buttonStyle(.peel(.outline, size: .sm))
+                    .disabled(learned.schedulePending || schedule.running)
+            }
+            .padding(.horizontal, Theme.Space.xl)
+            .padding(.top, Theme.Space.sm)
+        }
     }
 
     // MARK: Habits
@@ -142,7 +164,7 @@ struct LearnedView: View {
             }
         }
         ForEach(report.concepts) { concept in
-            Waiting(title: "Something to keep in mind", words: concept.name, detail: concept.guidance,
+            Waiting(title: "Something to keep in mind", words: concept.name, detail: concept.statement,
                     working: learned.working.contains(concept.id),
                     approve: { learned.answer(concept.id) { try await $0.approve(concept: concept) } },
                     reject: { learned.answer(concept.id) { try await $0.reject(concept: concept) } }) {
@@ -165,8 +187,8 @@ struct LearnedView: View {
                         Spacer(minLength: 0)
                         Badge("In use", .success)
                     }
-                    Text(concept.guidance).font(Theme.font(13)).foregroundStyle(Theme.secondaryText)
-                    if let prior = concept.prior { Text("Before: \(prior.guidance)").muted() }
+                    Text(concept.statement).font(Theme.font(13)).foregroundStyle(Theme.secondaryText)
+                    if let prior = concept.prior { Text("Before: \(prior.statement)").muted() }
                     HStack {
                         Spacer(minLength: 0)
                         Button("Undo") { learned.answer(concept.id) { try await $0.undo(concept: concept) } }

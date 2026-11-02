@@ -95,26 +95,31 @@ public struct PersonalConcept: Sendable, Equatable, Identifiable {
     /// A short name the person sees ("Check before sending").
     public var name: String
     /// One plain sentence the assistant reads.
-    public var guidance: String
+    public var statement: String
     /// The theme (parent Cause) it answers.
     public var cause: String
     public var live: Bool
+    /// The words that find it: what `memory/recall` of a related task matches.
+    /// Written as a fact and as `about` edges to Topic entities.
+    public var keywords: [String]
     /// What it was before the last write, so Undo restores it; nil when the
     /// write made it.
     public var prior: Prior?
 
     public struct Prior: Sendable, Equatable, Codable {
         public var name: String
-        public var guidance: String
+        public var statement: String
         public var live: Bool
     }
 
-    public init(id: String, name: String, guidance: String, cause: String, live: Bool = false, prior: Prior? = nil) {
+    public init(id: String, name: String, statement: String, cause: String, live: Bool = false, keywords: [String] = [],
+                prior: Prior? = nil) {
         self.id = id
         self.name = name
-        self.guidance = guidance
+        self.statement = statement
         self.cause = cause
         self.live = live
+        self.keywords = keywords
         self.prior = prior
     }
 }
@@ -141,11 +146,26 @@ public enum CauseRules {
         return String(kept).split(separator: " ").joined(separator: " ")
     }
 
-    /// `hash(cause_type + normalized statement)`: a repeat attaches to the
-    /// Cause it names.
+    /// The statement as the identity key reads it: lower case, whitespace
+    /// collapsed, trailing punctuation off.
+    static func keyText(_ statement: String) -> String {
+        var text = statement.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        while let last = text.last, last.isPunctuation || last.isWhitespace { text.removeLast() }
+        return text
+    }
+
+    /// `"ck1_" + the first 16 hex characters of SHA-256(cause_type + "|" +
+    /// normalized statement)`: Hive's key's shape, so a repeat attaches to the
+    /// Cause it names. The one place the key is made. **UNVERIFIED**: it is NOT
+    /// known to equal the key Hive's `cause/primitive` step writes for the same
+    /// words (that step is closed). Seven known Hive keys were tried against
+    /// SHA-256/SHA-1/MD5/SHA-512/SHA-3/BLAKE2/CRC over cause_type (all seven
+    /// types and a few labels) and statement in both orders, many separators,
+    /// JSON forms, and normalizations (case, whitespace, punctuation, token
+    /// sets, stop words, first words); none reproduced any of them.
     public static func identityKey(type: CauseType, statement: String) -> String {
-        let digest = SHA256.hash(data: Data((type.rawValue + "\n" + normalize(statement)).utf8))
-        return digest.prefix(16).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: Data((type.rawValue + "|" + keyText(statement)).utf8))
+        return "ck1_" + digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     /// "When <situation>, the assistant <wrong behaviour>.": one sentence,

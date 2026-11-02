@@ -27,6 +27,9 @@ final class LearnedModel {
     private(set) var working: Set<String> = []
     @ObservationIgnored weak var model: AppModel?
     @ObservationIgnored private var checking: Task<Void, Never>?
+    /// The daily check's automation on Peel's own strut, once it has one (shipped off).
+    private(set) var schedule: Automation?
+    private(set) var schedulePending = false
 
     // MARK: Corrections seen as they happen
 
@@ -62,19 +65,53 @@ final class LearnedModel {
     }
 
     private func service() -> LearnedService? {
-        guard let model, let server = model.memoryServer, let profile = model.profile else { return nil }
-        let data = BundledStrut.dataFolder(for: profile)
+        guard let model, let server = model.memoryServer else { return nil }
         let log = log
         return LearnedService(server: server, signals: { [weak self] in
             let turns = await self?.dmTurns() ?? []
             return (log?.all() ?? []) + LearnedDetector.followUps(in: turns)
-        }, changed: { line in LearnedInstructions.write(line, in: data) })
+        })
     }
 
     /// The check, run when the screen opens: a dry run, then what is kept.
+    /// It reads the daily check's state too, and never changes it.
     func open() {
         checking?.cancel()
-        checking = Task { await check() }
+        checking = Task {
+            await readSchedule()
+            await check()
+        }
+    }
+
+    private var automations: AutomationsClient? { model?.memoryServer.map { AutomationsClient(server: $0) } }
+
+    private func readSchedule() async {
+        schedule = try? await automations?.learnedCheck()
+    }
+
+    /// The person's switch for the daily check: on or off, nothing else turns it on.
+    func setDaily(_ on: Bool) {
+        guard let client = automations, let current = schedule, !schedulePending else { return }
+        schedulePending = true
+        Task {
+            do { schedule = try await client.setLearnedCheck(current, on: on); problem = nil } catch {
+                problem = PeelError.problem(error, couldNot: "change the daily check")
+            }
+            schedulePending = false
+        }
+    }
+
+    /// Run now: the check strut runs on its own, which only reads and proposes in words.
+    func runDailyNow() {
+        guard let client = automations, let current = schedule, !schedulePending else { return }
+        schedulePending = true
+        Task {
+            do { try await client.runLearnedCheck(current); problem = nil } catch {
+                problem = PeelError.problem(error, couldNot: "run the check")
+            }
+            await readSchedule()
+            schedulePending = false
+        }
     }
 
     func check() async {

@@ -23,19 +23,19 @@ public struct LearnedReport: Sendable, Equatable {
 public struct ConceptProposal: Sendable, Equatable, Identifiable {
     public var theme: PersonalCause
     public var name: String
-    public var guidance: String
+    public var statement: String
     public var id: String { theme.id }
 }
 
 public enum ConceptRules {
     public static let maxWords = 40
-    public static func validate(name: String, guidance: String) throws {
-        let words = guidance.split(whereSeparator: \.isWhitespace)
+    public static func validate(name: String, statement: String) throws {
+        let words = statement.split(whereSeparator: \.isWhitespace)
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty, !words.isEmpty, words.count <= maxWords,
               name.split(whereSeparator: \.isWhitespace).count <= 5 else {
             throw LearnedRefusal("A concept is a short name and one sentence of at most \(maxWords) words.")
         }
-        let lower = (name + " " + guidance).lowercased()
+        let lower = (name + " " + statement).lowercased()
         let tokens = Set(lower.split(whereSeparator: { !$0.isLetter }).map(String.init))
         guard tokens.isDisjoint(with: CauseRules.banned), !lower.contains("@"), !lower.contains("http") else {
             throw LearnedRefusal("A concept names no product, person or address.")
@@ -55,21 +55,16 @@ public actor LearnedService {
     let store: any LearnedStore
     let judge: any LearnedJudge
     let signals: @Sendable () async -> [LearnedSignal]
-    /// Called with the live concepts' line whenever it changes.
-    let changed: @Sendable (String?) -> Void
 
-    public init(store: any LearnedStore, judge: any LearnedJudge, signals: @escaping @Sendable () async -> [LearnedSignal],
-                changed: @escaping @Sendable (String?) -> Void = { _ in }) {
+    public init(store: any LearnedStore, judge: any LearnedJudge, signals: @escaping @Sendable () async -> [LearnedSignal]) {
         self.store = store
         self.judge = judge
         self.signals = signals
-        self.changed = changed
     }
 
     /// The Mac's way in: the person's own strut's memory and nothing else.
-    public init(server: MemoryServer, signals: @escaping @Sendable () async -> [LearnedSignal],
-                changed: @escaping @Sendable (String?) -> Void = { _ in }) {
-        self.init(store: GraphLearnedStore(server: server), judge: StrutLearnedJudge(server: server), signals: signals, changed: changed)
+    public init(server: MemoryServer, signals: @escaping @Sendable () async -> [LearnedSignal]) {
+        self.init(store: GraphLearnedStore(server: server), judge: StrutLearnedJudge(server: server), signals: signals)
     }
 
     static let newPrefix = "new:"
@@ -141,8 +136,8 @@ public actor LearnedService {
             guard !children.isEmpty, !concepts.contains(where: { $0.cause == theme.id }),
                   !rejectedKeys.contains(Self.conceptRejection(theme.id)) else { continue }
             let draft = try await judge.concept(for: theme, leaves: children)
-            do { try ConceptRules.validate(name: draft.name, guidance: draft.guidance) } catch { report.refused += 1; continue }
-            report.concepts.append(ConceptProposal(theme: theme, name: draft.name, guidance: draft.guidance))
+            do { try ConceptRules.validate(name: draft.name, statement: draft.statement) } catch { report.refused += 1; continue }
+            report.concepts.append(ConceptProposal(theme: theme, name: draft.name, statement: draft.statement))
         }
         return report
     }
@@ -183,16 +178,15 @@ public actor LearnedService {
     public func undo(theme: PersonalCause) async throws {
         let children = try await store.causes().filter { $0.parent == theme.id }.map(\.id)
         try await store.ungroup(parent: theme.id, leaves: children)
-        try await refresh()
     }
 
-    /// Makes a concept live: written to the graph, and its line passed on.
+    /// Makes a concept live: written to memory as a Concept (the assistant's
+    /// `memory/recall` finds it on a related task). Only here, on the person's yes.
     @discardableResult
     public func approve(concept: ConceptProposal) async throws -> PersonalConcept {
-        try ConceptRules.validate(name: concept.name, guidance: concept.guidance)
-        let saved = try await store.save(PersonalConcept(id: "", name: concept.name, guidance: concept.guidance, cause: concept.theme.id,
+        try ConceptRules.validate(name: concept.name, statement: concept.statement)
+        let saved = try await store.save(PersonalConcept(id: "", name: concept.name, statement: concept.statement, cause: concept.theme.id,
                                                          live: true))
-        try await refresh()
         return saved
     }
 
@@ -203,41 +197,10 @@ public actor LearnedService {
     /// Undo: the concept as it was before it was written.
     public func undo(concept: PersonalConcept) async throws {
         try await store.undo(concept)
-        try await refresh()
     }
 
     // MARK: What is kept
 
     public func causes() async throws -> [PersonalCause] { try await store.causes() }
     public func concepts() async throws -> [PersonalConcept] { try await store.concepts() }
-
-    /// Passes the live concepts' line to the personal-instructions slot.
-    public func refresh() async throws {
-        changed(LearnedInstructions.line(for: try await store.concepts()))
-    }
-}
-
-/// The line the personal-instructions slot (`Orchestrator.hostConfig`'s
-/// `learned`) carries: the live concepts by name. The graph is the store of
-/// record; the line points at it and the assistant may read the Concepts.
-public enum LearnedInstructions {
-    static let file = "learned-instructions.txt"
-
-    public static func line(for concepts: [PersonalConcept]) -> String? {
-        let live = concepts.filter(\.live).sorted { $0.name < $1.name }
-        guard !live.isEmpty else { return nil }
-        let items = live.map { "\($0.name): \($0.guidance)" }.joined(separator: " ")
-        return "The person approved these habits to keep in mind, kept in your memory as Concepts (memory/recall \"What it learned\"). " + items
-    }
-
-    public static func write(_ line: String?, in data: URL) {
-        let url = data.appending(path: file)
-        guard let line else { try? FileManager.default.removeItem(at: url); return }
-        try? Data(line.utf8).write(to: url, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-    }
-
-    public static func read(in data: URL) -> String? {
-        (try? String(contentsOf: data.appending(path: file), encoding: .utf8)).flatMap { $0.isEmpty ? nil : $0 }
-    }
 }

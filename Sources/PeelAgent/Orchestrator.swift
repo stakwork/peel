@@ -79,7 +79,8 @@ public enum Orchestrator {
         on the conversation; at most a short, natural "Got it" when the user asked you to remember. If remembering \
         fails, say so plainly. Forgotten things cannot be brought back, but if the user says one again, remember \
         it anew. When memory has nothing on something, say you have nothing on it now; never guess that it was \
-        not saved.
+        not saved. Before a task that acts for the user (booking, sending, scheduling, buying), memory/recall the \
+        task's words for habit Concepts the user approved, and follow any that fit.
         """
 
     /// What the orchestrator is told about automations: strut's
@@ -189,11 +190,10 @@ public enum Orchestrator {
     /// refuses the builder's `meta/set-automation` (it runs only as an
     /// accepted proposal): a workflow is scheduled by an automation whose
     /// prompt runs it, made by the orchestrator on one card.
-    /// `learned`: the live concepts of "What it learned" (`LearnedInstructions`), by name.
     /// `grants`: the MCP servers each agent reaches (Connections), all of
     /// their tools; strut asks first for any not read-only.
-    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil, learned: String? = nil) throws -> Data {
-        let system = [section, personal, learned].compactMap { $0 }.joined(separator: "\n\n")
+    static func hostConfig(grants: MCPGrants = MCPGrants(), personal: String? = nil) throws -> Data {
+        let system = [section, personal].compactMap { $0 }.joined(separator: "\n\n")
         // A call to an org's assistant (a Stadeum workspace paired as a peer) asks the person first, from
         // the orchestrator or a job it starts: a card on the Mac that names the org and shows the message
         // (`PeerRequest`). strut grants `strut/run-workflow` to both, and since strut#294 no other route reaches it.

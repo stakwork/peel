@@ -60,6 +60,9 @@ final class CallSession {
     let identity: String
     /// The name this side joined with, sent as the sender of its chat messages.
     let participantName: String
+    /// Called when a newer device on this account joins the call.
+    @ObservationIgnored var movedAway: (() -> Void)?
+    @ObservationIgnored private let handoff: CallHandoff?
     private(set) var state = State.connecting
     /// When the room first connected: the running time counts from here.
     private(set) var connectedAt: Date?
@@ -93,6 +96,11 @@ final class CallSession {
     /// The tile shown large with the others in a strip beside it; nil for
     /// the grid. A screen someone starts sharing takes it.
     private(set) var focus: Tile.ID?
+    /// Who the speaker layout shows large while nothing is focused: the
+    /// last one else on the call to speak, or the first to join.
+    private(set) var activeSpeaker: Tile.ID?
+    /// When the speaker layout last moved, so a cough does not take the stage.
+    @ObservationIgnored private var speakerSince = Date.distantPast
     /// The call window floats above other apps' windows, for this call.
     var keepOnTop = false
 
@@ -156,6 +164,7 @@ final class CallSession {
         self.title = title
         identity = ticket.identity
         participantName = ticket.participantName
+        handoff = ticket.handoff
         wantsCamera = camera
         refreshAccess()
         refreshAudioDevices()
@@ -219,6 +228,7 @@ final class CallSession {
     }
 
     private func connect(url: String, token: String, camera: Bool) async {
+        await listenForHandoff()
         do {
             try await room.connect(url: url, token: token)
         } catch {
@@ -228,6 +238,7 @@ final class CallSession {
         }
         guard !Task.isCancelled else { return }
         refresh()
+        announce()
         // Not awaited by `leave`: a microphone prompt nobody answers must not
         // hold the call open.
         Task {
@@ -506,6 +517,10 @@ final class CallSession {
             if everyone != people { people = everyone }
             refocus()
         }
+        // On every refresh, not only when the tiles change: someone who
+        // started speaking during the hold still takes the stage once it ends
+        // although nothing about the tiles changed since.
+        followSpeaker()
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
@@ -554,6 +569,25 @@ final class CallSession {
             self.focus = focus.isScreen ? shared.last?.id : nil
         }
     }
+
+    /// The speaker layout follows whoever else speaks: it stays on them
+    /// while they speak and through a pause, moves to someone else only
+    /// after `speakerHold`, and moves on at once when they leave.
+    private func followSpeaker() {
+        let other = { (tile: Tile) in !tile.isScreen && !tile.isYou }
+        // Only someone else holds the stage: you are shown large only while
+        // no one else is on the call.
+        let current = tiles.first { $0.id == activeSpeaker && other($0) }
+        if let current, current.speaking || Date.now.timeIntervalSince(speakerSince) < Self.speakerHold { return }
+        let next = tiles.first { other($0) && $0.speaking }?.id ?? current?.id ?? tiles.first(where: other)?.id ?? tiles.first?.id
+        if next != activeSpeaker {
+            activeSpeaker = next
+            speakerSince = .now
+        }
+    }
+
+    /// The least time the speaker layout stays on one person.
+    private static let speakerHold: TimeInterval = 2
 
     /// Their tile, or the tile of the screen they share (nil when they share none).
     private func tile(_ participant: Participant, isYou: Bool, screen: Bool) -> Tile? {
@@ -678,6 +712,26 @@ extension CallSession {
                 try? await Task.sleep(for: thinkingLimit)
                 self?.log.stopThinking(ifSerial: serial)
             }
+        }
+    }
+}
+
+// MARK: - Handoff
+
+extension CallSession {
+    /// Tells this account's other devices on the call that this one has
+    /// joined, so they leave it (`CallHandoff`).
+    fileprivate func announce() {
+        guard let handoff else { return }
+        Task { await handoff.announce(on: room, roomName: link.room, identity: identity) { [weak self] in self?.leaving ?? true } }
+    }
+
+    /// Leaves when a newer device on this account joins: set up before the
+    /// room connects, so no announcement is missed.
+    fileprivate func listenForHandoff() async {
+        await handoff?.listen(on: room, roomName: link.room, me: identity) { [weak self] in
+            guard let self, !self.leaving else { return }
+            self.movedAway?()
         }
     }
 }

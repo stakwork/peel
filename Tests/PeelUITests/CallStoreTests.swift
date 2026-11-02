@@ -80,6 +80,24 @@ struct CallStoreTests {
         #expect(calls.otherCall(than: nil) == nil)
     }
 
+    @Test func aNewerDeviceTakesTheCallYouAreOnButNotAnEarlierOne() throws {
+        let (calls, _, _) = try attached()
+        var notices: [String: String?] = [:]
+        calls.chatNotice = { chat, change in notices[chat] = change(nil) }
+        let earlier = OnCall(link: try link(1), chat: "02aa", people: people(2))
+        let now = OnCall(link: try link(2), chat: "02bb", people: people(2))
+        calls.call = now
+
+        // A handoff from a call already left changes nothing.
+        calls.movedAway(earlier)
+        #expect(calls.call === now)
+        #expect(notices.isEmpty)
+
+        calls.movedAway(now)
+        #expect(calls.call == nil)
+        #expect(notices["02bb"] == "The call moved to your other device.")
+    }
+
     @Test func lockingStopsTheRecentCallsWatchesAndUnlockingStartsThemAgain() async throws {
         let (calls, engine, storage) = try attached()
         let room = try link(1).room
@@ -136,6 +154,7 @@ private final class OnCall: OngoingCall {
     var isRecording = false
     let wantsCamera = false
     let people: [CallParticipant]
+    var movedAway: (() -> Void)?
 
     init(link: CallLink, chat: String, people: [CallParticipant]) {
         self.link = link

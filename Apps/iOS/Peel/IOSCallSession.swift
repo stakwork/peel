@@ -58,6 +58,9 @@ final class IOSCallSession {
     /// This side's identity on the call (the token's), to tell you apart
     /// in the presence feed.
     let identity: String
+    /// Called when a newer device on this account joins the call.
+    @ObservationIgnored var movedAway: (() -> Void)?
+    @ObservationIgnored private let handoff: CallHandoff?
     private(set) var state = State.connecting
     /// When the room first connected: the running time counts from here.
     private(set) var connectedAt: Date?
@@ -109,6 +112,7 @@ final class IOSCallSession {
         self.chat = chat
         self.title = title
         identity = ticket.identity
+        handoff = ticket.handoff
         wantsCamera = camera
         refreshAccess()
         Self.activateAudioSession()
@@ -152,6 +156,7 @@ final class IOSCallSession {
     }
 
     private func connect(url: String, token: String, camera: Bool) async {
+        await listenForHandoff()
         do {
             try await room.connect(url: url, token: token)
         } catch {
@@ -161,6 +166,7 @@ final class IOSCallSession {
         }
         guard !Task.isCancelled else { return }
         refresh()
+        announce()
         // Not awaited by `leave`: a microphone prompt nobody answers must not
         // hold the call open.
         Task {
@@ -391,5 +397,25 @@ final class IOSCallSession {
         let person = CallParticipant(identity: id, name: name, metadata: metadata)
         readPeople[id] = (name, metadata, person)
         return person
+    }
+}
+
+// MARK: - Handoff
+
+extension IOSCallSession {
+    /// Tells this account's other devices on the call that this one has
+    /// joined, so they leave it (`CallHandoff`).
+    fileprivate func announce() {
+        guard let handoff else { return }
+        Task { await handoff.announce(on: room, roomName: link.room, identity: identity) { [weak self] in self?.leaving ?? true } }
+    }
+
+    /// Leaves when a newer device on this account joins: set up before the
+    /// room connects, so no announcement is missed.
+    fileprivate func listenForHandoff() async {
+        await handoff?.listen(on: room, roomName: link.room, me: identity) { [weak self] in
+            guard let self, !self.leaving else { return }
+            self.movedAway?()
+        }
     }
 }

@@ -1740,6 +1740,58 @@ chat, and on the iPhone, which has no call chat, said nothing at all.
   symbols in a scratch copy: there are no v0.8.40 iOS slices on this Mac.
   Not checked on a live call.
 
+## Layout and handoff between devices (2026-11-02)
+
+Tom asked for two things: the strip of people beside a large tile took too
+much of the window, and joining a call from the phone should take it off
+the Mac.
+
+- Layout (Mac). A Layout menu in the title bar picks Grid or Speaker
+  (kept across calls, `@AppStorage("callLayout")`). Speaker shows whoever
+  else spoke last large, held at least 2 s so a cough does not take the
+  stage (`CallSession.followSpeaker`). Beside it, while one tile is large,
+  a toggle hides the strip; that is for the call only, so no later call
+  opens with everyone out of sight.
+- Handoff. The newest device on a call keeps it; any other device on the
+  same account leaves, and its chat says the call moved. On connect a
+  device sends, as a text stream on the `peel-handoff` topic, an HMAC over
+  the room and its own identity, keyed by HKDF from the account seed
+  (`CallHandoff`). The receiver checks it against the identity LiveKit's
+  server stamps on the packet, so others on the call can neither read the
+  account from it nor replay it. The send is tried three times. A tie in
+  join time is settled by identity, so two devices joining at once never
+  both leave. Needs the same account (same words) on both devices.
+- A text stream, not a data packet: with LiveKit Swift 2.10.2 and
+  livekit-server 1.13.9, `RoomDelegate`'s data callback names no sender
+  (the SDK reads the inner packet's identity, which the server leaves
+  empty), so a data-packet handoff never fired. Stream handlers get the
+  outer, server-stamped identity. The sender reaches `remoteParticipants`
+  up to ~5 s after its announcement on a loaded machine, so the receiver
+  waits up to 10 s for its join time, in a task of its own (LiveKit
+  cancels the handler's once the stream ends).
+- Reviews: /code-review (speaker hold, retry, per-call strip, copy, store
+  test fixed; the Mac and iOS copies were then shared in
+  `Apps/Shared/CallHandoffRoom.swift`), /simplify (raw MAC instead of JSON,
+  the leave rule in PeelCore with tests, the strip toggle its own view so
+  speaking redraws only it, `MenuButton`), /security-review (nothing found).
+  Not applied: moving the key off `CallTicket` onto the engine (small gain;
+  the ticket's description and mirror leave it out).
+- Checked: `swift test` (CallHandoff, CallStore), and the Mac app builds.
+  On a local `livekit-server --dev`, a probe running the real
+  `CallHandoff` and `CallHandoffRoom.swift` as two and three clients
+  (Mac then phone, phone then Mac, a third device, a guest on another
+  account sending its own announcement, a replay and garbage, and two
+  joining at once): all pass, six runs in a row. In the app, offscreen
+  (`check-app.sh`, a dev profile on the local stack, a call-server stub
+  in front of LiveKit): ⌥⌘A starts the call, a guest joins and the
+  Speaker layout puts them large; then the profile's own words join as a
+  phone and the Mac leaves within seconds, its chat saying the call moved
+  (LiveKit then lists only the guest and the phone). That run also found
+  Speaker keeping you large once someone joined (fixed). Not checked: the
+  Layout menu and the strip toggle by click (the drive has no click step),
+  the iPhone app (not built: the iOS slices on this Mac predate the
+  pinned v0.8.41), and a call on production.
+
 ## Decided (Tom, 2026-10-08)
 
 Tom approved the five defaults PR 1 used:

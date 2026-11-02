@@ -65,10 +65,11 @@ extension Engine {
             ?? (alias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Peel user" : alias)
         let photo = (tribe?.sentPhoto(account: photoURL) ?? photoURL).httpsOnly
         let server = try await callConnection(for: link)
+        var ticket: CallTicket?
         if let hive, link.isHive {
             do {
                 let answer = try await hive(link.room, name, photo.flatMap(CallServer.metadata(photoURL:)))
-                return try await server.ticket(fromHive: answer, room: link.room, participantName: name)
+                ticket = try await server.ticket(fromHive: answer, room: link.room, participantName: name)
             } catch {
                 // A join given up while Hive answered stays given up; URLSession
                 // reports that as its own error, not a CancellationError.
@@ -76,7 +77,11 @@ extension Engine {
                 Diagnostics.note(error: error)
             }
         }
-        return try await server.ticket(for: link, participantName: name, photoURL: photo)
+        var joined: CallTicket
+        if let ticket { joined = ticket } else { joined = try await server.ticket(for: link, participantName: name, photoURL: photo) }
+        // Either way, so a device of this account that joins later can take the call over.
+        joined.handoff = CallHandoff(seed: seed)
+        return joined
     }
 
     /// Who is on a call, from the call server's presence feed, until the

@@ -828,6 +828,8 @@ public final class AppModel {
         // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()
         await attach(engine)
+        // A pairing kept from before the account was removed stays only if it was this account's.
+        stadeum.accountRestored()
     }
 
     /// Resume after history stalled: the engine picks it up where it stands,

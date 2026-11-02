@@ -155,6 +155,15 @@ public struct HiveLink: Codable, Sendable, Equatable {
     /// The account key Hive would not link (409), with its words: said
     /// once, and not asked about again on this pairing.
     public var sphinxRefused: SphinxRefusal?
+    /// The Sphinx account key this pairing was made or identified for. Nil
+    /// when not recorded (a pairing from before it was kept): unknown.
+    public var sphinxPubkey: String?
+
+    /// Whether this pairing may be kept for the account with `pubkey`: yes
+    /// unless it was recorded for another. Unknown is kept; `identify` records it.
+    public func belongs(to pubkey: String) -> Bool {
+        sphinxPubkey.map { $0 == pubkey } ?? true
+    }
 
     public static func read(from item: any SecretItem) throws -> HiveLink? {
         guard let data = try item.read() else { return nil }

@@ -19,11 +19,17 @@ struct StadeumSection: View {
                 switch hive.status {
                 case .off:
                     Fact("Stadeum") {
-                        Text(model.brain?.moved != nil
-                             ? "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
-                             : "Let your assistant ask your team's workspaces and run their workflows.")
-                            .muted()
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.brain?.moved != nil
+                                 ? "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
+                                 : "Let your assistant ask your team's workspaces and run their workflows.")
+                                .muted()
+                            if hive.reconnectHint {
+                                Text("Your account is back, but not its Stadeum connection. Connect Stadeum again.")
+                                    .foregroundStyle(Theme.attention)
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
                         if model.brain == .thisMac {
                             Button("Connect Stadeum") { model.connectHive() }

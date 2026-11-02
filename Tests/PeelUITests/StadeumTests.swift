@@ -44,6 +44,70 @@ struct StadeumTests {
         func stadeumDisconnected(actor: String?) throws { calls.append("disconnected \(actor ?? "nil")") }
     }
 
+    /// A development profile whose pairing is `item`, holding a link recorded for `pubkey`.
+    private func profile(keeping pubkey: String?, in item: MemoryItem) throws -> Profile {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "stadeum-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var kept = try link(hive: URL(string: "http://127.0.0.1:1")!, peers: [])
+        kept.identified = true
+        kept.sphinxPubkey = pubkey
+        try kept.write(to: item)
+        return Profile(developmentAt: folder, hive: item)
+    }
+
+    @Test func aRestoredAccountKeepsItsOwnPairing() async throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.sphinxProof = { SphinxProof(pubkey: "02aa", token: "t") }
+        stadeum.open(try profile(keeping: "02aa", in: item), renewNow: false)
+        stadeum.accountRestored()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(stadeum.status == .connected && stadeum.link != nil && item.value != nil && !stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func aRestoredAccountLetsGoAnotherAccountsPairing() async throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.sphinxProof = { SphinxProof(pubkey: "02bb", token: "t") }
+        stadeum.open(try profile(keeping: "02aa", in: item), renewNow: false)
+        stadeum.accountRestored()
+        await until { stadeum.link == nil }
+        #expect(stadeum.status == .off && stadeum.link == nil && item.value == nil && stadeum.reconnectHint)
+        stadeum.connect(as: "iPhone")
+        #expect(!stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func aPairingWithNoRecordedAccountIsKept() async throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.open(try profile(keeping: nil, in: item), renewNow: false)
+        stadeum.accountRestored()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(stadeum.status == .connected && item.value != nil && !stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func aRestoreWithNoPairingSaysToConnectAgain() throws {
+        let stadeum = Stadeum()
+        stadeum.accountRestored()
+        stadeum.open(try profile(), renewNow: false)
+        #expect(stadeum.status == .off && stadeum.reconnectHint)
+        stadeum.dismissReconnectHint()
+        #expect(!stadeum.reconnectHint)
+        stadeum.close()
+    }
+
+    @Test func disconnectingDeletesThePairing() throws {
+        let item = MemoryItem()
+        let stadeum = Stadeum()
+        stadeum.open(try profile(keeping: "02aa", in: item), renewNow: false)
+        stadeum.disconnect()
+        #expect(item.value == nil && stadeum.link == nil && stadeum.status == .off)
+        stadeum.close()
+    }
+
     @Test func aPairingIsKeptWithTheAccountAndTheHostIsTold() async throws {
         let hive = try await hive(interval: 1) {
             (200, #"{"credential":"hivedev_abc","device":{"id":"dev-1"},"actor":"tom-cm1","peers":[\#(Self.peer("acme", "Acme"))]}"#)

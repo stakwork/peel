@@ -177,8 +177,9 @@ final class Transport: Sendable {
                 userName: username,
                 password: password,
                 useSSL: server.tls,
+                useWebSockets: server.webSocket,
                 tlsConfiguration: tls,
-                webSocketConfiguration: server.webSocket ? .init(urlPath: server.path) : nil
+                webSocketURLPath: server.webSocket ? server.path : nil
             )
         )
         self.client = client

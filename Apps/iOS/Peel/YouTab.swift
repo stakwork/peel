@@ -246,7 +246,7 @@ private struct PINTimeoutRow: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?
 
-    private static let choices = [0, 1, 4, 12, 24]
+    private static let choices = [0, 1, 4, 12, 24, PINTimeout.never]
 
     var body: some View {
         let current = model.pinTimeoutHours
@@ -266,6 +266,7 @@ private struct PINTimeoutRow: View {
 
     private static func label(_ hours: Int) -> String {
         switch hours {
+        case PINTimeout.never: "Never ask for PIN"
         case 0: "When Peel opens"
         case 1: "After an hour away"
         case 24: "After a day away"

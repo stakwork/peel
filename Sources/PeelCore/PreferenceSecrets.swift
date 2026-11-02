@@ -106,12 +106,16 @@ public protocol SyncedAgentCredential: Sendable {
 public struct PreferenceCapabilities: Sendable {
     /// Face ID is something this device can be offered (iOS): `biometric_enabled` syncs.
     public var biometrics: Bool
+    /// The account has a PIN here, so its timeout means something:
+    /// `pin_timeout` syncs.
+    public var pinTimeout: Bool
     /// Where this device keeps the agent's credential, if it has an agent:
     /// `ai_agent_config` syncs.
     public var agentCredential: (any SyncedAgentCredential)?
 
-    public init(biometrics: Bool = false, agentCredential: (any SyncedAgentCredential)? = nil) {
+    public init(biometrics: Bool = false, pinTimeout: Bool = false, agentCredential: (any SyncedAgentCredential)? = nil) {
         self.biometrics = biometrics
+        self.pinTimeout = pinTimeout
         self.agentCredential = agentCredential
     }
 
@@ -119,6 +123,7 @@ public struct PreferenceCapabilities: Sendable {
     var keys: Set<String> {
         var keys: Set<String> = []
         if biometrics { keys.insert(Preferences.biometricKey) }
+        if pinTimeout { keys.insert(Preferences.pinTimeoutKey) }
         if agentCredential != nil { keys.insert(Preferences.agentConfigKey) }
         return keys
     }

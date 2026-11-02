@@ -26,7 +26,7 @@ public struct Preference<Value: Sendable>: Sendable {
     var uploads = true
     /// Whether a device syncs it only when it says so
     /// (`PreferenceCapabilities`): a key another platform owns stays a
-    /// pass-through in the file here (decisions 10 and 11).
+    /// pass-through in the file here (decisions 10, 11 and 13).
     var optIn = false
     /// Whether a value from the file is stored in its canonical form (what
     /// `write` gives for what `read` took), not as the file has it.
@@ -193,12 +193,53 @@ extension Preference where Value == TimeZoneSharing {
 }
 
 extension Preference where Value == Int {
-    /// Hours without use before the app asks for the PIN again; 0 means
-    /// only at launch. This device only: the PIN is this device's, and the
-    /// official `pin_timeout` has another scale (decision 4 of phase 11).
-    public static var pinTimeoutHours: Self {
-        Self(key: "device.pin_timeout_hours", scope: .device, read: { $0.wholeNumber.flatMap { Int(exactly: $0) } },
-             write: { .string(String(max(0, $0))) })
+    /// How long before the app asks for the PIN again: the official
+    /// `pin_timeout`, in the file's form, whole hours 0 to 25 (0 = every
+    /// time, 25 = never), stored exactly as the file holds it. Peel's own
+    /// scale (`PINTimeout`) is converted at the engine's boundary
+    /// (`Engine.pinTimeoutHours`, `setPINTimeout(hours:)`). Synced only
+    /// where the account has a PIN (`PreferenceCapabilities`, decision 13 of
+    /// phase 11); the apply policy is the default, always the newest.
+    /// A value is read like the official apps read an int, and one outside
+    /// 0 to 25 is clamped; anything else (not a string, not a whole number,
+    /// out of `Int`'s range) is refused.
+    public static var pinTimeout: Self {
+        Self(key: Preferences.pinTimeoutKey, scope: .account, read: { value in
+            guard case .string(let text) = value, let hours = Int(text) else { return nil }
+            return min(max(hours, PINTimeout.officialAlways), PINTimeout.officialNever)
+        }, write: { .string(String(min(max($0, PINTimeout.officialAlways), PINTimeout.officialNever))) },
+             optIn: true)
+    }
+}
+
+public enum PINTimeout {
+    /// Never ask again after launch (the idle and foreground re-lock only;
+    /// launch always asks, and the PIN is never stored). Peel's scale: -1;
+    /// 0 means only at launch and positive hours are hours.
+    public static let never = -1
+
+    /// The official scale's ends: 0 asks every time, 25 never.
+    static let officialAlways = 0
+    static let officialNever = 25
+    /// What Peel offers, shortest first.
+    static let options = [0, 1, 4, 12, 24]
+
+    /// Peel's setting for an official `pin_timeout` value: clamped to 0 to
+    /// 25, 25 is `never`, anything else the nearest of 0, 1, 4, 12 and 24,
+    /// a tie going to the shorter (8 is 4, 18 is 12, 2 is 1, 3 is 4).
+    public static func peelHours(fromOfficial hours: Int) -> Int {
+        let hours = min(max(hours, officialAlways), officialNever)
+        if hours == officialNever { return never }
+        var best = options[0]
+        for option in options.dropFirst() where abs(option - hours) < abs(best - hours) { best = option }
+        return best
+    }
+
+    /// The official `pin_timeout` for Peel's setting: `never` (or less) is
+    /// 25, hours as they are, but never more than 24, which would be read
+    /// as never.
+    public static func officialHours(fromPeel hours: Int) -> Int {
+        hours <= never ? officialNever : min(hours, officialNever - 1)
     }
 }
 
@@ -234,7 +275,8 @@ public enum Preferences {
     /// Peel-only keys: the official apps keep and ignore them.
     static let peelPrefix = "peel."
     static let devicePrefix = "device."
-    /// The official keys Peel now reads (`pin_timeout` is not among them).
+    /// The official keys Peel reads.
+    static let pinTimeoutKey = "pin_timeout"
     static let chatColorKey = "chat_color"
     static let biometricKey = "biometric_enabled"
     static let agentConfigKey = "ai_agent_config"
@@ -269,7 +311,7 @@ public enum Preferences {
         Preference<Bool>.biometricEnabled.entry,
         Preference<AgentConfig>.agentConfig.entry,
         Preference<TimeZoneSharing>.timeZoneSharing.entry,
-        Preference<Int>.pinTimeoutHours.entry,
+        Preference<Int>.pinTimeout.entry,
         Preference<Bool>.notificationText.entry,
         Preference<NotificationPolicy.Style>.notificationStyle.entry,
         Preference<String>.notificationSound.entry,

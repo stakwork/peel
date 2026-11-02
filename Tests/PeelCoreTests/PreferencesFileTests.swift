@@ -146,7 +146,7 @@ struct PreferencesFileTests {
         }
         #expect(merge.file.items[6]["value"] == .string("250") && merge.file.items[7]["value"] == .string("250"))
         // Peel stores only the keys it syncs (the API key never reaches the
-        // database; `pin_timeout` is not Peel's, decision 4), and takes the
+        // database; `pin_timeout` is opt-in, decision 13), and takes the
         // last copy. With no Face ID or agent here, theirs stay pass-through.
         let pulled = server.merged(with: [])
         #expect(pulled.apply.map(\.row) == [

@@ -39,6 +39,13 @@ func rows(_ profile: TempProfile, _ sql: String) throws -> [Row] {
 /// A uuid as the core issues them: 64 hex characters.
 func uuid(_ n: Int) -> String { String(format: "%064x", n) }
 
+/// A LiveKit-shaped token with `claims` and a signature no one checks: Peel
+/// reads a token's claims and never its signature.
+func unsignedJWT(_ claims: [String: Any]) -> String {
+    let body = MediaToken.base64URLEncode(try! JSONSerialization.data(withJSONObject: claims)).replacingOccurrences(of: "=", with: "")
+    return "eyJhbGciOiJIUzI1NiJ9.\(body).c2lnbmF0dXJl"
+}
+
 /// A direct-message chat for tests.
 let dm = "02aa"
 

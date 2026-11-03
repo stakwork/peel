@@ -5,9 +5,10 @@ import PeelUI
 import SwiftUI
 
 /// Account › Connections › Stadeum workspaces (`AppModel+Hive`): Connect
-/// Stadeum (a code to approve there, and its QR); each workspace paired, and
-/// whether a request to it asks first; Pair again once Stadeum no longer
-/// knows this Mac; Unpair.
+/// Stadeum (a code to approve there, and its QR); each workspace paired,
+/// whether a request to it asks first, and Talk to Jamie there; Pair again
+/// once Stadeum no longer knows this Mac; Unpair. A development profile's
+/// `-talkHome` is a row of its own (docs/talk.md).
 struct StadeumSection: View {
     @Environment(AppModel.self) private var model
     @State private var unpairing = false
@@ -86,6 +87,13 @@ struct StadeumSection: View {
                         }
                     }
                 }
+                if let home = model.talk.developmentHome {
+                    Fact(home.name) {
+                        Text("Development home, \(home.url.absoluteString)").muted()
+                    } trailing: {
+                        TalkButton(home: home)
+                    }
+                }
             }
             if let problem = hive.problem {
                 Text(problem)
@@ -135,16 +143,36 @@ private struct WorkspaceRow: View {
                 Text(rule == nil ? "Asks you before each request" : "Sends without asking").muted()
             }
         } trailing: {
-            if let rule {
-                Button("Ask first") {
-                    do {
-                        try model.agent?.revoke(rule)
-                    } catch {
-                        model.stadeum.problem = PeelError.problem(error, couldNot: "change how \(peer.name) is asked")
-                    }
+            HStack(spacing: Theme.Space.sm) {
+                if renewing, let home = TalkHome(peer: peer) {
+                    TalkButton(home: home)
                 }
-                    .buttonStyle(.peel(.outline))
+                if let rule {
+                    Button("Ask first") {
+                        do {
+                            try model.agent?.revoke(rule)
+                        } catch {
+                            model.stadeum.problem = PeelError.problem(error, couldNot: "change how \(peer.name) is asked")
+                        }
+                    }
+                        .buttonStyle(.peel(.outline))
+                }
             }
         }
+    }
+}
+
+/// Talk to Jamie on `home` (docs/talk.md): the Talk window opens, calling.
+private struct TalkButton: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    let home: TalkHome
+
+    var body: some View {
+        Button("Talk to Jamie") {
+            model.talk.talk(to: home)
+            openWindow(id: TalkWindow.id)
+        }
+        .buttonStyle(.peel(.outline))
     }
 }

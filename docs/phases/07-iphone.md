@@ -1283,7 +1283,7 @@ Left to do:
 
 1. **Apple portal and Strut setup** as above (nothing here can do it).
 2. **Device check of the names map** (below).
-3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (16): move
+3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (17): move
    them together. The project's `DEVELOPMENT_TEAM` is `8297M44YTW` (shared
    with Sphinx); the Personal Team is only for the Mac's local signing.
 

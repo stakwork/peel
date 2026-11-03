@@ -55,6 +55,19 @@ it.
      folds them (one line per speaker and `lk.segment_id`). A line is the
      member's when `lk.transcribed_track_id` names one of their tracks, or
      the stream came from their identity.
+   The circle above the words is a waveform (`TalkWaveView`; the pure parts
+   are `TalkWave` in `Sources/PeelUI/TalkWave.swift`):
+   - Speaking: rounded bars in the accent colour move with the agent's
+     audio. Listening: they move with the member's microphone, in a lighter
+     neutral; muted, they lie low, flat and dimmed.
+   - Thinking: a calm wave travels across them. Calling, connecting or
+     getting ready: a slow breath. Jamie gone: still.
+   - The level is sampled about 30 times a second: the loudest buffer since
+     the last frame. It rises fast and falls slowly (`LevelSmoother`), each
+     bar wobbles at its own pace, and a change of phase glides.
+   - With Reduce Motion the bars hold their shape, and only their size
+     follows the level, slowly.
+   - VoiceOver reads the words under the circle.
 5. Mute is for talking to someone else in the room. The member interrupts
    the agent just by speaking: Apple's voice processing stays on (LiveKit's
    default; on the phone a `.voiceChat` audio session, as for calls), so the
@@ -92,7 +105,14 @@ Peel's pin has everything this needs:
   `TextStreamReader.info.attributes` and `.id`;
 - `Participant.attributes`;
 - `LocalParticipant.set(attributes:)`, for Jamie's voice;
-- `Participant.trackPublications`, for the member's own track ids.
+- `Participant.trackPublications`, for the member's own track ids;
+- `RemoteAudioTrack.add(audioRenderer:)` and
+  `AudioManager.shared.add(localAudioRenderer:)`, for the waveform:
+  - each hands an `AudioRenderer` the decoded agent audio, or the microphone
+    after voice processing, about every 10 ms;
+  - `TalkLevelMeter` keeps the loudest RMS of each.
+  `Participant.audioLevel` is too slow for this: the server's active-speaker
+  updates set it a few times a second, and only while someone is speaking.
 
 It also has `AgentState`, `Participant.agentState` and an internal
 transcription receiver. Peel reads the attribute and the streams itself, so

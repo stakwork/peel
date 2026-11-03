@@ -1,8 +1,10 @@
+import Accelerate
 import AVFoundation
 import Combine
 import LiveKit
 import PeelCore
 import PeelUI
+import Synchronization
 
 /// A Talk call's room (docs/talk.md), on the phone and the Mac: the LiveKit
 /// room an org's home named for a call with its agent, the microphone, and
@@ -46,6 +48,12 @@ final class TalkSession: TalkMedia {
     @ObservationIgnored private var toldVoice: TalkVoice?
     @ObservationIgnored private var wantedVoice: TalkVoice?
     @ObservationIgnored private var tellingVoice = false
+    /// How loud Jamie and the member are, for the call screen's waveform:
+    /// fed by the agent's audio track and the microphone, read by `level(of:)`.
+    @ObservationIgnored private let agentMeter = TalkLevelMeter()
+    @ObservationIgnored private let micMeter = TalkLevelMeter()
+    /// The agent's track `agentMeter` listens to.
+    @ObservationIgnored private var heardTrack: RemoteAudioTrack?
     #if os(iOS)
     @ObservationIgnored private var routeChanges: (any NSObjectProtocol)?
     #endif
@@ -69,6 +77,8 @@ final class TalkSession: TalkMedia {
         changes = room.objectWillChange
             .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.refresh() } }
+        // The microphone after voice processing, as the agent hears it.
+        AudioManager.shared.add(localAudioRenderer: micMeter)
         let url = ticket.url.absoluteString, token = ticket.token
         connecting = Task { [weak self] in await self?.connect(url: url, token: token) }
     }
@@ -113,6 +123,9 @@ final class TalkSession: TalkMedia {
         connecting?.cancel()
         await connecting?.value
         changes = nil
+        AudioManager.shared.remove(localAudioRenderer: micMeter)
+        heardTrack?.remove(audioRenderer: agentMeter)
+        heardTrack = nil
         await room.unregisterTextStreamHandler(for: TalkTranscript.topic)
         await room.disconnect()
         #if os(iOS)
@@ -201,6 +214,18 @@ final class TalkSession: TalkMedia {
         }
     }
 
+    // MARK: The waveform
+
+    /// How loud `speaker` has been since the last read, 0…1 (`TalkWave.loudness`):
+    /// what the call screen's waveform samples on its own clock, so nothing
+    /// here is observed. The member's is zero while muted.
+    func level(of speaker: TalkLine.Speaker) -> Double {
+        switch speaker {
+        case .agent: agentMeter.take()
+        case .you: micOn ? micMeter.take() : 0
+        }
+    }
+
     // MARK: The room
 
     private func refresh() {
@@ -215,6 +240,13 @@ final class TalkSession: TalkMedia {
         let notYet = connection == .disconnected && !connectedOnce && !failed
         let participant = room.remoteParticipants.values.first { $0.identity?.stringValue == agent }
         if participant != nil { agentSeen = true }
+        // The agent's voice to the waveform; a track republished is followed.
+        let track = participant?.firstAudioTrack as? RemoteAudioTrack
+        if track !== heardTrack, !leaving {
+            heardTrack?.remove(audioRenderer: agentMeter)
+            track?.add(audioRenderer: agentMeter)
+            heardTrack = track
+        }
         let next = TalkPhase(
             connection: notYet ? .connecting : connection, connectedOnce: connectedOnce,
             agentState: participant.map { $0.attributes[TalkAgentState.attribute] ?? "" }, agentSeen: agentSeen
@@ -222,5 +254,46 @@ final class TalkSession: TalkMedia {
         if next != phase { phase = next }
         let mic = room.localParticipant.isMicrophoneEnabled()
         if mic != micOn { micOn = mic }
+    }
+}
+
+/// The loudness of one side of a Talk call, fed from LiveKit's audio thread
+/// (an `AudioRenderer`, about every 10 ms) and read by the call screen about
+/// 30 times a second: the loudest buffer since the last read, so no syllable
+/// falls between two frames.
+final class TalkLevelMeter: NSObject, AudioRenderer, Sendable {
+    private let loudest = Mutex<Double>(0)
+
+    func render(pcmBuffer: AVAudioPCMBuffer) {
+        let level = TalkWave.loudness(rms: Self.rms(pcmBuffer))
+        loudest.withLock { $0 = max($0, level) }
+    }
+
+    /// The loudest since the last read, and it starts again.
+    func take() -> Double {
+        loudest.withLock { value in
+            defer { value = 0 }
+            return value
+        }
+    }
+
+    /// The first channel's RMS, in linear full scale.
+    private static func rms(_ buffer: AVAudioPCMBuffer) -> Double {
+        let frames = Int(buffer.frameLength), stride = buffer.stride
+        guard frames > 0 else { return 0 }
+        if let data = buffer.floatChannelData {
+            var rms: Float = 0
+            vDSP_rmsqv(data[0], stride, &rms, vDSP_Length(frames))
+            return Double(rms)
+        }
+        if let data = buffer.int16ChannelData {
+            var sum: Float = 0
+            for frame in 0 ..< frames {
+                let sample = Float(data[0][frame * stride]) / 32768
+                sum += sample * sample
+            }
+            return Double((sum / Float(frames)).squareRoot())
+        }
+        return 0
     }
 }

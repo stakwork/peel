@@ -25,7 +25,7 @@ struct TalkView: View {
             .padding(.horizontal, Theme.Space.lg)
             switch talk.state {
             case .starting:
-                TalkPhaseView(words: "Calling Jamie…", systemImage: nil, lit: false)
+                TalkPhaseView(words: "Calling Jamie…", mode: .breathing)
                 Spacer()
                 TalkControls(session: nil)
             case .failed(let problem):
@@ -46,25 +46,21 @@ struct TalkView: View {
     }
 }
 
-/// What Jamie is doing, large: a glyph in a circle, lit while it speaks,
-/// and the words under it.
+/// What Jamie is doing, large: a waveform in a circle (`TalkWaveView`),
+/// tinted while Jamie speaks, and the words under it, which VoiceOver reads.
 private struct TalkPhaseView: View {
     let words: String
-    let systemImage: String?
-    let lit: Bool
+    let mode: TalkWave.Mode
+    var session: TalkSession?
 
     var body: some View {
         VStack(spacing: Theme.Space.md) {
             ZStack {
                 Circle()
-                    .fill(lit ? Theme.accent : Theme.hover)
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 34, weight: .medium))
-                        .foregroundStyle(lit ? Theme.buttonText : Theme.text)
-                } else {
-                    ProgressView()
-                }
+                    .fill(mode == .agent ? Theme.accent.opacity(0.16) : Theme.hover)
+                    .animation(.easeInOut(duration: 0.35), value: mode)
+                TalkWaveView(mode: mode, session: session)
+                    .frame(width: 62, height: 54)
             }
             .frame(width: 112, height: 112)
             .accessibilityHidden(true)
@@ -78,25 +74,96 @@ private struct TalkPhaseView: View {
     }
 }
 
+/// The circle's bars (`TalkWave`): they move with Jamie's voice while it
+/// speaks and the member's while it listens, sampled from the room about 30
+/// times a second; a travelling wave while Jamie thinks, a slow breath while
+/// calling, low and flat while muted. With Reduce Motion they hold their
+/// shape and only their size follows, slowly.
+private struct TalkWaveView: View {
+    let mode: TalkWave.Mode
+    let session: TalkSession?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var frames = TalkWaveFrames()
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 / 15 : 1.0 / 30)) { timeline in
+            Canvas { context, size in draw(&context, size, at: timeline.date) }
+        }
+    }
+
+    private func draw(_ context: inout GraphicsContext, _ size: CGSize, at now: Date) {
+        // Both drained each frame, so a voice switched to starts fresh.
+        let agent = session?.level(of: .agent) ?? 0, you = session?.level(of: .you) ?? 0
+        let bars = frames.step(mode, heard: mode == .agent ? agent : you, at: now, reduceMotion: reduceMotion)
+        let tint = frames.tint(toward: Self.color(mode).resolve(in: context.environment))
+        let count = CGFloat(bars.count)
+        let width = size.width / (count + (count - 1) * 0.7)
+        let gap = width * 0.7
+        for (i, share) in bars.enumerated() {
+            let height = max(width, size.height * share)
+            let bar = CGRect(x: CGFloat(i) * (width + gap), y: (size.height - height) / 2, width: width, height: height)
+            context.fill(Path(roundedRect: bar, cornerRadius: width / 2), with: .color(Color(tint)))
+        }
+    }
+
+    /// Jamie's voice in the accent, the member's a lighter neutral.
+    private static func color(_ mode: TalkWave.Mode) -> Color {
+        switch mode {
+        case .agent: Theme.accent
+        case .thinking: Theme.accent.opacity(0.7)
+        case .member: Theme.secondaryText
+        case .breathing: Theme.secondaryText.opacity(0.7)
+        case .muted: Theme.secondaryText.opacity(0.35)
+        case .still: Theme.secondaryText.opacity(0.45)
+        }
+    }
+}
+
+/// The waveform's state from frame to frame. Not observed: a frame never
+/// asks for another draw.
+@MainActor
+private final class TalkWaveFrames {
+    private var animator = TalkWave.Animator()
+    private var start: Date?
+    private var last: Date?
+    private var shown: Color.Resolved?
+    private var dt = 0.0
+
+    func step(_ mode: TalkWave.Mode, heard: Double, at now: Date, reduceMotion: Bool) -> [Double] {
+        let start = start ?? now
+        self.start = start
+        // A long gap (the view hidden) is one frame, not a jump.
+        dt = last.map { min(0.1, max(0, now.timeIntervalSince($0))) } ?? 0
+        last = now
+        return animator.step(mode, heard: heard, time: now.timeIntervalSince(start), dt: dt, reduceMotion: reduceMotion)
+    }
+
+    /// The bars' colour, eased toward `target` in about a third of a second.
+    func tint(toward target: Color.Resolved) -> Color.Resolved {
+        guard var color = shown, dt > 0 else {
+            if shown == nil { shown = target }
+            return shown ?? target
+        }
+        let ease = Float(1 - exp(-dt / 0.12))
+        color.red += (target.red - color.red) * ease
+        color.green += (target.green - color.green) * ease
+        color.blue += (target.blue - color.blue) * ease
+        color.opacity += (target.opacity - color.opacity) * ease
+        shown = color
+        return color
+    }
+}
+
 /// The call in its room: the phase, the live text and the controls.
 private struct TalkLive: View {
     let session: TalkSession
 
     var body: some View {
         let phase = session.phase
-        TalkPhaseView(words: phase.words, systemImage: Self.image(phase), lit: phase == .speaking)
+        let muted = session.micReady && !session.micOn
+        TalkPhaseView(words: phase.words, mode: TalkWave.Mode(phase: phase, muted: muted), session: session)
         TalkLines(lines: session.transcript.lines)
         TalkControls(session: session)
-    }
-
-    private static func image(_ phase: TalkPhase) -> String? {
-        switch phase {
-        case .listening: "ear"
-        case .thinking: "ellipsis"
-        case .speaking: "waveform"
-        case .waiting(left: true): "person.slash"
-        default: nil
-        }
     }
 }
 

@@ -234,3 +234,110 @@ private final class Rooms: CallProvider {
         return room
     }
 }
+
+/// The call screen's waveform (`TalkWave`): bar heights from the mode, the
+/// level and the time, and the level's smoothing.
+struct TalkWaveTests {
+    private let times = stride(from: 0.0, through: 3.0, by: 0.07).map { $0 }
+
+    @Test func silenceIsLowBars() {
+        for mode in [TalkWave.Mode.agent, .member] {
+            for t in times {
+                let bars = TalkWave.heights(mode, level: 0, time: t, reduceMotion: false)
+                #expect(bars.count == TalkWave.barCount)
+                #expect(bars.allSatisfy { $0 >= TalkWave.floor && $0 <= 0.2 })
+            }
+        }
+    }
+
+    @Test func aLoudVoiceIsTallBarsWithinBounds() {
+        var tallest = 0.0
+        for t in times {
+            let bars = TalkWave.heights(.agent, level: 1, time: t, reduceMotion: false)
+            #expect(bars.allSatisfy { $0 >= TalkWave.floor && $0 <= 1 })
+            #expect(bars.max()! > 0.6)
+            tallest = max(tallest, bars.max()!)
+        }
+        #expect(tallest > 0.95)
+        // Past full scale is still within bounds.
+        #expect(TalkWave.heights(.member, level: 5, time: 1, reduceMotion: false).allSatisfy { $0 <= 1 })
+        // The bars do not move in lockstep.
+        let bars = TalkWave.heights(.agent, level: 0.8, time: 0.9, reduceMotion: false)
+        #expect(Set(bars).count > 3)
+    }
+
+    @Test func loudnessFromRMS() {
+        #expect(TalkWave.loudness(rms: 0) == 0)
+        #expect(TalkWave.loudness(rms: 0.001) == 0)  // -60 dBFS
+        #expect(TalkWave.loudness(rms: 0.5) == 1)  // -6 dBFS
+        let speech = TalkWave.loudness(rms: 0.05)  // -26 dBFS
+        #expect(speech > 0.5 && speech < 0.8)
+    }
+
+    @Test func smoothingRisesFastAndFallsSlowly() {
+        var rising = LevelSmoother.lively()
+        for _ in 0 ..< 3 { rising.update(toward: 1, dt: 1 / 30) }
+        #expect(rising.value > 0.9)
+        var falling = LevelSmoother.lively(from: 1)
+        for _ in 0 ..< 3 { falling.update(toward: 0, dt: 1 / 30) }
+        #expect(falling.value > 0.6)
+        for _ in 0 ..< 30 { falling.update(toward: 0, dt: 1 / 30) }
+        #expect(falling.value < 0.05)
+        // With Reduce Motion it is slow both ways.
+        var calm = LevelSmoother.calm()
+        for _ in 0 ..< 3 { calm.update(toward: 1, dt: 1 / 30) }
+        #expect(calm.value < 0.2)
+    }
+
+    @Test func reduceMotionHoldsTheBarsStill() {
+        let modes: [TalkWave.Mode] = [.agent, .member, .thinking, .breathing, .muted, .still]
+        for mode in modes {
+            let first = TalkWave.heights(mode, level: 0.6, time: 0, reduceMotion: true)
+            for t in times {
+                #expect(TalkWave.heights(mode, level: 0.6, time: t, reduceMotion: true) == first)
+            }
+        }
+        // Only their size follows the level.
+        let quiet = TalkWave.heights(.agent, level: 0.2, time: 0, reduceMotion: true)
+        let loud = TalkWave.heights(.agent, level: 0.9, time: 0, reduceMotion: true)
+        #expect(zip(quiet, loud).allSatisfy { $0 < $1 })
+    }
+
+    @Test func eachPhaseHasItsShape() {
+        #expect(TalkWave.Mode(phase: nil, muted: false) == .breathing)
+        #expect(TalkWave.Mode(phase: .connecting, muted: false) == .breathing)
+        #expect(TalkWave.Mode(phase: .waiting(left: false), muted: false) == .breathing)
+        #expect(TalkWave.Mode(phase: .listening, muted: false) == .member)
+        #expect(TalkWave.Mode(phase: .listening, muted: true) == .muted)
+        #expect(TalkWave.Mode(phase: .speaking, muted: true) == .agent)
+        #expect(TalkWave.Mode(phase: .thinking, muted: false) == .thinking)
+        #expect(TalkWave.Mode(phase: .waiting(left: true), muted: false) == .still)
+        #expect(TalkWave.Mode(phase: .ended(connected: true), muted: false) == .still)
+
+        // Thinking: a wave travels across, its crest moving on.
+        let crest = { (t: Double) in TalkWave.heights(.thinking, level: 0, time: t, reduceMotion: false).enumerated().max { $0.element < $1.element }!.offset }
+        #expect(crest(0) != crest(0.25))
+        // Breathing: every bar in step, slowly up and down.
+        let low = TalkWave.heights(.breathing, level: 0, time: 1.95, reduceMotion: false)
+        let high = TalkWave.heights(.breathing, level: 0, time: 0.65, reduceMotion: false)
+        #expect(zip(low, high).allSatisfy { $0 < $1 })
+        #expect(high.max()! < 0.5)
+        // Muted: low and flat, whatever the level.
+        #expect(TalkWave.heights(.muted, level: 1, time: 0.4, reduceMotion: false) == Array(repeating: TalkWave.floor, count: TalkWave.barCount))
+        // Still: the same at any time.
+        #expect(TalkWave.heights(.still, level: 1, time: 0, reduceMotion: false) == TalkWave.heights(.still, level: 0, time: 2, reduceMotion: false))
+    }
+
+    @Test func theAnimatorGlidesBetweenPhases() {
+        var animator = TalkWave.Animator()
+        let flat = animator.step(.muted, heard: 0, time: 0, dt: 0, reduceMotion: false)
+        #expect(flat.allSatisfy { $0 == TalkWave.floor })
+        // A loud word lifts the bars within a few frames.
+        var bars = flat
+        for frame in 1 ... 6 { bars = animator.step(.agent, heard: 1, time: Double(frame) / 30, dt: 1 / 30, reduceMotion: false) }
+        #expect(bars.max()! > 0.6)
+        // Muted again: they ease down, not at once.
+        let next = animator.step(.muted, heard: 1, time: 0.25, dt: 1 / 30, reduceMotion: false)
+        #expect(next.max()! > TalkWave.floor + 0.1)
+    }
+}

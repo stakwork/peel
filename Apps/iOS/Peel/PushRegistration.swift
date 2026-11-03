@@ -8,10 +8,13 @@ import os
 
 /// The app delegate SwiftUI's `@UIApplicationDelegateAdaptor` needs for the
 /// APNs callbacks, which `App` has no way to receive.
-final class PeelAppDelegate: NSObject, UIApplicationDelegate {
+final class PeelAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Set before launch finishes, so the tap that launched a killed app is
+        // delivered here (it is held in `PendingNavigation` until the account is open).
+        UNUserNotificationCenter.current().delegate = self
         // A token needs no permission, so it is asked for at every launch
         // (Apple advises it: the token can change).
         application.registerForRemoteNotifications()
@@ -26,6 +29,18 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
         PushCoordinator.shared.failed(error)
+    }
+
+    /// A tap on a push: the route is kept, not opened, since the app may be
+    /// launching, locked or still onboarding; `PushCoordinator.openPending`
+    /// opens it when an account is open. Foreground presentation is left to
+    /// the system's default (unchanged).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        PendingNavigation.shared.submit(
+            userInfo: response.notification.request.content.userInfo, id: response.notification.request.identifier)
     }
 
     /// Portrait, except on the chat (see `OrientationLock`).
@@ -84,6 +99,35 @@ final class PushCoordinator {
     /// registered is not sent twice.
     func connected() {
         Task { await registerIfReady() }
+    }
+
+    private var opening = false
+
+    /// Opens the tapped push's chat if one waits and an account is open;
+    /// otherwise it stays pending (locked, onboarding, still loading). The
+    /// route is taken once, so a second call finds nothing. A chat the
+    /// account does not have is dropped quietly.
+    func openPending(model: AppModel, router: PhoneRouter) {
+        guard !opening, model.phase == .ready, let engine = model.engine, PendingNavigation.shared.hasPending else { return }
+        guard let route = PendingNavigation.shared.take() else { return }
+        opening = true
+        Task {
+            defer { opening = false }
+            // Chats load just after the account opens.
+            for _ in 0..<10 where model.conversations.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+            guard model.phase == .ready else { PendingNavigation.shared.submit(route); return }
+            let chat: String?
+            switch route {
+            case .chat(let id): chat = id
+            case .child(let kind, let index):
+                let contacts = (try? await engine.contacts()) ?? []
+                chat = contacts.first { $0.childIndex == index }.map(\.pubkey).flatMap { key in
+                    model.conversations.first { $0.chat == key && $0.isTribe == (kind == .tribe) }?.chat
+                }
+            }
+            guard let chat, model.conversations.contains(where: { $0.chat == chat }) else { return }
+            router.openChat(chat)
+        }
     }
 
     func accountClosed() {

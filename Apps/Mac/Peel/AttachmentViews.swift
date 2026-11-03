@@ -355,8 +355,15 @@ struct SavedNote: View {
         HStack(spacing: Theme.Space.sm) {
             Text("Saved to Downloads")
                 .muted()
+                .font(Theme.font(11))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .help(file.lastPathComponent)
-            Button("Show in Finder") { model.showInFinder(file) }.buttonStyle(.peel(.link, size: .sm))
+            Spacer(minLength: Theme.Space.sm)
+            Button("Show in Finder") { model.showInFinder(file) }
+                .buttonStyle(.peel(.link, size: .sm))
+                .lineLimit(1)
+                .fixedSize()
         }
     }
 }
@@ -404,7 +411,7 @@ extension View {
         Card(.inset) {
             padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, 10)
-                .frame(maxWidth: 300, alignment: .leading)
+                .frame(maxWidth: 340, alignment: .leading)
         }
         .foregroundStyle(Theme.text)
     }

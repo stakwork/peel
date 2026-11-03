@@ -25,7 +25,7 @@ final class TalkSession: TalkMedia {
     private(set) var micReady = false
     /// The system refused the microphone: the agent cannot hear the member.
     private(set) var micRefused = false
-    /// Something that went wrong with the microphone, said quietly.
+    /// Something that went wrong with the microphone or the voice, said quietly.
     private(set) var notice: String?
 
     @ObservationIgnored private let identity: String
@@ -41,6 +41,11 @@ final class TalkSession: TalkMedia {
     @ObservationIgnored private var agentSeen = false
     @ObservationIgnored private var leaving = false
     @ObservationIgnored private var switchingMic = false
+    /// Jamie's voice the agent has been told (as the call began, the home's
+    /// answer), the one the member wants, and whether it is being told now.
+    @ObservationIgnored private var toldVoice: TalkVoice?
+    @ObservationIgnored private var wantedVoice: TalkVoice?
+    @ObservationIgnored private var tellingVoice = false
     #if os(iOS)
     @ObservationIgnored private var routeChanges: (any NSObjectProtocol)?
     #endif
@@ -49,6 +54,7 @@ final class TalkSession: TalkMedia {
         self.home = home
         identity = ticket.identity
         agent = ticket.agent
+        toldVoice = ticket.voice
         #if os(iOS)
         IOSCallSession.activateAudioSession()
         routeChanges = NotificationCenter.default.addObserver(
@@ -89,6 +95,8 @@ final class TalkSession: TalkMedia {
             await setMicrophone(true)
             micReady = true
         }
+        // A voice switched while connecting.
+        Task { await tellVoice() }
     }
 
     private func received(_ chunk: String, stream: String, sender: String, attributes: [String: String]) {
@@ -159,6 +167,38 @@ final class TalkSession: TalkMedia {
             if on { notice = "Could not turn the microphone on" }
         }
         refresh()
+    }
+
+    // MARK: Jamie's voice
+
+    func setVoice(_ voice: TalkVoice) {
+        wantedVoice = voice
+        Task { await tellVoice() }
+    }
+
+    private static let voiceNotice = "Could not switch Jamie's voice"
+
+    /// Sets the member's participant attribute `voice` to the voice wanted,
+    /// once the room is connected (until then `connect` does it); the agent
+    /// switches from its next sentence. The member's token allows it
+    /// (strut's plans/private-voice.md §4.1). A switch made while one is on
+    /// its way is told after it.
+    private func tellVoice() async {
+        guard !tellingVoice, !leaving, room.connectionState == .connected else { return }
+        tellingVoice = true
+        defer { tellingVoice = false }
+        while let wanted = wantedVoice, wanted != toldVoice, !leaving {
+            var attributes = room.localParticipant.attributes
+            attributes[TalkVoice.attribute] = wanted.rawValue
+            do {
+                try await room.localParticipant.set(attributes: attributes)
+                toldVoice = wanted
+                if notice == Self.voiceNotice { notice = nil }
+            } catch {
+                if !leaving { notice = Self.voiceNotice }
+                return
+            }
+        }
     }
 
     // MARK: The room

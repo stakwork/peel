@@ -98,9 +98,14 @@ struct TalkPhaseTests {
 struct TalkStoreTests {
     private static let room = "sphinx.call.voice.0123456789abcdef0123456789abcdef"
 
-    private func home(answering status: Int = 200, _ body: String? = nil) async throws -> (HTTPStub, TalkHome) {
+    private func answer(voice: String? = nil) -> String {
         let token = unsignedJWT(["sub": "m-1", "video": ["room": Self.room]])
-        let answer = body ?? #"{"url":"ws://127.0.0.1:7880","room":"\#(Self.room)","token":"\#(token)","identity":"m-1","agent":"a-1","encrypted":false}"#
+        let voice = voice.map { #","voice":"\#($0)""# } ?? ""
+        return #"{"url":"ws://127.0.0.1:7880","room":"\#(Self.room)","token":"\#(token)","identity":"m-1","agent":"a-1","encrypted":false\#(voice)}"#
+    }
+
+    private func home(answering status: Int = 200, _ body: String? = nil) async throws -> (HTTPStub, TalkHome) {
+        let answer = body ?? answer()
         let stub = try await HTTPStub(status: status) { _ in answer }
         return (stub, try #require(TalkHome.development(url: "http://127.0.0.1:\(stub.port)", token: "t")))
     }
@@ -149,6 +154,46 @@ struct TalkStoreTests {
         #expect(rooms.joined.isEmpty)
     }
 
+    /// Jamie's voice: the one kept on this device is asked for, the one the
+    /// home says is in effect is shown, and the toggle keeps the other and
+    /// tells the room.
+    @Test func asksForTheKeptVoiceAndSwitchesItOnTheCall() async throws {
+        let (stub, home) = try await home(answering: 200, answer(voice: "am_michael"))
+        defer { stub.stop() }
+        let defaults = try #require(UserDefaults(suiteName: "TalkStore.\(UUID())"))
+        TalkVoice.male.store(in: defaults)
+        let rooms = Rooms()
+        let talk = TalkStore(provider: rooms, defaults: defaults)
+        talk.talk(to: home)
+        try await settled(talk)
+        let request = try #require(stub.requests.first)
+        #expect(request.hasSuffix(#"{"voice":"am_michael"}"#))
+        let joined = try #require(rooms.joined.first)
+        #expect(talk.voice == .male && joined.voices.isEmpty)
+        talk.toggleVoice()
+        #expect(talk.voice == .female && joined.voices == [.female])
+        #expect(TalkVoice.stored(in: defaults) == .female)
+        await talk.end()
+    }
+
+    /// A switch while still calling wins over the answer, which was for the
+    /// voice asked before it, and is told to the room once joined.
+    @Test func aSwitchWhileCallingIsToldOnceJoined() async throws {
+        let (stub, home) = try await home(answering: 200, answer(voice: "af_heart"))
+        defer { stub.stop() }
+        let defaults = try #require(UserDefaults(suiteName: "TalkStore.\(UUID())"))
+        let rooms = Rooms()
+        let talk = TalkStore(provider: rooms, defaults: defaults)
+        talk.talk(to: home)
+        talk.toggleVoice()
+        try await settled(talk)
+        let request = try #require(stub.requests.first)
+        #expect(request.hasSuffix(#"{"voice":"af_heart"}"#))
+        #expect(talk.voice == .male && rooms.joined.first?.voices == [.male])
+        #expect(TalkVoice.stored(in: defaults) == .male)
+        await talk.end()
+    }
+
     /// On a group call, Talk waits to be asked rather than leaving it.
     @Test func neverLeavesAGroupCallUnasked() async throws {
         let (stub, home) = try await home()
@@ -171,8 +216,10 @@ private final class Rooms: CallProvider {
     final class Room: TalkMedia {
         let ticket: TalkTicket
         var left = false
+        var voices: [TalkVoice] = []
         init(_ ticket: TalkTicket) { self.ticket = ticket }
         func leave() async { left = true }
+        func setVoice(_ voice: TalkVoice) { voices.append(voice) }
     }
 
     var joined: [Room] = []

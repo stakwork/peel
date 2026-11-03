@@ -143,6 +143,10 @@ extension CallProvider {
 public protocol TalkMedia: AnyObject {
     /// Leaves the room, saying goodbye: hanging up.
     func leave() async
+    /// Asks the agent for `voice` from its next sentence: the member's
+    /// participant attribute `voice` (`TalkVoice.attribute`), set once the
+    /// room is connected.
+    func setVoice(_ voice: TalkVoice)
 }
 
 /// The call this device is on.

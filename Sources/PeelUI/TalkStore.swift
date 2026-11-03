@@ -21,6 +21,10 @@ public final class TalkStore {
     /// The home being talked to; nil with no call and no screen.
     public private(set) var home: TalkHome?
     public private(set) var state = State.starting
+    /// Jamie's voice as the screen shows it: the one kept on this device as
+    /// a call starts, then the one the home says is in effect, then the
+    /// member's own switches (`toggleVoice`).
+    public private(set) var voice: TalkVoice
     /// The dev setting's home, for a development profile (`TalkHome.development`).
     public internal(set) var developmentHome: TalkHome?
     /// The group call this device is on, if any, by its title: Talk waits
@@ -32,10 +36,13 @@ public final class TalkStore {
     @ObservationIgnored public private(set) var leaving: Task<Void, Never>?
 
     @ObservationIgnored private let provider: any CallProvider
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var starting: Task<Void, Never>?
 
-    public init(provider: any CallProvider) {
+    public init(provider: any CallProvider, defaults: UserDefaults = .standard) {
         self.provider = provider
+        self.defaults = defaults
+        voice = TalkVoice.stored(in: defaults)
     }
 
     /// Calling or in the room: a group call waits until this is hung up.
@@ -49,6 +56,8 @@ public final class TalkStore {
     public func talk(to home: TalkHome) {
         hangUp()
         self.home = home
+        voice = TalkVoice.stored(in: defaults)
+        let asked = voice
         if let reason = provider.unavailable {
             state = .failed(reason)
             return
@@ -61,14 +70,22 @@ public final class TalkStore {
         starting = Task {
             let state: State
             do {
-                let ticket = try await home.startCall()
+                let ticket = try await home.startCall(voice: asked)
                 // The rooms left before have said goodbye first: on the phone,
                 // their leaving would take the audio session from this one.
                 await leaving?.value
                 await groupCallsLeft()
                 // Hung up meanwhile: no room is joined.
                 try Task.checkCancellation()
-                state = .on(try provider.talk(ticket, home: home))
+                let media = try provider.talk(ticket, home: home)
+                // Switched while calling: the room is told, once it is
+                // connected. Else the screen shows the voice in effect.
+                if voice != asked {
+                    media.setVoice(voice)
+                } else if let given = ticket.voice {
+                    voice = given
+                }
+                state = .on(media)
             } catch {
                 guard !Task.isCancelled else { return }
                 Diagnostics.note(errorKind: .call)
@@ -76,6 +93,15 @@ public final class TalkStore {
             }
             self.state = state
         }
+    }
+
+    /// The toggle: Jamie's other voice, kept on this device for the next
+    /// call and, on a call, asked of the agent from its next sentence (or
+    /// once the room is joined, while still calling).
+    public func toggleVoice() {
+        voice = voice.flipped
+        voice.store(in: defaults)
+        if case .on(let media) = state { media.setVoice(voice) }
     }
 
     /// The same home again, after a failure or a call that ended.

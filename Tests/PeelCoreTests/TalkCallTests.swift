@@ -6,9 +6,11 @@ import Testing
 private let room = "sphinx.call.voice.0123456789abcdef0123456789abcdef"
 
 /// What a home answers to `POST /voice/calls` (strut's plans/private-voice.md §4.1).
-private func reply(url: String = "ws://127.0.0.1:7880", room tokenRoom: String = room, encrypted: Bool = false) -> String {
+private func reply(url: String = "ws://127.0.0.1:7880", room tokenRoom: String = room, encrypted: Bool = false,
+                   voice: String? = nil) -> String {
     let token = unsignedJWT(["sub": "m-1", "exp": Date.now.timeIntervalSince1970 + 600, "video": ["room": tokenRoom, "roomJoin": true]])
-    return #"{"url":"\#(url)","room":"\#(room)","token":"\#(token)","identity":"m-1","agent":"a-1","encrypted":\#(encrypted)}"#
+    let voice = voice.map { #","voice":"\#($0)""# } ?? ""
+    return #"{"url":"\#(url)","room":"\#(room)","token":"\#(token)","identity":"m-1","agent":"a-1","encrypted":\#(encrypted)\#(voice)}"#
 }
 
 /// A home on a loopback stub, as the dev setting names one.
@@ -33,6 +35,41 @@ struct TalkCallTests {
         // Neither the ticket nor the home tells its token.
         #expect(!"\(ticket)".contains(ticket.token) && !String(reflecting: ticket).contains(ticket.token))
         #expect(!"\(try home(stub))".contains("person-token-1"))
+    }
+
+    /// The voice asked for rides in the body; the screen shows the one the
+    /// home answers is in effect, and none it does not know.
+    @Test(arguments: [
+        (TalkVoice.male, "am_michael", TalkVoice?.some(.male)),
+        (.female, "af_heart", .female),
+        (.male, "zz_other", nil),
+        (.male, nil, nil),
+    ] as [(TalkVoice, String?, TalkVoice?)])
+    func asksForAVoiceAndReadsTheOneInEffect(asked: TalkVoice, answered: String?, shown: TalkVoice?) async throws {
+        let stub = try await HTTPStub { _ in reply(voice: answered) }
+        defer { stub.stop() }
+        let ticket = try await home(stub).startCall(voice: asked)
+        #expect(ticket.voice == shown)
+        let request = try #require(stub.requests.first)
+        #expect(request.hasSuffix("\r\n\r\n{\"voice\":\"\(asked.rawValue)\"}"))
+    }
+
+    /// The toggle: ♀ is `af_heart`, ♂ `am_michael`, as text and never emoji;
+    /// a tap flips it, and the choice is kept per device, female by default.
+    @Test func togglesJamiesVoiceBetweenTheTwo() throws {
+        #expect(TalkVoice.female.rawValue == "af_heart" && TalkVoice.male.rawValue == "am_michael")
+        #expect(TalkVoice.female.glyph.unicodeScalars.map(\.value) == [0x2640, 0xFE0E])
+        #expect(TalkVoice.male.glyph.unicodeScalars.map(\.value) == [0x2642, 0xFE0E])
+        #expect(TalkVoice.female.flipped == .male && TalkVoice.male.flipped == .female)
+        #expect(TalkVoice.female.accessibilityLabel == "Jamie's voice: female")
+        #expect(TalkVoice.male.accessibilityLabel == "Jamie's voice: male")
+        let defaults = try #require(UserDefaults(suiteName: "TalkVoice.\(UUID())"))
+        #expect(TalkVoice.stored(in: defaults) == .female)
+        TalkVoice.male.store(in: defaults)
+        #expect(defaults.string(forKey: "talkVoice") == "am_michael")
+        #expect(TalkVoice.stored(in: defaults) == .male)
+        defaults.set("zz_other", forKey: "talkVoice")
+        #expect(TalkVoice.stored(in: defaults) == .female)
     }
 
     /// A refusal is the home's own words, with what it means first; 402

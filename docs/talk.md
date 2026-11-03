@@ -24,11 +24,14 @@ it.
    `POST {home}/voice/calls`:
    - `{home}` is the org's strut, the workspace's `HivePeer.baseUrl`;
    - the bearer is the person's token for it, from Stadeum's pairing;
-   - the body is `{}`.
+   - the body is `{ "voice": "af_heart" }`, Jamie's voice as kept on this
+     device (below). A 400 is a voice the home does not know, said in its
+     words.
    It goes through `Web.requestStrut`: https anywhere, plain http only to this
    device.
-2. The answer is `{ url, room, token, identity, agent, encrypted }`
-   (`TalkTicket`). Peel takes the LiveKit `url` the home names. It does not
+2. The answer is `{ url, room, token, identity, agent, encrypted, voice }`
+   (`TalkTicket`). `voice` is the voice in effect, which the screen shows; one
+   Peel does not know, or none, leaves the screen on the one asked for. Peel takes the LiveKit `url` the home names. It does not
    apply the call server's media-host rule (`CallServer.mediaURL`), since
    the member's own home named it in answer to their own request. Two checks
    still hold:
@@ -56,11 +59,31 @@ it.
    the agent just by speaking: Apple's voice processing stays on (LiveKit's
    default; on the phone a `.voiceChat` audio session, as for calls), so the
    agent never hears itself.
-6. Hanging up is leaving the room (`TalkStore.hangUp`). The phone's cover
+6. Jamie's voice (below) switches mid-call.
+7. Hanging up is leaving the room (`TalkStore.hangUp`). The phone's cover
    and the Mac's window go with it; closing the Mac's window hangs up too.
 
 A refusal is the home's own `{ error }`, after what the status means
 (`TalkRefusal`). 402 (step 3) says the balance and the minimum.
+
+## Jamie's voice
+
+A small round button beside Mute shows Jamie's voice: ♀ for `af_heart`
+(female, the default), ♂ for `am_michael` (male). The glyphs are text, with
+the variation selector U+FE0E, so they never show as emoji. VoiceOver reads
+"Jamie's voice: female" or "Jamie's voice: male" (`TalkVoice`, in
+`TalkCall.swift`). A tap switches it (`TalkStore.toggleVoice`):
+
+- The choice is kept per device, in `UserDefaults` under `talkVoice`. Each
+  call starts with it.
+- While calling, the switch waits: the room is told once it is joined and
+  connected, and it wins over the answer's `voice`, which was for the voice
+  asked before.
+- On a call, Peel sets its own participant attribute `voice` to the voice's
+  name (`TalkSession.setVoice`). The member's LiveKit token allows updating
+  its own attributes. The agent switches from its next sentence; what it is
+  saying finishes in the old voice. A set that fails says so quietly under
+  the buttons.
 
 ## LiveKit 2.10.2
 
@@ -68,6 +91,7 @@ Peel's pin has everything this needs:
 - `Room.registerTextStreamHandler(for:onNewStream:)`, with
   `TextStreamReader.info.attributes` and `.id`;
 - `Participant.attributes`;
+- `LocalParticipant.set(attributes:)`, for Jamie's voice;
 - `Participant.trackPublications`, for the member's own track ids.
 
 It also has `AgentState`, `Participant.agentState` and an internal

@@ -4,8 +4,8 @@ import SwiftUI
 
 // The Talk call screen (docs/talk.md), the phone's full-screen cover and
 // the Mac's Talk window alike: the org on top, what Jamie is doing, the
-// live text, then Mute and Hang up. Calling, a refusal in the home's own
-// words, and a call that ended show here too.
+// live text, then Jamie's voice, Mute and Hang up. Calling, a refusal in the
+// home's own words, and a call that ended show here too.
 
 struct TalkView: View {
     @Environment(AppModel.self) private var model
@@ -129,8 +129,8 @@ private struct TalkLines: View {
     }
 }
 
-/// Mute and Hang up, and under them what stops the agent hearing you.
-/// Without a session (still calling) only Hang up.
+/// Jamie's voice, Mute and Hang up, and under them what stops the agent
+/// hearing you. Without a session (still calling) no Mute.
 private struct TalkControls: View {
     @Environment(AppModel.self) private var model
     let session: TalkSession?
@@ -138,6 +138,7 @@ private struct TalkControls: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: Theme.Space.md) {
+                TalkVoiceToggle()
                 if let session {
                     Button(action: session.toggleMicrophone) {
                         Image(systemName: session.micOn || !session.micReady ? "mic" : "mic.slash")
@@ -176,6 +177,27 @@ private struct TalkControls: View {
         if session.micRefused { return "Peel can't use the microphone, so Jamie can't hear you. Allow it in Settings, then unmute." }
         if let notice = session.notice { return notice }
         return session.micOn || !session.micReady ? nil : "Muted: Jamie can't hear you."
+    }
+}
+
+/// Jamie's voice, ♀ or ♂: a tap switches it, for this call (from Jamie's
+/// next sentence) and the next (`TalkStore.toggleVoice`).
+private struct TalkVoiceToggle: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let voice = model.talk.voice
+        Button { model.talk.toggleVoice() } label: {
+            Text(verbatim: voice.glyph)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(Theme.text)
+                .frame(width: 52, height: 52)
+                .background(Theme.hover, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .help(voice.accessibilityLabel)
+        .accessibilityLabel(voice.accessibilityLabel)
+        .accessibilityHint("Switches Jamie's voice")
     }
 }
 

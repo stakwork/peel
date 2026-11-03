@@ -60,19 +60,61 @@ public struct TalkHome: Sendable, Equatable, Identifiable, CustomStringConvertib
     /// The most `POST /voice/calls` may answer: a few short strings and a JWT.
     static let replyLimit = 64 * 1024
 
-    /// Starts a call with the home's agent: `POST /voice/calls` with the
-    /// person's token, answered with the room to join. A refusal throws
-    /// `TalkRefusal` in the home's own words.
-    public func startCall() async throws -> TalkTicket {
-        // Step 1 sends `{}`. Step 2 sends `{ "key": "<base64, 32 bytes>" }`,
-        // a fresh shared key made here for this call (plans/private-voice.md §4.1).
+    /// Starts a call with the home's agent in `voice`: `POST /voice/calls`
+    /// with the person's token, answered with the room to join. A refusal
+    /// throws `TalkRefusal` in the home's own words (400 for a voice it does
+    /// not know).
+    public func startCall(voice: TalkVoice? = nil) async throws -> TalkTicket {
         let (status, data) = try await Web.requestStrut(
-            "POST", url.appending(path: "voice/calls"), json: Data("{}".utf8), bearer: token,
+            "POST", url.appending(path: "voice/calls"), json: Self.callBody(voice: voice), bearer: token,
             limit: Self.replyLimit, what: "\(name)'s answer", timeout: 30
         )
         guard status == 200 else { throw TalkRefusal(status: status, reply: data, home: name) }
         return try TalkTicket(reply: data, home: name)
     }
+
+    /// `POST /voice/calls`'s body: `{ "voice": "am_michael" }`, or `{}`.
+    static func callBody(voice: TalkVoice?) -> Data {
+        // Step 2 adds `"key": "<base64, 32 bytes>"`, a fresh shared key made
+        // here for this call (plans/private-voice.md §4.1).
+        struct Body: Encodable { let voice: String? }
+        return (try? JSONEncoder().encode(Body(voice: voice?.rawValue))) ?? Data("{}".utf8)
+    }
+}
+
+/// Jamie's voice on a Talk call (docs/talk.md): one of the voice service's,
+/// female `af_heart` (the default) or male `am_michael`. The member picks it
+/// on the call screen; it is kept on this device (`UserDefaults`, `talkVoice`),
+/// asked for in `POST /voice/calls`, and switched mid-call by the member's
+/// participant attribute `voice`, from the agent's next sentence.
+public enum TalkVoice: String, Sendable, CaseIterable {
+    case female = "af_heart"
+    case male = "am_michael"
+
+    /// Where the choice is kept, per device.
+    public static let defaultsKey = "talkVoice"
+    /// The member's participant attribute that switches it mid-call.
+    public static let attribute = "voice"
+
+    /// The voice kept on this device: female when none is, or one this Peel
+    /// does not know.
+    public static func stored(in defaults: UserDefaults = .standard) -> TalkVoice {
+        defaults.string(forKey: defaultsKey).flatMap(TalkVoice.init(rawValue:)) ?? .female
+    }
+
+    public func store(in defaults: UserDefaults = .standard) {
+        defaults.set(rawValue, forKey: Self.defaultsKey)
+    }
+
+    /// The other voice: what the toggle switches to.
+    public var flipped: TalkVoice { self == .female ? .male : .female }
+
+    /// The toggle's face: ♀ or ♂, with the text variation selector (U+FE0E)
+    /// so it never shows as an emoji.
+    public var glyph: String { self == .female ? "\u{2640}\u{FE0E}" : "\u{2642}\u{FE0E}" }
+
+    /// What VoiceOver says of the toggle.
+    public var accessibilityLabel: String { "Jamie's voice: \(self == .female ? "female" : "male")" }
 }
 
 /// What a home answers to `POST /voice/calls`: the LiveKit room to join and
@@ -88,9 +130,12 @@ public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomRe
     public let identity: String
     /// The agent's identity in the room, random per call.
     public let agent: String
+    /// The voice in effect, as the home answered; nil when it named none, or
+    /// one this Peel does not know.
+    public let voice: TalkVoice?
 
     public var description: String { "TalkTicket(\(url.absoluteString), room \(room), token not shown)" }
-    public var customMirror: Mirror { Mirror(self, children: ["url": url, "room": room, "identity": identity, "agent": agent]) }
+    public var customMirror: Mirror { Mirror(self, children: ["url": url, "room": room, "identity": identity, "agent": agent, "voice": voice as Any]) }
 
     /// The reply read and checked: a LiveKit server Peel may connect to,
     /// a token for the room named, two identities.
@@ -102,6 +147,7 @@ public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomRe
             let identity: String
             let agent: String
             let encrypted: Bool?
+            let voice: String?
         }
         guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else {
             throw PeelError("\(home)'s answer could not be read.")
@@ -126,6 +172,7 @@ public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomRe
         token = reply.token
         identity = reply.identity
         agent = reply.agent
+        voice = reply.voice.flatMap(TalkVoice.init(rawValue:))
     }
 
     /// The LiveKit server, as LiveKit takes it: `wss://`, or `ws://` only on

@@ -184,8 +184,10 @@ is a short plan. Update the status and the journal when you finish something.
     strut and the person's token, from a `HivePeer` or a development
     profile's `-talkHome`), `startCall` (`POST /voice/calls`), `TalkTicket`
     (the LiveKit room the home names: `wss://`, or `ws://` on this device,
-    a token for that room, never described with it) and `TalkRefusal` (the
-    home's own words; 402's balance and minimum); tested in `TalkCallTests`
+    a token for that room, never described with it, and the voice in effect),
+    `TalkVoice` (Jamie's voice, `af_heart` ♀ or `am_michael` ♂, kept per
+    device under `talkVoice`) and `TalkRefusal` (the home's own words; 402's
+    balance and minimum); tested in `TalkCallTests`
   - `Media.swift` — what an attachment is: `AttachmentKind` (by its bytes),
     `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`,
     `MediaInfo` (a cached video's or recording's duration, picture size and
@@ -433,7 +435,8 @@ is a short plan. Update the status and the journal when you finish something.
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
   `TalkStore` (`AppModel.talk`, beside `CallStore`: the Talk call with an
-  org's agent, starting, failed in words or in its room, `hangUp`; one call
+  org's agent, starting, failed in words or in its room, `hangUp`,
+  `toggleVoice` (Jamie's voice, kept and told to the room); one call
   at a time, each waiting for the other, `CallStore.busy`;
   `AppModel.talkHomes`; `TalkPhase`, what the screen says from the room and
   `lk.agent.state`; `TalkTranscript`, the live text folded from

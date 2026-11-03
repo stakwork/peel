@@ -112,6 +112,11 @@ struct RootView: View {
                     .environment(model)
                     .environment(router)
             }
+            // The call screen is portrait only, even when started from a chat.
+            .onChange(of: router.callShown, initial: true) { _, shown in
+                OrientationLock.shared.callShown = shown
+                OrientationLock.shared.update()
+            }
             // Here, not in the tabs, so a chat opened while locked (a
             // notification) is the one shown after the PIN.
             .onChange(of: model.destination) { _, destination in

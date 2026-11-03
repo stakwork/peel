@@ -26,14 +26,6 @@ struct YouTab: View {
                     PhoneSectionHeader("Agent")
                 }
                 .phoneRows(.grouped)
-                Section {
-                    VoiceModeSettingsFields()
-                } header: {
-                    PhoneSectionHeader("Voice mode")
-                } footer: {
-                    Text("Talk to Peel by voice from its chat. Speech is recognised on this iPhone. Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default.")
-                }
-                .phoneRows(.grouped)
                 StadeumSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {

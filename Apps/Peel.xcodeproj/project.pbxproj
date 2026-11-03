@@ -398,8 +398,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, to scan an invoice, or to take a photo or record a video to send.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, to record video with sound to send, and so you can talk to the Peel agent in voice mode.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Peel recognises your speech on this iPhone, so you can talk to the Peel agent in voice mode. Recognition is on this iPhone where the system supports it.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and to record video with sound to send.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
@@ -435,8 +434,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, to scan an invoice, or to take a photo or record a video to send.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Peel uses Face ID to unlock in place of your PIN, when you turn it on.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, to record video with sound to send, and so you can talk to the Peel agent in voice mode.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Peel recognises your speech on this iPhone, so you can talk to the Peel agent in voice mode. Recognition is on this iPhone where the system supports it.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and to record video with sound to send.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
@@ -515,8 +513,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, and for the camera bubble in a screen recording.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, for your voice in a screen recording, and so you can talk to the Peel agent in voice mode.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Peel recognises your speech on this Mac, so you can talk to the Peel agent in voice mode. Recognition is on this device where the system supports it.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and for your voice in a screen recording.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -551,8 +548,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Peel uses the camera when you turn on video in a call, and for the camera bubble in a screen recording.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, for your voice in a screen recording, and so you can talk to the Peel agent in voice mode.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Peel recognises your speech on this Mac, so you can talk to the Peel agent in voice mode. Recognition is on this device where the system supports it.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Peel uses the microphone so people on a call can hear you, to record voice messages you hold the microphone button for, and for your voice in a screen recording.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

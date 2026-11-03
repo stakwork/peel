@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import LiveKit
+import os
 import PeelCore
 import PeelUI
 import SwiftUI
@@ -104,6 +105,9 @@ final class IOSCallSession {
     @ObservationIgnored private var failed = false
     @ObservationIgnored private var leaving = false
     @ObservationIgnored private var switchingMic = false
+    /// Whether the microphone is meant to be on, as last asked for.
+    @ObservationIgnored private var wantsMic = false
+    @ObservationIgnored private let routeLog = Logger(subsystem: "dev.peel.ios", category: "call-audio")
     @ObservationIgnored private var switchingCamera = false
     /// Every screen track seen on this call, so one that comes back after
     /// a pause or a reconnect does not take the focus again.
@@ -137,6 +141,14 @@ final class IOSCallSession {
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refreshAccess() }
+            },
+            // Headphones in or out, a Bluetooth headset coming or going:
+            // the session is set up again and the microphone reopened.
+            NotificationCenter.default.addObserver(
+                forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+            ) { [weak self] note in
+                let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                MainActor.assumeIsolated { self?.routeChanged(reason: raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))) }
             },
         ]
         let url = ticket.serverURL.absoluteString, token = ticket.token
@@ -199,6 +211,39 @@ final class IOSCallSession {
 
     // MARK: Audio session
 
+    private func routeChanged(reason: AVAudioSession.RouteChangeReason?) {
+        guard !leaving, let reason else { return }
+        switch reason {
+        case .newDeviceAvailable, .oldDeviceUnavailable, .categoryChange, .override:
+            break
+        default:
+            return
+        }
+        let route = AVAudioSession.sharedInstance().currentRoute
+        let outputs = route.outputs.map(\.portName).joined(separator: ", ")
+        routeLog.info("audio route changed (\(reason.rawValue)); now \(outputs)")
+        // Our own category change comes back as a notification: only act
+        // while the call is up, and not twice at once.
+        guard state == .connected, !switchingMic else { return }
+        Self.activateAudioSession()
+        guard wantsMic else { return }
+        Task {
+            guard !switchingMic, !leaving else { return }
+            switchingMic = true
+            defer { switchingMic = false }
+            let local = room.localParticipant
+            do {
+                try await local.setMicrophone(enabled: false)
+                try await local.setMicrophone(enabled: true)
+                routeLog.info("microphone re-acquired")
+            } catch {
+                routeLog.error("microphone restart failed: \(String(describing: error))")
+                deviceNotice = "Could not turn the microphone on"
+            }
+            refresh()
+        }
+    }
+
     /// A voice call's session: record and play, with the earpiece or speaker
     /// as the system's voice processing routes them, and Bluetooth headsets.
     private static func activateAudioSession() {
@@ -252,6 +297,7 @@ final class IOSCallSession {
         if on, await !mayUse(.audio) || leaving { return }
         do {
             try await room.localParticipant.setMicrophone(enabled: on)
+            wantsMic = on
         } catch {
             if on { deviceNotice = "Could not turn the microphone on" }
         }

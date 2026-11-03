@@ -2,6 +2,7 @@ import AVFoundation
 import Combine
 import SwiftUI
 import LiveKit
+import os
 import PeelCore
 import PeelUI
 
@@ -145,6 +146,9 @@ final class CallSession {
     @ObservationIgnored private var failed = false
     @ObservationIgnored private var leaving = false
     @ObservationIgnored private var switchingMic = false
+    /// Whether the microphone is meant to be on, as last asked for; `micOn`
+    /// is what the room reports, which drops when a device goes away.
+    @ObservationIgnored private var wantsMic = false
     @ObservationIgnored private var switchingCamera = false
     @ObservationIgnored private var switchingShare = false
     private var share: ScreenShare?
@@ -165,6 +169,7 @@ final class CallSession {
     private static var pickedSpeaker: String?
     /// The session audio device changes go to: the newest.
     private static weak var audioDevicesOwner: CallSession?
+    private static let deviceLog = Logger(subsystem: "dev.peel.mac", category: "call-audio")
 
     init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) {
         self.link = link
@@ -183,12 +188,7 @@ final class CallSession {
         changes = room.objectWillChange
             .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.refresh() } }
-        // One handler for the app: a session left after the next one began
-        // (a switch, a rejoin) must not take it away from that one.
-        Self.audioDevicesOwner = self
-        AudioManager.shared.onDeviceUpdate = { _ in
-            Task { @MainActor in CallSession.audioDevicesOwner?.audioDevicesChanged() }
-        }
+        claimAudioDevices()
         let center = NotificationCenter.default
         observers = [
             center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: .main) { [weak self] note in
@@ -235,7 +235,18 @@ final class CallSession {
         }
     }
 
+    /// One handler for the app: a session left after the next one began
+    /// (a switch, a rejoin) must not take it away from that one. Done at
+    /// connect as well as at init, so a later session gets it too.
+    private func claimAudioDevices() {
+        Self.audioDevicesOwner = self
+        AudioManager.shared.onDeviceUpdate = { _ in
+            Task { @MainActor in CallSession.audioDevicesOwner?.audioDevicesChanged() }
+        }
+    }
+
     private func connect(url: String, token: String, camera: Bool) async {
+        claimAudioDevices()
         await listenForHandoff()
         do {
             try await room.connect(url: url, token: token)
@@ -272,11 +283,22 @@ final class CallSession {
         changes = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
-        if Self.audioDevicesOwner === self {
+        let ownsAudio = Self.audioDevicesOwner === self
+        if ownsAudio {
             Self.audioDevicesOwner = nil
             AudioManager.shared.onDeviceUpdate = nil
         }
         await room.disconnect()
+        // The next call starts on the system's devices, not on an engine
+        // still bound to one that has gone since.
+        if ownsAudio {
+            let audio = AudioManager.shared
+            audio.inputDevice = audio.defaultInputDevice
+            audio.outputDevice = audio.defaultOutputDevice
+            Self.pickedMicrophone = nil
+            Self.pickedSpeaker = nil
+            Self.deviceLog.info("left the call; audio devices reset to the system default")
+        }
     }
 
     // MARK: Microphone and camera
@@ -297,8 +319,27 @@ final class CallSession {
         if on, await !mayUse(.audio) || leaving { return }
         do {
             try await room.localParticipant.setMicrophone(enabled: on)
+            wantsMic = on
         } catch {
             if on { deviceNotice = "Could not turn the microphone on" }
+        }
+        refresh()
+    }
+
+    /// Opens the microphone track afresh, on whatever device the engine now
+    /// uses; a track left from before a device change stays silent.
+    private func reacquireMicrophone() async {
+        guard wantsMic, !leaving, !switchingMic else { return }
+        switchingMic = true
+        defer { switchingMic = false }
+        let local = room.localParticipant
+        do {
+            try await local.setMicrophone(enabled: false)
+            try await local.setMicrophone(enabled: true)
+            Self.deviceLog.info("microphone re-acquired")
+        } catch {
+            Self.deviceLog.error("microphone restart failed: \(String(describing: error))")
+            deviceNotice = "Could not turn the microphone on"
         }
         refresh()
     }
@@ -466,23 +507,49 @@ final class CallSession {
 
     /// A microphone or speaker came or went: one picked that went is
     /// replaced by the system's default, and the line under the bar says so.
+    /// One that came (AirPods back in) moves the call to the system's
+    /// default, which macOS points at it, and the engine is pointed afresh
+    /// so the microphone and the playout do not stay bound to a stale device.
     private func audioDevicesChanged() {
         guard !leaving else { return }
         let audio = AudioManager.shared
         let goneMic = audio.inputDevices.contains { $0.deviceId == microphone } ? nil : microphones.first { $0.id == microphone }
         let goneSpeaker = audio.outputDevices.contains { $0.deviceId == speaker } ? nil : speakers.first { $0.id == speaker }
-        if goneMic != nil {
-            audio.inputDevice = audio.defaultInputDevice
-            Self.pickedMicrophone = nil
-        }
-        if goneSpeaker != nil {
-            audio.outputDevice = audio.defaultOutputDevice
-            Self.pickedSpeaker = nil
-        }
+        let knownMics = Set(microphones.map(\.id)), knownSpeakers = Set(speakers.map(\.id))
+        let addedMics = audio.inputDevices.filter { !knownMics.contains($0.deviceId) }
+        let addedSpeakers = audio.outputDevices.filter { !knownSpeakers.contains($0.deviceId) }
+        // The default entry keeps its id and changes the name of what it
+        // stands for.
+        let oldMicDefault = microphones.first { $0.name.hasPrefix("System default") }?.name
+        let oldSpeakerDefault = speakers.first { $0.name.hasPrefix("System default") }?.name
+        let newMicDefault = audio.inputDevices.first { $0.isDefault }.map { Self.device($0).name }
+        let newSpeakerDefault = audio.outputDevices.first { $0.isDefault }.map { Self.device($0).name }
+        if goneMic != nil { Self.pickedMicrophone = nil }
+        if goneSpeaker != nil { Self.pickedSpeaker = nil }
+        let moveMic = goneMic != nil || !addedMics.isEmpty || (Self.pickedMicrophone == nil && oldMicDefault != newMicDefault)
+        let moveSpeaker = goneSpeaker != nil || !addedSpeakers.isEmpty || (Self.pickedSpeaker == nil && oldSpeakerDefault != newSpeakerDefault)
+        // Added devices take the call over the picked one: the system made
+        // them its default.
+        if !addedMics.isEmpty { Self.pickedMicrophone = nil }
+        if !addedSpeakers.isEmpty { Self.pickedSpeaker = nil }
+        if moveMic { audio.inputDevice = audio.defaultInputDevice }
+        if moveSpeaker { audio.outputDevice = audio.defaultOutputDevice }
         if let gone = goneMic ?? goneSpeaker {
             deviceNotice = "\(gone.name) was disconnected; using the default \(goneMic != nil ? "microphone" : "speaker")"
         }
         refreshAudioDevices()
+        let names = { (list: [AudioDevice]) in list.map(\.name).joined(separator: ", ") }
+        Self.deviceLog.info("""
+            audio devices changed: added [\(names(addedMics + addedSpeakers))], \
+            removed [\([goneMic?.name, goneSpeaker?.name].compactMap { $0 }.joined(separator: ", "))], \
+            microphone \(moveMic ? (audio.defaultInputDevice.name) : "kept"), \
+            speaker \(moveSpeaker ? (audio.defaultOutputDevice.name) : "kept")
+            """)
+        // The track bound to the old device is replaced; also when the
+        // room dropped the microphone though it is meant to be on.
+        if wantsMic, moveMic || moveSpeaker || !micOn {
+            Task { await reacquireMicrophone() }
+        }
     }
 
     private func refreshCameras() async {

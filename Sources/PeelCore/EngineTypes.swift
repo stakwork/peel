@@ -159,6 +159,8 @@ extension Engine {
         /// Larger than a download asked for (`downloadAttachment(upTo:)`):
         /// its size, when known (encrypted, if the server named it).
         case largeAttachment(size: Int64?)
+        /// Not in the cache, and a lookup that may not fetch (`cachedOnly`).
+        case notDownloaded
         case untrustedMediaHost(String)
         /// Not a payment template's picture: no template on the payment, an
         /// unusable muid, or bytes that are no image.
@@ -311,6 +313,7 @@ extension Engine {
             case .noCallServer: "this account has no call server"
             case .notAnAttachment: "that message is not an attachment"
             case .attachmentWithoutKey: "this attachment is paid; it opens once bought"
+            case .notDownloaded: "this attachment is not downloaded yet"
             case .largeAttachment: "this attachment is large; it downloads when asked"
             case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
             case .noPaymentTemplate: "that is not a payment picture"

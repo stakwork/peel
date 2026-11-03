@@ -157,6 +157,14 @@ extension Preference where Value == Bool {
 }
 
 extension Preference where Value == Bool {
+    /// Whether images and videos download as they show (Profile › Auto
+    /// download media). Peel only (`peel.`: the official apps keep and
+    /// ignore it); an older file without it reads as on, so nothing changes
+    /// for an account that never chose.
+    public static var autoDownloadMedia: Self {
+        Self(key: "peel.auto_download_media", scope: .account, read: \.flag, write: { .string($0 ? "true" : "false") })
+    }
+
     /// Whether the person turned Face ID on: the official `biometric_enabled`
     /// (iOS writes it and applies it; the Mac app ignores it). Synced only
     /// by a device that has Face ID to offer (`PreferenceCapabilities`); a
@@ -309,6 +317,7 @@ public enum Preferences {
         Preference<String>.timeZone.entry,
         Preference<String>.chatColor.entry,
         Preference<Bool>.biometricEnabled.entry,
+        Preference<Bool>.autoDownloadMedia.entry,
         Preference<AgentConfig>.agentConfig.entry,
         Preference<TimeZoneSharing>.timeZoneSharing.entry,
         Preference<Int>.pinTimeout.entry,

@@ -25,7 +25,7 @@ struct PreferencesTests {
         #expect(Preferences.registry["pin_timeout"]?.optIn == true)
         #expect(!Preferences.synced.contains("pin_timeout"))
         #expect(Preferences.syncedKeys(enabling: ["pin_timeout"]).contains("pin_timeout"))
-        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.time_zone"])
+        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.auto_download_media", "peel.time_zone"])
         #expect(Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("biometric_enabled"))
         #expect(!Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("ai_agent_config"))
         #expect(Preferences.syncedKeys(enabling: ["ai_agent_config"]).contains("ai_agent_config"))

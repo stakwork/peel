@@ -40,6 +40,7 @@ struct YouTab: View {
                         LabeledContent("Boost amount", value: Sats.format(msat: model.boostAmountMsat))
                     }
                     PaymentConfirmationRow()
+                    AutoDownloadMediaRow()
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(model.myServer ?? "None")
@@ -276,6 +277,22 @@ private struct PINTimeoutRow: View {
 }
 
 /// The amount over which a payment or boost takes a second tap.
+/// Auto download media: off, images and videos wait for a tap.
+private struct AutoDownloadMediaRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var problem: String?
+
+    var body: some View {
+        Toggle("Auto download media", isOn: Binding(get: { model.autoDownloadsMedia }, set: { on in
+            Task {
+                do { try await model.setAutoDownloadsMedia(on) } catch { problem = PeelError.problem(error) }
+            }
+        }))
+        .tint(Theme.accent)
+        if let problem { ProblemText(problem) }
+    }
+}
+
 private struct PaymentConfirmationRow: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?

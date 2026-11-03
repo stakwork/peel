@@ -245,6 +245,16 @@ extension Engine {
         try set(.notificationText, shows)
     }
 
+    /// Whether images and videos download as they show; on unless turned
+    /// off (also for a preferences file from before the setting).
+    public func autoDownloadsMedia() throws -> Bool {
+        try storage.preference(.autoDownloadMedia) ?? true
+    }
+
+    public func setAutoDownloadsMedia(_ on: Bool) throws {
+        try set(.autoDownloadMedia, on)
+    }
+
     /// What an app's notification does; banner and sound unless chosen.
     public func notificationStyle() throws -> NotificationPolicy.Style {
         try storage.preference(.notificationStyle) ?? .default
@@ -310,6 +320,7 @@ extension Engine {
         public let paymentConfirmationMsat: UInt64?
         public let boostAmountMsat: UInt64?
         public let notificationShowsText: Bool?
+        public let autoDownloadsMedia: Bool?
         public let notificationStyle: NotificationPolicy.Style?
         public let notificationSound: String?
         public let sidebarLayout: ChatSections.Layout?
@@ -328,6 +339,7 @@ extension Engine {
             balanceMsat: try? storage.balanceMsat(),
             paymentConfirmationMsat: try? paymentConfirmationMsat(), boostAmountMsat: try? boostAmountMsat(),
             notificationShowsText: try? notificationShowsText(),
+            autoDownloadsMedia: try? autoDownloadsMedia(),
             notificationStyle: try? notificationStyle(), notificationSound: try? notificationSound(), sidebarLayout: try? sidebarLayout(),
             callJamie: try? callJamie(), wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
         )

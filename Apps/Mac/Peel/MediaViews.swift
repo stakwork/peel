@@ -272,7 +272,11 @@ struct VideoTile: View {
             Image(systemName: AttachmentKind.video.symbol ?? "video")
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.secondaryText)
-            if let status {
+            if model.awaitsManualDownload(message) {
+                Text("Video").muted()
+                Button("Download") { Task { await model.download(message) } }
+                    .buttonStyle(.peel(.outline, size: .sm))
+            } else if let status {
                 Text(status.text("Video"))
                     .monospacedDigit()
                     .muted()

@@ -44,6 +44,7 @@ struct AccountView: View {
             SettingsSection {
                 NameRow()
                 TimeZoneRow()
+                AutoDownloadMediaRow()
                 Fact("Server") {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.myServer ?? "None")
@@ -819,6 +820,19 @@ private struct NotificationsRow: View {
         case .notAsked: "Off"
         case .denied: "Off in System Settings"
         case .unavailable: "Unavailable"
+        }
+    }
+}
+
+private struct AutoDownloadMediaRow: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Fact("Auto download media") {
+            SettingDropdown(
+                selection: model.autoDownloadsMedia,
+                options: [(true, "On"), (false, "Off")]
+            ) { try await model.setAutoDownloadsMedia($0) }
         }
     }
 }

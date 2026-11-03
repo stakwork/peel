@@ -406,7 +406,7 @@ extension AppModel {
     /// Downloads an attachment into the cache, or finds it there, once at a
     /// time. Ours still uploading has nothing on the server yet. With
     /// `upTo`, one larger is held (`.held`) until asked for without it.
-    public func download(_ message: Message, upTo: Int? = nil) async {
+    public func download(_ message: Message, upTo: Int? = nil, cachedOnly: Bool = false) async {
         guard let id = message.id, let engine, message.uploadState != .pending, message.uploadState != .failed
         else { return }
         let handle = attachment(id)
@@ -425,7 +425,9 @@ extension AppModel {
         // the download off (as it once did photos, see `ImageCache`).
         let download = Task {
             do {
-                handle.state = .ready(try await engine.downloadAttachment(messageID: id, upTo: upTo))
+                handle.state = .ready(try await engine.downloadAttachment(messageID: id, upTo: upTo, cachedOnly: cachedOnly))
+            } catch Engine.Failure.notDownloaded {
+                handle.state = .idle
             } catch Engine.Failure.largeAttachment(let size) {
                 handle.state = .held(size)
             } catch {
@@ -499,9 +501,33 @@ extension AppModel {
 
     /// Downloads an attachment as it shows: images whole, videos and
     /// recordings up to `Engine.autoDownloadLimit` (larger ones are held).
+    /// With Auto download media off it only finds what is already in the
+    /// cache; anything else waits for `awaitsManualDownload`'s button.
     public func autoDownload(_ message: Message) async {
+        // Voice messages and the like are not images or videos: they keep downloading.
+        guard autoDownloadsMedia || !isPicture(message) else {
+            await download(message, cachedOnly: true)
+            return
+        }
         let media = message.attachmentKind == .video || message.attachmentKind == .audio
         await download(message, upTo: media ? Engine.autoDownloadLimit : nil)
+    }
+
+    /// An image or a video, by what the message declares.
+    private func isPicture(_ message: Message) -> Bool {
+        message.attachmentKind == .image || message.attachmentKind == .video
+    }
+
+    /// Whether an image or video is not here and will not be fetched unasked
+    /// (Auto download media is off): its tile shows a button instead.
+    public func awaitsManualDownload(_ message: Message) -> Bool {
+        guard !autoDownloadsMedia, isPicture(message), let id = message.id else { return false }
+        let handle = attachment(id)
+        guard handle.file == nil else { return false }
+        switch handle.state {
+        case .idle, .failed: return true
+        case .downloading, .ready, .held: return false
+        }
     }
 
     /// Plays a video or recording, downloading it first if it was held

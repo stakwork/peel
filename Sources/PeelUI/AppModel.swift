@@ -235,6 +235,9 @@ public final class AppModel {
     /// Payments and boosts on their way to the engine, so a double click
     /// never sends one twice.
     @ObservationIgnored public var moneyInFlight: Set<String> = []
+    /// Whether images and videos download as they show (Profile › Auto
+    /// download media); on until the account says otherwise.
+    public var autoDownloadsMedia = true
     /// What the one-tap Boost tips (the engine's boost amount).
     public var boostAmountMsat = Engine.defaultBoostAmountMsat
     /// A one-tap boost amount from another device the last Boost asked to
@@ -873,6 +876,12 @@ public final class AppModel {
         notifier.showsText = shows
     }
 
+    /// Off: images and videos wait for a button; on, they download as they show.
+    public func setAutoDownloadsMedia(_ on: Bool) async throws {
+        try await signedIn().setAutoDownloadsMedia(on)
+        autoDownloadsMedia = on
+    }
+
     public func setNotificationStyle(_ style: NotificationPolicy.Style) async throws {
         try await signedIn().setNotificationStyle(style)
         notifier.style = style
@@ -1443,6 +1452,7 @@ public final class AppModel {
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
+        autoDownloadsMedia = true
         boostToConfirm = nil
         savedLayout = ChatSections.Layout()
         sidebarLayout = savedLayout
@@ -1472,6 +1482,7 @@ public final class AppModel {
         wordsConfirmed = settings.wordsConfirmed ?? false
         paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
         boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+        autoDownloadsMedia = settings.autoDownloadsMedia ?? true
         savedLayout = settings.sidebarLayout ?? ChatSections.Layout()
         sidebarLayout = savedLayout
         connection = settings.connection
@@ -1595,6 +1606,7 @@ public final class AppModel {
                 guard self.engine === engine else { break }
                 paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
                 boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+                autoDownloadsMedia = settings.autoDownloadsMedia ?? true
                 if let hours = settings.pinTimeoutHours { pinTimeoutHours = hours }
                 await refreshSyncedPreferences(engine)
             case .sendStatus:

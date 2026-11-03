@@ -151,6 +151,12 @@ public protocol OngoingCall: AnyObject {
     /// Called when a newer device on this account joined the same call
     /// (`CallHandoff`): this one should leave it.
     var movedAway: (() -> Void)? { get set }
+    /// Called when joining found another device of this account already on
+    /// the call: nothing is announced until `resolveOtherDevice`.
+    var otherDeviceFound: (() -> Void)? { get set }
+    /// The person's choice after `otherDeviceFound`: `stay` keeps both
+    /// devices on the call, else this one takes it and the other leaves.
+    func resolveOtherDevice(stay: Bool)
     /// Leaves the room, saying goodbye.
     func leave() async
 }

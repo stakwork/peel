@@ -752,9 +752,10 @@ extension Journeys {
             let token = try #require(try await Self.strutCall("POST", "peers/tokens", ["actor": .string(person)], on: central)["token"]?.string)
             let kates = try #require(try await Self.strutCall("POST", "peers/tokens", ["actor": .string("kate-x1")], on: central)["token"]?.string)
             let peer = HivePeer(id: "acme", baseUrl: central.base.absoluteString, token: token, label: "Acme")
-            // The org's assistant run with a person's token, as a hand-off runs it: its proposals are that person's.
+            // The org's assistant run with a person's token, as a hand-off runs it: its proposals are that person's,
+            // in a thread of theirs (`<actor>/…`), which is where strut lists them to that token since strut#419.
             func propose(_ prompt: String, with token: String, actor: String) async throws -> String {
-                let body = Data(#"{"input":{"prompt":"\#(prompt)"}}"#.utf8)
+                let body = Data(#"{"input":{"prompt":"\#(prompt)","session":"\#(actor)/c1"}}"#.utf8)
                 let (status, data) = try await Web.requestStrut("POST", central.base.appending(path: "workflows/orchestrator/run"), json: body,
                                                                 bearer: token, limit: 1_000_000, what: "the run")
                 // strut takes a run (202) and runs it on its own.
@@ -781,8 +782,9 @@ extension Journeys {
             let decided = try #require(watch.kept[key])
             #expect(decided.record.status.isFinal && decided.isOver, "\(decided.record.status)")
             #expect(try await Self.strutCall("GET", "proposals/\(grant)", on: central)["decision"]?["by"]?.string == person)
-            // Another person's: not this token's to see or decide.
-            #expect(try await peer.proposal(secret) == .gone)
+            // Another person's: read by its id (strut#407: whoever was shown it), never listed (above) or decided.
+            guard case .record(let read) = try await peer.proposal(secret) else { Issue.record("another's proposal by id"); return }
+            #expect(read.id == secret)
             #expect(try await peer.decide(secret, accept: true) == .notYours("forbidden: proposal \"\(secret)\" is not yours to decide"))
             let katesPeer = HivePeer(id: "acme", baseUrl: central.base.absoluteString, token: kates, label: "Acme")
             #expect(try await katesPeer.pendingProposals(actor: "kate-x1").mine.map(\.id) == [secret])

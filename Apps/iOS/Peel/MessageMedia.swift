@@ -12,6 +12,7 @@ import SwiftUI
 /// A message's attachment: a run of images as a grid, one image, or a file.
 struct AttachmentBlock: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     let row: ChatRow
 
     var body: some View {
@@ -22,7 +23,7 @@ struct AttachmentBlock: View {
                     ImageTile(message: image, square: true, run: row.images)
                 }
             }
-            .frame(maxWidth: ImageTile.side)
+            .frame(maxWidth: ImageTile.width(landscape: verticalSizeClass == .compact))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(row.images.count) images")
         } else if message.attachmentPriceMsat != nil, !message.fromMe {
@@ -43,6 +44,7 @@ struct AttachmentBlock: View {
 /// known; a quiet square while it loads.
 struct ImageTile: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     let message: Message
     /// In a run's grid: cropped to a square.
     var square = false
@@ -53,9 +55,14 @@ struct ImageTile: View {
     @State private var viewing: ImageViewerRequest?
 
     static let side: CGFloat = 240
+    /// The wider tile in landscape, where the viewport is wide and short.
+    static let landscapeSide: CGFloat = 400
+
+    /// The tile's width: wider in landscape (a compact height), the standard one in portrait.
+    static func width(landscape: Bool) -> CGFloat { landscape ? landscapeSide : side }
 
     /// A picture's size fitted within the tile (`side` wide, 1.25 times that tall).
-    static func fitted(width: CGFloat, height: CGFloat) -> CGSize {
+    static func fitted(width: CGFloat, height: CGFloat, side: CGFloat = ImageTile.side) -> CGSize {
         guard width > 0, height > 0 else { return CGSize(width: side, height: side) }
         let scale = min(side / width, side * 1.25 / height)
         return CGSize(width: width * scale, height: height * scale)
@@ -65,6 +72,7 @@ struct ImageTile: View {
         let handle = message.id.map(model.attachment)
         let file = handle?.file
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        let tileSide = Self.width(landscape: verticalSizeClass == .compact)
         // The clip and border sit on the picture itself, so they hug it.
         Group {
             if let image {
@@ -73,13 +81,14 @@ struct ImageTile: View {
                     Color.clear.aspectRatio(1, contentMode: .fit)
                         .overlay { picture.scaledToFill() }
                 } else {
-                    let fitted = Self.fitted(width: CGFloat(image.width), height: CGFloat(image.height))
+                    let fitted = Self.fitted(width: CGFloat(image.width), height: CGFloat(image.height),
+                                               side: tileSide)
                     picture.frame(width: fitted.width, height: fitted.height)
                 }
             } else {
                 Theme.quote
                     .aspectRatio(square ? 1 : 4 / 3, contentMode: .fit)
-                    .frame(maxWidth: Self.side)
+                    .frame(maxWidth: tileSide)
                     .overlay {
                         if handle?.failureReason != nil {
                             Image(systemName: "photo").foregroundStyle(Theme.secondaryText)

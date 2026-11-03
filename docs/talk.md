@@ -37,8 +37,12 @@ it.
 3. `TalkStore` (`Sources/PeelUI/TalkStore.swift`, `AppModel.talk`) joins the
    room through the platform (`CallProvider.talk`), as a `TalkSession`
    (`Apps/Shared/TalkSession.swift`, both apps). It sits beside `CallStore`,
-   not in it: no `CallLink`, no call server, no chat message. Talk will not
-   start while the device is on a group call; it says to leave that first.
+   not in it: no `CallLink`, no call server, no chat message. One call at a
+   time: Talk will not start while the device is on a group call, and a
+   group call will not be joined or started while Talk is on (`CallStore.busy`);
+   each says to leave the other first. A Talk call joins only once the rooms
+   left before have said goodbye, so on the phone their leaving cannot take
+   the audio session from it.
 4. The call screen (`Apps/Shared/TalkView.swift`) reads two things from the
    room:
    - the agent participant's `lk.agent.state`, folded with the room's

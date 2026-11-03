@@ -433,10 +433,13 @@ public final class AppModel {
             notice = PeelError.noted(error)
         }
         talk.developmentHome = profile.flatMap { TalkHome.development(for: $0) }
+        // One call at a time: Talk and a group call each wait for the other.
+        talk.otherCall = { [weak self] in self?.calls.call?.title }
+        talk.groupCallsLeft = { [weak self] in await self?.calls.leaving?.value }
+        calls.busy = { [weak self] in self?.talk.isOn == true ? "Hang up the call with Jamie first." : nil }
         // The dev setting's `-talkAtLaunch YES`: the call starts as Peel opens,
         // with or without an account (docs/talk.md).
         if let home = talk.developmentHome, UserDefaults.standard.bool(forKey: "talkAtLaunch") { talk.talk(to: home) }
-        talk.otherCall = { [weak self] in self?.calls.otherCall(than: nil) }
         notifier.model = self
         proposals.orgs = { [weak self] in (self?.stadeum.live ?? [], self?.stadeum.link?.actor) }
         stadeum.sphinxProof = { [weak self] in try await self?.engine?.sphinxProof() }

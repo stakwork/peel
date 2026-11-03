@@ -77,7 +77,7 @@ struct ChatList: View {
                 Section {
                     // The workspaces' apps and Talk, once Stadeum is connected here
                     // (or a development profile names a home, docs/talk.md).
-                    if !model.talkHomes.isEmpty {
+                    if !model.stadeum.live.isEmpty || model.talk.developmentHome != nil {
                         NavigationLink(value: ChatsRoute.apps) {
                             NavRow(title: "Apps", icon: WorkspaceAppIcon(nil, size: 20))
                         }

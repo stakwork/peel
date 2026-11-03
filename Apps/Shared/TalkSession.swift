@@ -20,6 +20,9 @@ final class TalkSession: TalkMedia {
     private(set) var phase = TalkPhase.connecting
     private(set) var transcript = TalkTranscript()
     private(set) var micOn = false
+    /// The microphone has been asked for once the room connected: until
+    /// then it is neither on nor muted.
+    private(set) var micReady = false
     /// The system refused the microphone: the agent cannot hear the member.
     private(set) var micRefused = false
     /// Something that went wrong with the microphone, said quietly.
@@ -38,6 +41,9 @@ final class TalkSession: TalkMedia {
     @ObservationIgnored private var agentSeen = false
     @ObservationIgnored private var leaving = false
     @ObservationIgnored private var switchingMic = false
+    #if os(iOS)
+    @ObservationIgnored private var routeChanges: (any NSObjectProtocol)?
+    #endif
 
     init(ticket: TalkTicket, home: TalkHome) {
         self.home = home
@@ -45,6 +51,12 @@ final class TalkSession: TalkMedia {
         agent = ticket.agent
         #if os(iOS)
         IOSCallSession.activateAudioSession()
+        routeChanges = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            MainActor.assumeIsolated { self?.routeChanged(raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))) }
+        }
         #endif
         // The room changes many times a second while anyone speaks; the
         // phase is worked out from it at most ten times a second.
@@ -71,7 +83,12 @@ final class TalkSession: TalkMedia {
             return
         }
         guard !Task.isCancelled else { return }
-        await setMicrophone(true)
+        // Not awaited by `leave`: a microphone prompt nobody answers must not
+        // hold the call open.
+        Task {
+            await setMicrophone(true)
+            micReady = true
+        }
     }
 
     private func received(_ chunk: String, stream: String, sender: String, attributes: [String: String]) {
@@ -91,9 +108,27 @@ final class TalkSession: TalkMedia {
         await room.unregisterTextStreamHandler(for: TalkTranscript.topic)
         await room.disconnect()
         #if os(iOS)
+        routeChanges.map(NotificationCenter.default.removeObserver)
         IOSCallSession.deactivateAudioSession()
         #endif
     }
+
+    #if os(iOS)
+    /// Headphones in or out, a Bluetooth headset coming or going: the audio
+    /// session set up again and the microphone reopened, as `IOSCallSession`
+    /// does. Our own category change comes back as one too: only while the
+    /// room is up, and not during a switch.
+    private func routeChanged(_ reason: AVAudioSession.RouteChangeReason?) {
+        guard let reason, [.newDeviceAvailable, .oldDeviceUnavailable, .categoryChange, .override].contains(reason),
+              room.connectionState == .connected, !leaving, !switchingMic else { return }
+        IOSCallSession.activateAudioSession()
+        guard micOn else { return }
+        Task {
+            await setMicrophone(false)
+            await setMicrophone(true)
+        }
+    }
+    #endif
 
     // MARK: The microphone
 

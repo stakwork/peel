@@ -24,16 +24,23 @@ public final class TalkStore {
     /// The dev setting's home, for a development profile (`TalkHome.development`).
     public internal(set) var developmentHome: TalkHome?
     /// The group call this device is on, if any, by its title: Talk waits
-    /// until it is left rather than leaving it unasked (`CallStore.otherCall`).
+    /// until it is left rather than leaving it unasked (`CallStore.call`).
     @ObservationIgnored var otherCall: () -> String? = { nil }
+    /// Waits for the group calls left to say goodbye (`CallStore.leaving`).
+    @ObservationIgnored var groupCallsLeft: () async -> Void = {}
+    /// The goodbye of the rooms left, which a quit waits for.
+    @ObservationIgnored public private(set) var leaving: Task<Void, Never>?
 
     @ObservationIgnored private let provider: any CallProvider
     @ObservationIgnored private var starting: Task<Void, Never>?
-    /// The goodbye of the rooms left, which a quit waits for.
-    @ObservationIgnored private var leaving: Task<Void, Never>?
 
     public init(provider: any CallProvider) {
         self.provider = provider
+    }
+
+    /// Calling or in the room: a group call waits until this is hung up.
+    public var isOn: Bool {
+        if case .failed = state { false } else { home != nil }
     }
 
     /// Calls `home`'s agent: the screen shows at once, saying it is calling,
@@ -55,7 +62,11 @@ public final class TalkStore {
             let state: State
             do {
                 let ticket = try await home.startCall()
-                // Hung up while the home answered: no room is joined.
+                // The rooms left before have said goodbye first: on the phone,
+                // their leaving would take the audio session from this one.
+                await leaving?.value
+                await groupCallsLeft()
+                // Hung up meanwhile: no room is joined.
                 try Task.checkCancellation()
                 state = .on(try provider.talk(ticket, home: home))
             } catch {
@@ -224,7 +235,7 @@ public struct TalkTranscript: Equatable, Sendable {
         let shown = TextLine.clean(text, max: Self.maxText)
         if let index = lines.firstIndex(where: { $0.id == id }) {
             lines[index].text = shown
-            lines[index].isFinal = isFinal || lines[index].isFinal
+            lines[index].isFinal = isFinal
         } else {
             lines.append(TalkLine(id: id, speaker: speaker, text: shown, isFinal: isFinal))
             if lines.count > Self.maxLines {

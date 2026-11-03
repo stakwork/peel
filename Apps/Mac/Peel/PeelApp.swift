@@ -234,7 +234,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let model, model.calls.call != nil || model.calls.leaving != nil || model.talk.home != nil else {
+        guard let model, model.calls.call != nil || model.calls.leaving != nil || model.talk.home != nil
+                || model.talk.leaving != nil else {
             return .terminateNow
         }
         quitting = false

@@ -433,7 +433,8 @@ is a short plan. Update the status and the journal when you finish something.
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
   `TalkStore` (`AppModel.talk`, beside `CallStore`: the Talk call with an
-  org's agent, starting, failed in words or in its room, `hangUp`;
+  org's agent, starting, failed in words or in its room, `hangUp`; one call
+  at a time, each waiting for the other, `CallStore.busy`;
   `AppModel.talkHomes`; `TalkPhase`, what the screen says from the room and
   `lk.agent.state`; `TalkTranscript`, the live text folded from
   `lk.transcription`; docs/talk.md);

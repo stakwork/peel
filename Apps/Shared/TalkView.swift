@@ -140,13 +140,14 @@ private struct TalkControls: View {
             HStack(spacing: Theme.Space.md) {
                 if let session {
                     Button(action: session.toggleMicrophone) {
-                        Image(systemName: session.micOn ? "mic" : "mic.slash")
+                        Image(systemName: session.micOn || !session.micReady ? "mic" : "mic.slash")
                             .font(.system(size: 18))
                             .foregroundStyle(session.micOn ? Theme.text : Theme.secondaryText)
                             .frame(width: 52, height: 52)
                             .background(Theme.hover, in: Circle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(!session.micReady)
                     .accessibilityLabel(session.micOn ? "Mute" : "Unmute")
                 }
                 Button { model.talk.hangUp() } label: {
@@ -174,7 +175,7 @@ private struct TalkControls: View {
     private static func note(_ session: TalkSession) -> String? {
         if session.micRefused { return "Peel can't use the microphone, so Jamie can't hear you. Allow it in Settings, then unmute." }
         if let notice = session.notice { return notice }
-        return session.micOn ? nil : "Muted: Jamie can't hear you."
+        return session.micOn || !session.micReady ? nil : "Muted: Jamie can't hear you."
     }
 }
 

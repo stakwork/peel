@@ -246,14 +246,14 @@ final class IOSCallSession {
 
     /// A voice call's session: record and play, with the earpiece or speaker
     /// as the system's voice processing routes them, and Bluetooth headsets.
-    private static func activateAudioSession() {
+    static func activateAudioSession() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .defaultToSpeaker])
         try? session.setActive(true)
     }
 
     /// Lets other apps' audio come back.
-    private static func deactivateAudioSession() {
+    static func deactivateAudioSession() {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 

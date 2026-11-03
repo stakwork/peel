@@ -62,6 +62,10 @@ struct LiveKitCalls: CallProvider {
     func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) -> any OngoingCall {
         CallSession(ticket: ticket, link: link, chat: chat, title: title, camera: camera)
     }
+
+    func talk(_ ticket: TalkTicket, home: TalkHome) -> any TalkMedia {
+        TalkSession(ticket: ticket, home: home)
+    }
 }
 
 extension CallSession: OngoingCall {}

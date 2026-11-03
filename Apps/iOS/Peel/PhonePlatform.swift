@@ -72,10 +72,14 @@ final class PhoneWeb: WebPresenting {
     func forgetWebsiteData() async {}
 }
 
-/// Calls over LiveKit, each an `IOSCallSession`.
+/// Calls over LiveKit, each an `IOSCallSession`, and Talk calls, each a `TalkSession`.
 struct LiveKitCalls: CallProvider {
     func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) -> any OngoingCall {
         IOSCallSession(ticket: ticket, link: link, chat: chat, title: title, camera: camera)
+    }
+
+    func talk(_ ticket: TalkTicket, home: TalkHome) -> any TalkMedia {
+        TalkSession(ticket: ticket, home: home)
     }
 }
 

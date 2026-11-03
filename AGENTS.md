@@ -180,6 +180,14 @@ is a short plan. Update the status and the journal when you finish something.
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
     per engine
+  - `TalkCall.swift` — Talk to Jamie (docs/talk.md): `TalkHome` (an org's
+    strut and the person's token, from a `HivePeer` or a development
+    profile's `-talkHome`), `startCall` (`POST /voice/calls`), `TalkTicket`
+    (the LiveKit room the home names: `wss://`, or `ws://` on this device,
+    a token for that room, never described with it, and the voice in effect),
+    `TalkVoice` (Jamie's voice, `af_heart` ♀ or `am_michael` ♂, kept per
+    device under `talkVoice`) and `TalkRefusal` (the home's own words; 402's
+    balance and minimum); tested in `TalkCallTests`
   - `Media.swift` — what an attachment is: `AttachmentKind` (by its bytes),
     `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`,
     `MediaInfo` (a cached video's or recording's duration, picture size and
@@ -426,10 +434,17 @@ is a short plan. Update the status and the journal when you finish something.
   Hive for the ticket first, `hiveTicket`), leave; the view passes the call
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
+  `TalkStore` (`AppModel.talk`, beside `CallStore`: the Talk call with an
+  org's agent, starting, failed in words or in its room, `hangUp`,
+  `toggleVoice` (Jamie's voice, kept and told to the room); one call
+  at a time, each waiting for the other, `CallStore.busy`;
+  `AppModel.talkHomes`; `TalkPhase`, what the screen says from the room and
+  `lk.agent.state`; `TalkTranscript`, the live text folded from
+  `lk.transcription`; docs/talk.md);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
   activate, the badge, notification settings), `MenuHosting` (for
   `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
-  `WebPresenting`, `CallProvider` and `OngoingCall`, and `AgentHost`, the
+  `WebPresenting`, `CallProvider` (with `talk`, a Talk call's room) and `OngoingCall`, `TalkMedia`, and `AgentHost`, the
   agent's PeelAgent side); `ChatRow` (`Sender`, `Quote`, the rows built
   once per change; in a tribe a member's deliverables and the proposals
   their post made, `strutProposals`); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
@@ -477,7 +492,8 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
   restart Peel's strut with the new grants; below them
-  `StadeumSection`, the Stadeum workspaces paired as peers),
+  `StadeumSection`, the Stadeum workspaces paired as peers, each with
+  Talk to Jamie, which opens `TalkWindow`),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Assistant show of its own account,
@@ -685,7 +701,8 @@ is a short plan. Update the status and the journal when you finish something.
   team and bundle ID over them. `Assets/AppIcon.icon` is the icon Xcode
   compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
   flat logo for docs and pages. `Shared/` holds the files both apps
-  compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
+  compile: `TalkSession` and `TalkView` (Talk to Jamie's room and screen,
+  docs/talk.md; the Mac's `TalkWindow`), `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
   `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
   `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
@@ -721,7 +738,8 @@ is a short plan. Update the status and the journal when you finish something.
   their words), `Stadeum` (`StadeumSection`, You's Stadeum over
   `AppModel.stadeum`: connect, the workspaces, Connect again, Disconnect;
   `readWorkspaceApps`, each org's pinned apps on its own strut), `AppsScreen`
-  (Chats' Apps row: the workspaces' pinned apps, A–Z, opened in
+  (Chats' Apps row: Talk to Jamie on each workspace, its screen a
+  full-screen cover; then the workspaces' pinned apps, A–Z, opened in
   `OrgPageSheet`, pulled to read again), `OrgPageSheet` (a
   deliverable or an app on its org's own strut, strut's UI showing it alone in a
   `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
@@ -1026,7 +1044,7 @@ is a short plan. Update the status and the journal when you finish something.
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
-  `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
+  `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`, `TalkCallTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
   `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`,
   `ProposalTests` (strut's record and card read, each status, a record
@@ -1046,7 +1064,9 @@ is a short plan. Update the status and the journal when you finish something.
   state machine, the hotkey's encoding, the WAV writer,
   where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
   correction learned and the dictation models; `DictationEditTests`, when
-  an edit to dictated text is done)
+  an edit to dictated text is done) and `TalkTests` (the live text and
+  the phase from what LiveKit Agents publish; a Talk call started on a
+  stand-in home, its refusal, and no group call left unasked)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,

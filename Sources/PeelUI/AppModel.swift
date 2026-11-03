@@ -330,6 +330,8 @@ public final class AppModel {
     public let money = MoneyArrivals()
     /// Calls: presence, the recent calls, and the call this device is on.
     public let calls: CallStore
+    /// Talk to Jamie: the voice call with an org's agent (docs/talk.md).
+    public let talk: TalkStore
     /// The person's Stadeum workspaces, paired on this device, and the apps listed.
     public let stadeum = Stadeum()
     /// The proposals shown as cards in the agent chat: Peel's own strut's
@@ -420,6 +422,7 @@ public final class AppModel {
         self.platform = platform
         notifier = Notifier(presence: platform.presence)
         calls = CallStore(provider: platform.calls)
+        talk = TalkStore(provider: platform.calls)
         do {
             if let development = UserDefaults.standard.string(forKey: "profile") {
                 profile = try Profile(name: development, kind: .development)
@@ -429,6 +432,14 @@ public final class AppModel {
         } catch {
             notice = PeelError.noted(error)
         }
+        talk.developmentHome = profile.flatMap { TalkHome.development(for: $0) }
+        // One call at a time: Talk and a group call each wait for the other.
+        talk.otherCall = { [weak self] in self?.calls.call?.title }
+        talk.groupCallsLeft = { [weak self] in await self?.calls.leaving?.value }
+        calls.busy = { [weak self] in self?.talk.isOn == true ? "Hang up the call with Jamie first." : nil }
+        // The dev setting's `-talkAtLaunch YES`: the call starts as Peel opens,
+        // with or without an account (docs/talk.md).
+        if let home = talk.developmentHome, UserDefaults.standard.bool(forKey: "talkAtLaunch") { talk.talk(to: home) }
         notifier.model = self
         proposals.orgs = { [weak self] in (self?.stadeum.live ?? [], self?.stadeum.link?.actor) }
         stadeum.sphinxProof = { [weak self] in try await self?.engine?.sphinxProof() }
@@ -1445,6 +1456,7 @@ public final class AppModel {
         refreshMentionAliases()
         myServer = nil
         calls.reset()
+        talk.hangUp()
         money.reset()
         balanceMsat = nil
         wordsConfirmed = true

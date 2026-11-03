@@ -247,7 +247,7 @@ extension AppModel {
         }
         // The steps the orchestrator's turns ask this Mac through, before the bridge runs a turn.
         let client = AutomationsClient(server: server)
-        try await client.installOrchestrator()
+        try await client.installOrchestrator(graphMemory: strut?.graphMemory == true)
         // Its orgs, before a turn can name one.
         await syncHive(on: server)
         let account = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? "Agent", pair: bridge.pairing)

@@ -932,7 +932,14 @@ is a short plan. Update the status and the journal when you finish something.
     graph in `~/Library/Application Support/Peel/Strut`, a development
     profile's in its own folder (`dataFolder(for:)`); its log read and
     dropped; stopped when Peel quits (stdin closed, SIGTERM, SIGKILL after
-    two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`)
+    two seconds), and gone by itself if Peel dies (`STRUT_EXIT_ON_STDIN_EOF`).
+    `graphMemory` (the `graphMemory` default, `-graphMemory YES`; off unless
+    set): the agent's memory on the workspace graph (strut's step 7,
+    `memory: "graph"`), the old memory database imported once on its first
+    start (`graph/import-memory`, its counts logged and kept in
+    `graph-memory-import.json` beside its data); dictation's lexicon, Peel
+    Home's sync and the memory panel (`MemoryServer.node`) stay on the old
+    database
   - `BundledBridge.swift` — the agent's bridge Peel ships in `Contents/Bridge`
     (every build, in Release inside the app's sandbox; sphinx/runner,
     `docs/agent-on-strut.md` "Built: PR 4" and "Built: PR 10"):
@@ -952,7 +959,9 @@ is a short plan. Update the status and the journal when you finish something.
     writes to `host-config.json` in strut's data folder at each launch
     (`STRUT_HOST_CONFIG`): Peel's tools and prompt section (who the agent
     is, the reads with `SphinxTools.systemPrompt`, sends, `memoryPrompt`
-    and `automationsPrompt`),
+    and `automationsPrompt`; with `graph`, `graphMemoryPrompt` and
+    `graphMemoryTools` instead, and strut's `memory`, `concepts` and
+    `graphReaders`),
     no pinned model (the connected one), and the `automation/*` steps on
     `peel-automation-run` behind `sphinx/approve`. `DeviceStep` is each
     `sphinx/*` step's source: a device request posted to the bridge on

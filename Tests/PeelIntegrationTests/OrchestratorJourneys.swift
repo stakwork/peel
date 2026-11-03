@@ -791,6 +791,207 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
+        /// Memory on the workspace graph (`BundledStrut.graphMemory`), the
+        /// October scenario (memory-test-2026-10-14) through the orchestrator's
+        /// own turns on the staged strut: the user saying who they are, a fact
+        /// Kate said, "used to", a dated move, a way they like things done, a
+        /// recall in a turn of its own (no chat before it, as after clearing
+        /// the chat) on the orchestrator and an automation's run, two
+        /// duplicates merged, and a fact forgotten. The model is a stand-in
+        /// that calls the graph tools as the prompt says to: this proves the
+        /// grants, the readers and what strut writes and reads back, not
+        /// what a live model chooses to call.
+        @Test(.enabled(if: staged && FileManager.default.fileExists(
+            atPath: BundledStrut.staged.appending(path: "build/steps/lib/graph/import-memory.js").path)))
+        @MainActor
+        func memoryOnTheGraphRemembersRecallsMergesAndForgets() async throws {
+            let script = Script()
+            let model = try await HTTPStub(contentType: "text/event-stream") { _, request in
+                script.next(String(request[(request.range(of: "\r\n\r\n")?.upperBound ?? request.endIndex)...]))
+            }
+            let root = FileManager.default.temporaryDirectory.appending(path: "peel-graph-memory-journey-\(UUID().uuidString)")
+            setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
+            let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
+                                                  secretKey: FileItem(file: root.appending(path: "strut-key"))))
+            strut.graphMemory = true
+            defer {
+                strut.stop(quietly: true)
+                model.stop()
+                unsetenv("ANTHROPIC_BASE_URL")
+                try? FileManager.default.removeItem(at: root)
+            }
+            let server = try await strut.start()
+            let client = AutomationsClient(server: server)
+            try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
+            try await client.installOrchestrator(graphMemory: true)
+            // A first start with no old database: recorded as done, nothing imported.
+            #expect(FileManager.default.fileExists(atPath: strut.memoryImportRecord.path))
+
+            /// One turn: `prompt` run on `workflow` with `calls` as the
+            /// model's, each given the result before it; the results.
+            func turn(_ prompt: String, on workflow: String = BundledBridge.workflow,
+                      _ calls: [@Sendable (AgentKit.JSONValue) -> String]) async throws -> [AgentKit.JSONValue] {
+                script.start(calls)
+                let input: AgentKit.JSONValue = workflow == BundledBridge.workflow
+                    ? ["prompt": .string(prompt)]
+                    : ["name": "Recall", "prompt": .string(prompt), "since": .null, "now": "2026-11-03T09:00:00Z"]
+                let fired = try await Self.strutCall("POST", "workflows/\(workflow)/run", ["input": input], on: server)
+                let runId = try #require(fired["runId"]?.string, "\(fired)")
+                let run = try await eventually("\(workflow)'s run to end", timeout: .seconds(60)) {
+                    let record = try? await Self.strutCall("GET", "workflows/\(workflow)/runs/\(runId)", on: server)
+                    return ["success", "error"].contains(record?["status"]?.string ?? "") ? record : nil
+                }
+                #expect(run["status"] == "success", "\(prompt): \(run)")
+                let results = script.results
+                #expect(results.count == calls.count, "\(prompt): \(results.count) of \(calls.count) tools answered")
+                for (index, result) in results.enumerated() {
+                    let text = result.string ?? result.jsonString
+                    #expect(!text.contains(" failed") && !text.contains("invalid input") && !text.contains("REFUSED"),
+                            "\(prompt), call \(index): \(text.prefix(600))")
+                }
+                return results
+            }
+            // Who they are: no user yet, so made once; a place type made when none fits.
+            let me = try await turn("Remember: I'm Tom and I live in Bristol.", [
+                { _ in Self.toolUse("graph_graph_get", ["owner": true]) },
+                { _ in Self.toolUse("graph_create_node", ["node_type": "Person", "node_data": ["name": "Tom", "is_owner": true]]) },
+                { last in
+                    Script.refs.withLock { $0["tom"] = last["ref_id"]?.string }
+                    return Self.toolUse("graph_create_schema", ["type": "Place", "attributes": ["name": "string"], "role": "entity"])
+                },
+                { _ in Self.toolUse("graph_resolve", ["node_type": "Place", "name": "Bristol"]) },
+                { _ in Self.toolUse("graph_assert", ["facts": [[
+                    "source_ref_id": Script.refs.withLock { $0["tom"] ?? "" }, "edge_type": "LIVES_IN", "target_type": "Place",
+                    "target_data": ["name": "Bristol"], "text": "Tom lives in Bristol.", "source": "chat-1",
+                    "create_schema_if_missing": true, "cardinality": "one",
+                ]]]) },
+            ])
+            #expect(me[0].jsonString.contains("is_owner"), "\(me[0])")
+            let tom = try #require(me[1]["ref_id"]?.string, "\(me[1])")
+            #expect(me[4]["facts"]?.array?.first?["action"] == "created", "\(me[4])")
+
+            // Someone else's words: Kate said it, so the fact is hers.
+            let kate = try await turn("Kate texted me: \"I work at Monzo now.\"", [
+                { _ in Self.toolUse("graph_resolve", ["node_type": "Person", "name": "Kate"]) },
+                { _ in Self.toolUse("graph_create_node", ["node_type": "Person", "node_data": ["name": "Kate"]]) },
+                { last in
+                    Script.refs.withLock { $0["kate"] = last["ref_id"]?.string }
+                    return Self.toolUse("graph_create_schema", ["type": "Organization", "attributes": ["name": "string"], "role": "entity"])
+                },
+                { _ in
+                    let kate = Script.refs.withLock { $0["kate"] ?? "" }
+                    return Self.toolUse("graph_assert", ["facts": [[
+                        "source_ref_id": kate, "edge_type": "WORKS_AT", "target_type": "Organization", "target_data": ["name": "Monzo"],
+                        "text": "Kate works at Monzo.", "said_by": kate, "source": "message-kate-1", "create_schema_if_missing": true,
+                    ]]])
+                },
+            ])
+            #expect(kate[0]["match"] == .null || kate[0]["match"] == nil, "no Kate yet: \(kate[0])")
+            let monzo = try #require(kate[3]["facts"]?.array?.first?["edge_ref_id"]?.string, "\(kate[3])")
+            let kateRef = try #require(Script.refs.withLock { $0["kate"] })
+
+            // "Used to", with no date, and a dated move: Bristol ends when Manchester begins.
+            let moved = try await turn("I used to live in London, and I moved to Manchester in March.", [
+                { _ in Self.toolUse("graph_resolve", ["node_type": "Place", "name": "London"]) },
+                { _ in Self.toolUse("graph_assert", ["facts": [
+                    ["source_ref_id": tom, "edge_type": "LIVES_IN", "target_type": "Place", "target_data": ["name": "London"],
+                     "text": "Tom used to live in London.", "ended": true],
+                    ["source_ref_id": tom, "edge_type": "LIVES_IN", "target_type": "Place", "target_data": ["name": "Manchester"],
+                     "text": "Tom lives in Manchester.", "valid_at": "2026-03"],
+                ]]) },
+            ])
+            #expect(moved[1]["facts"]?.array?.count == 2, "\(moved[1])")
+
+            // How they like things done: a page under Personal.
+            let page = try await turn("When you write to me, keep it short: no bullet lists.", [
+                { _ in Self.toolUse("graph_graph_get", ["node_type": "Concept", "name": "Personal", "children": "PARENT_OF"]) },
+                { last in Self.toolUse("graph_create_triplet", [
+                    "source_ref_id": last["ref_id"]?.string ?? "", "edge_type": "PARENT_OF", "target_type": "Concept",
+                    "target_data": ["name": "Writing to Tom", "description": "Short replies, no bullet lists.",
+                                    "docs": "Tom likes short replies with no bullet lists."],
+                ]) },
+            ])
+            #expect(page[0]["name"] == "Personal", "the Personal root is seeded: \(page[0])")
+
+            // Recall in a turn of its own, on both workflows that run as the assistant: private memory is theirs to read.
+            for workflow in [BundledBridge.workflow, PeelAgent.Orchestrator.automationWorkflow] {
+                let recall = try await turn("Where do I live, and where did I live before? Who works at Monzo?", on: workflow, [
+                    { _ in Self.toolUse("graph_graph_search", ["q": "where does Tom live", "facts": true, "include_ended": true]) },
+                    { _ in Self.toolUse("graph_graph_get", ["owner": true]) },
+                    { _ in Self.toolUse("graph_graph_neighbors", ["ref_id": tom, "include_ended": true]) },
+                    { _ in Self.toolUse("graph_graph_search", ["q": "Monzo", "facts": true]) },
+                ])
+                let facts = recall[0]["facts"]?.array ?? []
+                let fact = { (text: String) in facts.first { $0["text"]?.string == text } }
+                #expect(fact("Tom lives in Manchester.")?["valid_at"]?.string?.hasPrefix("2026-03") == true, "\(workflow): \(recall[0])")
+                #expect(fact("Tom lives in Bristol.")?["invalid_at"]?.string?.hasPrefix("2026-03") == true, "\(workflow): \(recall[0])")
+                #expect(fact("Tom used to live in London.")?["expired_at"] != nil, "\(workflow): \(recall[0])")
+                #expect(facts.allSatisfy { $0["namespace"] == "private" }, "\(workflow): \(recall[0])")
+                #expect(recall[1]["ref_id"]?.string == tom)
+                #expect(recall[3].jsonString.contains("Kate works at Monzo."), "\(workflow): \(recall[3])")
+            }
+
+            // Two of Kate: merged, and the other name now finds her.
+            let katie = try await turn("Katie Moss is coming round tonight.", [
+                { _ in Self.toolUse("graph_resolve", ["node_type": "Person", "name": "Katie Moss"]) },
+                { _ in Self.toolUse("graph_create_node", ["node_type": "Person", "node_data": ["name": "Katie Moss"]]) },
+            ])
+            let duplicate = try #require(katie[1]["ref_id"]?.string, "\(katie[1])")
+            let merged = try await turn("Katie Moss is Kate: merge them.", [
+                { _ in Self.toolUse("graph_graph_get", ["ref_id": kateRef]) },
+                { _ in Self.toolUse("graph_graph_get", ["ref_id": duplicate]) },
+                { _ in Self.toolUse("graph_merge", ["keep": kateRef, "duplicate": duplicate]) },
+                { _ in Self.toolUse("graph_resolve", ["node_type": "Person", "name": "Katie Moss"]) },
+            ])
+            #expect(merged[2]["merge"]?.string != nil, "\(merged[2])")
+            #expect(merged[3]["match"]?["ref_id"]?.string == kateRef, "\(merged[3])")
+
+            // Forgotten: the fact is gone from search.
+            let forgot = try await turn("Forget that Kate works at Monzo.", [
+                { _ in Self.toolUse("graph_graph_search", ["q": "Kate Monzo", "facts": true]) },
+                { _ in Self.toolUse("graph_delete_edge", ["edge_ref_id": monzo]) },
+                { _ in Self.toolUse("graph_graph_search", ["q": "Kate Monzo", "facts": true, "include_ended": true]) },
+            ])
+            #expect(forgot[0].jsonString.contains("Kate works at Monzo."), "\(forgot[0])")
+            #expect(!forgot[2].jsonString.contains("Kate works at Monzo."), "\(forgot[2])")
+        }
+
+        /// The stand-in model's calls for the turn under way: each request's
+        /// tool results so far say which call is next; then a final answer.
+        final class Script: @unchecked Sendable {
+            static let refs = OSAllocatedUnfairLock(initialState: [String: String]())
+            private let lock = NSLock()
+            private var calls: [@Sendable (AgentKit.JSONValue) -> String] = []
+            private var answered: [AgentKit.JSONValue] = []
+
+            var results: [AgentKit.JSONValue] { lock.withLock { answered } }
+
+            func start(_ calls: [@Sendable (AgentKit.JSONValue) -> String]) {
+                lock.withLock {
+                    self.calls = calls
+                    self.answered = []
+                }
+            }
+
+            func next(_ body: String) -> String {
+                let request = (try? AgentKit.JSONValue(parsing: body)) ?? .null
+                let results = (request["messages"]?.array ?? []).flatMap { $0["content"]?.array ?? [] }
+                    .filter { $0["type"] == "tool_result" }.map(Self.output)
+                let (call, last): ((@Sendable (AgentKit.JSONValue) -> String)?, AgentKit.JSONValue) = lock.withLock {
+                    if results.count > answered.count, let newest = results.last { answered.append(newest) }
+                    return (results.count < calls.count ? calls[results.count] : nil, results.last ?? .null)
+                }
+                return call?(last) ?? Orchestrator.toolUse("final_answer", ["text": "Done.", "artifacts": []])
+            }
+
+            /// A tool result's content as the step's output: its JSON when it is JSON.
+            static func output(_ block: AgentKit.JSONValue) -> AgentKit.JSONValue {
+                let text = block["content"]?.string
+                    ?? (block["content"]?.array ?? []).compactMap { $0["text"]?.string }.joined()
+                return (try? AgentKit.JSONValue(parsing: text)) ?? .string(text)
+            }
+        }
+
         static func strutCall(_ method: String, _ path: String, _ body: AgentKit.JSONValue? = nil, on server: MemoryServer) async throws -> AgentKit.JSONValue {
             try await AutomationsClient(server: server).call(method, path, body, what: path)
         }

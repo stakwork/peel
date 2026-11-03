@@ -189,6 +189,48 @@ struct BundledStrutTests {
         #expect(holding.isEmpty, "\(holding.map(\.lastPathComponent))")
     }
 
+    /// Memory on the graph (`graphMemory`): the old database's facts are
+    /// imported on the first start only, its counts kept; then strut
+    /// gives the orchestrator the graph tools and no agent the memory steps,
+    /// and the old database still answers dictation's lexicon.
+    @Test(.enabled(if: FileManager.default.fileExists(atPath: BundledStrut.staged.appending(path: "build/steps/lib/graph/import-memory.js").path)))
+    func theStagedStrutImportsTheOldMemoryOnceWhenItIsOnTheGraph() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "peel-strut-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Off: what the agent remembered, on the old database.
+        let old = try stagedStrut(in: root)
+        old.graphMemory = false
+        let legacy = try await old.start()
+        let me = try #require(try await legacy.run("ontology", [:])["user_type"]?.string)
+        let user: AgentKit.JSONValue = ["type": .string(me), "name": "Tom"]
+        _ = try await legacy.run("remember", [
+            "episode": "I live in Bristol.", "mentions": [user],
+            "facts": [["subject": user, "predicate": "lives_in", "text": "Tom lives in Bristol.", "object": ["type": "Place", "name": "Bristol"]]],
+        ])
+        old.stop(quietly: true)
+        #expect(!FileManager.default.fileExists(atPath: old.memoryImportRecord.path), "off, nothing is imported")
+
+        let strut = try stagedStrut(in: root)
+        strut.graphMemory = true
+        defer { strut.stop(quietly: true) }
+        let server = try await strut.start()
+        let record = try AgentKit.JSONValue(parsing: String(decoding: try Data(contentsOf: strut.memoryImportRecord), as: UTF8.self))
+        #expect((record["imported"]?.int ?? 0) >= 1, "\(record)")
+        let found = try await server.run(step: "graph/graph-search", ["q": "Bristol", "facts": true])
+        #expect(found.jsonString.contains("Tom lives in Bristol."), "\(found)")
+        let flow = try await AutomationsClient(server: server).call("GET", "workflows/orchestrator/flow", nil, what: "the orchestrator")
+        let tools = flow["params"]?["tools"]?.array?.compactMap(\.string) ?? []
+        #expect(tools.contains("graph/assert") && !tools.contains { $0.hasPrefix("memory/") }, "\(tools)")
+        // Dictation's lexicon stays on the old database.
+        _ = try await server.run("lexicon", [:])
+
+        // Again: the record stands, so nothing runs.
+        strut.stop(quietly: true)
+        let kept = try Data(contentsOf: strut.memoryImportRecord)
+        _ = try await strut.start()
+        #expect(try Data(contentsOf: strut.memoryImportRecord) == kept)
+    }
+
     /// A development profile's memory is inside its own folder, never the app account's.
     @Test func aDevelopmentProfilesMemoryIsItsOwn() throws {
         let development = try Profile(name: "agent-setup-test", kind: .development)

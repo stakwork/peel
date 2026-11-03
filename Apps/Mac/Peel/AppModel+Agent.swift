@@ -357,9 +357,11 @@ extension AppModel {
     /// The strut `profile`'s agent uses, if this build ships one: the app
     /// account's in Peel's folder; a development profile's only with
     /// `-strut YES` (its agent needs it), its data inside the profile's own
-    /// folder, so a test account never writes to the real memory.
+    /// folder, so a test account never writes to the real memory. Its
+    /// memory is on the workspace graph only with the `graphMemory` default
+    /// (`-graphMemory YES`, `BundledStrut.graphMemory`).
     static func strut(for profile: Profile) -> BundledStrut? {
-        switch profile.kind {
+        let strut: BundledStrut? = switch profile.kind {
         case .app: BundledStrut(secretKey: profile.strutKey)
         case .development:
             UserDefaults.standard.bool(forKey: "strut") ? {
@@ -369,6 +371,8 @@ extension AppModel {
                 return strut
             }() : nil
         }
+        strut?.graphMemory = UserDefaults.standard.bool(forKey: "graphMemory")
+        return strut
     }
 
     func closeAgent() {

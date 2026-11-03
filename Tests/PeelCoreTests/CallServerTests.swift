@@ -15,10 +15,7 @@ private func link(on server: String, _ query: String = "") -> CallLink {
 }
 
 /// An unsigned LiveKit-shaped token with these claims.
-private func token(_ claims: [String: Any]) -> String {
-    let body = MediaToken.base64URLEncode(try! JSONSerialization.data(withJSONObject: claims)).replacingOccurrences(of: "=", with: "")
-    return "eyJhbGciOiJIUzI1NiJ9.\(body).c2lnbmF0dXJl"
-}
+private func token(_ claims: [String: Any]) -> String { unsignedJWT(claims) }
 
 private func claims(room: String = room, exp: Double = Date.now.timeIntervalSince1970 + 3600) -> [String: Any] {
     ["sub": "alice-1", "exp": exp, "video": ["room": room, "roomJoin": true]]

@@ -271,7 +271,14 @@ struct MessageRow: View, Equatable {
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
                         .opacity(hovering ? 1 : 0)
+                        // The time is wider than the gutter. It must never size the row: wrapped to
+                        // two lines it was taller than a one-line message and left invisible slack
+                        // below the text. Keep it on one line, give it zero layout height, and let
+                        // any overflow spill left (the gutter is trailing-aligned) into the padding.
+                        .lineLimit(1)
+                        .fixedSize()
                         .padding(.top, 3)
+                        .frame(height: 0, alignment: .top)
                         .help(model.timeTooltip(message.date, zone: row.senderZone, name: row.sender.name) ?? "")
                         .accessibilityHidden(true)
                 }

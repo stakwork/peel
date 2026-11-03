@@ -337,7 +337,7 @@ extension AppModel {
     /// drawn again as JPEG in Peel's own folder (no metadata, `PickedFiles`),
     /// uploaded, its link returned; the file goes either way.
     func uploadPicture(_ item: PhotosPickerItem) async throws -> String {
-        let picked = await PickedFiles.photos([item])
+        let picked = await PickedFiles.media([item])
         guard let file = picked.files.first else {
             throw PeelError(picked.refused.first ?? "the photo could not be read")
         }

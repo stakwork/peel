@@ -22,6 +22,29 @@ import Testing
         #expect(leaves(phone, senderJoinedAt: later))
     }
 
+    @Test func aStayAnnouncementNeverMakesAnEarlierDeviceLeave() {
+        let stay = mine.announcement(room: "room-1", identity: "tom-2", stay: true)
+        #expect(!leaves(stay, senderJoinedAt: later, myJoinedAt: earlier))
+        #expect(!leaves(stay))
+        // The plain one from the same device still does.
+        let plain = mine.announcement(room: "room-1", identity: "tom-2")
+        #expect(leaves(plain, senderJoinedAt: later, myJoinedAt: earlier))
+    }
+
+    @Test func anotherDeviceOfTheAccountIsToldFromAnyoneElse() {
+        let other = mine.announcement(room: "room-1", identity: "tom-2")
+        #expect(mine.isOtherDevice(other, room: "room-1", sender: "tom-2", me: "tom-1"))
+        // Not itself, not a replay under another identity or room, not another account.
+        #expect(!mine.isOtherDevice(other, room: "room-1", sender: "tom-1", me: "tom-1"))
+        #expect(!mine.isOtherDevice(other, room: "room-1", sender: "eve-3", me: "tom-1"))
+        #expect(!mine.isOtherDevice(other, room: "room-2", sender: "tom-2", me: "tom-1"))
+        let stranger = CallHandoff(seed: "seed-b").announcement(room: "room-1", identity: "tom-2")
+        #expect(!mine.isOtherDevice(stranger, room: "room-1", sender: "tom-2", me: "tom-1"))
+        // A stay announcement is not a probe or an answer.
+        let stay = mine.announcement(room: "room-1", identity: "tom-2", stay: true)
+        #expect(!mine.isOtherDevice(stay, room: "room-1", sender: "tom-2", me: "tom-1"))
+    }
+
     @Test func anOlderDeviceDoesNot() {
         let phone = mine.announcement(room: "room-1", identity: "tom-2")
         #expect(!leaves(phone, senderJoinedAt: earlier, myJoinedAt: later))

@@ -347,6 +347,36 @@ struct CallSwitchConfirm: View {
     }
 }
 
+/// Joining a call your other device is already on: "Switch to this device"
+/// takes the call (the other leaves), "Stay on both devices" keeps both, and
+/// Cancel leaves the call from this one. Modelled on `CallSwitchConfirm`.
+struct CallDeviceConfirm: View {
+    let cancel: () -> Void
+    let stay: () -> Void
+    let switchHere: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("You are already on this call on another of your devices.")
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Theme.Space.sm) {
+                Button("Cancel", action: cancel)
+                    .buttonStyle(.peel(.ghost, size: .sm))
+                Spacer(minLength: 0)
+                Button("Stay on both devices", action: stay)
+                    .buttonStyle(.peel(.outline, size: .sm))
+                Button("Switch to this device", action: switchHere)
+                    .buttonStyle(.peel(.primary, size: .sm))
+            }
+        }
+        .font(Theme.font(13))
+        .padding(Theme.Space.md)
+        .background(Theme.callBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Your other device is on this call")
+    }
+}
+
 // MARK: - On a call (C4)
 
 /// At the foot of the sidebar while you are on a call, like a huddle bar:

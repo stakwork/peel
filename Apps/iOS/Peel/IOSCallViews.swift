@@ -207,6 +207,22 @@ struct IOSCallScreen: View {
         // The call went from anywhere (Leave, another call): the screen goes.
         .onChange(of: model.calls.call == nil) { _, gone in if gone { router.callShown = false } }
         .onAppear { if model.calls.call == nil { router.callShown = false } }
+        // Your other device is already on this call: choose before anything moves.
+        // Dismissing without a choice leaves the call from this device.
+        .confirmationDialog(
+            "You are already on this call on another of your devices.",
+            isPresented: Binding(
+                get: { model.calls.choosingDevice != nil },
+                // Deferred: a button's own action runs first, and a choice
+                // already made leaves nothing to cancel.
+                set: { if !$0 { Task { @MainActor in model.calls.cancelDeviceChoice() } } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Switch to this device") { model.calls.switchToThisDevice() }
+            Button("Stay on both devices") { model.calls.stayOnBothDevices() }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private func header(_ call: IOSCallSession) -> some View {

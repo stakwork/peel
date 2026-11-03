@@ -13,12 +13,39 @@ extension CallHandoff {
     /// `identity`, trying again on `retryDelays` until it is sent or
     /// `leaving` says the call is over.
     @MainActor
-    func announce(on room: Room, roomName: String, identity: String, leaving: @escaping @MainActor () -> Bool) async {
-        let text = announcement(room: roomName, identity: identity).base64EncodedString()
+    func announce(
+        on room: Room, roomName: String, identity: String, stay: Bool = false, topic: String? = nil,
+        leaving: @escaping @MainActor () -> Bool
+    ) async {
+        let text = announcement(room: roomName, identity: identity, stay: stay).base64EncodedString()
         for delay in [nil] + Self.retryDelays.map(Optional.some) {
             if let delay { try? await Task.sleep(for: delay) }
             if leaving() { return }
-            if (try? await room.localParticipant.sendText(text, for: Self.topic)) != nil { return }
+            if (try? await room.localParticipant.sendText(text, for: topic ?? Self.topic)) != nil { return }
+        }
+    }
+
+    /// Answers other devices' probes on `room` (as `me`), and calls `found`
+    /// on the main actor for an answer to this device's own. Set up before
+    /// the room connects. The caller decides whether an answer still counts.
+    func listenForDevices(
+        on room: Room, roomName: String, me: String, found: @escaping @Sendable @MainActor () -> Void
+    ) async {
+        try? await room.registerTextStreamHandler(for: Self.probeTopic) { reader, sender in
+            guard let text = try? await reader.readAll(), text.utf8.count <= 64,
+                  let data = Data(base64Encoded: text),
+                  isOtherDevice(data, room: roomName, sender: sender.stringValue, me: me)
+            else { return }
+            Task { @MainActor in
+                await announce(on: room, roomName: roomName, identity: me, topic: Self.hereTopic) { false }
+            }
+        }
+        try? await room.registerTextStreamHandler(for: Self.hereTopic) { reader, sender in
+            guard let text = try? await reader.readAll(), text.utf8.count <= 64,
+                  let data = Data(base64Encoded: text),
+                  isOtherDevice(data, room: roomName, sender: sender.stringValue, me: me)
+            else { return }
+            await found()
         }
     }
 

@@ -14,6 +14,16 @@ import Foundation
 public struct CallHandoff: Sendable {
     /// The text stream topic the announcement goes on, apart from the chat's.
     public static let topic = "peel-handoff"
+    /// Asked by a device that has just connected: is another device of this
+    /// account already here? The payload is its announcement. Builds that
+    /// do not know the topic ignore it.
+    public static let probeTopic = "peel-handoff-probe"
+    /// The answer to a probe from another device of this account: the
+    /// answerer's own announcement, same format.
+    public static let hereTopic = "peel-handoff-here"
+    /// How long a new device waits for an answer to its probe before it
+    /// takes the call as before.
+    public static let probeWait: Duration = .seconds(3)
     /// How long to wait before each try again of an announcement that could
     /// not be sent: both devices staying on the call is what it prevents.
     public static let retryDelays: [Duration] = [.seconds(1), .seconds(2)]
@@ -29,9 +39,21 @@ public struct CallHandoff: Sendable {
     }
 
     /// What a device that has just connected to `room` as `identity` sends:
-    /// the MAC alone.
-    public func announcement(room: String, identity: String) -> Data {
-        Data(HMAC<SHA256>.authenticationCode(for: Self.message(room: room, identity: identity), using: key))
+    /// the MAC alone. With `stay`, the device says it is keeping both: the
+    /// MAC is over a different message, so no build (this one's `shouldLeave`
+    /// or an older one) takes it for a plain announcement and leaves.
+    public func announcement(room: String, identity: String, stay: Bool = false) -> Data {
+        Data(HMAC<SHA256>.authenticationCode(for: Self.message(room: room, identity: identity, stay: stay), using: key))
+    }
+
+    /// Whether `data` proves `sender`, on `room`, is another device on this
+    /// account (a probe, its answer or a plain announcement): the MAC checks
+    /// under the sender's identity, which the server stamps, and it is not
+    /// this device's own. Says nothing of who joined first.
+    public func isOtherDevice(_ data: Data, room: String, sender: String, me: String) -> Bool {
+        sender != me
+            && HMAC<SHA256>.isValidAuthenticationCode(
+                data, authenticating: Self.message(room: room, identity: sender, stay: false), using: key)
     }
 
     /// Whether this device, on `room` as `me`, should leave on `data` from
@@ -42,15 +64,14 @@ public struct CallHandoff: Sendable {
     public func shouldLeave(
         _ data: Data, room: String, sender: String, senderJoinedAt: Date?, me: String, myJoinedAt: Date?
     ) -> Bool {
-        guard sender != me,
-              HMAC<SHA256>.isValidAuthenticationCode(data, authenticating: Self.message(room: room, identity: sender), using: key)
-        else { return false }
+        // A stay announcement is over another message and never checks here.
+        guard isOtherDevice(data, room: room, sender: sender, me: me) else { return false }
         guard let senderJoinedAt, let myJoinedAt else { return true }
         return senderJoinedAt == myJoinedAt ? sender > me : senderJoinedAt > myJoinedAt
     }
 
     /// The room and identity, length-prefixed so no two pairs read alike.
-    private static func message(room: String, identity: String) -> Data {
-        Data("\(room.utf8.count):\(room)\(identity.utf8.count):\(identity)".utf8)
+    private static func message(room: String, identity: String, stay: Bool) -> Data {
+        Data("\(stay ? "stay:" : "")\(room.utf8.count):\(room)\(identity.utf8.count):\(identity)".utf8)
     }
 }

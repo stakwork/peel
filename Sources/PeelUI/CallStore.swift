@@ -35,6 +35,11 @@ public final class CallStore {
     public private(set) var recent: [CallLink] = []
     /// The call this device is on, and its window.
     public internal(set) var call: (any OngoingCall)?
+    /// The call just joined, while it waits for the person to say what to do
+    /// about their other device already on it: "Switch to this device" or
+    /// "Stay on both devices". Nothing is announced to the other device
+    /// until they choose.
+    public private(set) var choosingDevice: (any OngoingCall)?
     /// The goodbye of the calls left, which a quit waits for.
     @ObservationIgnored public private(set) var leaving: Task<Void, Never>?
     /// How many are on each chat's watched calls (the busiest), for chats
@@ -264,6 +269,7 @@ public final class CallStore {
             leave()
             let joined = try provider.join(ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
             joined.movedAway = { [weak self, weak joined] in if let joined { self?.movedAway(joined) } }
+            joined.otherDeviceFound = { [weak self, weak joined] in if let joined { self?.otherDeviceFound(joined) } }
             call = joined
             return true
         } catch {
@@ -320,6 +326,7 @@ public final class CallStore {
     public func leave() {
         guard let call else { return }
         self.call = nil
+        choosingDevice = nil
         let earlier = leaving
         leaving = Task {
             await earlier?.value
@@ -333,6 +340,32 @@ public final class CallStore {
         guard call === moved else { return }
         leave()
         chatNotice(moved.chat) { _ in "The call moved to your other device." }
+    }
+
+    /// Another device of this account is already on the call just joined:
+    /// ask which to keep (Two sessions on one room are fine: `isOnCall`
+    /// and `otherCall` are about this device's call only.)
+    func otherDeviceFound(_ found: any OngoingCall) {
+        guard call === found else { return }
+        choosingDevice = found
+    }
+
+    /// "Switch to this device": announce, and the other device leaves.
+    public func switchToThisDevice() { resolveDevice(stay: false) }
+
+    /// "Stay on both devices": both keep the call.
+    public func stayOnBothDevices() { resolveDevice(stay: true) }
+
+    /// Dismissed without choosing: this device leaves, the other is untouched.
+    public func cancelDeviceChoice() {
+        guard choosingDevice != nil else { return }
+        leave()
+    }
+
+    private func resolveDevice(stay: Bool) {
+        guard let choosing = choosingDevice else { return }
+        choosingDevice = nil
+        if call === choosing { choosing.resolveOtherDevice(stay: stay) }
     }
 
     /// Leaves, and waits until every room left has said goodbye: when Peel quits.

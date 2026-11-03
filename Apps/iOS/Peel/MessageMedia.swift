@@ -90,7 +90,13 @@ struct ImageTile: View {
                     .aspectRatio(square ? 1 : 4 / 3, contentMode: .fit)
                     .frame(maxWidth: tileSide)
                     .overlay {
-                        if handle?.failureReason != nil {
+                        if model.awaitsManualDownload(message) {
+                            VStack(spacing: Theme.Space.xs) {
+                                Image(systemName: "arrow.down.circle").font(.system(size: 28))
+                                Text("Download image").phoneFont(.secondary)
+                            }
+                            .foregroundStyle(Theme.secondaryText)
+                        } else if handle?.failureReason != nil {
                             Image(systemName: "photo").foregroundStyle(Theme.secondaryText)
                         } else {
                             ProgressView()
@@ -103,9 +109,13 @@ struct ImageTile: View {
         .accessibilityElement()
         .accessibilityLabel("Image")
         .accessibilityAddTraits([.isImage, .isButton])
-        .accessibilityHint("Opens the image full screen")
+        .accessibilityHint(model.awaitsManualDownload(message) ? "Downloads the image" : "Opens the image full screen")
         .contentShape(shape)
         .onTapGesture {
+            if model.awaitsManualDownload(message) {
+                Task { await model.download(message) }
+                return
+            }
             guard image != nil else { return }
             let messages = run.isEmpty ? [message] : run
             viewing = ImageViewerRequest(messages: messages, start: messages.firstIndex { $0.id == message.id } ?? 0,
@@ -113,7 +123,7 @@ struct ImageTile: View {
         }
         .fullScreenCover(item: $viewing) { ImageViewer(request: $0) }
         // Again once an upload of ours is done (the Mac's `AutoDownload`).
-        .task(id: TileKey(file: file, upload: message.upload)) {
+        .task(id: TileKey(file: file, upload: message.upload, auto: model.autoDownloadsMedia)) {
             if let file {
                 image = await ImageCache.shared.image(file, maxPixels: ImageCache.tilePixels)
             } else {
@@ -126,6 +136,7 @@ struct ImageTile: View {
 private struct TileKey: Hashable {
     let file: URL?
     let upload: String?
+    let auto: Bool
 }
 
 /// A GIF from Giphy, its first frame (the phone does not play them yet).

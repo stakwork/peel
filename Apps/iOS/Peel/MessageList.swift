@@ -186,13 +186,13 @@ struct MessageList: View {
             if following || rows.last?.shown.last?.fromMe == true { scrollToNewest() }
         }
         .overlay(alignment: .bottom) {
-            if newCount > 0 || farFromBottom || !reachesNewest {
+            if showsJump(newCount) {
                 JumpToNewest(count: newCount, action: jumpToNewest)
                     .padding(.bottom, Theme.Space.sm)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
-        .animation(.easeOut(duration: 0.2), value: newCount > 0 || farFromBottom || !reachesNewest)
+        .animation(.easeOut(duration: 0.2), value: showsJump(newCount))
         .opacity(start == nil ? 1 : 0)
     }
 
@@ -287,6 +287,11 @@ struct MessageList: View {
         settled()
     }
 
+    /// Never over a list that stands at the newest, however stale the flags.
+    private func showsJump(_ newCount: Int) -> Bool {
+        !(bottom.atBottom && reachesNewest) && (newCount > 0 || farFromBottom || !reachesNewest)
+    }
+
     private func moved(_ edges: Edges) {
         if edges.nearTop, !isThread, !opening, live { model.loadOlder() }
         var bottom = self.bottom
@@ -319,6 +324,7 @@ struct MessageList: View {
         var bottom = self.bottom
         bottom.report(atBottom: true, settled: true, newest: newestIndex)
         if bottom != self.bottom { self.bottom = bottom }
+        if reachesNewest, farFromBottom { farFromBottom = false }
     }
 
     /// Where the list stands, kept in the model for a list of these rows

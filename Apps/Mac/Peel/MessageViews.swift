@@ -315,11 +315,11 @@ struct MessageRow: View, Equatable {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Theme.Space.xl)
-        // Inside a run, 6 pt (3 top + 3 bottom) between messages: more than a
+        // Inside a run, 12 pt (3 top + 9 bottom) between messages: more than a
         // message's 3 pt line spacing, so two read as two (design README, Flat
-        // rows). The extra 1 pt sits below each message that has a follow-up.
+        // rows). The extra sits below each message that has a follow-up.
         .padding(.top, row.startsRun ? 8 : 3)
-        .padding(.bottom, row.endsRun ? 4 : 3)
+        .padding(.bottom, row.endsRun ? 4 : 9)
         .rowChrome(row, lit: flashed || openThread, hovering: hovering)
     }
 }

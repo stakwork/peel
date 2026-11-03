@@ -59,9 +59,9 @@ public struct KeptProposal: Sendable, Equatable {
     /// How it ended for Peel; nil while it is open.
     public var ending: Ending?
     /// In a tribe (docs/hive-tribes.md, "Proposals in a tribe"): the post
-    /// whose card it is. Its state then comes from the tribe's posts, never
-    /// from a read of the workspace's strut by itself, and its card is
-    /// under that post alone.
+    /// whose card it is. Its state then comes from the tribe's posts, and
+    /// from the workspace's strut only when the post sent a stub
+    /// (`cardFromStrut`), never on a timer; its card is under that post alone.
     public var post: TribePost?
     /// In a tribe: the owner's answer sent here at `answeredAt`, true for an accept.
     public var answer: Bool?
@@ -113,21 +113,33 @@ public struct KeptProposal: Sendable, Equatable {
 
     /// Whether its truth is strut's record, read with the person's token
     /// (Peel's own strut's, a workspace's), or the tribe's posts
-    /// (`post != nil`): the latter is never read from a strut by itself,
+    /// (`post != nil`): the latter is never read from a strut on a timer,
     /// never a card at the end of the agent chat, and a read of strut that
     /// still happens (the owner's list) leaves it alone.
     public var fromStrut: Bool { post == nil }
+
+    /// In a tribe: whether its card comes from the workspace's strut, since
+    /// its post sent a stub (`ProposalRecord.isStub`): still the stub, or
+    /// strut's record read in its place. Read with the person's token when
+    /// the post is taken up, when its card is opened unread, and when an
+    /// outcome comes; a post that carries a card (a Hive from before the
+    /// stub) is drawn as it is and never read.
+    public var cardFromStrut: Bool { post != nil && (record.isStub || record.isStrutsRecord) }
 
     /// The post in a tribe that made it (`carrier`), dated as the post is:
     /// its card and words, and where its card is. The status stays the
     /// latest word's (a copy of the post coming round again never reopens a
     /// decided one), and what strut's own record had beyond the post's (the
-    /// input) stays too. A record read from strut before stands by the
-    /// posts from now on, so it takes the posts' clock.
+    /// input; for a stub, the card, its words and who proposed it) stays
+    /// too. A record read from strut before stands by the posts from now
+    /// on, so it takes the posts' clock.
     public mutating func take(carrier record: ProposalRecord, on post: TribePost, at date: Date) {
         if self.post == nil {
             self.post = post
             readAt = date
+        } else if self.post?.uuid == post.uuid, self.post?.thread == nil {
+            // The same post, kept before Peel recorded its thread.
+            self.post?.thread = post.thread
         }
         var known = record
         known.status = self.record.status
@@ -137,7 +149,40 @@ public struct KeptProposal: Sendable, Equatable {
             known.input = self.record.input
             known.inputCut = self.record.inputCut
         }
+        if record.isStub {
+            known.card = self.record.card
+            known.cardUnreadable = self.record.cardUnreadable
+            known.summary = record.summary ?? self.record.summary
+            known.rationale = record.rationale ?? self.record.rationale
+            known.createdAt = record.createdAt ?? self.record.createdAt
+            known.by = self.record.by
+        }
         self.record = known
+    }
+
+    /// In a tribe: strut's record of it, read with the person's token in
+    /// place of a stub (`cardFromStrut`): its card, words, input and who
+    /// proposed it, and strut's word on how it stands, newer than a post's;
+    /// but a read never takes it back behind the posts (pending, the step
+    /// running, over: a read that left before Jamie's word came back after
+    /// it). It stays on its post and the posts' clock.
+    public mutating func take(read record: ProposalRecord) {
+        var read = record
+        if Self.stage(read.status) < Self.stage(self.record.status) {
+            read.status = self.record.status
+            read.decision = self.record.decision ?? read.decision
+            read.result = self.record.result ?? read.result
+        }
+        self = updated(with: read, at: readAt)
+    }
+
+    /// How far along `status` is: waiting, the step running, over.
+    private static func stage(_ status: ProposalRecord.Status) -> Int {
+        switch status {
+        case .pending: 0
+        case .accepted: 1
+        case .rejected, .applied, .failed: 2
+        }
     }
 
     /// A reply in the post's thread saying how it ended, or that the step
@@ -186,6 +231,8 @@ struct ProposalRow: Codable, FetchableRecord, PersistableRecord {
     var tribe: String?
     var post: String?
     var poster: String?
+    /// In a tribe: the thread the post is in when it is not its own (v31).
+    var thread: String?
     /// In a tribe: the owner's answer sent here.
     var answer: Bool?
 
@@ -202,6 +249,7 @@ struct ProposalRow: Codable, FetchableRecord, PersistableRecord {
         tribe = kept.post?.tribe
         post = kept.post?.uuid
         poster = kept.post?.poster
+        thread = kept.post?.thread
         answer = kept.answer
     }
 
@@ -211,7 +259,7 @@ struct ProposalRow: Codable, FetchableRecord, PersistableRecord {
         var over: KeptProposal.Ending?
         if let ending, let endedAt { over = KeptProposal.Ending(word: ending, at: Date(millisecondsSince1970: endedAt)) }
         var on: TribePost?
-        if let tribe, let post { on = TribePost(tribe: tribe, uuid: post, poster: poster) }
+        if let tribe, let post { on = TribePost(tribe: tribe, uuid: post, poster: poster, thread: thread) }
         return KeptProposal(source: ProposalSource(rawValue: source), record: record, request: request, notAfter: notAfter,
                             readAt: Date(millisecondsSince1970: readAt), answeredAt: answeredAt.map(Date.init(millisecondsSince1970:)),
                             ending: over, post: on, answer: answer)
@@ -250,13 +298,23 @@ extension Storage {
         }
     }
 
-    /// Where the last `proposalPosts(after:)` got to.
+    /// Changed when a look left out posts it read, so the next one reads
+    /// every stored row again. "2": the first watch opened before the
+    /// account listed its tribes and took none of the posts it read. "3":
+    /// a post's thread was not kept (v31), so an outcome in the mention's
+    /// thread never ended its card; the posts again give it, and the outcomes end it.
+    static let proposalPostsVersion = "3"
+
+    /// Where the last `proposalPosts(after:)` got to; 0 when another
+    /// `proposalPostsVersion` made it.
     public func proposalPostsScanned() throws -> Int64 {
-        try value(for: .proposalPostsScan).flatMap(Int64.init) ?? 0
+        guard try value(for: .proposalPostsScanVersion) == Self.proposalPostsVersion else { return 0 }
+        return try value(for: .proposalPostsScan).flatMap(Int64.init) ?? 0
     }
 
     public func setProposalPostsScanned(_ id: Int64) throws {
         try set(String(id), for: .proposalPostsScan)
+        try set(Self.proposalPostsVersion, for: .proposalPostsScanVersion)
     }
 
     /// Forgets a workspace's proposals over since before `date`: their
@@ -267,5 +325,54 @@ extension Storage {
             try db.execute(sql: "DELETE FROM proposal WHERE source != '' AND tribe IS NULL AND endedAt IS NOT NULL AND endedAt < ?",
                            arguments: [date.millisecondsSince1970])
         }
+    }
+}
+
+/// Who answers a card on Jamie's post in a tribe (docs/hive-tribes.md, "Who
+/// is asking"): the person its turn ran as, by the actor strut's record
+/// names (`ProposalRecord.By.actor`, read with the person's own token),
+/// since Hive decides a reply only from them; with no record of strut's
+/// read, the tribe's owner, as Hive decides a turn that ran as the person
+/// who linked the tribe.
+public enum TribeDecider: Sendable, Equatable {
+    /// strut's record names this person: theirs, whoever owns the tribe.
+    case you
+    /// strut's record has not been read here: the owner's, as before a
+    /// tribe told Jamie who is speaking.
+    case owner
+    /// strut's record names someone else: their name, when their actor has one.
+    case someone(String?)
+
+    /// Whether the buttons are this viewer's (`isOwner`: they own the tribe).
+    public func answers(isOwner: Bool) -> Bool {
+        self == .you || (isOwner && self == .owner)
+    }
+
+    /// The line under the card for everyone it is not.
+    public var line: String {
+        switch self {
+        case .you, .owner: "The tribe's owner decides this."
+        case .someone(let name?): "\(name)'s to decide."
+        case .someone(nil): "The person who asked decides this."
+        }
+    }
+}
+
+extension KeptProposal {
+    /// Who answers it in its tribe, for a viewer whose actor on its
+    /// workspace is `actor` (`HiveLink.actor`): a post's own `by` is never
+    /// read, so only a record strut gave names anyone.
+    public func tribeDecider(actor: String?) -> TribeDecider {
+        guard record.isStrutsRecord, let by = record.by.actor, !by.isEmpty else { return .owner }
+        if let actor, by == actor { return .you }
+        return .someone(Self.person(ofActor: by))
+    }
+
+    /// The person a Hive actor names: the GitHub login before its user id
+    /// (`<login>-<id>`, Hive's `buildBifrostName`); nil for an id alone.
+    static func person(ofActor actor: String) -> String? {
+        guard let dash = actor.lastIndex(of: "-") else { return nil }
+        let name = TextLine.clean(String(actor[..<dash]), max: TextLine.maxName)
+        return name.isEmpty ? nil : name
     }
 }

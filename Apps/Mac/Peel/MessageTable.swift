@@ -1283,11 +1283,12 @@ extension ChatRow: TableRow {
         switch kind {
         case .message:
             let lines = max(1, (message.shownText.count + 69) / 70)
-            height += CGFloat(lines) * 18 + (startsRun ? 30 : 6)
+            height += CGFloat(lines) * 18 + (startsRun ? 30 : 6) + (endsRun ? 0 : 7)
             if message.attachmentKind != nil { height += 220 }
             if summary != nil { height += 28 }
             height += CGFloat(agentArtifacts.count) * 24
-            for record in strutProposals?.proposed ?? [] { height += record.estimatedCardHeight + Theme.Space.sm }
+            // A tribe's cards start shut (`TribeProposalCards`); an opened one is measured.
+            height += CGFloat(strutProposals?.proposed.count ?? 0) * (ProposalRecord.estimatedShutCardHeight + Theme.Space.sm)
         default:
             height += 28
         }
@@ -1299,7 +1300,7 @@ extension ChatRow: TableRow {
         // proposals its post made as cards, which the tribe's owner decides.
         let below = inTribe ? AnyView(VStack(alignment: .leading, spacing: 0) {
             agentArtifactLines(agentArtifacts, inTribe: true)
-            TribeProposalCards(row: self, canAnswer: canAnswer)
+            TribeProposalCards(row: self, isOwner: canAnswer)
         }) : nil
         return AnyView(ListRowContent(row: self, composer: list, canAnswer: canAnswer, below: below))
     }

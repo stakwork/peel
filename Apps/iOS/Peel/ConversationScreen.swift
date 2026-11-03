@@ -19,6 +19,10 @@ struct ConversationScreen: View {
     @State private var localTime: LocalTime?
     /// A call waiting for "Leave and start", while on another.
     @State private var pendingCall: PendingCall?
+    /// Voice mode, the agent chat's (docs/voice-mode.md); idle in any other.
+    @State private var voice = VoiceModeController()
+    @AppStorage(VoiceDefaults.wakeListenKey) private var wakeListen = VoiceDefaults.wakeListen
+    @Environment(\.scenePhase) private var scenePhase
 
     private var conversation: Conversation? {
         model.conversations.first { $0.chat == chat }
@@ -56,7 +60,25 @@ struct ConversationScreen: View {
         .background(Theme.background)
         .floatingBar(.bottom) { footer(tribe: tribe) }
         .onCallBannerInset()
+        .onAppear { attachVoice() }
+        // "Hey Peel" listens only while this chat is on screen and in front.
+        .onChange(of: wakeListen && isAgent && scenePhase == .active, initial: true) { _, on in
+            if on { attachVoice(); voice.arm() } else { voice.disarm() }
+        }
+        .onDisappear {
+            voice.disarm()
+            voice.stop()
+        }
         .navigationBarTitleDisplayMode(.inline)
+        // Landscape is allowed only while a chat is on screen.
+        .onAppear {
+            OrientationLock.shared.chatVisible = true
+            OrientationLock.shared.update()
+        }
+        .onDisappear {
+            OrientationLock.shared.chatVisible = false
+            OrientationLock.shared.update()
+        }
         .toolbar { header(tribe: tribe) }
         .callSwitchConfirmation($pendingCall, model: model, router: router)
         .sheet(item: threadHere, onDismiss: router.threadDismissed) { thread in
@@ -169,6 +191,20 @@ struct ConversationScreen: View {
         }
     }
 
+    // MARK: Voice mode
+
+    /// What the phone gives voice mode. Cards stay on the Mac (decision 9),
+    /// so stopping the agent's turn is the Mac's too: no `stopAgentTurn`.
+    private func attachVoice() {
+        guard isAgent else { return }
+        voice.attach(model, hooks: .init(
+            isAnswering: { model.agentUnanswered != nil },
+            isWaitingApproval: { model.agentChat.map { model.waitingCards[$0] != nil } == true },
+            stopAgentTurn: nil,
+            blocked: { nil }
+        ))
+    }
+
     // MARK: Footer
 
     @ViewBuilder private func footer(tribe: Tribe?) -> some View {
@@ -182,13 +218,24 @@ struct ConversationScreen: View {
                     .foregroundStyle(Theme.secondaryText)
                     .frame(maxWidth: .infinity)
                     .padding(Theme.Space.md)
+            } else if isAgent, voice.phase.isActive {
+                VoicePanel(voice: voice)
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.bottom, Theme.Space.sm)
             } else if let conversation {
-                PhoneComposer(
-                    composer: .chat(chat),
-                    placeholder: isAgent ? "Ask Peel" : "Message \(conversation.title)",
-                    loadMentionable: conversation.isTribe ? model.mentionLoader(chat) : nil,
-                    paysTo: conversation.isTribe || isAgent ? nil : conversation.name
-                )
+                HStack(alignment: .bottom, spacing: 0) {
+                    PhoneComposer(
+                        composer: .chat(chat),
+                        placeholder: isAgent ? "Ask Peel" : "Message \(conversation.title)",
+                        loadMentionable: conversation.isTribe ? model.mentionLoader(chat) : nil,
+                        paysTo: conversation.isTribe || isAgent ? nil : conversation.name
+                    )
+                    if isAgent {
+                        VoiceModeButton(voice: voice)
+                            .padding(.trailing, Theme.Space.sm)
+                            .padding(.bottom, Theme.Space.sm)
+                    }
+                }
             }
         }
     }

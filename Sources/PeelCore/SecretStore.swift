@@ -403,3 +403,52 @@ public struct FileSecretStore: SecretStore {
         }
     }
 }
+
+/// The Hive pairing's item: kept under a fixed account of its own, not the
+/// profile's, so removing the account (`Profile.delete`) leaves the pairing
+/// for a restore of the same account (`HiveLink.belongs(to:)`). A pairing an
+/// earlier build kept under the profile's name moves here when first read.
+public struct HiveItem: SecretItem {
+    /// Where the pairing is kept now.
+    let current: any SecretItem
+    /// Where earlier builds kept it, under the profile's name.
+    let legacy: any SecretItem
+
+    init(current: any SecretItem, legacy: any SecretItem) {
+        self.current = current
+        self.legacy = legacy
+    }
+
+    /// The Keychain's, for an app profile: this device only, not synced.
+    init(profileName: String) {
+        self.init(
+            current: KeychainItem(service: "dev.peel.hive", account: "device",
+                                  accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly),
+            legacy: KeychainItem(service: "dev.peel.hive", account: profileName,
+                                 accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly))
+    }
+
+    /// The pairing; one found at the old place is copied to the new and
+    /// removed from the old (best effort: it is read either way).
+    public func read() throws -> Data? {
+        if let data = try current.read() { return data }
+        guard let old = try legacy.read() else { return nil }
+        do {
+            try current.write(old)
+            try? legacy.delete()
+        } catch {
+            // Tried again at the next read; the old copy stays until then.
+        }
+        return old
+    }
+
+    public func write(_ data: Data) throws {
+        try current.write(data)
+        try? legacy.delete()
+    }
+
+    public func delete() throws {
+        try current.delete()
+        try legacy.delete()
+    }
+}

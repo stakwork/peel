@@ -41,6 +41,9 @@ struct MessageList: View {
     /// A row just gone to from a quote or a jump, lit for a moment.
     @State private var flashed: String?
     @State private var layout = Layout()
+    /// The pin by the last row after the container's height stops changing
+    /// (the keyboard's animation), replaced by each change.
+    @State private var settledPin: Task<Void, Never>?
 
     /// Where a list opens.
     enum Start: Equatable {
@@ -164,6 +167,7 @@ struct MessageList: View {
             // Not while it opens, which places it at its own row.
             if new.container != old.container, following, reachesNewest, !userScrolling, !opening {
                 keepLastRowInView()
+                repinOnceSettled()
                 var pinned = new
                 pinned.atBottom = true
                 pinned.far = false
@@ -182,13 +186,13 @@ struct MessageList: View {
             if following || rows.last?.shown.last?.fromMe == true { scrollToNewest() }
         }
         .overlay(alignment: .bottom) {
-            if newCount > 0 || farFromBottom || !reachesNewest {
+            if showsJump(newCount) {
                 JumpToNewest(count: newCount, action: jumpToNewest)
                     .padding(.bottom, Theme.Space.sm)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
-        .animation(.easeOut(duration: 0.2), value: newCount > 0 || farFromBottom || !reachesNewest)
+        .animation(.easeOut(duration: 0.2), value: showsJump(newCount))
         .opacity(start == nil ? 1 : 0)
     }
 
@@ -283,6 +287,11 @@ struct MessageList: View {
         settled()
     }
 
+    /// Never over a list that stands at the newest, however stale the flags.
+    private func showsJump(_ newCount: Int) -> Bool {
+        !(bottom.atBottom && reachesNewest) && (newCount > 0 || farFromBottom || !reachesNewest)
+    }
+
     private func moved(_ edges: Edges) {
         if edges.nearTop, !isThread, !opening, live { model.loadOlder() }
         var bottom = self.bottom
@@ -315,6 +324,7 @@ struct MessageList: View {
         var bottom = self.bottom
         bottom.report(atBottom: true, settled: true, newest: newestIndex)
         if bottom != self.bottom { self.bottom = bottom }
+        if reachesNewest, farFromBottom { farFromBottom = false }
     }
 
     /// Where the list stands, kept in the model for a list of these rows
@@ -342,6 +352,18 @@ struct MessageList: View {
     private func keepLastRowInView() {
         guard let last = rows.last?.id else { return }
         position.scrollTo(id: last, anchor: .bottom)
+    }
+
+    /// Once the container's height has stopped changing, by the last row
+    /// again: the pins made mid-animation land among rows the stack has
+    /// not yet laid out for the final height, and can leave a blank list.
+    private func repinOnceSettled() {
+        settledPin?.cancel()
+        settledPin = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, following, reachesNewest, !userScrolling, !opening else { return }
+            keepLastRowInView()
+        }
     }
 
     private func scrollToNewest() {

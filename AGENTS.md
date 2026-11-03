@@ -119,7 +119,7 @@ is a short plan. Update the status and the journal when you finish something.
     `finish` (only one run does it; a send's `sending` mark is in
     `Storage.apply`), the owed ones, forgetting expired ones
   - `Storage+Proposals.swift` — the proposals as last read (`KeptProposal`,
-    the `proposal` table, v30): strut's record, where it is (Peel's own
+    the `proposal` table, v30, the post's thread v31): strut's record, where it is (Peel's own
     strut, or a workspace by its peer id), for Peel's own strut's the
     device request whose card it is and that card's expiry, when it was
     read and answered here, and how it ended for Peel (`Ending`: final,
@@ -130,7 +130,8 @@ is a short plan. Update the status and the journal when you finish something.
     `answerStaleAt`); `keepProposal`, `proposals`,
     `forgetOrgProposals(endedBefore:)`, and `proposalPosts(after:)`, the
     tribes' posts naming a proposal since the last look
-    (`Setting.proposalPostsScan`)
+    (`Setting.proposalPostsScan`, read again from the start when
+    `proposalPostsVersion` changes)
   - `Storage+Writes.swift` — writes: `Commit` and `apply` (one core call's
     changes in one transaction), message upsert and deletes, read markers,
     mutes, send status, invoices, uploads, contacts and tribes
@@ -172,8 +173,9 @@ is a short plan. Update the status and the journal when you finish something.
     `PaymentHistory.swift` keeps its own)
   - `CallChat.swift` — the call's chat without LiveKit: `CallChatMessage`,
     `CallChatWire` (the `lk-chat-topic` JSON: messages, Jamie's status rows,
-    `mentionsJamie`) and `CallChatLog` (rows capped at 500, deduped, Jamie
-    thinking); tested in `CallChatTests`
+    `mentionsJamie`; who Jamie is, `isJamie`, and its voice, `jamieSpeaks`
+    and the `voice(on:)` toggle) and `CallChatLog` (rows capped at 500,
+    deduped, Jamie thinking); tested in `CallChatTests`
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
@@ -188,6 +190,11 @@ is a short plan. Update the status and the journal when you finish something.
     the player's progress and seek maths, `Engine.sendVoiceMessage` (tested in
     `VoiceMessageTests`); the shared `Apps/Shared/Voice` (`VoiceRecorder`, `VoicePlayer`,
     `VoiceControls`) use it on the phone and the Mac
+  - Voice mode with the agent (`docs/voice-mode.md`): the pure parts are in
+    `Sources/PeelUI/Voice/` (`VoiceCommandParser`, `SpokenText`, `VoiceMachine`,
+    `VoiceSettings`; tested in `VoiceCommandParserTests`, `SpokenTextTests`,
+    `VoiceModeStateTests`); the shared `Apps/Shared/Voice` has `VoiceModeController`,
+    `VoiceListener`, `VoiceSpeaker` and `VoiceModeViews`
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,
@@ -264,7 +271,10 @@ is a short plan. Update the status and the journal when you finish something.
     for the Mac and the iPhone alike (`HiveClient`: start, poll, `answer`
     (polled until the person answers; a poll that reaches no one or gets a
     5xx is tried again until the code runs out), renew, `startCall`: a call with
-    Jamie in it for one workspace, docs/hive-calls.md; `jamieLinks`,
+    Jamie in it for one workspace, docs/hive-calls.md; `callTicket` (with
+    `HiveCallTicket`, never described with its token): the ticket to a call
+    Hive made, under an identity Hive records for the person, docs/hive-calls.md
+    "Who is speaking"; `jamieLinks`,
     `linkTribe`, `unlinkTribe`: a tribe's Jamie, docs/hive-tribes.md, with
     `JamieAccount` and `JamieLink`), what is kept of a pairing
     (`HiveLink`, its peers and credential, never in a database; `HivePeer`,
@@ -404,7 +414,8 @@ is a short plan. Update the status and the journal when you finish something.
   `readApps` (the Mac through its strut, the iPhone on each org's own;
   `readingApps`, `unreadApps`); `source`, `caption` and `matches`, an
   app's words for the person; `callLink(on:)`, a call with Jamie in it
-  for a live workspace (docs/hive-calls.md); a tribe's Jamie as Hive keeps
+  for a live workspace (docs/hive-calls.md), and `callTicket`, the ticket
+  to a call Hive made, as the person; a tribe's Jamie as Hive keeps
   it, `jamieLinks`, `jamiePick`, `jamieOptions`, `setJamie`, and
   `opensFromTribe`, which org a tribe's deliverable may open on
   (docs/hive-tribes.md); `opening`, how a deliverable or a workspace's
@@ -416,7 +427,8 @@ is a short plan. Update the status and the journal when you finish something.
   `CallStore` (`AppModel.calls`: presence by room, the counts per chat,
   the recent calls across chats watched while unlocked and the open chat's,
   the call you are on, join, start (with Jamie from a Stadeum workspace:
-  `jamiePicks`, `pickJamie`, `hiveCall`), leave; the view passes the call
+  `jamiePicks`, `pickJamie`, `hiveCall`; a join of a call Hive made asks
+  Hive for the ticket first, `hiveTicket`), leave; the view passes the call
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
@@ -563,8 +575,9 @@ is a short plan. Update the status and the journal when you finish something.
   as a badge (Accepting…, Running…, Applied, Rejected, Failed, Expired,
   Gone, Not yours); `OrgProposalRow`, a workspace's at the end of the
   agent chat, decided there with the person's token; `TribeProposalCards`,
-  those Jamie's post in a tribe made, under the post, with the buttons for
-  the tribe's owner alone, whose click is a reply to the post), `AgentTable` (the agent chat's
+  those Jamie's post in a tribe made, under the post, shut to its title
+  until a click (`details`), with the buttons for the tribe's owner alone,
+  whose click is a reply to the post), `AgentTable` (the agent chat's
   rows for `MessageTable`, `AgentListRow` (a workspace's proposal among
   its kinds), `AgentDMRows` (the agent's DM
   as the chat draws it: its rows as a chat's with tool rows above a reply,
@@ -1390,7 +1403,8 @@ format and a stable hash) and the gold chip's mention of you or @all; mention ma
 this account in a tribe, and the mention re-scan; message markup (inline
 code, fences, links, mentions, plain-text previews); call links (both forms, hosts, room names,
 query keys) and the call server setting; which calls notify (someone
-else's, recent, valid) and the chat's notification level; call tickets (strict query encoding,
+else's, recent, valid) and the chat's notification level; call tickets (a Hive room's asked of Hive
+first, any failure, a cancel aside, joining through the call server, another room never told to Hive; strict query encoding,
 the media server allowlist, token claims, the token never described, and a
 fetch from an in-process loopback stub that leaves no cookie or URL cache) and
 the presence feed (each message, names, photos, joins and leaves); the

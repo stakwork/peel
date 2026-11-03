@@ -84,6 +84,24 @@ private struct AgentChatColumn: View {
 
     private var composer: ComposerID { dm.map(ComposerID.chat) ?? .agent }
 
+    /// Voice mode in the DM (docs/voice-mode.md).
+    @State private var voice = VoiceModeController()
+    @AppStorage(VoiceDefaults.wakeListenKey) private var wakeListen = VoiceDefaults.wakeListen
+    @Environment(\.controlActiveState) private var activeState
+
+    /// What the Mac gives voice mode: the DM's own turn state and Stop, and
+    /// no voice mode while a dictation records.
+    private func attachVoice() {
+        voice.attach(model, hooks: .init(
+            isAnswering: { model.agentAnswering != nil },
+            isWaitingApproval: { model.agentWaiting },
+            stopAgentTurn: { model.stopAgentTurn() },
+            blocked: { DictationController.shared.isListening ? "Voice mode is off while dictating." : nil },
+            lexicon: { DictationController.shared.lingo.lexicon },
+            refreshLexicon: { Task { await DictationController.shared.lingo.refresh() } }
+        ))
+    }
+
     /// While the DM's turn runs (`agentAnswering`).
     private var stop: (@MainActor () -> Void)? {
         let model = model
@@ -111,7 +129,16 @@ private struct AgentChatColumn: View {
                 if model.agentNeedsModel {
                     // The model was removed: nothing sent here could be answered.
                     AgentModelPrompt()
+                } else if voice.phase.isActive {
+                    VoicePanel(voice: voice)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
                 } else {
+                    HStack {
+                        Spacer()
+                        VoiceModeButton(voice: voice, size: 28)
+                    }
+                    .padding(.horizontal, 20)
                     // Text only, to the agent contact (`AppModel.takesFiles`); Stop sends it a `cancel`.
                     ChatFooter(conversation: conversation, tribe: nil, composer: composer,
                                placeholder: "Message \(agent.name)", stop: stop)
@@ -128,6 +155,15 @@ private struct AgentChatColumn: View {
             model.web.linkAction(url)
             return .handled
         })
+        .onAppear { attachVoice() }
+        // "Hey Peel" listens only while this chat is open in the front window.
+        .onChange(of: wakeListen && dm != nil && activeState == .key, initial: true) { _, on in
+            if on { attachVoice(); voice.arm() } else { voice.disarm() }
+        }
+        .onDisappear {
+            voice.disarm()
+            voice.stop()
+        }
         .onAppear {
             // After this layout pass, once the chat it replaced has let go
             // of the keyboard (Tom: back from a View, the cursor was lost).

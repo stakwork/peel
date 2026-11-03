@@ -366,6 +366,61 @@ extension ProposalTests {
         #expect(notInATribe.answerStaleAt == nil)
     }
 
+    /// A post that sends a stub (strut's plans/proposal-links.md): its card
+    /// is strut's, read with the person's token in the stub's place, and
+    /// kept when the stub comes round again; the read takes strut's word on
+    /// how it stands but never reopens one the posts ended, and leaves the
+    /// card on its post and the posts' clock. A post with strut's card has
+    /// nothing to read.
+    @Test func aStubsCardIsStrutsRecordReadInItsPlace() throws {
+        let entries = try #require(Self.post(proposals: Self.proposedEntries).strutProposals).proposed
+        let (made, stub) = (entries[0], entries[1])
+        #expect(stub.isStub && !stub.isStrutsRecord && !made.isStub)
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let t1 = t0.addingTimeInterval(60)
+        let post = TribePost(tribe: "02tribe", uuid: "post-1", poster: "Jamie")
+        #expect(!KeptProposal(source: .org("acme"), record: made, readAt: t0, post: post).cardFromStrut, "a post with strut's card")
+        var kept = KeptProposal(source: .org("acme"), record: stub, readAt: t0, post: post)
+        #expect(kept.cardFromStrut && !KeptProposal(source: .org("acme"), record: stub, readAt: t0).cardFromStrut)
+        let read = try ProposalRecord(strut: Data(#"""
+            {"id":"p-node-2","step":"graph/create-node","title":"Create a node","status":"pending","rationale":"You asked.",
+             "by":{"workflow":"orchestrator","runId":"r1","actor":"tom"},"input":{"name":"Tea"},
+             "card":{"v":1,"title":"Create a node","fields":[{"label":"Name","value":"Tea"}],"full":true}}
+            """#.utf8))
+        kept.take(read: read)
+        #expect(kept.record.card?.fields.map(\.label) == ["Name"] && kept.record.input == .object(["name": .string("Tea")]))
+        #expect(kept.record.rationale == "You asked." && kept.record.by.actor == "tom" && kept.cardFromStrut && !kept.record.isStub)
+        #expect(kept.post == post && kept.readAt == t0 && !kept.isOver)
+        kept.take(carrier: stub, on: post, at: t0)
+        #expect(kept.record.card?.fields.map(\.label) == ["Name"] && kept.record.rationale == "You asked." && kept.record.by.actor == "tom",
+                "the stub coming round again keeps strut's card")
+        // Jamie's word that the step runs, then that it is done; a read that left before either
+        // still says pending: it never takes the card back.
+        var running = stub
+        running.status = .accepted
+        kept.take(outcome: running, at: t0.addingTimeInterval(30))
+        kept.take(read: read)
+        #expect(kept.record.status == .accepted && !kept.isOver)
+        var applied = stub
+        applied.status = .applied
+        kept.take(outcome: applied, at: t1)
+        kept.take(read: read)
+        #expect(kept.record.status == .applied && kept.ending == .final(t1) && kept.readAt == t1)
+        // strut's word otherwise wins: decided elsewhere, the read ends it.
+        var open = KeptProposal(source: .org("acme"), record: stub, readAt: t0, post: post)
+        var rejected = read
+        rejected.status = .rejected
+        open.take(read: rejected)
+        #expect(open.record.status == .rejected && open.ending == .final(t0) && open.readAt == t0)
+        // Who proposed it is never a post's to say: a post's `by` is not read, so its card is never taken for strut's.
+        let claimed = try #require(Self.post(proposals: """
+            [{"id":"p-claim-1","step":"x/y","title":"T","status":"pending","url":"/proposals/p-claim-1","by":{"workflow":"w","runId":"r9","actor":"kate"},
+              "card":{"v":1,"title":"T","fields":[{"label":"a","value":"b"}],"full":true}}]
+            """).strutProposals).proposed[0]
+        #expect(claimed.by == .init(workflow: "", runId: "", actor: nil) && !claimed.isStrutsRecord)
+        #expect(!KeptProposal(source: .org("acme"), record: claimed, readAt: t0, post: post).cardFromStrut)
+    }
+
     /// A tribe's proposal comes back from the store with its post and the
     /// owner's answer, and is never forgotten with a workspace's old ones.
     @Test func aTribesProposalIsKeptWithItsPostAndAnswer() throws {
@@ -421,5 +476,26 @@ extension ProposalTests {
         _ = try storage.apply(Storage.Commit(messages: [(later, false, nil)]))
         let next = try storage.proposalPosts(after: first.upTo)
         #expect(next.posts.map(\.uuid) == [uuid(5)] && next.upTo > first.upTo)
+    }
+
+    /// A value strut cut ends in "…" as shown, not in its marker, which is no
+    /// link; a value whole, or one ending in other words, is shown as it is.
+    @Test func aCutValueIsShownEndingInAnEllipsis() {
+        let cut = ProposalCard.Field(label: "docs", value: "Insomnia is common" + ProposalCard.cutMarker)
+        #expect(cut.shownValue == "Insomnia is common…")
+        #expect(ProposalCard.Field(label: "name", value: "Insomnia").shownValue == "Insomnia")
+        #expect(ProposalCard.Field(label: "note", value: "see full input").shownValue == "see full input")
+    }
+
+    /// A mark the first watch left (no version: it took none of the posts
+    /// it read) counts as no look, so every post is read again; one this
+    /// version made holds.
+    @Test func aMarkTheFirstWatchLeftIsReadAgainFromTheStart() throws {
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        try storage.set("42", for: .proposalPostsScan)
+        #expect(try storage.proposalPostsScanned() == 0)
+        try storage.setProposalPostsScanned(42)
+        #expect(try storage.proposalPostsScanned() == 42)
     }
 }

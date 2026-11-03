@@ -65,7 +65,7 @@ public final class AppModel {
             }
             return [
                 Line(title: "Account", detail: connection.label, state: connection == .connected ? .done : .active),
-                Line(title: "Contacts", detail: label(contacts, noun: "checked"),
+                Line(title: "Contacts & Tribes", detail: label(contacts, noun: "checked"),
                      state: state(started: contacts != nil, done: messages != nil || finished)),
                 Line(title: "Messages", detail: label(messages, noun: "received"),
                      state: state(started: messages != nil, done: finished), fraction: messages?.fraction),
@@ -75,7 +75,7 @@ public final class AppModel {
 
     /// What the sidebar has selected.
     public enum Destination: Hashable, Sendable {
-        case threads, mentions, automations, payments, account
+        case threads, segments, mentions, automations, payments, account
         /// The agent chat, Peel's own row in Direct messages.
         case agent
         case chat(String)
@@ -90,7 +90,7 @@ public final class AppModel {
 
     /// Account's categories, listed where the sidebar was while it is open.
     public enum AccountPage: Hashable, Sendable, CaseIterable {
-        case profile, payments, assistant, brain, connections, dictation, recording, notifications, security
+        case profile, payments, assistant, brain, connections, dictation, notifications, security
     }
 
     public var phase: Phase = .loading {
@@ -235,6 +235,9 @@ public final class AppModel {
     /// Payments and boosts on their way to the engine, so a double click
     /// never sends one twice.
     @ObservationIgnored public var moneyInFlight: Set<String> = []
+    /// Whether images and videos download as they show (Profile › Auto
+    /// download media); on until the account says otherwise.
+    public var autoDownloadsMedia = true
     /// What the one-tap Boost tips (the engine's boost amount).
     public var boostAmountMsat = Engine.defaultBoostAmountMsat
     /// A one-tap boost amount from another device the last Boost asked to
@@ -428,11 +431,17 @@ public final class AppModel {
         }
         notifier.model = self
         proposals.orgs = { [weak self] in (self?.stadeum.live ?? [], self?.stadeum.link?.actor) }
+        stadeum.sphinxProof = { [weak self] in try await self?.engine?.sphinxProof() }
+        stadeum.opened = { [weak self] in self?.markLinkedJamies() }
         proposals.inFront = { [weak self] in self?.platform.presence.isFrontmost ?? false }
         calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
         calls.hiveCall = { [weak self] peer in
             guard let self else { throw PeelError("Peel is closing.") }
             return try await stadeum.callLink(on: peer)
+        }
+        calls.hiveTicket = { @MainActor [weak self] room, name, metadata in
+            guard let self else { throw PeelError("Peel is closing.") }
+            return try await stadeum.callTicket(room: room, participantName: name, metadata: metadata)
         }
         calls.chatNotice = { [weak self] chat, change in
             guard let self else { return }
@@ -525,10 +534,15 @@ public final class AppModel {
     public private(set) var linkedTribes: [TribeLink: LinkedTribe] = [:]
     /// Each tribe's members as last read (`tribeMembers`), for the counts
     /// shown outside the Members panel (`TribeMembers.countLabel`).
-    public private(set) var knownMembers: [String: TribeMembers] = [:]
+    public internal(set) var knownMembers: [String: TribeMembers] = [:]
     @ObservationIgnored private var readingMembers: Set<String> = []
-    /// Jamie's approvals this session (`approveJamie`).
+    /// Jamie's approvals and marks this session (`approveJamie`, `markJamie`).
     @ObservationIgnored var jamieApprovals = JamieApprovals()
+    /// The sweep for the tribes an older Peel linked (`markLinkedJamies`).
+    @ObservationIgnored let jamieSweep = JamieSweep()
+    /// What marking Jamie to know who is speaking said this session, by
+    /// tribe, for its Jamie row (`markJamie`, `setJamieSeesSenders`).
+    public internal(set) var jamieMarkNotes: [String: String] = [:]
     /// The open tribe's pinned message, read from storage however old.
     public private(set) var pinnedMessage: Message?
     /// Invites made here by code, and those still waiting to be used,
@@ -764,8 +778,10 @@ public final class AppModel {
 
     /// Peel has gone unused for the PIN timeout, though it may not have
     /// locked yet; notifications already say nothing.
+    /// Never skips only this idle lock: launch (`start`) still needs the PIN to
+    /// decrypt the account secret, and the PIN is not stored.
     public var isLockDue: Bool {
-        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours > 0, let lastActiveAt else { return false }
+        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours != PINTimeout.never, pinTimeoutHours > 0, let lastActiveAt else { return false }
         return Date.now.timeIntervalSince(lastActiveAt) > Double(pinTimeoutHours) * 3600
     }
 
@@ -819,6 +835,8 @@ public final class AppModel {
         // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()
         await attach(engine)
+        // A pairing kept from before the account was removed stays only if it was this account's.
+        stadeum.accountRestored()
     }
 
     /// Resume after history stalled: the engine picks it up where it stands,
@@ -856,6 +874,12 @@ public final class AppModel {
     public func setNotificationShowsText(_ shows: Bool) async throws {
         try await signedIn().setNotificationShowsText(shows)
         notifier.showsText = shows
+    }
+
+    /// Off: images and videos wait for a button; on, they download as they show.
+    public func setAutoDownloadsMedia(_ on: Bool) async throws {
+        try await signedIn().setAutoDownloadsMedia(on)
+        autoDownloadsMedia = on
     }
 
     public func setNotificationStyle(_ style: NotificationPolicy.Style) async throws {
@@ -1342,7 +1366,8 @@ public final class AppModel {
     }
 
     /// What this device adds to the account's synced preferences: Face ID
-    /// where the platform syncs it and the account has a PIN, the agent's
+    /// where the platform syncs it and the account has a PIN, the PIN timeout
+    /// where the account has a PIN, the agent's
     /// credential where there is an agent.
     private func preferenceCapabilities(for profile: Profile?) -> PreferenceCapabilities {
         let agentCredential = agentHost == nil ? nil : profile.map { profile in
@@ -1351,7 +1376,8 @@ public final class AppModel {
             }
         }
         return PreferenceCapabilities(
-            biometrics: platform.syncsBiometrics && profile?.biometrics != nil, agentCredential: agentCredential
+            biometrics: platform.syncsBiometrics && profile?.biometrics != nil,
+            pinTimeout: profile?.requiresPIN == true, agentCredential: agentCredential
         )
     }
 
@@ -1381,6 +1407,7 @@ public final class AppModel {
         tribes = [:]
         linkedTribes = [:]
         knownMembers = [:]
+        jamieMarkNotes = [:]
         invites = [:]
         pendingInvites = []
         focus = nil
@@ -1425,6 +1452,7 @@ public final class AppModel {
         paymentConfirmationMsat = Engine.defaultPaymentConfirmationMsat
         moneyInFlight = []
         boostAmountMsat = Engine.defaultBoostAmountMsat
+        autoDownloadsMedia = true
         boostToConfirm = nil
         savedLayout = ChatSections.Layout()
         sidebarLayout = savedLayout
@@ -1454,6 +1482,7 @@ public final class AppModel {
         wordsConfirmed = settings.wordsConfirmed ?? false
         paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
         boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+        autoDownloadsMedia = settings.autoDownloadsMedia ?? true
         savedLayout = settings.sidebarLayout ?? ChatSections.Layout()
         sidebarLayout = savedLayout
         connection = settings.connection
@@ -1500,6 +1529,8 @@ public final class AppModel {
                 if state == .connected {
                     connectionError = nil
                     if notice != nil, notice == serverCheckNotice { notice = nil }
+                    // The tribes an older Peel linked: their lists need the connection.
+                    markLinkedJamies()
                 }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))
@@ -1575,6 +1606,8 @@ public final class AppModel {
                 guard self.engine === engine else { break }
                 paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
                 boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
+                autoDownloadsMedia = settings.autoDownloadsMedia ?? true
+                if let hours = settings.pinTimeoutHours { pinTimeoutHours = hours }
                 await refreshSyncedPreferences(engine)
             case .sendStatus:
                 break

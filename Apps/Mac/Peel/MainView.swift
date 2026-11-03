@@ -200,6 +200,8 @@ struct Detail: View {
                 }
             case .threads:
                 ThreadsView()
+            case .segments:
+                SegmentsView()
             case .mentions:
                 MentionsView()
             case .automations:

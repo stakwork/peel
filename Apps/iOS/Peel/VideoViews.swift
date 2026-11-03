@@ -75,7 +75,7 @@ struct VideoTile: View {
                 FileShareSheet(url: shared.url).presentationDetents([.medium, .large])
             }
             // Again once an upload of ours is done (the Mac's `AutoDownload`).
-            .task(id: "\(id)/\(message.upload ?? "")") { await model.autoDownload(message) }
+            .task(id: "\(id)/\(message.upload ?? "")/\(model.autoDownloadsMedia)") { await model.autoDownload(message) }
             .task(id: file) {
                 guard let file else { return }
                 read = (file, await MediaInfoCache.shared.info(file, kind: .video))
@@ -204,6 +204,15 @@ struct VideoTile: View {
                 }
             }
             .padding(Theme.Space.lg)
+        } else if model.awaitsManualDownload(message) {
+            // Auto download media is off: the tile's tap fetches it (`tap`).
+            VStack(spacing: Theme.Space.xs) {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 28))
+                Text("Download video").phoneFont(.secondary)
+            }
+            .foregroundStyle(Theme.secondaryText)
+            .padding(Theme.Space.md)
         } else if let status {
             VStack(spacing: Theme.Space.xs) {
                 Image(systemName: status.canLoad ? "arrow.down.circle" : "video.slash")
@@ -247,6 +256,8 @@ struct VideoTile: View {
     private func tap() {
         if let file = model.attachment(id).file {
             playback.play(id, file: file)
+        } else if model.awaitsManualDownload(message) {
+            Task { await model.download(message) }
         } else {
             Task { await model.play(message) }
         }

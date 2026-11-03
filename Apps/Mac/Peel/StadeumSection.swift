@@ -19,11 +19,17 @@ struct StadeumSection: View {
                 switch hive.status {
                 case .off:
                     Fact("Stadeum") {
-                        Text(model.brain?.moved != nil
-                             ? "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
-                             : "Let your assistant ask your team's workspaces and run their workflows.")
-                            .muted()
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.brain?.moved != nil
+                                 ? "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
+                                 : "Let your assistant ask your team's workspaces and run their workflows.")
+                                .muted()
+                            if hive.reconnectHint {
+                                Text("Your account is back, but not its Stadeum connection. Connect Stadeum again.")
+                                    .foregroundStyle(Theme.attention)
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
                         if model.brain == .thisMac {
                             Button("Connect Stadeum") { model.connectHive() }
@@ -62,11 +68,16 @@ struct StadeumSection: View {
                         }
                     }
                     Fact("This Mac") {
-                        Text(hive.status == .needsPairing ? "Unpair to forget these workspaces."
-                             : hive.link?.peers.isEmpty == true ? "Paired, but Stadeum gave no workspaces for this account."
-                             : "Your assistant knows these workspaces from its next new conversation.")
-                            .muted()
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(hive.status == .needsPairing ? "Unpair to forget these workspaces."
+                                 : hive.link?.peers.isEmpty == true ? "Paired, but Stadeum gave no workspaces for this account."
+                                 : "Your assistant knows these workspaces from its next new conversation.")
+                            if hive.identified, hive.status == .connected {
+                                Text(Stadeum.identifiedLine)
+                            }
+                        }
+                        .muted()
+                        .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
                         InlineConfirm(trigger: "Unpair", prompt: "Unpair this Mac?",
                                       explanation: "Your assistant can no longer ask your workspaces. Revoke this Mac in Stadeum's settings too.",

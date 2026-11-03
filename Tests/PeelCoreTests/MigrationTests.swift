@@ -368,7 +368,8 @@ struct MigrationTests {
         #expect(Preference<UInt64>.paymentConfirmationMsat.key == "peel.payment_confirmation_msat")
         #expect(Preference<String>.timeZone.key == "peel.time_zone")
         #expect(Preference<TimeZoneSharing>.timeZoneSharing.key == "timezone")
-        #expect(Preference<Int>.pinTimeoutHours.key == "device.pin_timeout_hours")
+        // v32's: the PIN timeout moved from 'device.pin_timeout_hours'.
+        #expect(Preference<Int>.pinTimeout.key == "pin_timeout")
         #expect(Preference<Bool>.notificationText.key == "device.notification_text")
         #expect(Preference<UInt64>.boostConfirmedMsat.key == "device.boost_confirmed_msat")
         #expect(Preference<UInt64>.preferencesSince.key == "device.preferences_since")
@@ -403,9 +404,9 @@ struct MigrationTests {
         #expect(moved == [
             #"device.boost_confirmed_msat 0 "250000" 0"#,
             #"device.notification_text 0 "false" 0"#,
-            #"device.pin_timeout_hours 0 "4" 0"#,
             #"peel.payment_confirmation_msat 0 "0" 0"#,
             #"peel.time_zone 0 "Europe/London" 0"#,
+            #"pin_timeout 0 "4" 0"#,
             #"timezone 02aa {"timezone_enabled":"false","timezone_identifier":""} 1760000000"#,
             #"timezone 02bb {"timezone_enabled":"true","timezone_identifier":"Asia/Bangkok"} 1760000100"#,
             #"tip_amount 0 "250" 0"#,
@@ -413,13 +414,32 @@ struct MigrationTests {
         #expect(try storage.preference(.boostAmountMsat) == 250_000)
         #expect(try storage.preference(.paymentConfirmationMsat) == 0)
         #expect(try storage.preference(.timeZone) == "Europe/London")
-        #expect(try storage.preference(.pinTimeoutHours) == 4)
+        #expect(try storage.preference(.pinTimeout) == 4)
         #expect(try storage.preference(.notificationText) == false)
         #expect(try storage.chatTimeZone("02aa") == TimeZoneSharing(enabled: false, identifier: nil))
         #expect(try storage.chatTimeZone("02bb") == TimeZoneSharing(enabled: true, identifier: "Asia/Bangkok"))
         let left = try rows(profile, "SELECT key FROM setting ORDER BY key").map { $0["key"] as String }
         #expect(left.filter { $0 != Setting.noWordsScan.rawValue } == ["alias", "callServer", "sidebarLayout"])
         #expect(try rows(profile, "SELECT name FROM sqlite_master WHERE name = 'chatTimeZone'").isEmpty)
+    }
+
+    /// v32 moves the device-only PIN timeout to the official `pin_timeout`:
+    /// -1 (never) becomes 25, hours above 24 stay below never, and each row
+    /// keeps its date (0 stays 0 so the file wins; a choice keeps its day).
+    @Test func thePINTimeoutMovesToTheOfficialKeyKeepingItsDate() throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v31")
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO preference (key, identifier, value, updatedAt)
+                    VALUES ('device.pin_timeout_hours', '0', '"-1"', 1760000000);
+                """)
+        }
+        try queue.close()
+        let storage = try profile.storage()
+        #expect(try storage.preferenceRows().filter { $0.key.contains("pin_timeout") }.map { "\($0.key) \($0.value) \(Int($0.updatedAt))" }
+            == [#"pin_timeout "25" 1760000000"#])
+        #expect(try storage.preference(.pinTimeout).map(PINTimeout.peelHours(fromOfficial:)) == PINTimeout.never)
     }
 
     /// A boost amount under a sat (which no input of Peel's could make)
@@ -475,7 +495,7 @@ struct MigrationTests {
 
         let storage = try profile.storage()
         #expect(try storage.preference(.boostAmountMsat) == 7000)
-        #expect(try storage.preference(.pinTimeoutHours) == 2)
+        #expect(try storage.preference(.pinTimeout) == 2)
         #expect(try storage.chatTimeZone("02aa") == TimeZoneSharing(enabled: false, identifier: nil))
         let applied = try rows(profile, "SELECT identifier FROM grdb_migrations").map { $0["identifier"] as String }
         #expect(applied.contains("v23") && applied.contains("v24"))

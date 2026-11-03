@@ -8,6 +8,17 @@ import GRDB
 public enum Setting: String, Sendable {
     case network
     case server
+    /// The route the last connection came by when it was the server's
+    /// WebSocket fallback (`ServerAddress.fallback`, as its description);
+    /// "" when it was the server as named. Read at the first connect, so a
+    /// relaunch on a network that blocks the MQTT port starts with the
+    /// route that worked there.
+    case lastRoute
+    /// When the server as named was last tried while `lastRoute` held the
+    /// fallback, in seconds since 1970: a relaunch tries it again only once
+    /// `Engine.primaryProbeInterval` has passed since, not at every launch
+    /// and not never.
+    case primaryTriedAt
     case deviceID
     case alias
     case photoURL
@@ -40,6 +51,9 @@ public enum Setting: String, Sendable {
     /// tribe post naming strut's proposals (`Storage.proposalPosts(after:)`):
     /// a later open reads only the rows stored since.
     case proposalPostsScan
+    /// The `Storage.proposalPostsVersion` the `proposalPostsScan` was
+    /// made by; a new version reads every row again.
+    case proposalPostsScanVersion
     /// Which sidebar sections are open and shown in full
     /// (`ChatSections.Layout`, as JSON).
     case sidebarLayout
@@ -64,6 +78,13 @@ public enum Setting: String, Sendable {
     /// pubkey. Unset, the device answers none: the device channel stays off
     /// until the agent's bridge is launched (PR 4).
     case deviceAgent
+
+    /// The tribes this device has settled whether a member knows who is
+    /// speaking in (`Engine.showSenders`), as "<tribe> <member>" keys in a
+    /// JSON array: marked at linking or when found linked, or the owner's
+    /// switch. Absent is unknown: a tribe linked to Jamie before Peel marked
+    /// at linking is marked once at launch (`Engine.markSendersOnce`).
+    case sendersMarked
 
     /// Who a call started in each chat brings Jamie from: the Stadeum
     /// workspace picked there, "" for none (`[chat: peer id]` as JSON,

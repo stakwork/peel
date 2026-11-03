@@ -55,9 +55,22 @@ struct CallStatusText: View {
     }
 }
 
+/// How the call window lays its tiles out while nothing is focused: everyone
+/// alike, or whoever speaks large with the others beside them.
+enum CallLayout: String, CaseIterable {
+    case grid, speaker
+
+    var title: String { self == .grid ? "Grid" : "Speaker" }
+    var systemImage: String { self == .grid ? "square.grid.2x2" : "rectangle.inset.filled" }
+}
+
 private struct CallRoomView: View {
     @Environment(AppModel.self) private var model
     let call: CallSession
+    /// Kept across calls; the strip is hidden for this call only, so no
+    /// later call opens with the others out of sight.
+    @AppStorage("callLayout") private var layout = CallLayout.grid
+    @State private var stripHidden = false
     @State private var window: NSWindow?
     @State private var notice = RecordingNotice()
     @State private var toast: String?
@@ -67,12 +80,22 @@ private struct CallRoomView: View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 titleBar
-                CallStage(call: call)
+                CallStage(call: call, layout: layout, stripHidden: stripHidden)
                 CallControls(call: call)
             }
             if call.chatOpen {
                 Theme.callDivider.frame(width: 1)
                 CallChatView(call: call)
+            }
+        }
+        .overlay(alignment: .top) {
+            if model.calls.choosingDevice === call {
+                CallDeviceConfirm(
+                    cancel: { model.calls.cancelDeviceChoice() },
+                    stay: { model.calls.stayOnBothDevices() },
+                    switchHere: { model.calls.switchToThisDevice() }
+                )
+                .padding(Theme.Space.md)
             }
         }
         .background(WindowReader { window = $0 })
@@ -110,11 +133,31 @@ private struct CallRoomView: View {
             CallStatusText(call: call, size: 13)
             if call.isRecording { RecordingIndicator() }
         }
-        .padding(.horizontal, 80)
+        .padding(.horizontal, 110)
         .frame(maxWidth: .infinity)
         .frame(height: 38)
-        .overlay(alignment: .trailing) { keepOnTop.padding(.trailing, 10) }
+        .overlay(alignment: .trailing) {
+            HStack(spacing: 2) {
+                CallStripToggle(call: call, layout: layout, hidden: $stripHidden)
+                layoutButton
+                keepOnTop
+            }
+            .padding(.trailing, 10)
+        }
         .overlay(alignment: .bottom) { Theme.callDivider.frame(height: 1) }
+    }
+
+    /// Grid or speaker.
+    private var layoutButton: some View {
+        MenuButton(help: "Layout", source: "call-layout") {
+            [.header("Layout")] + CallLayout.allCases.map { option -> MenuEntry in
+                .button(option.title, systemImage: option.systemImage, checked: layout == option) { layout = option }
+            }
+        } label: {
+            Image(systemName: layout.systemImage)
+        }
+        .accessibilityLabel("Layout")
+        .accessibilityValue(layout.title)
     }
 
     private var keepOnTop: some View {
@@ -132,17 +175,46 @@ private struct CallRoomView: View {
     }
 }
 
-/// The grid, or the focused tile large with everyone else in a strip
-/// beside it (board C3's screen-share layout).
-private struct CallStage: View {
+/// Hides the others beside the large tile, or shows them again; only while
+/// one is large. A view of its own so the tiles it reads, which change as
+/// people speak, redraw only it.
+private struct CallStripToggle: View {
     let call: CallSession
+    let layout: CallLayout
+    @Binding var hidden: Bool
 
     var body: some View {
-        if let focus = call.focus, let main = call.tiles.first(where: { $0.id == focus }) {
-            let others = call.tiles.filter { $0.id != focus }
+        if CallStage.main(of: call, layout: layout) != nil, call.tiles.count > 1 {
+            IconButton(help: hidden ? "Show everyone else beside the large tile" : "Hide everyone else, for a larger view") {
+                hidden.toggle()
+            } label: {
+                Image(systemName: hidden ? "sidebar.right" : "rectangle.righthalf.inset.filled")
+            }
+            .accessibilityLabel(hidden ? "Show participants" : "Hide participants")
+        }
+    }
+}
+
+/// The grid, or one tile large with everyone else in a strip beside it
+/// (board C3's screen-share layout): the focused tile, else, in the speaker
+/// layout, whoever speaks. The strip can be hidden.
+private struct CallStage: View {
+    let call: CallSession
+    let layout: CallLayout
+    let stripHidden: Bool
+
+    /// The tile shown large, or nil for the grid.
+    static func main(of call: CallSession, layout: CallLayout) -> CallSession.Tile? {
+        guard let id = call.focus ?? (layout == .speaker ? call.activeSpeaker : nil) else { return nil }
+        return call.tiles.first { $0.id == id }
+    }
+
+    var body: some View {
+        if let main = Self.main(of: call, layout: layout) {
+            let others = call.tiles.filter { $0.id != main.id }
             HStack(spacing: CallGrid.gap) {
-                CallTileView(tile: main, avatarSize: 96, focused: true) { call.toggleFocus(main.id) }
-                if !others.isEmpty { strip(others) }
+                CallTileView(tile: main, avatarSize: 96, focused: call.focus == main.id) { call.toggleFocus(main.id) }
+                if !others.isEmpty, !stripHidden { strip(others) }
             }
             .padding(Theme.Space.lg)
         } else {
@@ -280,11 +352,11 @@ private struct CallTileView: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
         .onTapGesture(perform: click)
-        .help(focused ? "\(name) · Click or press Escape to see everyone" : "\(name) · Click to focus")
+        .help(focused ? "\(name) · Click or press Escape to go back" : "\(name) · Click to focus")
         .accessibilityElement(children: .combine)
         .accessibilityLabel(tile.speaking ? "\(name), speaking" : name)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(focused ? "Shows everyone" : "Shows this large")
+        .accessibilityHint(focused ? "Goes back" : "Shows this large")
     }
 }
 
@@ -486,10 +558,16 @@ private struct CallControls: View {
                 ? [.view(AnyView(Text("None found").font(Theme.font(13)).foregroundStyle(Theme.secondaryText).padding(.horizontal, 33).padding(.vertical, Theme.Space.xs)))]
                 : devices.map { device in .button(device.name, checked: device.id == chosen) { choose(device.id) } })
         }
+        // Jamie's voice, for the whole call, while Jamie is on it.
+        let speaks = call.jamieSpeaks
+        let jamie: [MenuEntry] = call.jamieInCall
+            ? [.header("Jamie"), .button("Speak replies aloud", checked: speaks) { call.setJamieSpeaks(!speaks) }]
+            : []
         let entries = [MenuEntry].sections(
             section("Microphone", call.microphones, chosen: call.microphone, choose: call.chooseMicrophone),
             section("Speaker", call.speakers, chosen: call.speaker, choose: call.chooseSpeaker),
-            section("Camera", call.cameras, chosen: call.camera, choose: call.chooseCamera)
+            section("Camera", call.cameras, chosen: call.camera, choose: call.chooseCamera),
+            jamie
         )
         presenter?.show(entries, at: anchor, source: "call-devices", minWidth: 268)
     }

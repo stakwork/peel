@@ -203,6 +203,54 @@ struct HiveTests {
         }
     }
 
+    /// A ticket to a call Hive made: asked with the device credential, the
+    /// room, the name and the metadata in the body the route reads
+    /// (stakwork/hive#5699), answered in the call server's shape.
+    @Test func aCallTicketIsAskedOfHiveWithTheDeviceCredential() async throws {
+        let room = "sphinx.call.-acme-hive.sphinx.chat-.1792900000"
+        let hive = try await HTTPStub { _, request in
+            guard path(request) == "/api/strut-devices/calls/ticket", request.contains("Authorization: Bearer hivedev_abc") else {
+                return (404, "{}")
+            }
+            return (200, #"{"serverUrl":"wss://livekit.sphinx.chat","roomName":"\#(room)","participantToken":"eyJ.eyJ.sig","participantName":"Evan"}"#)
+        }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        let client = HiveClient(hive: link.hive)
+        let metadata = #"{"profilePictureUrl":"https://x.io/e.png"}"#
+
+        let ticket = try await client.callTicket(link, room: room, participantName: "Evan", metadata: metadata)
+        _ = try await client.callTicket(link, room: room, participantName: "Evan", metadata: nil)
+
+        #expect(ticket.serverUrl == "wss://livekit.sphinx.chat" && ticket.participantToken == "eyJ.eyJ.sig")
+        #expect(!"\(ticket)".contains("eyJ.eyJ.sig") && !String(reflecting: ticket).contains("eyJ.eyJ.sig"))
+        #expect(hive.requests.allSatisfy { $0.hasPrefix("POST ") })
+        #expect(hive.requests.map(body) == [
+            #"{"metadata":"{\"profilePictureUrl\":\"https://x.io/e.png\"}","participantName":"Evan","room":"\#(room)"}"#,
+            #"{"participantName":"Evan","room":"\#(room)"}"#,
+        ])
+    }
+
+    /// What Hive answers instead of a ticket, in words: the join goes
+    /// through the call server then (`Engine.callTicket(for:in:hive:)`).
+    @Test(arguments: [
+        (404, #"{"error":"No Hive call in that room"}"#, "Stadeum could not give a call ticket: No Hive call in that room."),
+        (403, #"{"error":"Access denied"}"#, "Stadeum could not give a call ticket: Access denied."),
+        (503, #"{"error":"LiveKit call service not configured"}"#,
+         "Stadeum could not give a call ticket: LiveKit call service not configured."),
+        (200, #"{"url":"x"}"#, "Stadeum's call ticket could not be read."),
+    ])
+    func aTicketHiveCannotGiveIsSaid(status: Int, answer: String, said: String) async throws {
+        let hive = try await HTTPStub { _, _ in (status, answer) }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        await #expect {
+            try await HiveClient(hive: link.hive).callTicket(link, room: "sphinx.call.-a-.1", participantName: "Evan", metadata: nil)
+        } throws: { error in
+            "\(error)" == said
+        }
+    }
+
     // MARK: Jamie in tribes (docs/hive-tribes.md)
 
     static let tribeKey = String(repeating: "ab", count: 33)
@@ -274,6 +322,58 @@ struct HiveTests {
         } throws: { error in
             "\(error)" == said
         }
+    }
+
+    /// The person's Sphinx account told to Hive with the device credential
+    /// (docs/hive-tribes.md, "Who is asking"): the key and the token in the
+    /// body; linked, a Hive from before the route asked again later (its 404,
+    /// or its middleware's 401), a refusal in Hive's words, anything else a
+    /// failure; and the renewal saying whether Hive knows it.
+    @Test(arguments: [
+        (200, #"{"linked":true}"#, HiveClient.SphinxRegistration?.some(.linked)),
+        (404, #"{"error":"Not found"}"#, .notYet),
+        (401, #"{"error":"Unauthorized"}"#, .notYet),
+        (409, #"{"error":"This Sphinx account is linked to another Hive user."}"#,
+         .refused("This Sphinx account is linked to another Hive user.")),
+        (400, #"{"error":"Token expired"}"#, nil),
+    ])
+    func theSphinxAccountIsToldToHive(status: Int, answer: String, said: HiveClient.SphinxRegistration?) async throws {
+        let hive = try await HTTPStub { _, request in
+            guard request.contains("Authorization: Bearer hivedev_abc") else { return (401, #"{"error":"Unauthorized"}"#) }
+            if path(request) == "/api/strut-devices/peers" {
+                return (200, #"{"actor":"tom-cm1","peers":[],"expiresAt":"2026-11-05T10:00:00Z","errors":[],"sphinx":\#(status == 200)}"#)
+            }
+            return path(request) == "/api/strut-devices/sphinx" ? (status, answer) : (404, "{}")
+        }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        let client = HiveClient(hive: link.hive)
+        let proof = SphinxProof(pubkey: Self.jamieKey, token: "AAAA+/==")
+        if let said {
+            #expect(try await client.registerSphinx(link, proof: proof) == said)
+        } else {
+            await #expect(throws: PeelError.self) { try await client.registerSphinx(link, proof: proof) }
+        }
+        #expect(hive.requests[0].hasPrefix("POST /api/strut-devices/sphinx ")
+            && body(hive.requests[0]) == #"{"pubkey":"\#(Self.jamieKey)","token":"AAAA+/=="}"#)
+        #expect(try await client.renew(link)?.identified == (status == 200))
+    }
+
+    /// The proof is the token the Sphinx apps sign for Hive's own sign-in,
+    /// by the account key: this vector (the "abandon … about" account,
+    /// asked at 2027-01-15T08:00:00Z, so signed for half a minute before)
+    /// was checked with Hive's own `verifySphinxToken` (hive master
+    /// 933e83af1, timestamp check off), which takes it for this key.
+    /// URL-safe base64 with no padding, as the core writes it; Hive reads both.
+    @Test func theSphinxProofIsTheAccountKeysSignedTimestamp() async throws {
+        let profile = TempProfile()
+        let engine = try testEngine(try registeredStorage(profile))
+        let proof = try await engine.sphinxProof(at: Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(proof.pubkey == (await engine.accountKey))
+        #expect(proof == SphinxProof(
+            pubkey: "03216967587493cc956be284fb14c9a5f102d1030b61694d622f368a554828e766",
+            token: "a0nR4h_k7JPRVif7oZeRwo422FYRKzNdFtFTgOghyFhhyYaupxguI4vQS-PiKhJiCAfJ8_oRoGQ9RDAsfzOtQT_flErd"
+        ))
     }
 
     /// Who a call brings Jamie from: the pick in that chat while the org is

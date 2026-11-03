@@ -17,6 +17,9 @@ public struct CallTicket: Sendable, CustomStringConvertible, CustomReflectable {
     public let expires: Date
     /// Whether the token grants room admin, which Peel never asks for.
     public let roomAdmin: Bool
+    /// This account's handoff key, so a device that joins later can take
+    /// the call over (`CallHandoff`); set by `Engine.callTicket`.
+    public internal(set) var handoff: CallHandoff?
 
     public var description: String {
         "CallTicket(\(serverURL.absoluteString), room \(room), identity \(identity), name \(participantName), token not shown)"
@@ -146,6 +149,16 @@ actor CallServer {
         struct Reply: Decodable { let serverUrl: String; let participantToken: String }
         guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else { throw Failure.unreadableReply }
         return try Self.ticket(serverURL: reply.serverUrl, token: reply.participantToken, room: link.room, callServer: base, participantName: participantName)
+    }
+
+    /// A ticket Hive minted for this device's person (`HiveClient.callTicket`),
+    /// checked as this server's own are (`ticket(serverURL:…)`): the media
+    /// host allowed for this server, the room, the expiry.
+    func ticket(fromHive answer: HiveCallTicket, room: String, participantName: String) throws -> CallTicket {
+        try Self.ticket(
+            serverURL: answer.serverUrl, token: answer.participantToken, room: room, callServer: base,
+            participantName: participantName
+        )
     }
 
     /// `GET /api/connection-details` with every value percent-encoded to

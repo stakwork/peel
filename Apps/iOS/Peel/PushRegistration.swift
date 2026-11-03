@@ -27,6 +27,11 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
         PushCoordinator.shared.failed(error)
     }
+
+    /// Portrait, except on the chat (see `OrientationLock`).
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        OrientationLock.mask
+    }
 }
 
 /// Remote push on the phone (docs/phases/07-iphone.md, "Push: what is

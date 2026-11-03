@@ -9,10 +9,11 @@ import PeelCore
 /// from its strut's record (`readLocal`, kept here by `DeviceActions`
 /// through `keep`), and the person's own on each Stadeum workspace's strut,
 /// read with the person token Peel holds and decided with it here
-/// (`decide`), and those Jamie's posts in a tribe carry (`noticed`,
+/// (`decide`), and those Jamie's posts in a tribe name (`noticed`,
 /// docs/hive-tribes.md, "Proposals in a tribe"), whose state comes from the
-/// tribe's posts alone and which the tribe's owner answers by a reply to
-/// the post (`answerInTribe`, through `sendReply`). Each is kept as last
+/// tribe's posts (and, for a post that sent a stub, from the workspace's
+/// strut, read at a few moments: `fillCard`) and which the tribe's owner
+/// answers by a reply to the post (`answerInTribe`, through `sendReply`). Each is kept as last
 /// read (`Storage.keepProposal`), so a restart draws the cards as they
 /// stood before the next read. No one pushes a change, so this polls: the
 /// workspaces' pending lists while Peel is in front, every open record
@@ -31,6 +32,10 @@ public final class ProposalWatch {
     public private(set) var deciding: [ProposalKey: Bool] = [:]
     /// The workspaces whose strut did not answer the last read, by peer id.
     public private(set) var unreachable: Set<String> = []
+    /// Cards on a tribe's post whose stub the workspace's strut did not
+    /// fill at the last read: it would not show this person the record
+    /// (404, 403), or did not answer. Each stays the post's title (`tribeNote`).
+    private var unreadHere: Set<ProposalKey> = []
     /// The workspaces whose strut refused the person's token at the last
     /// read, by peer id, with what to do: the pairing renews it.
     public private(set) var refused: [String: String] = [:]
@@ -138,7 +143,7 @@ public final class ProposalWatch {
             if let request = proposal.request { byRequest[request] = proposal.key }
             schedule(proposal, at: now)
         }
-        for post in posts { noticed(post) }
+        for post in posts { takeUp(post) }
         listSoon = true
         refreshCards(at: now)
         loop = Task { await run(generation) }
@@ -160,6 +165,7 @@ public final class ProposalWatch {
         notes = [:]
         deciding = [:]
         unreachable = []
+        unreadHere = []
         refused = [:]
         oldStruts = []
         orgCards = []
@@ -197,6 +203,33 @@ public final class ProposalWatch {
         return peer(id)?.name ?? "@" + HivePeer.name(label: nil, id: id)
     }
 
+    /// The line under a card on a tribe's post: what the last answer said
+    /// (`notes`), else, for one still the post's stub that cannot be read
+    /// here (this Peel is not paired with the workspace, or its strut would
+    /// not show this person the record, or did not answer), that its card
+    /// opens for the workspace's members. Never that it is gone: a 404 from
+    /// a stub says only who may read it.
+    public func tribeNote(_ key: ProposalKey) -> String? {
+        if let note = notes[key] { return note }
+        guard let proposal = kept[key], proposal.cardFromStrut, proposal.record.isStub, let id = key.source.peer,
+              peer(id) == nil || unreadHere.contains(key) else { return nil }
+        return "This card opens for members of \(orgName(key.source) ?? id)."
+    }
+
+    /// Who answers the card on a tribe's post (`KeptProposal.tribeDecider`):
+    /// the person strut's record says its turn ran as, by this person's
+    /// actor on its workspace; with none read, the tribe's owner.
+    public func tribeDecider(_ key: ProposalKey) -> TribeDecider {
+        kept[key]?.tribeDecider(actor: orgs().actor) ?? .owner
+    }
+
+    /// A card on a tribe's post was opened: one still the post's stub is
+    /// read from the workspace's strut now (`fillCard`).
+    public func opened(_ key: ProposalKey) {
+        guard kept[key]?.record.isStub == true else { return }
+        readCard(key)
+    }
+
     /// The Mac answered a card of Peel's own strut: the bridge tells strut
     /// within seconds, so the record is read soon and often until it moves.
     public func answered(request: String) {
@@ -219,22 +252,33 @@ public final class ProposalWatch {
 
     /// A post in a tribe arrived (live, or from history): what it says of
     /// strut's proposals is kept (`Message.strutProposals`). A post that
-    /// made one gives the card, dated as the post is, under that post; a
+    /// made one gives the card, dated as the post is, under that post (a
+    /// stub's read from the workspace's strut, `fillCard`); a
     /// reply saying how one ended moves it, only from the member who posted
     /// the card, in its thread (any member can write the field, as with a
     /// deliverable: a stranger's word never ends a card, and one that came
-    /// before the post gives way to it). Nothing outside a tribe, nothing
+    /// before the post gives way to it), and a card that came as a stub is
+    /// read again for the decision and the result. Nothing outside a tribe, nothing
     /// from your own posts (your reply is `answered(byOwn:)`).
     public func noticed(_ message: Message) {
-        guard storage != nil, !message.fromMe, !message.deleted, let uuid = message.uuid, isTribe(message.chat),
+        guard isTribe(message.chat) else { return }
+        takeUp(message)
+    }
+
+    /// `noticed` for a post known to be a tribe's: the look as the watch
+    /// opens reads only the tribes' rows (`Storage.proposalPosts(after:)`),
+    /// before the account has listed its tribes.
+    private func takeUp(_ message: Message) {
+        guard storage != nil, !message.fromMe, !message.deleted, let uuid = message.uuid,
               let proposals = message.strutProposals else { return }
         let now = now()
         let date = message.date
         let source = ProposalSource.org(proposals.workspace)
         let poster = message.senderAlias
+        let thread = message.threadRoot
         for record in proposals.proposed {
             let key = ProposalKey(source: source, id: record.id)
-            let post = TribePost(tribe: message.chat, uuid: uuid, poster: poster)
+            let post = TribePost(tribe: message.chat, uuid: uuid, poster: poster, thread: thread == uuid ? nil : thread)
             let current = kept[key]
             // Another post claiming the same proposal is not its card: the first keeps it.
             if let on = current?.post, on.uuid != uuid { continue }
@@ -248,30 +292,37 @@ public final class ProposalWatch {
                 proposal = KeptProposal(source: source, record: record, readAt: date, post: post)
             }
             store(proposal, at: now)
+            // A copy of the post coming round again reads nothing strut already answered here.
+            if proposal.record.isStub, !unreadHere.contains(key), failures[key] == nil { readCard(key) }
         }
         // Only a reply by the member who posted the card (by alias, which the tribes
-        // server keeps unique while they are in the tribe), in that post's thread, ends it.
-        let thread = message.threadRoot
+        // server keeps unique while they are in the tribe), in that post's thread, ends it:
+        // the mention's, when the post replies to one (Jamie's outcome replies to the mention too).
         guard thread != uuid, let poster else { return }
         for record in proposals.outcomes {
             let key = ProposalKey(source: source, id: record.id)
             var proposal: KeptProposal
             if let current = kept[key] {
-                guard let post = current.post, post.tribe == message.chat, post.uuid == thread, post.poster == poster else { continue }
+                guard let post = current.post, post.tribe == message.chat, post.threadRoot == thread, post.poster == poster else { continue }
                 proposal = current
                 proposal.take(outcome: record, at: date)
+                store(proposal, at: now)
+                readCard(key)
             } else {
+                // Before its post: whether that sends a stub is not known yet.
                 proposal = KeptProposal(source: source, record: record, readAt: date,
                                         post: TribePost(tribe: message.chat, uuid: thread, poster: poster))
+                store(proposal, at: now)
             }
-            store(proposal, at: now)
         }
     }
 
-    /// Your own reply in a post's thread, as any message of yours arrives
-    /// (sent here, or from your other device): with a card's own word on an
-    /// open proposal of that post, it is your answer to it, dated as the
-    /// reply is.
+    /// Your own reply to a post, or in the thread it starts, as any message
+    /// of yours arrives (sent here, or from your other device): with a
+    /// card's own word on an open proposal of that post, it is your answer
+    /// to it, dated as the reply is. A post in the mention's thread is
+    /// answered by a reply to it alone, as Hive decides the post a reply
+    /// names: the thread holds the turn's other posts and their proposals.
     public func answered(byOwn message: Message) {
         guard storage != nil, message.fromMe, !message.deleted, message.type == MessageType.text, let uuid = message.uuid,
               isTribe(message.chat) else { return }
@@ -280,7 +331,8 @@ public final class ProposalWatch {
         guard thread != uuid, !word.isEmpty else { return }
         let now = now()
         for proposal in kept.values
-        where proposal.post?.tribe == message.chat && proposal.post?.uuid == thread && !proposal.isOver && proposal.record.status == .pending {
+        where proposal.post.map({ $0.tribe == message.chat && (message.replyUUID == $0.uuid || thread == $0.uuid) }) == true
+            && !proposal.isOver && proposal.record.status == .pending {
             let card = proposal.record.shownCard
             let accept: Bool
             if word == card.accept { accept = true } else if word == card.reject { accept = false } else { continue }
@@ -389,9 +441,10 @@ public final class ProposalWatch {
     /// list covers.
     private func schedule(_ proposal: KeptProposal, at now: Date) {
         let key = proposal.key
-        // One on a tribe's post stands by its posts (`fromStrut`): a read of the
-        // workspace's strut by itself would say "not yours" to anyone but the owner.
-        guard !proposal.isOver, !proposal.isExpired(at: now), proposal.fromStrut else {
+        // One on a tribe's post stands by its posts (`fromStrut`), read from the
+        // workspace's strut only when asked (`readCard`): a read asked stays due.
+        guard proposal.fromStrut else { return }
+        guard !proposal.isOver, !proposal.isExpired(at: now) else {
             due[key] = nil
             return
         }
@@ -412,6 +465,17 @@ public final class ProposalWatch {
     /// `key` read from strut as soon as the watch turns, where its truth is strut's.
     private func readNow(_ key: ProposalKey) {
         guard let proposal = kept[key], proposal.fromStrut else { return }
+        due[key] = now()
+        wake()
+    }
+
+    /// A card on a tribe's post that came as a stub (`cardFromStrut`) read
+    /// from the workspace's strut as soon as the watch turns (`fillCard`),
+    /// when this Peel is paired with that workspace; with no pairing,
+    /// nothing is read and the card stays the post's title (`tribeNote`).
+    private func readCard(_ key: ProposalKey) {
+        guard let proposal = kept[key], proposal.cardFromStrut, let id = key.source.peer, peer(id) != nil else { return }
+        failures[key] = nil
         due[key] = now()
         wake()
     }
@@ -533,7 +597,7 @@ public final class ProposalWatch {
             due[key] = nil
             // A card whose time ran out meanwhile is over here, whatever strut would say.
             guard let proposal = kept[key], !proposal.isExpired(at: now) else { continue }
-            await reRead(key)
+            if proposal.fromStrut { await reRead(key) } else { await fillCard(key) }
             guard generation == self.generation else { return }
         }
         refreshCards(at: self.now())
@@ -548,7 +612,9 @@ public final class ProposalWatch {
         let generation = generation
         let results = await withTaskGroup(of: (String, Result<(mine: [ProposalRecord], others: Int), Error>).self) { group in
             for peer in peers {
-                group.addTask { (peer.id, await Result { try await peer.pendingProposals(actor: actor) }) }
+                group.addTask {
+                    do { return (peer.id, .success(try await peer.pendingProposals(actor: actor))) } catch { return (peer.id, .failure(error)) }
+                }
             }
             var results: [(String, Result<(mine: [ProposalRecord], others: Int), Error>)] = []
             for await result in group { results.append(result) }
@@ -636,8 +702,46 @@ public final class ProposalWatch {
                     return
                 }
             }
-            due[key] = now.addingTimeInterval(min(60, 5 * pow(2, Double(failed - 1))))
+            due[key] = now.addingTimeInterval(Self.backoff(after: failed))
         }
+    }
+
+    /// Reads a tribe card that came as a stub from the workspace's strut
+    /// with the person's token (strut lets a person token read any proposal
+    /// on it by id, strut#407): strut's record fills the card and says how
+    /// it stands (`KeptProposal.take(read:)`). A 404 or 403 says only that
+    /// this person may not read it here, never that it is gone: the card
+    /// stays the post's title, open to its owner's answer (`tribeNote`).
+    /// Not answered: tried again a few times, longer apart, then left so
+    /// until the next moment that reads it; never given up on.
+    private func fillCard(_ key: ProposalKey) async {
+        guard kept[key]?.cardFromStrut == true, let id = key.source.peer, let peer = peer(id) else { return }
+        let generation = generation
+        let read = try? await peer.proposal(key.id)
+        guard generation == self.generation, var proposal = kept[key] else { return }
+        let now = now()
+        switch read {
+        case .record(let record)?:
+            if unreachable.contains(id) { unreachable.remove(id) }
+            failures[key] = nil
+            if unreadHere.contains(key) { unreadHere.remove(key) }
+            proposal.take(read: record)
+            store(proposal, at: now)
+        case .gone?, .forbidden?:
+            failures[key] = nil
+            if !unreadHere.contains(key) { unreadHere.insert(key) }
+        case nil:
+            let failed = failures[key, default: 0] + 1
+            failures[key] = failed
+            unreachable.insert(id)
+            if !unreadHere.contains(key) { unreadHere.insert(key) }
+            if failed < Self.givenUpAfter { due[key] = now.addingTimeInterval(Self.backoff(after: failed)) }
+        }
+    }
+
+    /// How long a record's read waits after `failed` reads in a row got no answer.
+    private static func backoff(after failed: Int) -> TimeInterval {
+        min(60, 5 * pow(2, Double(failed - 1)))
     }
 }
 

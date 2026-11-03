@@ -2,6 +2,7 @@ import AVFoundation
 import Combine
 import SwiftUI
 import LiveKit
+import os
 import PeelCore
 import PeelUI
 
@@ -60,6 +61,17 @@ final class CallSession {
     let identity: String
     /// The name this side joined with, sent as the sender of its chat messages.
     let participantName: String
+    /// Called when a newer device on this account joins the call.
+    @ObservationIgnored var movedAway: (() -> Void)?
+    @ObservationIgnored private let handoff: CallHandoff?
+    /// Called when this device, on joining, found another device of this
+    /// account already on the call and waits for the person's choice
+    /// (`resolveOtherDevice`).
+    @ObservationIgnored var otherDeviceFound: (() -> Void)?
+    /// Where the check for another of the account's devices stands: nothing
+    /// is announced (so the other device keeps the call) until it is done.
+    private enum DeviceProbe { case idle, probing, choosing, done }
+    @ObservationIgnored private var deviceProbe = DeviceProbe.idle
     private(set) var state = State.connecting
     /// When the room first connected: the running time counts from here.
     private(set) var connectedAt: Date?
@@ -93,6 +105,11 @@ final class CallSession {
     /// The tile shown large with the others in a strip beside it; nil for
     /// the grid. A screen someone starts sharing takes it.
     private(set) var focus: Tile.ID?
+    /// Who the speaker layout shows large while nothing is focused: the
+    /// last one else on the call to speak, or the first to join.
+    private(set) var activeSpeaker: Tile.ID?
+    /// When the speaker layout last moved, so a cough does not take the stage.
+    @ObservationIgnored private var speakerSince = Date.distantPast
     /// The call window floats above other apps' windows, for this call.
     var keepOnTop = false
 
@@ -111,6 +128,12 @@ final class CallSession {
     /// `tts` attribute a sphinx-voice agent sets. Nil attribute: a person who
     /// happens to be called Jamie.
     private(set) var jamieInCall = false
+    /// Jamie says its replies aloud, as its `tts` attribute has it; false
+    /// while Jamie is not in the call.
+    private(set) var jamieSpeaks = false
+    /// Jamie's identity on the call, the one participant the voice toggle
+    /// goes to.
+    @ObservationIgnored private var jamieIdentity: Participant.Identity?
     /// Jamie is still on the last request, so another may be skipped.
     var jamieBusy: Bool { jamieThinking }
     /// A short-lived hint above the composer.
@@ -123,6 +146,9 @@ final class CallSession {
     @ObservationIgnored private var failed = false
     @ObservationIgnored private var leaving = false
     @ObservationIgnored private var switchingMic = false
+    /// Whether the microphone is meant to be on, as last asked for; `micOn`
+    /// is what the room reports, which drops when a device goes away.
+    @ObservationIgnored private var wantsMic = false
     @ObservationIgnored private var switchingCamera = false
     @ObservationIgnored private var switchingShare = false
     private var share: ScreenShare?
@@ -143,6 +169,7 @@ final class CallSession {
     private static var pickedSpeaker: String?
     /// The session audio device changes go to: the newest.
     private static weak var audioDevicesOwner: CallSession?
+    private static let deviceLog = Logger(subsystem: "dev.peel.mac", category: "call-audio")
 
     init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) {
         self.link = link
@@ -150,6 +177,7 @@ final class CallSession {
         self.title = title
         identity = ticket.identity
         participantName = ticket.participantName
+        handoff = ticket.handoff
         wantsCamera = camera
         refreshAccess()
         refreshAudioDevices()
@@ -160,12 +188,7 @@ final class CallSession {
         changes = room.objectWillChange
             .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.refresh() } }
-        // One handler for the app: a session left after the next one began
-        // (a switch, a rejoin) must not take it away from that one.
-        Self.audioDevicesOwner = self
-        AudioManager.shared.onDeviceUpdate = { _ in
-            Task { @MainActor in CallSession.audioDevicesOwner?.audioDevicesChanged() }
-        }
+        claimAudioDevices()
         let center = NotificationCenter.default
         observers = [
             center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: .main) { [weak self] note in
@@ -212,7 +235,19 @@ final class CallSession {
         }
     }
 
+    /// One handler for the app: a session left after the next one began
+    /// (a switch, a rejoin) must not take it away from that one. Done at
+    /// connect as well as at init, so a later session gets it too.
+    private func claimAudioDevices() {
+        Self.audioDevicesOwner = self
+        AudioManager.shared.onDeviceUpdate = { _ in
+            Task { @MainActor in CallSession.audioDevicesOwner?.audioDevicesChanged() }
+        }
+    }
+
     private func connect(url: String, token: String, camera: Bool) async {
+        claimAudioDevices()
+        await listenForHandoff()
         do {
             try await room.connect(url: url, token: token)
         } catch {
@@ -222,6 +257,7 @@ final class CallSession {
         }
         guard !Task.isCancelled else { return }
         refresh()
+        probeForOtherDevice()
         // Not awaited by `leave`: a microphone prompt nobody answers must not
         // hold the call open.
         Task {
@@ -247,11 +283,22 @@ final class CallSession {
         changes = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
-        if Self.audioDevicesOwner === self {
+        let ownsAudio = Self.audioDevicesOwner === self
+        if ownsAudio {
             Self.audioDevicesOwner = nil
             AudioManager.shared.onDeviceUpdate = nil
         }
         await room.disconnect()
+        // The next call starts on the system's devices, not on an engine
+        // still bound to one that has gone since.
+        if ownsAudio {
+            let audio = AudioManager.shared
+            audio.inputDevice = audio.defaultInputDevice
+            audio.outputDevice = audio.defaultOutputDevice
+            Self.pickedMicrophone = nil
+            Self.pickedSpeaker = nil
+            Self.deviceLog.info("left the call; audio devices reset to the system default")
+        }
     }
 
     // MARK: Microphone and camera
@@ -272,8 +319,27 @@ final class CallSession {
         if on, await !mayUse(.audio) || leaving { return }
         do {
             try await room.localParticipant.setMicrophone(enabled: on)
+            wantsMic = on
         } catch {
             if on { deviceNotice = "Could not turn the microphone on" }
+        }
+        refresh()
+    }
+
+    /// Opens the microphone track afresh, on whatever device the engine now
+    /// uses; a track left from before a device change stays silent.
+    private func reacquireMicrophone() async {
+        guard wantsMic, !leaving, !switchingMic else { return }
+        switchingMic = true
+        defer { switchingMic = false }
+        let local = room.localParticipant
+        do {
+            try await local.setMicrophone(enabled: false)
+            try await local.setMicrophone(enabled: true)
+            Self.deviceLog.info("microphone re-acquired")
+        } catch {
+            Self.deviceLog.error("microphone restart failed: \(String(describing: error))")
+            deviceNotice = "Could not turn the microphone on"
         }
         refresh()
     }
@@ -441,23 +507,49 @@ final class CallSession {
 
     /// A microphone or speaker came or went: one picked that went is
     /// replaced by the system's default, and the line under the bar says so.
+    /// One that came (AirPods back in) moves the call to the system's
+    /// default, which macOS points at it, and the engine is pointed afresh
+    /// so the microphone and the playout do not stay bound to a stale device.
     private func audioDevicesChanged() {
         guard !leaving else { return }
         let audio = AudioManager.shared
         let goneMic = audio.inputDevices.contains { $0.deviceId == microphone } ? nil : microphones.first { $0.id == microphone }
         let goneSpeaker = audio.outputDevices.contains { $0.deviceId == speaker } ? nil : speakers.first { $0.id == speaker }
-        if goneMic != nil {
-            audio.inputDevice = audio.defaultInputDevice
-            Self.pickedMicrophone = nil
-        }
-        if goneSpeaker != nil {
-            audio.outputDevice = audio.defaultOutputDevice
-            Self.pickedSpeaker = nil
-        }
+        let knownMics = Set(microphones.map(\.id)), knownSpeakers = Set(speakers.map(\.id))
+        let addedMics = audio.inputDevices.filter { !knownMics.contains($0.deviceId) }
+        let addedSpeakers = audio.outputDevices.filter { !knownSpeakers.contains($0.deviceId) }
+        // The default entry keeps its id and changes the name of what it
+        // stands for.
+        let oldMicDefault = microphones.first { $0.name.hasPrefix("System default") }?.name
+        let oldSpeakerDefault = speakers.first { $0.name.hasPrefix("System default") }?.name
+        let newMicDefault = audio.inputDevices.first { $0.isDefault }.map { Self.device($0).name }
+        let newSpeakerDefault = audio.outputDevices.first { $0.isDefault }.map { Self.device($0).name }
+        if goneMic != nil { Self.pickedMicrophone = nil }
+        if goneSpeaker != nil { Self.pickedSpeaker = nil }
+        let moveMic = goneMic != nil || !addedMics.isEmpty || (Self.pickedMicrophone == nil && oldMicDefault != newMicDefault)
+        let moveSpeaker = goneSpeaker != nil || !addedSpeakers.isEmpty || (Self.pickedSpeaker == nil && oldSpeakerDefault != newSpeakerDefault)
+        // Added devices take the call over the picked one: the system made
+        // them its default.
+        if !addedMics.isEmpty { Self.pickedMicrophone = nil }
+        if !addedSpeakers.isEmpty { Self.pickedSpeaker = nil }
+        if moveMic { audio.inputDevice = audio.defaultInputDevice }
+        if moveSpeaker { audio.outputDevice = audio.defaultOutputDevice }
         if let gone = goneMic ?? goneSpeaker {
             deviceNotice = "\(gone.name) was disconnected; using the default \(goneMic != nil ? "microphone" : "speaker")"
         }
         refreshAudioDevices()
+        let names = { (list: [AudioDevice]) in list.map(\.name).joined(separator: ", ") }
+        Self.deviceLog.info("""
+            audio devices changed: added [\(names(addedMics + addedSpeakers))], \
+            removed [\([goneMic?.name, goneSpeaker?.name].compactMap { $0 }.joined(separator: ", "))], \
+            microphone \(moveMic ? (audio.defaultInputDevice.name) : "kept"), \
+            speaker \(moveSpeaker ? (audio.defaultOutputDevice.name) : "kept")
+            """)
+        // The track bound to the old device is replaced; also when the
+        // room dropped the microphone though it is meant to be on.
+        if wantsMic, moveMic || moveSpeaker || !micOn {
+            Task { await reacquireMicrophone() }
+        }
     }
 
     private func refreshCameras() async {
@@ -500,16 +592,23 @@ final class CallSession {
             if everyone != people { people = everyone }
             refocus()
         }
+        // On every refresh, not only when the tiles change: someone who
+        // started speaking during the hold still takes the stage once it ends
+        // although nothing about the tiles changed since.
+        followSpeaker()
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
         if room.isRecording != isRecording { isRecording = room.isRecording }
-        let jamie = others.contains(where: Self.isJamie)
-        if jamie != jamieInCall {
-            jamieInCall = jamie
+        let jamie = others.first(where: Self.isJamie)
+        jamieIdentity = jamie?.identity
+        if (jamie != nil) != jamieInCall {
+            jamieInCall = jamie != nil
             // Jamie left: nothing is coming.
-            if !jamie { log.stopThinking() }
+            if jamie == nil { log.stopThinking() }
         }
+        let speaks = jamie.map { CallChatWire.jamieSpeaks($0.attributes) } ?? false
+        if speaks != jamieSpeaks { jamieSpeaks = speaks }
 
         let now: State
         switch room.connectionState {
@@ -546,15 +645,37 @@ final class CallSession {
         }
     }
 
+    /// The speaker layout follows whoever else speaks: it stays on them
+    /// while they speak and through a pause, moves to someone else only
+    /// after `speakerHold`, and moves on at once when they leave.
+    private func followSpeaker() {
+        let other = { (tile: Tile) in !tile.isScreen && !tile.isYou }
+        // Only someone else holds the stage: you are shown large only while
+        // no one else is on the call.
+        let current = tiles.first { $0.id == activeSpeaker && other($0) }
+        if let current, current.speaking || Date.now.timeIntervalSince(speakerSince) < Self.speakerHold { return }
+        let next = tiles.first { other($0) && $0.speaking }?.id ?? current?.id ?? tiles.first(where: other)?.id ?? tiles.first?.id
+        if next != activeSpeaker {
+            activeSpeaker = next
+            speakerSince = .now
+        }
+    }
+
+    /// The least time the speaker layout stays on one person.
+    private static let speakerHold: TimeInterval = 2
+
     /// Their tile, or the tile of the screen they share (nil when they share none).
     private func tile(_ participant: Participant, isYou: Bool, screen: Bool) -> Tile? {
         let video = Self.video(of: participant, screen: screen)
         guard !screen || video != nil, let id = isYou ? identity : participant.identity?.stringValue,
               let person = person(id, name: participant.name, metadata: participant.metadata)
         else { return nil }
+        // Jamie keeps its track published with its voice off: muted is what it says.
+        let quiet = Self.isJamie(participant)
+            ? !CallChatWire.jamieSpeaks(participant.attributes) : !participant.isMicrophoneEnabled()
         return Tile(
             person: person, isYou: isYou, isScreen: screen, speaking: !screen && participant.isSpeaking,
-            muted: !screen && !participant.isMicrophoneEnabled(), video: video
+            muted: !screen && quiet, video: video
         )
     }
 
@@ -635,11 +756,25 @@ extension CallSession {
         }
     }
 
-    /// Jamie, the call's voice agent: named Jamie, with the `tts` attribute
-    /// its token gives it.
+    /// Jamie, the call's voice agent (`CallChatWire.isJamie`).
     nonisolated static func isJamie(_ participant: Participant) -> Bool {
-        participant.name?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Jamie") == .orderedSame
-            && participant.attributes["tts"] != nil
+        CallChatWire.isJamie(name: participant.name, attributes: participant.attributes)
+    }
+
+    /// Asks Jamie to say its replies aloud, or to stop, for everyone on the
+    /// call. `jamieSpeaks` changes when Jamie answers, not here.
+    func setJamieSpeaks(_ on: Bool) {
+        guard let jamie = jamieIdentity, !leaving else { return }
+        Task {
+            do {
+                try await room.localParticipant.publish(
+                    data: CallChatWire.voice(on: on),
+                    options: DataPublishOptions(destinationIdentities: [jamie], topic: CallChatWire.topic, reliable: true)
+                )
+            } catch {
+                deviceNotice = "Could not reach Jamie"
+            }
+        }
     }
 
     fileprivate func receiveChat(_ incoming: CallChatWire.Incoming) {
@@ -652,6 +787,59 @@ extension CallSession {
                 try? await Task.sleep(for: thinkingLimit)
                 self?.log.stopThinking(ifSerial: serial)
             }
+        }
+    }
+}
+
+// MARK: - Handoff
+
+extension CallSession {
+    /// Tells this account's other devices on the call that this one has
+    /// joined, so they leave it (`CallHandoff`).
+    fileprivate func announce(stay: Bool = false) {
+        guard let handoff else { return }
+        Task { await handoff.announce(on: room, roomName: link.room, identity: identity, stay: stay) { [weak self] in self?.leaving ?? true } }
+    }
+
+    /// Asks whether another device of this account is on the call. If one
+    /// answers, the person chooses first (`otherDeviceFound`, then
+    /// `resolveOtherDevice`) and nothing is announced meanwhile; if none
+    /// does in `CallHandoff.probeWait`, this device takes the call as before.
+    fileprivate func probeForOtherDevice() {
+        guard let handoff else { return }
+        deviceProbe = .probing
+        Task {
+            await handoff.announce(
+                on: room, roomName: link.room, identity: identity, topic: CallHandoff.probeTopic
+            ) { [weak self] in self?.leaving ?? true }
+            try? await Task.sleep(for: CallHandoff.probeWait)
+            guard self.deviceProbe == .probing, !self.leaving else { return }
+            self.deviceProbe = .done
+            self.announce()
+        }
+    }
+
+    /// The person's choice once another device was found: switch (announce,
+    /// so the other leaves) or stay on both (announce as staying).
+    func resolveOtherDevice(stay: Bool) {
+        guard deviceProbe == .choosing, !leaving else { return }
+        deviceProbe = .done
+        announce(stay: stay)
+    }
+
+    /// Leaves when a newer device on this account joins: set up before the
+    /// room connects, so no announcement is missed.
+    fileprivate func listenForHandoff() async {
+        await handoff?.listenForDevices(on: room, roomName: link.room, me: identity) { [weak self] in
+            // Only while this device is asking: an answer meant for another
+            // device's probe, or a late one, changes nothing.
+            guard let self, !self.leaving, self.deviceProbe == .probing else { return }
+            self.deviceProbe = .choosing
+            self.otherDeviceFound?()
+        }
+        await handoff?.listen(on: room, roomName: link.room, me: identity) { [weak self] in
+            guard let self, !self.leaving else { return }
+            self.movedAway?()
         }
     }
 }

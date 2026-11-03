@@ -80,6 +80,63 @@ struct CallStoreTests {
         #expect(calls.otherCall(than: nil) == nil)
     }
 
+    @Test func aNewerDeviceTakesTheCallYouAreOnButNotAnEarlierOne() throws {
+        let (calls, _, _) = try attached()
+        var notices: [String: String?] = [:]
+        calls.chatNotice = { chat, change in notices[chat] = change(nil) }
+        let earlier = OnCall(link: try link(1), chat: "02aa", people: people(2))
+        let now = OnCall(link: try link(2), chat: "02bb", people: people(2))
+        calls.call = now
+
+        // A handoff from a call already left changes nothing.
+        calls.movedAway(earlier)
+        #expect(calls.call === now)
+        #expect(notices.isEmpty)
+
+        calls.movedAway(now)
+        #expect(calls.call == nil)
+        #expect(notices["02bb"] == "The call moved to your other device.")
+    }
+
+    @Test func joiningWhereYourOtherDeviceIsAsksAndNothingMovesUntilYouChoose() async throws {
+        for choice in ["switch", "stay", "cancel"] {
+            let (calls, _, _) = try attached()
+            var notices: [String: String?] = [:]
+            calls.chatNotice = { chat, change in notices[chat] = change(nil) }
+            let now = OnCall(link: try link(1), chat: "02aa", people: people(2))
+            calls.call = now
+
+            // A device that is not on this call (or one left) is never asked about.
+            calls.otherDeviceFound(OnCall(link: try link(2), chat: "02bb", people: people(2)))
+            #expect(calls.choosingDevice == nil)
+
+            calls.otherDeviceFound(now)
+            #expect(calls.choosingDevice === now)
+            #expect(now.resolved.isEmpty)
+            switch choice {
+            case "switch": calls.switchToThisDevice()
+            case "stay": calls.stayOnBothDevices()
+            default: calls.cancelDeviceChoice()
+            }
+            await calls.leaving?.value
+            #expect(calls.choosingDevice == nil)
+            switch choice {
+            case "switch":
+                #expect(now.resolved == [false])
+                #expect(calls.call === now)
+            case "stay":
+                // Both stay: this one is still on it, and no "moved" notice.
+                #expect(now.resolved == [true])
+                #expect(calls.call === now)
+            default:
+                #expect(now.resolved.isEmpty)
+                #expect(calls.call == nil)
+                #expect(now.left)
+            }
+            #expect(notices.isEmpty)
+        }
+    }
+
     @Test func lockingStopsTheRecentCallsWatchesAndUnlockingStartsThemAgain() async throws {
         let (calls, engine, storage) = try attached()
         let room = try link(1).room
@@ -136,6 +193,10 @@ private final class OnCall: OngoingCall {
     var isRecording = false
     let wantsCamera = false
     let people: [CallParticipant]
+    var movedAway: (() -> Void)?
+    var otherDeviceFound: (() -> Void)?
+    var resolved: [Bool] = []
+    var left = false
 
     init(link: CallLink, chat: String, people: [CallParticipant]) {
         self.link = link
@@ -143,5 +204,6 @@ private final class OnCall: OngoingCall {
         self.people = people
     }
 
-    func leave() async {}
+    func resolveOtherDevice(stay: Bool) { resolved.append(stay) }
+    func leave() async { left = true }
 }

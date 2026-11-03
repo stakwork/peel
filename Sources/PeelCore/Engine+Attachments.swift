@@ -206,8 +206,9 @@ extension Engine {
     /// Only from this account's memes server; the bytes are checked against
     /// the declared type, and nothing is ever opened. With `upTo`, one not
     /// cached yet that is larger is refused as `largeAttachment` before its
-    /// body is read.
-    public func downloadAttachment(messageID: Int64, upTo: Int? = nil) async throws -> DownloadedAttachment {
+    /// body is read. With `cachedOnly`, one not cached is refused as
+    /// `notDownloaded` without a request (Auto download media is off).
+    public func downloadAttachment(messageID: Int64, upTo: Int? = nil, cachedOnly: Bool = false) async throws -> DownloadedAttachment {
         guard let message = try storage.message(id: messageID), message.type == MessageType.attachment,
               let fields = AttachmentFields.decode(message.body), let mediaToken = fields.mediaToken,
               let token = MediaToken(mediaToken) else { throw Failure.notAnAttachment }
@@ -229,6 +230,7 @@ extension Engine {
                 return (cached, AttachmentKind.verified(plain, declared: declared), plain.count)
             }.value
         } else {
+            if cachedOnly { throw Failure.notDownloaded }
             if let upTo, let size = message.fileSize, size > upTo { throw Failure.largeAttachment(size: size) }
             // Encryption adds a header, padding and a MAC to what was sent.
             let limit = min(upTo ?? .max, Self.attachmentLimit) + 128
@@ -436,6 +438,8 @@ extension Engine {
         guard let bytes = MemesServer.challengeBytes(challenge) else {
             throw MemesServer.Failure.unreadableReply("sign-in")
         }
+        // Never a Hive token's 4 bytes, or anything else short (`minChallengeBytes`).
+        guard bytes.count >= MemesServer.minChallengeBytes else { throw MemesServer.Failure.shortChallenge(bytes.count) }
         let signature = try Sphinxrs.signBase64(
             seed: seed, idx: 0, time: clock.next(), network: network, msg: MediaToken.base64URLEncode(bytes)
         )

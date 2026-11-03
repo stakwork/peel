@@ -48,6 +48,10 @@ public final class Stadeum {
     public private(set) var link: HiveLink?
     /// The last thing that went wrong, in words; nil once something works.
     public var problem: String?
+    /// A restored account has no pairing (none kept, or the one kept was
+    /// another account's and let go): the rows say to connect again.
+    /// Cleared by `connect`, `disconnect` and `dismissReconnectHint`.
+    public private(set) var reconnectHint = false
     /// Stadeum answered 401 (`HiveLink.revokedAt`, kept): the orgs stay
     /// listed until paired again, but their tokens are no longer used (`live`).
     public var revoked: Bool { link?.revokedAt != nil }
@@ -58,6 +62,18 @@ public final class Stadeum {
 
     /// The orgs in use: none once revoked.
     public var live: [HivePeer] { revoked ? [] : link?.peers ?? [] }
+    /// Whether Stadeum knows the person's Sphinx account (`identify`): a
+    /// tribe that tells Jamie who is speaking runs their `@jamie` as them.
+    public var identified: Bool { link?.identified == true }
+    /// What the Stadeum rows say once it is.
+    public static let identifiedLine = "Stadeum knows your Sphinx account: in a tribe where Jamie knows who is speaking, your @jamie runs as you."
+    /// This account's proof of its Sphinx key, signed by its engine
+    /// (`AppModel`); nil while it has none open. A test's stand-in.
+    @ObservationIgnored public var sphinxProof: (@MainActor () async throws -> SphinxProof?)?
+    /// Called as the account opens with a pairing in use (`open`), once
+    /// what it kept is read: `AppModel` marks Jamie in the tribes linked
+    /// before Peel did at linking (`markLinkedJamies`), once connected.
+    @ObservationIgnored public var opened: (@MainActor () -> Void)?
     /// Whether a read of `apps` is under way.
     public private(set) var readingApps = false
     /// The workspaces whose apps the last read could not read, by peer id:
@@ -67,9 +83,17 @@ public final class Stadeum {
     public var isOpen: Bool { profile != nil }
 
     @ObservationIgnored private var profile: Profile?
+    /// The account was restored (`accountRestored`) before it opened here: `open` says so if it finds no pairing.
+    @ObservationIgnored private var restoredBeforeOpen = false
     @ObservationIgnored private var pairing: Task<Void, Never>?
     @ObservationIgnored private var renewing: Task<Void, Never>?
     @ObservationIgnored private var appsReading: Task<Void, Never>?
+    /// Telling Stadeum the Sphinx account (`identify`), and for which pairing (its credential).
+    @ObservationIgnored private var identifying: (task: Task<Void, Never>, credential: String)?
+    /// The pairings (by credential) whose Sphinx account was asked about as
+    /// the account opened (`open`), this run of Peel: the iPhone opens it at
+    /// every unlock, and a launch asks once. Kept across `reset`.
+    @ObservationIgnored private var identifiedAtOpen: Set<String> = []
     /// The pairing's wait for its next poll, which `cameToFront` cuts short.
     @ObservationIgnored private var nap: Task<Void, Never>?
     /// Peel came to the front while a pairing's poll was in flight: its next wait is skipped.
@@ -96,9 +120,49 @@ public final class Stadeum {
         } catch {
             problem = PeelError.noted(error, couldNot: "read your Stadeum connection")
         }
-        guard link != nil else { return }
+        let restored = restoredBeforeOpen
+        restoredBeforeOpen = false
+        guard let link else {
+            if restored { reconnectHint = true }
+            return
+        }
         status = revoked ? .needsPairing : .connected
         keepRenewed(now: renewNow)
+        dropIfAnotherAccounts()
+        guard !revoked else { return }
+        // Off the launch's path: a pairing made before Peel told Stadeum its Sphinx account is identified now.
+        // One with no account recorded is asked too, so `identify` records it.
+        if link.identified != true || link.sphinxPubkey == nil, identifiedAtOpen.insert(link.credential).inserted { identify() }
+        opened?()
+    }
+
+    /// The account was restored from its words (`AppModel.restoreAccount`):
+    /// with no pairing to show for it, the rows say to connect again. Its
+    /// pairing, if kept, is let go once it is known to be another account's.
+    public func accountRestored() {
+        guard isOpen else {
+            restoredBeforeOpen = true
+            return
+        }
+        if link == nil { reconnectHint = true }
+        dropIfAnotherAccounts()
+    }
+
+    /// The hint's line put away.
+    public func dismissReconnectHint() { reconnectHint = false }
+
+    /// Lets the pairing go if it was recorded for another Sphinx account
+    /// than the one open (`HiveLink.belongs`): the kept item deleted and the
+    /// host told, as for `disconnect`. Not known to differ, it stays.
+    private func dropIfAnotherAccounts() {
+        guard let link, link.sphinxPubkey != nil, let sphinxProof else { return }
+        let generation = generation
+        Task {
+            guard let pubkey = (try? await sphinxProof())?.pubkey,
+                  generation == self.generation, let kept = self.link, !kept.belongs(to: pubkey) else { return }
+            disconnect()
+            reconnectHint = true
+        }
     }
 
     /// The account closed (on the iPhone, locked too): everything let go,
@@ -114,6 +178,7 @@ public final class Stadeum {
         guard let profile else { return }
         pairing?.cancel()
         problem = nil
+        reconnectHint = false
         pollSoon = false
         let client = client(profile)
         let generation = generation
@@ -141,9 +206,15 @@ public final class Stadeum {
                 case .paired(let link):
                     // Cancelled, or the account closed, while Stadeum answered: nothing kept.
                     guard !Task.isCancelled, generation == self.generation else { return }
-                    try keep(link)
+                    // Recorded now, with the account that paired: `identify` may not get to it (Stadeum without the route).
+                    var paired = link
+                    if let sphinxProof { paired.sphinxPubkey = (try? await sphinxProof())?.pubkey ?? paired.sphinxPubkey }
+                    guard !Task.isCancelled, generation == self.generation else { return }
+                    try keep(paired)
                     status = .connected
                     keepRenewed(now: false)
+                    // The pairing's answer does not say whether Hive knows the person's Sphinx account.
+                    identify()
                 }
             } catch is CancellationError {
             } catch {
@@ -172,6 +243,7 @@ public final class Stadeum {
         guard let profile else { return }
         let actor = link?.actor
         reset()
+        reconnectHint = false
         var failed: (any Error)?
         do { try profile.hive.delete() } catch { failed = error }
         do { try host?.stadeumDisconnected(actor: actor) } catch { failed = failed ?? error }
@@ -230,7 +302,7 @@ public final class Stadeum {
             let renewed = try await HiveClient(hive: link.hive).renew(link)
             // Closed, disconnected or paired again meanwhile: nothing of it is kept or said.
             guard !Task.isCancelled, generation == self.generation, self.link?.credential == link.credential else { return }
-            guard let renewed else {
+            guard var renewed else {
                 // Revoked in Stadeum: its tokens may still work until they expire, so they stop
                 // being used now, and after a restart or an unlock too (kept with the link).
                 var revokedLink = link
@@ -242,7 +314,10 @@ public final class Stadeum {
                 host?.stadeumRevoked()
                 return
             }
+            // A refusal heard while it was asked stands: that key is not asked about again.
+            renewed.sphinxRefused = renewed.sphinxRefused ?? self.link?.sphinxRefused
             try keep(renewed)
+            if renewed.identified == false { identify() }
         } catch is CancellationError {
         } catch {
             // Tried again within the hour; the tokens last a week.
@@ -265,14 +340,58 @@ public final class Stadeum {
         host?.stadeum(kept: link, changed: changed)
     }
 
+    /// Tells Stadeum this account's Sphinx key (`HiveClient.registerSphinx`),
+    /// so a tribe that tells Jamie who is speaking runs the person's
+    /// `@jamie` as them (docs/hive-tribes.md, "Who is asking"): after a
+    /// pairing, once a launch while Stadeum is not known to know it, and
+    /// after each renewal that says it does not. Never in the pairing's or
+    /// the launch's way. A Stadeum without the route yet is asked again
+    /// next time, as is one that fails; a refusal (the key is another
+    /// person's, or the person has another) is said once, and that key is
+    /// not asked about again on this pairing.
+    private func identify() {
+        guard let link, !revoked, let sphinxProof else { return }
+        // One at a time for a pairing: a launch and the renewal it starts may both ask.
+        if let identifying {
+            if identifying.credential == link.credential { return }
+            identifying.task.cancel()
+        }
+        let generation = generation
+        let task = Task {
+            defer { if self.identifying?.credential == link.credential { identifying = nil } }
+            do {
+                guard let proof = try await sphinxProof(), (self.link ?? link).sphinxRefused?.pubkey != proof.pubkey else { return }
+                let said = try await HiveClient(hive: link.hive).registerSphinx(link, proof: proof)
+                // Closed, disconnected or paired again meanwhile: nothing of it is kept or said.
+                guard !Task.isCancelled, generation == self.generation, var current = self.link,
+                      current.credential == link.credential, let profile else { return }
+                switch said {
+                case .notYet: return
+                case .linked:
+                    current.identified = true
+                    current.sphinxPubkey = proof.pubkey
+                case .refused(let reason): current.sphinxRefused = SphinxRefusal(pubkey: proof.pubkey, reason: reason)
+                }
+                try current.write(to: profile.hive)
+                self.link = current
+                if case .refused(let reason) = said { problem = reason }
+            } catch {
+                // Asked again at the next launch or renewal that finds it unknown.
+            }
+        }
+        identifying = (task, link.credential)
+    }
+
     private func reset() {
         generation += 1
         pairing?.cancel()
         renewing?.cancel()
         appsReading?.cancel()
+        identifying?.task.cancel()
         pairing = nil
         renewing = nil
         appsReading = nil
+        identifying = nil
         nap = nil
         pollSoon = false
         readingApps = false
@@ -294,6 +413,17 @@ public final class Stadeum {
             throw PeelError("Connect Stadeum to call with Jamie from \(peer.name).")
         }
         return try await HiveClient(hive: link.hive).startCall(link, workspace: peer.id)
+    }
+
+    /// A ticket to join a call Hive made, as this device's person
+    /// (`HiveClient.callTicket`, docs/hive-calls.md "Who is speaking"):
+    /// Hive checks they may use the call's workspace. Throws when not
+    /// connected, and for anything Hive does not answer with a ticket.
+    public func callTicket(room: String, participantName: String, metadata: String?) async throws -> HiveCallTicket {
+        guard let link, !revoked else { throw PeelError("Stadeum is not connected.") }
+        return try await HiveClient(hive: link.hive).callTicket(
+            link, room: room, participantName: participantName, metadata: metadata
+        )
     }
 
     // MARK: - Jamie in tribes
@@ -381,8 +511,12 @@ public final class Stadeum {
 
     /// Links `tribe` to `peer`'s org (Jamie joins it and answers `@jamie`
     /// there, as this person), or with nil unlinks it (No Jamie). A throw
-    /// is Hive's refusal in words (`HiveClient.linkTribe`).
-    public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws {
+    /// is Hive's refusal in words (`HiveClient.linkTribe`), and changes
+    /// nothing. An unlink Hive took answers Jamie's key when the tribe was
+    /// this person's to unlink: the member whose mark goes with the link
+    /// (`AppModel.setJamie`).
+    @discardableResult
+    public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws -> String? {
         guard let link, !revoked else { throw PeelError("Connect Stadeum to add Jamie.") }
         let generation = generation
         let client = HiveClient(hive: link.hive)
@@ -391,19 +525,23 @@ public final class Stadeum {
             guard live.contains(where: { $0.id == peer.id }) else { throw PeelError("Connect Stadeum to add Jamie from \(peer.name).") }
             guard let host = tribe.host else { throw PeelError("This tribe's server isn't known here, so Jamie can't join it.") }
             let (jamie, linked) = try await client.linkTribe(link, workspace: peer.id, tribe: tribe.pubkey, host: host, name: tribe.name)
-            guard generation == self.generation else { return }
+            guard generation == self.generation else { return nil }
             var links = jamieLinks ?? JamieLinks(jamie: jamie, tribes: [])
             links.jamie = jamie
             links.tribes.removeAll { $0.pubkey == key }
             links.tribes.append(linked)
             jamieLinks = links
-        } else {
-            try await client.unlinkTribe(link, tribe: tribe.pubkey)
-            guard generation == self.generation else { return }
-            jamieLinks?.tribes.removeAll { $0.pubkey == key }
+            jamieChanges += 1
+            jamieProblem = nil
+            return nil
         }
+        let wasLinked = jamieLink(of: tribe.pubkey) != nil ? jamieLinks?.jamie.pubkey : nil
+        try await client.unlinkTribe(link, tribe: tribe.pubkey)
+        guard generation == self.generation else { return nil }
+        jamieLinks?.tribes.removeAll { $0.pubkey == key }
         jamieChanges += 1
         jamieProblem = nil
+        return wasLinked
     }
 
     /// What Hive said of the tribes, let go: the account closed, or another pairing.

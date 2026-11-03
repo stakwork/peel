@@ -13,7 +13,7 @@ struct PreferencesTests {
     /// Official keys by their official names, Peel's under `peel.`, and
     /// what stays on this device under `device.`, never synced.
     @Test func keysAreNamespacedByWhereTheyGo() {
-        let official: Set = ["tip_amount", "timezone", "chat_color", "biometric_enabled", "ai_agent_config"]
+        let official: Set = ["tip_amount", "timezone", "chat_color", "biometric_enabled", "ai_agent_config", "pin_timeout"]
         for (key, entry) in Preferences.registry {
             if entry.scope != .device {
                 #expect(official.contains(key) || key.hasPrefix(Preferences.peelPrefix), "\(key)")
@@ -21,10 +21,11 @@ struct PreferencesTests {
                 #expect(key.hasPrefix(Preferences.devicePrefix), "\(key)")
             }
         }
-        // `pin_timeout` stays a pass-through in the file (decision 4).
-        #expect(Preferences.registry["pin_timeout"] == nil)
-        // Face ID and the agent's key sync only where a device says it has them.
-        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.time_zone"])
+        // The PIN timeout, Face ID and the agent's key sync only where a device says it has them.
+        #expect(Preferences.registry["pin_timeout"]?.optIn == true)
+        #expect(!Preferences.synced.contains("pin_timeout"))
+        #expect(Preferences.syncedKeys(enabling: ["pin_timeout"]).contains("pin_timeout"))
+        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.auto_download_media", "peel.time_zone"])
         #expect(Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("biometric_enabled"))
         #expect(!Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("ai_agent_config"))
         #expect(Preferences.syncedKeys(enabling: ["ai_agent_config"]).contains("ai_agent_config"))

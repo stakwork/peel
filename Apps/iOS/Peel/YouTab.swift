@@ -26,6 +26,14 @@ struct YouTab: View {
                     PhoneSectionHeader("Agent")
                 }
                 .phoneRows(.grouped)
+                Section {
+                    VoiceModeSettingsFields()
+                } header: {
+                    PhoneSectionHeader("Voice mode")
+                } footer: {
+                    Text("Talk to Peel by voice from its chat. Speech is recognised on this iPhone. Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default.")
+                }
+                .phoneRows(.grouped)
                 StadeumSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
@@ -40,6 +48,7 @@ struct YouTab: View {
                         LabeledContent("Boost amount", value: Sats.format(msat: model.boostAmountMsat))
                     }
                     PaymentConfirmationRow()
+                    AutoDownloadMediaRow()
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(model.myServer ?? "None")
@@ -246,7 +255,7 @@ private struct PINTimeoutRow: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?
 
-    private static let choices = [0, 1, 4, 12, 24]
+    private static let choices = [0, 1, 4, 12, 24, PINTimeout.never]
 
     var body: some View {
         let current = model.pinTimeoutHours
@@ -266,6 +275,7 @@ private struct PINTimeoutRow: View {
 
     private static func label(_ hours: Int) -> String {
         switch hours {
+        case PINTimeout.never: "Never ask for PIN"
         case 0: "When Peel opens"
         case 1: "After an hour away"
         case 24: "After a day away"
@@ -275,6 +285,22 @@ private struct PINTimeoutRow: View {
 }
 
 /// The amount over which a payment or boost takes a second tap.
+/// Auto download media: off, images and videos wait for a tap.
+private struct AutoDownloadMediaRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var problem: String?
+
+    var body: some View {
+        Toggle("Auto download media", isOn: Binding(get: { model.autoDownloadsMedia }, set: { on in
+            Task {
+                do { try await model.setAutoDownloadsMedia(on) } catch { problem = PeelError.problem(error) }
+            }
+        }))
+        .tint(Theme.accent)
+        if let problem { ProblemText(problem) }
+    }
+}
+
 private struct PaymentConfirmationRow: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?

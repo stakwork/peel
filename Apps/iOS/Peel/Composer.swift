@@ -200,11 +200,11 @@ private struct AttachButton: View {
         }
         .glassEffect(.regular.interactive(), in: Circle())
         .accessibilityLabel("Attach")
-        .photosPicker(isPresented: binding(.photos), selection: $photos, maxSelectionCount: 10, matching: .images)
+        .photosPicker(isPresented: binding(.photos), selection: $photos, maxSelectionCount: 10, matching: .any(of: [.images, .videos]))
         .onChange(of: photos) { _, items in
             guard !items.isEmpty else { return }
             photos = []
-            Task { add(await PickedFiles.photos(items)) }
+            Task { add(await PickedFiles.media(items)) }
         }
         .fileImporter(isPresented: binding(.files), allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             let urls = (try? result.get()) ?? []
@@ -240,12 +240,25 @@ private struct AttachButton: View {
 /// Files picked on the phone, written into Peel's own attachment folder
 /// (`IncomingFiles`), which the model releases once they are sent. Photos
 /// are drawn again as JPEG (a GIF is kept as it is), so what goes carries
-/// no location or other metadata, and HEIC reaches every client.
+/// no location or other metadata, and HEIC reaches every client. A video
+/// from the library is never read into memory: it is received as a file and
+/// handled as the camera's (`video(_:)`).
 enum PickedFiles {
-    static func photos(_ items: [PhotosPickerItem]) async -> (files: [URL], refused: [String]) {
+    static func media(_ items: [PhotosPickerItem]) async -> (files: [URL], refused: [String]) {
         var files: [URL] = [], refused: [String] = []
         for (index, item) in items.enumerated() {
             do {
+                if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+                    do {
+                        guard let movie = try await item.loadTransferable(type: PickedMovie.self) else { continue }
+                        let picked = await Task.detached { video(movie.url) }.value
+                        files += picked.files
+                        refused += picked.refused
+                    } catch {
+                        refused.append("The video: \(PeelError.readable(error)).")
+                    }
+                    continue
+                }
                 guard let data = try await item.loadTransferable(type: Data.self) else { continue }
                 let isGIF = item.supportedContentTypes.contains { $0.conforms(to: .gif) }
                 // Drawn again off the main thread: a camera photo is tens of megapixels.
@@ -327,6 +340,22 @@ enum PickedFiles {
             image.draw(at: .zero)
         }
         return upright.jpegData(compressionQuality: 0.85)
+    }
+}
+
+/// A video picked from the library, received as a file in a temporary
+/// location of ours (the system's copy goes away after the callback).
+private struct PickedMovie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            let ext = received.file.pathExtension.lowercased()
+            let copy = FileManager.default.temporaryDirectory
+                .appendingPathComponent("\(UUID().uuidString).\(["mov", "mp4"].contains(ext) ? ext : "mov")")
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return PickedMovie(url: copy)
+        }
     }
 }
 
@@ -561,6 +590,9 @@ private struct ComposerTextView: UIViewRepresentable {
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         // Asked for before it was here (opening the chat): the keyboard waits for a tap.
         context.coordinator.focusedRequest = focusRequest
+        // A restored draft is taller than one line: measure it now, and again once it has a width.
+        view.invalidateIntrinsicContentSize()
+        DispatchQueue.main.async { view.invalidateIntrinsicContentSize() }
         return view
     }
 
@@ -568,6 +600,7 @@ private struct ComposerTextView: UIViewRepresentable {
         context.coordinator.parent = self
         if view.markedTextRange == nil, view.text != text {
             view.text = text
+            view.invalidateIntrinsicContentSize()
             context.coordinator.styleMentions(view)
             context.coordinator.findMention(view)
         }
@@ -583,6 +616,9 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView view: UITextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 200
+        // Measure at the proposed width, not whatever the view last laid out at.
+        view.textContainer.size = CGSize(width: width, height: .greatestFiniteMagnitude)
+        view.layoutManager.ensureLayout(for: view.textContainer)
         let fitted = view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         let line = (view.font ?? Self.font).lineHeight
         let most = line * Self.maxLines + Self.inset * 2

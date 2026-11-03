@@ -88,6 +88,36 @@ struct CallChatWireTests {
         #expect(CallChatWire.completingJamie(text) == nil)
     }
 
+    // MARK: Jamie's voice (sphinx-voice src/agent.ts)
+
+    /// sphinx-voice sets the voice to `enabled` only when it is a JSON
+    /// boolean; anything else flips it.
+    @Test(arguments: [true, false])
+    func theVoiceToggleSetsWhatItSays(on: Bool) throws {
+        let data = CallChatWire.voice(on: on)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["type", "enabled"])
+        #expect(object["type"] as? String == "tts-toggle")
+        let enabled = try #require(object["enabled"] as? NSNumber)
+        #expect(CFGetTypeID(enabled) == CFBooleanGetTypeID())
+        #expect(enabled.boolValue == on)
+        // Another client that gets it shows no row.
+        #expect(CallChatWire.decode(data) == nil)
+    }
+
+    @Test(arguments: [
+        ("Jamie", ["tts": "off"], true, false),
+        (" jamie ", ["tts": "on"], true, true),
+        // A person called Jamie, and someone else.
+        ("Jamie", [:], false, false),
+        ("Alex", ["tts": "off"], false, false),
+        (nil, ["tts": "on"], false, true),
+    ] as [(String?, [String: String], Bool, Bool)])
+    func jamieIsTheAgentAndSpeaksOnlyWhenOn(name: String?, attributes: [String: String], jamie: Bool, speaks: Bool) {
+        #expect(CallChatWire.isJamie(name: name, attributes: attributes) == jamie)
+        #expect(CallChatWire.jamieSpeaks(attributes) == speaks)
+    }
+
     // MARK: strut's entries (sphinx-voice plans/call-artifacts.md)
 
     private func reply(_ entries: String, workspace: String = "acme") -> String {

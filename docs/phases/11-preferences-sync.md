@@ -17,7 +17,9 @@ here, not built.
 
 Extended 2026-10-21: `chat_color` (import-only), `biometric_enabled` (iOS
 only, never enrolling) and `ai_agent_config` (a secret, Keychain only) now
-sync too (decisions 9 to 12); `pin_timeout` stays device-only.
+sync too (decisions 9 to 12). Extended 2026-11-02: `pin_timeout` syncs too,
+as an opt-in key on devices where the account has a PIN (decision 13,
+which replaces decisions 4 and 12).
 
 Three PRs: (a) this file, (b) the layer and the migration onto it, (c) the
 sync. Earlier notes: `05-parity.md`, "Settings sync" (2026-10-08), and
@@ -152,7 +154,7 @@ The keys (`DataSyncModels.swift:13-23`; iOS has the first six only):
 | Time zone sharing per chat | `chatTimeZone` rows, already in the item's shape | `timezone` | **Synced** as `timezone` |
 | Payment confirmation threshold (`paymentConfirmationMsat`) | `setting`, msat | none | **Synced**, Peel-only: `peel.payment_confirmation_msat` |
 | The account's time zone (`timeZone`) | `setting`, IANA or "" | none (official zones are per chat or the device's) | **Synced**, Peel-only: `peel.time_zone` |
-| PIN timeout (`pinTimeoutHours`) | `setting`, hours, 0 = only at launch | `pin_timeout` | **This device only**; see decision 4 |
+| PIN timeout (`pinTimeoutHours`) | `preference` `pin_timeout`, in the file's form (hours 0 to 25), converted at the engine's getter and setter | `pin_timeout` | **Synced, opt-in** where the account has a PIN (decision 13): nearest option from the file, `never` is 25 |
 | Notification text (`notificationText`) | `setting`, "0"/"1" | none | **This device only**; see decision 5 |
 | Colours others gave a person or chat | `preference` (`chat_color`, identifier the colour key) | `chat_color` | **Synced, import-only** (decision 9): shown as the nearest of the eight hues, never uploaded |
 | Face ID on/off (`BiometricUnlock`, Keychain) | `biometric_enabled` row = the person's wish; the PIN stays in the biometric Keychain item | `biometric_enabled` | **Synced on iOS only**, never silently enrolling (decision 10) |
@@ -165,12 +167,13 @@ The keys (`DataSyncModels.swift:13-23`; iOS has the first six only):
 | Name and photo | `setting` | none (travel on messages; restore recovers the photo) | Not preferences: unchanged |
 
 Official keys Peel does not use (`private_photo`, `feed_status`,
-`feed_item_status`, `pin_timeout`) and every key Peel does not know are
+`feed_item_status`) and every key Peel does not know are
 kept exactly as the file has them. `chat_color`, `biometric_enabled` and
-`ai_agent_config` are used since 2026-10-21 (decisions 9 to 11); on a
+`ai_agent_config` are used since 2026-10-21 (decisions 9 to 11) and
+`pin_timeout` since 2026-11-02 (decision 13); on a
 device that does not sync `biometric_enabled` (the Mac, as the official
-Mac app) or `ai_agent_config` (no agent: the iPhone) they are kept as the
-file has them too. `chat_color` gives a person the colour the other
+Mac app), `ai_agent_config` (no agent: the iPhone) or `pin_timeout` (an
+account with no PIN) they are kept as the file has them too. `chat_color` gives a person the colour the other
 device shows (`PersonHue.swift`).
 
 ## Architecture
@@ -204,8 +207,8 @@ Storage (`preference` table, migration v24):
 | `updatedAt` | the item's date, seconds (REAL, as the official apps compare); 0 = never chosen on a synced device |
 
 The table mirrors the file for the keys Peel knows, so a value read from
-another device is kept as written (an official `pin_timeout` of 0 stays 0
-even though Peel would not write it), and sync is a comparison of dates.
+another device is kept as written (an official `pin_timeout` of 8 stays 8
+even though Peel would not write it, and reads as 4), and sync is a comparison of dates.
 Engine getters and setters (`boostAmountMsat`, `setBoostAmount`,
 `timeZoneSharing(in:)` and the rest) keep their signatures and go through
 the layer; the app and the CLI are unchanged.
@@ -324,7 +327,7 @@ v24 creates `preference`, copies the old values in, and removes them from
 | the same | `device.boost_confirmed_msat` (it was confirmed when set here) | 0 |
 | `setting.paymentConfirmationMsat` | `peel.payment_confirmation_msat` | 0 |
 | `setting.timeZone` (not "") | `peel.time_zone` | 0 |
-| `setting.pinTimeoutHours` | `device.pin_timeout_hours` | 0 |
+| `setting.pinTimeoutHours` | `device.pin_timeout_hours` (v24); v32 moves it to `pin_timeout`, 4 hours as "4", never (-1) as "25", above 24 as "24" | the row's own (0 stays 0, so the file wins; a choice made here keeps its date) |
 | `setting.notificationText` | `device.notification_text`, "true"/"false" | 0 |
 | `chatTimeZone` rows | `timezone`, the chat, `{"timezone_enabled", "timezone_identifier"}` | the row's `updatedAt` |
 | (the time it runs) | `device.preferences_since` | 0 |
@@ -399,15 +402,16 @@ In Peel:
 
 - The registry knows import-only keys (`Entry.uploads`, false for
   `chat_color`: `merged` never uploads or bootstraps a row of one, of any
-  date), opt-in keys (`Entry.optIn`: `biometric_enabled`, `ai_agent_config`
-  are in the merge only where `PreferenceCapabilities` names them, so
+  date), opt-in keys (`Entry.optIn`: `biometric_enabled`, `ai_agent_config`,
+  `pin_timeout` are in the merge only where `PreferenceCapabilities` names them, so
   `Preferences.syncedKeys(enabling:)` and `merged(keys:)` take the active set)
   and a **secret scope** (`PreferenceScope.secret`).
 - The app names the capabilities when an account opens
   (`Engine.configurePreferences`, from `AppModel.attach`): `biometrics` where
   `Platform.syncsBiometrics` (the iPhone) and the account has a PIN; the
   agent credential where the platform has an agent (the Mac), an
-  `AgentCredentialSync` over `Profile.agentCredential`. A device without
+  `AgentCredentialSync` over `Profile.agentCredential`; `pinTimeout` where
+  the account has a PIN (`profile?.requiresPIN`, every platform). A device without
   them keeps those items in the file untouched.
 - A secret's value is never a `Change` or a `PreferenceRow`. `merged` is
   given the credential as the Keychain holds it now (`secrets:`, for that
@@ -454,13 +458,9 @@ change to storage or sync:
    the amount and a second Boost of the same message sends it (CLI:
    `--yes`). Changed after the independent review; first planned as
    applied unconfirmed.
-4. **The PIN timeout stays on each device.** The PIN is per device in Peel
-   (it seals the words in this Mac's Keychain) and in the official apps;
-   how long a device stays unlocked depends on the device (a desk or a
-   pocket). The two scales also disagree: official 0 means "every time"
-   and 25 "never", Peel's 0 means "only at launch" and it has no "never"
-   (the words need the PIN). Any mapping would either weaken a phone's lock
-   from the Mac or misreport. `pin_timeout` is kept in the file untouched.
+4. *Superseded by decision 13 (2026-11-02).* The PIN timeout stayed on
+   each device, because the two scales disagree and any mapping seemed to
+   weaken a lock or misreport.
 5. **Notification text stays on each device**: what a notification shows
    is about who can see that screen.
 6. **Forgetting a contact keeps its time zone item.** It is the account's
@@ -528,9 +528,42 @@ change to storage or sync:
     (`adoptSyncedAgentCredential`). An unreadable Keychain leaves the key
     out of that sync. Open: the offer does not say which provider or name
     the file's key is; no confirmation dialog beyond the button.
-12. **`pin_timeout` stays device-only** (2026-10-21): decision 4 holds.
-    Nothing reads or writes the official item; it passes through the file
-    byte for byte.
+12. *Superseded by decision 13 (2026-11-02).* `pin_timeout` was kept in the
+    file untouched.
+13. **`pin_timeout` syncs as an opt-in key** (2026-11-02), replacing decisions
+    4 and 12 (their reasoning is superseded: the scales can be mapped, and
+    the person asked for one lock setting across the apps). Registered as
+    `Preference<Int>.pinTimeout`, key `pin_timeout`, identifier `"0"`,
+    scope `.account`, `optIn`: merged only where
+    `PreferenceCapabilities.pinTimeout` is set, which the app does when the
+    account has a PIN (`profile?.requiresPIN == true`). Elsewhere the item
+    passes through byte for byte. The row holds the value **as the file
+    holds it** (a string of whole hours, 0 to 25; read as the official apps
+    read an int and clamped, so 99 is 25 and -5 is 0; anything else, such as
+    "abc", "", "1.5", a huge number or a non-string, is refused and not
+    taken); `Engine.pinTimeoutHours()` and `setPINTimeout(hours:)` keep
+    their signatures and convert at that boundary (`PINTimeout`):
+    - *File to Peel*: the nearest of 0, 1, 4, 12, 24, ties to the shorter
+      (stricter): 2 is 1, 3 is 4, 8 is 4, 18 is 12; 25 is `never` (-1); 0
+      is 0. The row keeps the file's "8"; Peel reads it as 4 and writes
+      nothing back, so adopting does not rewrite the file.
+    - *Peel to file*: hours as they are, `never` as 25 (more than 24 hours,
+      possible only from the CLI, as 24, so it never becomes "never"); the
+      value is `String(int)`, which the official apps' retyping leaves as it
+      is. A value Peel sets that is not an option (the CLI's 2) is written
+      as it is and reads back as its nearest option.
+    - **Never is only the idle and foreground re-lock.** Launch still asks
+      for the PIN, because the PIN opens the words in the Keychain. Peel
+      never stores the PIN, in the Keychain or anywhere, and there is no
+      auto-login.
+    - **Newest date wins, with no stricter-only rule** (`takes` is always
+      true), like most keys. Accepted tradeoff: another device can loosen
+      this one's lock (a 25 set on the phone becomes never here), and the
+      reverse. The money-guarding threshold (decision 7) is different in
+      kind.
+    - After a sync applies it, `.preferencesChanged` makes the app read
+      `pinTimeoutHours` again (`AppModel`). v32 moves an old
+      `device.pin_timeout_hours` row to it, keeping the row's date.
 
 ## Verification plan
 

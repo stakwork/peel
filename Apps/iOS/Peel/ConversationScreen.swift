@@ -57,6 +57,15 @@ struct ConversationScreen: View {
         .floatingBar(.bottom) { footer(tribe: tribe) }
         .onCallBannerInset()
         .navigationBarTitleDisplayMode(.inline)
+        // Landscape is allowed only while a chat is on screen.
+        .onAppear {
+            OrientationLock.shared.chatVisible = true
+            OrientationLock.shared.update()
+        }
+        .onDisappear {
+            OrientationLock.shared.chatVisible = false
+            OrientationLock.shared.update()
+        }
         .toolbar { header(tribe: tribe) }
         .callSwitchConfirmation($pendingCall, model: model, router: router)
         .sheet(item: threadHere, onDismiss: router.threadDismissed) { thread in

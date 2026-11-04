@@ -327,6 +327,15 @@ public actor WalletHost {
         watching = nil
     }
 
+    /// What a connection has spent in its current period and when that
+    /// renews: Connected apps.
+    public func usage(of key: String) async -> (usedMsat: UInt64, renewsAt: Int64?)? {
+        guard let connection = try? storage.walletConnection(key: key), let records = try? await wallet.records(connection: key)
+        else { return nil }
+        let period = WalletBudget.period(created: connection.createdAt, renewal: connection.renewal, now: now())
+        return (WalletBudget.used(records.compactMap(\.entry), since: period.start), period.renewsAt)
+    }
+
     // MARK: Messages
 
     /// One message from strut's UI (`NativeWalletMessage`), answered as a

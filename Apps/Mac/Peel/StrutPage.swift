@@ -120,7 +120,11 @@ class InputWebView: WKWebView {
     private var lastInput: ContinuousClock.Instant?
 
     /// The person clicked or typed here within the last second.
-    var personActed: Bool { lastInput.map { .now - $0 < .seconds(1) } ?? false }
+    var personActed: Bool { acted(within: .seconds(1)) }
+
+    /// The person clicked or typed here within `window`: the app wallet's
+    /// sheets open only then (`StrutWalletBridge`, "the last few seconds").
+    func acted(within window: Duration) -> Bool { lastInput.map { .now - $0 < window } ?? false }
 
     override func mouseDown(with event: NSEvent) {
         lastInput = .now

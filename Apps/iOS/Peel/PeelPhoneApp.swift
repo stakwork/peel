@@ -1,4 +1,6 @@
+import Combine
 import PeelCore
+import PeelPush
 import PeelUI
 import SwiftUI
 import UIKit
@@ -45,6 +47,7 @@ struct PeelPhoneApp: App {
                     if phase == .active {
                         model.becameActive()
                         PushCoordinator.shared.refreshNames()
+                        PushCoordinator.shared.openPending(model: model, router: router)
                     }
                     if phase == .background { model.leftForeground() }
                 }
@@ -75,6 +78,7 @@ struct PeelPhoneApp: App {
                         // Renewed when due, not at every unlock.
                         model.stadeum.open(profile, renewNow: false)
                         PushCoordinator.shared.accountOpened(model)
+                        PushCoordinator.shared.openPending(model: model, router: router)
                     } else {
                         // An account exists but is locked, or failed to open:
                         // the launch-time question is not held back. With
@@ -84,6 +88,12 @@ struct PeelPhoneApp: App {
                         model.stadeum.close()
                         router.orgPage = nil
                     }
+                }
+                // A tapped push: opened now if an account is open, else it
+                // waits for the PIN or onboarding (the phase handler above).
+                // Delivered on main: the delegate submits from a background thread.
+                .onReceive(NotificationCenter.default.publisher(for: PendingNavigation.didChange).receive(on: DispatchQueue.main)) { _ in
+                    PushCoordinator.shared.openPending(model: model, router: router)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Diagnostics.memoryWarning()

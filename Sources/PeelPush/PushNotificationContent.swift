@@ -87,6 +87,12 @@ public enum PushNotificationContent: Equatable, Sendable {
     public static let generic = PushNotificationContent.text(title: "Peel", body: "You have new messages")
 }
 
+/// What the extension delivers: the words, and the chat they are about when known.
+public struct ResolvedPush: Equatable, Sendable {
+    public let content: PushNotificationContent
+    public let route: NotificationRoute?
+}
+
 public enum PushNotificationResolver {
     /// `aps.custom_data.child`, as sphinx-ios-v2 reads it.
     public static func encryptedChild(from userInfo: [AnyHashable: Any]) -> String? {
@@ -111,14 +117,26 @@ public enum PushNotificationResolver {
         userInfo: [AnyHashable: Any], pushKey: String?, decryptor: any ChildIndexDecrypting,
         names: PushNameDirectory?
     ) -> PushNotificationContent {
-        guard let child = encryptedChild(from: userInfo) else { return .generic }
-        if isHiveLink(child) { return .asSent }
+        resolveWithRoute(userInfo: userInfo, pushKey: pushKey, decryptor: decryptor, names: names).content
+    }
+
+    /// `resolve`, plus the child's route for a tap, when the child decrypts
+    /// to an index the names map knows (an unknown one has no chat to open).
+    public static func resolveWithRoute(
+        userInfo: [AnyHashable: Any], pushKey: String?, decryptor: any ChildIndexDecrypting,
+        names: PushNameDirectory?
+    ) -> ResolvedPush {
+        let generic = ResolvedPush(content: .generic, route: nil)
+        guard let child = encryptedChild(from: userInfo) else { return generic }
+        if isHiveLink(child) { return ResolvedPush(content: .asSent, route: nil) }
         guard let pushKey, !pushKey.isEmpty,
               let index = try? decryptor.decrypt(child: child, pushKey: pushKey),
               let found = names?.name(forIndex: index)
-        else { return .generic }
-        return .text(
-            title: "Peel",
-            body: found.isTribe ? "You have new messages in \(found.name)" : "You have new messages from \(found.name)")
+        else { return generic }
+        return ResolvedPush(
+            content: .text(
+                title: "Peel",
+                body: found.isTribe ? "You have new messages in \(found.name)" : "You have new messages from \(found.name)"),
+            route: .child(kind: found.isTribe ? .tribe : .contact, index: index))
     }
 }

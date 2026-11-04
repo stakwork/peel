@@ -1202,6 +1202,32 @@ registration (0.8.40); the mixer keeps one registration per app; the hub's
 routing is a Strut workflow (the mixer's `PUSH_WORKFLOW_URL` and
 `PUSH_WORKFLOW_KEY`), not AWS SNS platform apps.
 
+### Tapping a push opens its chat
+
+- **Payload.** The server sends only `aps.custom_data.child` (encrypted index),
+  so the tap cannot name a chat by itself. The extension
+  (`PushNotificationResolver.resolveWithRoute`) already has the decrypted index
+  and the names map, so it writes `userInfo["peelChild"] = {kind, index}`
+  into the delivered content and sets `threadIdentifier` to
+  `child-<kind>-<index>` (`NotificationRoute`, `Sources/PeelPush`). No server
+  change; an unknown index or a Hive link carries no route (the tap just opens the app).
+- **Tap.** `PeelAppDelegate` is the `UNUserNotificationCenter` delegate, set in
+  `didFinishLaunching` so the tap that launches a killed app is delivered. Its
+  `didReceive` only submits the route to `PendingNavigation.shared` (once per
+  notification id; the latest tap wins). Foreground presentation is untouched
+  (the phone's Notifier posts nothing: `postsNotifications` is false).
+- **Opening.** `PushCoordinator.openPending` runs on the pending change, when
+  the account phase becomes `.ready` and when the app becomes active. Locked,
+  onboarding or loading keeps the route pending (so after the PIN it opens).
+  It takes the route once, maps the child index to the contact's key
+  (`Engine.Contact.childIndex` → `pubkey`, the chat id), checks the chat exists
+  (waiting up to 3 s for chats to load) and calls `router.openChat`; an unknown
+  chat is dropped silently.
+- Tests: `NotificationRouteTests` (parsing, malformed payloads,
+  `PendingNavigation`: once, de-duplicated, latest wins, route from the resolver).
+  *Not verified:* the UIKit wiring (no Swift toolchain on the dev server); to be
+  checked on a device: tap from background, foreground and killed, locked and not.
+
 ### The names map (what a push shows)
 
 A push carries no text, only `aps.custom_data.child`, the child index encrypted

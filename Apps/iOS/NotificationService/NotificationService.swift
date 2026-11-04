@@ -36,12 +36,17 @@ final class NotificationService: UNNotificationServiceExtension {
                 from: UserDefaultsPushNameStore(suiteName: $0.appGroup), pushKey: pushKey, sealer: RNCryptorSealer())
         }
 
-        switch PushNotificationResolver.resolve(
-            userInfo: request.content.userInfo, pushKey: pushKey, decryptor: SphinxChildDecryptor(), names: names
-        ) {
+        let resolved = PushNotificationResolver.resolveWithRoute(
+            userInfo: request.content.userInfo, pushKey: pushKey, decryptor: SphinxChildDecryptor(), names: names)
+        switch resolved.content {
         case .text(let title, let body):
             content.title = title
             content.body = body
+            // So a tap can open the chat, and the chat's pushes stack together.
+            if case .child(let kind, let index)? = resolved.route {
+                content.userInfo = NotificationRoute.userInfo(into: content.userInfo, kind: kind, index: index)
+                content.threadIdentifier = NotificationRoute.threadIdentifier(kind: kind, index: index)
+            }
         case .asSent:
             // A Hive link: the server's own words.
             contentHandler(request.content)

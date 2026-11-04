@@ -1,3 +1,4 @@
+import Combine
 import PeelCore
 import PeelPush
 import PeelUI
@@ -90,7 +91,8 @@ struct PeelPhoneApp: App {
                 }
                 // A tapped push: opened now if an account is open, else it
                 // waits for the PIN or onboarding (the phase handler above).
-                .onReceive(NotificationCenter.default.publisher(for: PendingNavigation.didChange)) { _ in
+                // Delivered on main: the delegate submits from a background thread.
+                .onReceive(NotificationCenter.default.publisher(for: PendingNavigation.didChange).receive(on: DispatchQueue.main)) { _ in
                     PushCoordinator.shared.openPending(model: model, router: router)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in

@@ -106,16 +106,21 @@ final class PushCoordinator {
     /// Opens the tapped push's chat if one waits and an account is open;
     /// otherwise it stays pending (locked, onboarding, still loading). The
     /// route is taken once, so a second call finds nothing. A chat the
-    /// account does not have is dropped quietly.
+    /// account does not have is dropped quietly; one whose chats have not
+    /// loaded yet is kept pending, not dropped.
     func openPending(model: AppModel, router: PhoneRouter) {
         guard !opening, model.phase == .ready, let engine = model.engine, PendingNavigation.shared.hasPending else { return }
         guard let route = PendingNavigation.shared.take() else { return }
         opening = true
         Task {
             defer { opening = false }
-            // Chats load just after the account opens.
-            for _ in 0..<10 where model.conversations.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+            // Chats load just after the account opens; a cold start can be slow.
+            for _ in 0..<33 where model.conversations.isEmpty && model.phase == .ready {
+                try? await Task.sleep(for: .milliseconds(300))
+            }
             guard model.phase == .ready else { PendingNavigation.shared.submit(route); return }
+            // Still no chats: they have not loaded, so keep the route for the next try.
+            guard !model.conversations.isEmpty else { PendingNavigation.shared.submit(route); return }
             let chat: String?
             switch route {
             case .chat(let id): chat = id
@@ -125,6 +130,7 @@ final class PushCoordinator {
                     model.conversations.first { $0.chat == key && $0.isTribe == (kind == .tribe) }?.chat
                 }
             }
+            guard model.phase == .ready else { PendingNavigation.shared.submit(route); return }
             guard let chat, model.conversations.contains(where: { $0.chat == chat }) else { return }
             router.openChat(chat)
         }

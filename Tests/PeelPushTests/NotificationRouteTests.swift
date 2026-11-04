@@ -34,6 +34,21 @@ struct NotificationRouteTests {
 }
 
 struct PendingNavigationTests {
+    @Test func postsDidChangeOnMainWhenSubmittedFromBackground() async {
+        let pending = PendingNavigation()
+        let onMain: Bool = await withCheckedContinuation { continuation in
+            let token = NotificationCenter.default.addObserver(forName: PendingNavigation.didChange, object: pending, queue: nil) { _ in
+                continuation.resume(returning: Thread.isMainThread)
+            }
+            DispatchQueue.global().async {
+                pending.submit(.chat("abc"))
+                DispatchQueue.global().asyncAfter(deadline: .now() + 2) { NotificationCenter.default.removeObserver(token) }
+            }
+        }
+        #expect(onMain)
+        #expect(pending.take() == .chat("abc"))
+    }
+
     @Test func aRouteIsTakenOnce() {
         let pending = PendingNavigation()
         #expect(pending.take() == nil && !pending.hasPending)

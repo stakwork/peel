@@ -65,7 +65,7 @@ public enum NotificationRoute: Equatable, Sendable {
 /// time (the latest tap wins); a notification delivered twice (same
 /// request id) is taken once; `take` hands a route out once.
 public final class PendingNavigation: @unchecked Sendable {
-    /// Posted (on any thread) when a route is submitted.
+    /// Posted on the main thread when a route is submitted.
     public static let didChange = Notification.Name("PeelPendingNavigationDidChange")
     public static let shared = PendingNavigation()
 
@@ -86,7 +86,12 @@ public final class PendingNavigation: @unchecked Sendable {
         }
         self.route = route
         lock.unlock()
-        NotificationCenter.default.post(name: Self.didChange, object: nil)
+        // Observers drive UI, so the post is always on main, whatever thread submitted.
+        if Thread.isMainThread {
+            NotificationCenter.default.post(name: Self.didChange, object: self)
+        } else {
+            DispatchQueue.main.async { NotificationCenter.default.post(name: Self.didChange, object: self) }
+        }
         return true
     }
 

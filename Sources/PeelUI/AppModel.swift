@@ -561,7 +561,26 @@ public final class AppModel {
     public private(set) var invites: [String: InviteRecord] = [:]
     public private(set) var pendingInvites: [InviteRecord] = []
 
+    @ObservationIgnored private var startTask: Task<Void, Never>?
+    @ObservationIgnored private var fetchTask: Task<Bool, Never>?
+    /// The connection was closed after a background fetch; it comes back when
+    /// the app does.
+    @ObservationIgnored private var needsReconnect = false
+
+    /// Joins a start in flight, so a background start and the one at launch
+    /// or tap never open the account twice.
     public func start() async {
+        if let startTask {
+            await startTask.value
+            return
+        }
+        let task = Task { await self.performStart() }
+        startTask = task
+        await task.value
+        startTask = nil
+    }
+
+    private func performStart() async {
         guard phase == .loading, let profile else { return }
         Diagnostics.setAction(.launch)
         defer { Diagnostics.setAction(.other) }
@@ -582,6 +601,57 @@ public final class AppModel {
             notice = PeelError.noted(error, couldNot: "open the account")
             phase = .onboarding
         }
+    }
+
+    /// A push was received: connects if needed and waits (at most 25 seconds,
+    /// inside the ~30 the system gives) for the catch-up, so the messages are
+    /// stored when the push is tapped. A second caller joins the one in flight.
+    /// A PIN-locked account is not opened. Returns whether the account was reached.
+    public func fetchInBackground() async -> Bool {
+        if let fetchTask { return await fetchTask.value }
+        let task = Task { await self.performBackgroundFetch() }
+        fetchTask = task
+        let result = await task.value
+        fetchTask = nil
+        return result
+    }
+
+    private func performBackgroundFetch() async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(25)
+        if phase == .loading {
+            // Locked accounts cannot be opened here, and `start()` would clear
+            // the delivered notifications.
+            guard profile?.hasAccount == true, profile?.requiresPIN == false else { return false }
+            await start()
+        }
+        guard phase == .ready, let engine else { return false }
+        let wasOffline = connection != .connected
+        var reached = connection == .connected
+        if wasOffline {
+            await engine.reconnectNow()
+            while connection != .connected, ContinuousClock.now < deadline, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            reached = connection == .connected
+        }
+        if reached {
+            // Catch-up starts as the connection comes up; give it a moment to begin.
+            try? await Task.sleep(for: .seconds(1))
+            while await engine.isSyncingHistory, ContinuousClock.now < deadline, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+        // Only a connection this fetch brought up is closed again, and never
+        // when the app came to the front (a tap): that one carries on.
+        if wasOffline, !isFrontmost {
+            await engine.disconnect()
+            needsReconnect = true
+            if isFrontmost {
+                needsReconnect = false
+                await engine.start()
+            }
+        }
+        return reached
     }
 
     /// Opens the account with its PIN at launch, or lets the user back in after
@@ -755,6 +825,10 @@ public final class AppModel {
     public func becameActive() {
         Diagnostics.setForeground(true)
         lockIfDue()
+        if needsReconnect {
+            needsReconnect = false
+            Task { await engine?.start() }
+        }
         // A pairing under way polls now (the person may have just approved
         // it in the browser); the workspaces are renewed if due, which the
         // hourly look may have slept through.

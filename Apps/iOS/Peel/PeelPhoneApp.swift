@@ -20,6 +20,9 @@ struct PeelPhoneApp: App {
         umask(0o077)
         let model = AppModel(platform: .phone())
         _model = State(initialValue: model)
+        // A push can launch the app in the background with no window, so
+        // `.task { model.start() }` never runs; the fetch reaches the model here.
+        PushCoordinator.shared.use(model)
         _router = State(initialValue: PhoneRouter(model: model))
         // The tab badge is Sphinx blue, as on the Mac's rows, not the system's
         // red. iOS 26's tab bar ignores `UITabBarItem.badgeColor`; it reads

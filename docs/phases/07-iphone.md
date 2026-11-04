@@ -1228,6 +1228,27 @@ routing is a Strut workflow (the mixer's `PUSH_WORKFLOW_URL` and
   *Not verified:* the UIKit wiring (no Swift toolchain on the dev server); to be
   checked on a device: tap from background, foreground and killed, locked and not.
 
+### Fetch on receipt (silent push)
+
+`UIBackgroundModes` is `audio remote-notification`. A push received with
+`content-available` reaches `PeelAppDelegate.application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`,
+which runs `PushCoordinator.fetchOnReceive()` inside a background task and calls
+the handler once (`.newData` if the account was reached, else `.noData`).
+`AppModel.fetchInBackground()` opens the account (`start()` is re-entrant),
+connects if offline, and waits for the history catch-up, within a 25 s budget.
+A tap or launch meanwhile joins the same `start()` and fetch; nothing opens or
+connects twice. If the fetch brought the connection up and the app is still in
+the background it disconnects again and reconnects on `becameActive`; a
+connection that was already up is left alone. PIN-locked accounts are skipped.
+
+- **Server side (not in this repo):** the hub/push server must send
+  `aps: {"content-available": 1}` alongside the existing alert and `mutable-content`.
+- **iOS limits:** silent pushes are throttled and best-effort, and are not
+  delivered after the user force-quits the app.
+- **Not the notification service extension:** it is a separate process with
+  ~30 s and a small memory limit, no engine or database access, and cannot
+  hold an MQTT session and fetch reliably.
+
 ### The names map (what a push shows)
 
 A push carries no text, only `aps.custom_data.child`, the child index encrypted

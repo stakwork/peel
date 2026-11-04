@@ -120,6 +120,7 @@ public final class AppModel {
             // The agent chat is its DM while it has one (`agentChat`).
             followAgentChat()
             if selectedChat != oldValue?.chat {
+                calls.chatChanged(to: selectedChat)
                 heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
                 newMessages = nil
                 keepsUnread = nil
@@ -1133,6 +1134,7 @@ public final class AppModel {
     }
 
     public func dismissNotice(in chat: String) {
+        calls.noticeDismissed(in: chat)
         conversationNotices[chat] = nil
     }
 

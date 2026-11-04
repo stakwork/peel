@@ -42,6 +42,13 @@ public final class CallStore {
     public private(set) var choosingDevice: (any OngoingCall)?
     /// The goodbye of the calls left, which a quit waits for.
     @ObservationIgnored public private(set) var leaving: Task<Void, Never>?
+    /// How long "The call moved to your other device." stays in its chat.
+    static let movedNoticeDuration: Duration = .seconds(5)
+    static let movedNotice = "The call moved to your other device."
+    /// The chat showing that notice and the timer that takes it down;
+    /// a new handoff restarts the timer.
+    @ObservationIgnored private var movedChat: String?
+    @ObservationIgnored private var movedTimer: Task<Void, Never>?
     /// How many are on each chat's watched calls (the busiest), for chats
     /// with someone on one: the sidebar's green phone, with the call you
     /// are on (`liveCount(in:)`). Kept apart so a presence tick that
@@ -342,7 +349,34 @@ public final class CallStore {
     func movedAway(_ moved: any OngoingCall) {
         guard call === moved else { return }
         leave()
-        chatNotice(moved.chat) { _ in "The call moved to your other device." }
+        let chat = moved.chat
+        clearMovedNotice()
+        chatNotice(chat) { _ in Self.movedNotice }
+        movedChat = chat
+        movedTimer = Task { [weak self] in
+            try? await Task.sleep(for: Self.movedNoticeDuration)
+            if !Task.isCancelled { self?.clearMovedNotice() }
+        }
+    }
+
+    /// Takes the handoff notice down (timer, dismissal or leaving its
+    /// chat), leaving any other notice the chat has since shown.
+    func clearMovedNotice() {
+        movedTimer?.cancel()
+        movedTimer = nil
+        guard let chat = movedChat else { return }
+        movedChat = nil
+        chatNotice(chat) { $0 == Self.movedNotice ? nil : $0 }
+    }
+
+    /// A chat's notice was dismissed by hand: stop the timer if it was ours.
+    func noticeDismissed(in chat: String) {
+        if movedChat == chat { clearMovedNotice() }
+    }
+
+    /// The open chat changed: the handoff notice does not follow.
+    func chatChanged(to chat: String?) {
+        if movedChat != nil, movedChat != chat { clearMovedNotice() }
     }
 
     /// Another device of this account is already on the call just joined:

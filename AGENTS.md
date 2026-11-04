@@ -49,6 +49,13 @@ is a short plan. Update the status and the journal when you finish something.
     - `Engine+Payments.swift` — payments, boosts, confirmation thresholds,
       invoices (made, requested, paid), payment history and the
       reconciliation against it (`reconcileInBackground`)
+    - `Engine+Wallet.swift` — the app wallet's engine side
+      (`docs/app-wallet.md`): `keysend` to any node or Sphinx address over
+      the core's raw `keysend`, an invoice paid or made for an app
+      (`WalletTag`: its connection, app and the limit checked in the
+      payment's own commit), `awaitFinal`; `EngineWallet`, the host's wallet
+      over an engine (`AppWallet`: decode, problems, pay, records, the state
+      stream `updates`, the engine's refusals as the contract's codes)
     - `Engine+Attachments.swift` — sending, downloading and buying
       attachments; payment templates (the list, their pictures, the
       token a payment carries); the memes server sign-in
@@ -113,6 +120,12 @@ is a short plan. Update the status and the journal when you finish something.
     (`DictationRecord`, `dictation`, v28): kept with a keep time that
     drops older ones, watched newest first, cleared. Tested in
     `DictationHistoryTests`
+  - `Storage+Wallet.swift` — the app wallet's tables (v33):
+    `WalletConnection` (what the person granted an app, or on the iPhone an
+    org; its reads, live updates, save and revoke), the tagged keysends and
+    invoices as `WalletRecord`s (`walletRecords`, `walletRecordUpdates`,
+    fees from the history and the ping), `keepPreimage` (only one that
+    hashes to the payment's hash)
   - `Storage+DeviceRequests.swift` — the device requests' ledger
     (`deviceRequest`, a request's id within its agent): `admit` (the
     stored row wins; a message seen before is not a new copy), `claim` and
@@ -144,6 +157,26 @@ is a short plan. Update the status and the journal when you finish something.
     body JSON kept whole), `MessageType` and the fields read from a body
   - `Invoice.swift` — `Invoice` (an invoice as the core reads it) and the
     money tables' records, `InvoiceRecord` and `PaymentRecord`
+  - `WalletProtocol.swift` — strut's wallet contract in Swift (its
+    specs/WALLET.md, `kit/src/wallet/protocol.ts`): the methods, codes,
+    `WalletError` and its JSON-RPC body, `checkParams` (a port, the params
+    normalized), `connectionRequestProblems`, `resultProblems`,
+    `notificationProblems`, `verifyPreimage`, `SphinxAddress` and its route
+    hint; tested against strut's vectors
+  - `WalletLedger.swift` — `KeysendRecord` (an app's keysend, tracked by
+    its tag), `WalletRecord` (an app's transaction as the contract shapes
+    it: `payment`, `transaction`, `lookup`, and what a limit counts,
+    `entry`) and `WalletBudget` (pending counts, settled adds fees, failed
+    refunds; `Guard`, the check in the payment's own write; `period`, the
+    renewal from creation)
+  - `WalletHost.swift` — the native wallet host strut's UI relays to
+    (`docs/app-wallet.md`): `AppWallet`, `WalletScope` (an app on the Mac,
+    an org on the iPhone), `WalletApp` and `WalletRequest` (what a message
+    names), the sheets (`WalletConnectSheet`, `WalletPaymentSheet`,
+    `WalletPerson`), and `WalletHost`: the params, the connection, the
+    limit, sheets only after a gesture, one at a time, given up after nine
+    minutes, notifications of a connection's own transactions after its
+    pay call's answer (`WalletPush`)
   - `PaymentHistory.swift` — `PaymentItem`, `PaymentRequest`,
     `PurchaseState` and the Storage reads that join the money tables
   - `Sats.swift` — amounts as people see and type them (display and input
@@ -384,7 +417,11 @@ is a short plan. Update the status and the journal when you finish something.
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Jamie`
   (Jamie in tribes: who sees the row, the one-tap org, and approving
-  Jamie's request to join unasked, docs/hive-tribes.md), `AppModel+Contacts`
+  Jamie's request to join unasked, docs/hive-tribes.md),
+  `AppModel+Wallet` (the app wallet's host, open with the account, its
+  notifications handed to the pages that listen, Connected apps:
+  `walletConnections`, the limit, over the limit, revoke; `WalletWords`, its
+  words for the person, a spending limit never a budget), `AppModel+Contacts`
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
@@ -531,6 +568,12 @@ is a short plan. Update the status and the journal when you finish something.
   `InputWebView` knows of, and a link to another app to `AppModel.open`;
   "Built: a deliverable opens beside the chat", `docs/apps-browser.md`
   "Built: deep links");
+  `StrutWalletBridge` (the app wallet's `strutWallet` handler on an app's
+  page of Peel's strut, its main frame at that strut's origin only, the app
+  named by the web view's own address; `MacWalletPerson` and
+  `WalletSheetPresenter`, the sheets over the page's window) and
+  `WalletSheets` (the connect sheet, the payment sheet with `PayButton`'s
+  second click, Account › Payments › Connected apps; `docs/app-wallet.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -707,7 +750,10 @@ is a short plan. Update the status and the journal when you finish something.
   `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
   `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
-  `AppStatus`'s header icon (over PeelUI's `WorkspaceAppIcon`);
+  `AppStatus`'s header icon (over PeelUI's `WorkspaceAppIcon`), and
+  `StrutWallet`, the app wallet handler's rules both apps keep (the main
+  frame at the origin Peel loaded, the message read as JSON, a notification
+  pushed as an argument to strut's own function);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
   `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the
@@ -741,7 +787,10 @@ is a short plan. Update the status and the journal when you finish something.
   `readWorkspaceApps`, each org's pinned apps on its own strut), `AppsScreen`
   (Chats' Apps row: Talk to Jamie on each workspace, its screen a
   full-screen cover; then the workspaces' pinned apps, A–Z, opened in
-  `OrgPageSheet`, pulled to read again), `OrgPageSheet` (a
+  `OrgPageSheet`, pulled to read again), `OrgWallet` (the app wallet on the iPhone: `OrgWalletBridge`, keyed by
+  the org, the main frame at its origin only; `PhoneWalletSheets` and the
+  connect and payment sheets, the latter with `TouchPayButton`; You ›
+  Connected apps), `OrgPageSheet` (a
   deliverable or an app on its org's own strut, strut's UI showing it alone in a
   `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
   request's bearer and handed to the page's storage before its script
@@ -1051,6 +1100,12 @@ is a short plan. Update the status and the journal when you finish something.
   `ProposalTests` (strut's record and card read, each status, a record
   without a card, the words cleaned, the store, a workspace's strut asked
   with the person's token, a tribe post's proposals and outcomes);
+  `WalletProtocolTests` (strut's wallet vectors, `WalletVectors/vectors.json`,
+  a copy from the strut commit docs/app-wallet.md names),
+  `WalletHostTests` (the ten scenarios against a scripted wallet and
+  person, and the gesture, one sheet, timeout, isolation, an org, renewal),
+  `WalletEngineTests` (the preimage, a keysend through the real core, the
+  limit in the payment's own write, the history, the state stream);
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS

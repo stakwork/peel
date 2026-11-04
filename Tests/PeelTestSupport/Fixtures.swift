@@ -175,12 +175,12 @@ func withTestEngine(_ storage: Storage, on transport: Transport, _ body: (Engine
 
 /// A core result with only the publish fields, the messages (with a total,
 /// a page of history), a page of payment history, the server's records, a
-/// tribes server's member list or tribe, and state set.
+/// tribes server's member list or tribe, a send's status, and state set.
 func coreResult(
     settle: String? = nil, register: String? = nil, newChildIdx: UInt64? = nil,
     asyncpay: String? = nil, topics: [String] = [], asyncpayTag: String? = nil, payments: String? = nil,
     tags: String? = nil, msgs: [Msg] = [], msgsTotal: UInt64? = nil, state: [String: Data]? = nil,
-    tribeMembers: String? = nil, newTribe: String? = nil
+    tribeMembers: String? = nil, newTribe: String? = nil, sentStatus: String? = nil
 ) -> RunReturn {
     RunReturn(
         msgs: msgs, msgsTotal: msgsTotal, msgsCounts: nil, subscriptionTopics: [],
@@ -188,7 +188,7 @@ func coreResult(
         asyncpayTopic: asyncpay, asyncpayPayload: asyncpay.map { _ in Data([2]) },
         registerTopic: register, registerPayload: register.map { _ in Data() },
         topics: topics, payloads: topics.map { _ in Data([3]) },
-        stateMp: state.map(StateCodec.encode), stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: nil,
+        stateMp: state.map(StateCodec.encode), stateToDelete: [], newBalance: nil, myContactInfo: nil, sentStatus: sentStatus,
         settledStatus: nil, registerResponse: nil, asyncpayTag: asyncpayTag, error: nil, newTribe: newTribe,
         tribeMembers: tribeMembers, newInvite: nil, inviterContactInfo: nil, inviterAlias: nil, initialTribe: nil,
         lspHost: nil, invoice: nil, route: nil, node: nil, lastRead: nil, muteLevels: nil, payments: payments,

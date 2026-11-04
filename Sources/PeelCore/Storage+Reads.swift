@@ -137,9 +137,12 @@ extension Storage {
             try Int64.fetchOne(
                 db,
                 sql: """
-                    SELECT MIN(timestamp) FROM message
-                    WHERE type IN (\(MessageType.sqlList(MessageType.moneySends))) AND timestamp >= ?
-                        AND fromMe = 1 AND status IN ('PENDING', 'UNSETTLED') AND paymentHash IS NOT NULL
+                    SELECT MIN(t) FROM (
+                        SELECT MIN(timestamp) AS t FROM message
+                        WHERE type IN (\(MessageType.sqlList(MessageType.moneySends))) AND timestamp >= ?1
+                            AND fromMe = 1 AND status IN ('PENDING', 'UNSETTLED') AND paymentHash IS NOT NULL
+                        UNION ALL SELECT MIN(createdAt) FROM keysend
+                        WHERE createdAt >= ?1 AND status IN ('PENDING', 'UNSETTLED'))
                     """,
                 arguments: [since]
             )
@@ -341,8 +344,8 @@ extension Storage {
         try pool.read { db in try Message.fetchOne(db, sql: "SELECT * FROM message WHERE tag = ?", arguments: [tag]) }
     }
 
-    /// Our payments, boosts and purchases to people that are still pending,
-    /// in msat:
+    /// Our payments, boosts and purchases to people, and an app's keysends
+    /// sent the asynchronous way, that are still pending, in msat:
     /// the server holds them (an async pay) until the person's app comes
     /// online, and takes their sats from the balance only then
     /// (`mixer/src/handler.rs`, `ASYNC_PAY`). Unsettled ones are left out:
@@ -359,7 +362,11 @@ extension Storage {
             WHERE fromMe = 1 AND status = 'PENDING' AND tag IS NOT NULL AND deleted = 0 AND timestamp >= ?
                 AND type IN (\(MessageType.sqlList(MessageType.moneySends))) AND chat NOT IN (\(tribeChats))
             """, arguments: [since])
-        return UInt64(max(msat ?? 0, 0))
+        // An app's keysend sent the asynchronous way waits the same way.
+        let keysends = try Int64.fetchOne(db, sql: """
+            SELECT IFNULL(SUM(amountMsat), 0) FROM keysend WHERE status = 'PENDING' AND async = 1 AND createdAt >= ?
+            """, arguments: [since])
+        return UInt64(max(msat ?? 0, 0)) + UInt64(max(keysends ?? 0, 0))
     }
 
     /// What is promised to people and still in the balance (`waiting`).
@@ -429,6 +436,9 @@ extension Storage {
                         SELECT tag, createdAt, 1 FROM invoice WHERE incoming = 0 AND status = 'PENDING' AND tag IS NOT NULL
                         ORDER BY createdAt DESC LIMIT 200)
                     UNION ALL SELECT tag, createdAt, 1 FROM invite WHERE status = ? AND tag IS NOT NULL
+                    UNION ALL SELECT * FROM (
+                        SELECT tag, createdAt, 1 FROM keysend WHERE status = 'PENDING'
+                        ORDER BY createdAt DESC LIMIT 200)
                     """,
                 arguments: [cutoff, InviteRecord.Status.sending.rawValue]
             ).map { PendingSend(tag: $0["tag"], createdAt: $0["createdAt"], movesMoney: $0["movesMoney"]) }

@@ -89,10 +89,13 @@ let package = Package(
             dependencies: ["PeelCore", .product(name: "GRDB", package: "GRDB.swift")],
             path: "Tests/PeelTestSupport"
         ),
-        // No PeelAgent here, so these also run on iOS.
+        // No PeelAgent here, so these also run on iOS. `WalletVectors` is
+        // strut's wallet conformance vectors, copied from strut (its commit
+        // is in docs/app-wallet.md, "The vectors").
         .testTarget(
             name: "PeelCoreTests",
-            dependencies: ["PeelCore", "PeelPush", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["PeelCore", "PeelPush", "PeelTestSupport", .product(name: "GRDB", package: "GRDB.swift")],
+            resources: [.copy("WalletVectors/vectors.json")]
         ),
         // The app's model, on a real engine and profile; no window, no server.
         .testTarget(name: "PeelUITests", dependencies: ["PeelUI", "PeelCore", "AgentKit", "PeelTestSupport"]),

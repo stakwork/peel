@@ -124,6 +124,14 @@ public struct InvoiceRecord: Codable, Sendable, Equatable, Identifiable, Fetchab
     public var chat: String?
     /// Why paying it failed, as the server put it.
     public var error: String?
+    /// For one we pay: the preimage the server sent with its COMPLETE,
+    /// kept only when it hashes to the payment hash (`Storage.keepPreimage`).
+    public var preimage: String?
+    /// The wallet connection it was made or paid through, for an app
+    /// (`WalletConnection.key`; docs/app-wallet.md).
+    public var connection: String?
+    /// The app it was made or paid for, as strut names it (`<peer>/<name>`).
+    public var app: String?
 
     public var id: String { "\(incoming ? "in" : "out")/\(paymentHash)" }
     public var created: Date { Date(millisecondsSince1970: createdAt) }

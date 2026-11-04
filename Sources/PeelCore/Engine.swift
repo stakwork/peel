@@ -876,7 +876,8 @@ public actor Engine {
         _ result: RunReturn, time: String, expectedSender: String?,
         outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil, invoices: [InvoiceRecord] = [],
         invites: [InviteRecord] = [], indices: [UInt64]? = nil, keepMembership: Bool = false,
-        deviceSend: Storage.Commit.DeviceSend? = nil
+        deviceSend: Storage.Commit.DeviceSend? = nil, keysends: [KeysendRecord] = [],
+        walletBudget: Storage.Commit.WalletBudgetCheck? = nil
     ) throws -> FollowUps {
         // Whatever a poll waits for lands here (and a refused commit wakes it harmlessly).
         defer { wakeWaiters() }
@@ -927,6 +928,8 @@ public actor Engine {
         }
         commit.invoices = invoices
         commit.invites = invites
+        commit.keysends = keysends
+        commit.walletBudget = walletBudget
         // Only history pages carry a total.
         let arrival: Arrival = result.msgsTotal == nil ? .live : restoring ? .restore : .history
         commit.marksNewContacts = arrival != .restore
@@ -1063,6 +1066,11 @@ public actor Engine {
         let answers = records.map { Self.recordedStatuses($0, unrecorded: unrecordedPayments) } ?? []
         if let live { commit.statuses.append(live) }
         commit.statuses += answers
+        // The proof that came with a COMPLETE, for an invoice we pay or an app's keysend.
+        if let sent, sent.status == Message.Delivery.delivered.rawValue, let tag = sent.tag,
+           let preimage = sent.preimage?.nilIfEmpty {
+            commit.preimages = [(tag, preimage)]
+        }
         // Why a send failed, as the server put it (kept for an invoice we pay).
         for reply in [sent].compactMap({ $0 }) + (records ?? []) where reply.status == Message.Delivery.failed.rawValue {
             if let tag = reply.tag, let reason = (reply.message ?? reply.error)?.nilIfEmpty {
@@ -1324,11 +1332,12 @@ public actor Engine {
     /// goes through here and maps only `.none` to failed.
     func commitAndPublish(
         _ result: RunReturn, time: String, outgoing: Message? = nil, resend: Storage.Commit.Resend? = nil,
-        invoices: [InvoiceRecord] = [], invites: [InviteRecord] = [], deviceSend: Storage.Commit.DeviceSend? = nil
+        invoices: [InvoiceRecord] = [], invites: [InviteRecord] = [], deviceSend: Storage.Commit.DeviceSend? = nil,
+        keysends: [KeysendRecord] = [], walletBudget: Storage.Commit.WalletBudgetCheck? = nil
     ) async throws -> Published {
         let followUps = try commit(
             result, time: time, expectedSender: nil, outgoing: outgoing, resend: resend, invoices: invoices,
-            invites: invites, deviceSend: deviceSend
+            invites: invites, deviceSend: deviceSend, keysends: keysends, walletBudget: walletBudget
         )
         do {
             try await complete(result, followUps)
@@ -1764,6 +1773,10 @@ struct SentStatus: Decodable {
     /// Why a send failed: `message` on a send's status, `error` on `get_tags`.
     var message: String?
     var error: String?
+    /// The mixer's proof on a send's COMPLETE (sphinx `SendOnionRes`); the
+    /// records `get_tags` answers with carry none. Kept only when it hashes
+    /// to the payment's hash (`Storage.keepPreimage`).
+    var preimage: String?
 }
 
 /// The server's answer to settling a payment to an invoice made here.

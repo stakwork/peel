@@ -594,6 +594,51 @@ extension Storage {
                 DELETE FROM preference WHERE key = 'device.pin_timeout_hours';
                 """)
         }
+        migrator.registerMigration("v33") { db in
+            // The app wallet (docs/app-wallet.md). An invoice we pay keeps
+            // the preimage the server sent with its COMPLETE, and an invoice
+            // made or paid for an app the wallet connection and the app
+            // (`<peer>/<name>`) it was made for. A keysend sent for an app
+            // (`KeysendRecord`) is tracked by its tag like any send of ours.
+            // A connection (`WalletConnection`) is what the person granted an
+            // app (or, on the iPhone, an org): methods, notification types,
+            // budget and its renewal, expiry, what to do over budget; its
+            // lists as JSON text, its times in unix seconds.
+            try db.execute(sql: """
+                ALTER TABLE invoice ADD COLUMN preimage TEXT;
+                ALTER TABLE invoice ADD COLUMN connection TEXT;
+                ALTER TABLE invoice ADD COLUMN app TEXT;
+                CREATE INDEX invoice_connection ON invoice (connection) WHERE connection IS NOT NULL;
+                CREATE TABLE keysend (
+                    paymentHash TEXT PRIMARY KEY NOT NULL,
+                    tag TEXT NOT NULL,
+                    pubkey TEXT NOT NULL,
+                    routeHint TEXT,
+                    async BOOLEAN NOT NULL,
+                    amountMsat INTEGER NOT NULL,
+                    createdAt INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    paidAt INTEGER,
+                    preimage TEXT,
+                    error TEXT,
+                    connection TEXT,
+                    app TEXT);
+                CREATE UNIQUE INDEX keysend_tag ON keysend (tag);
+                CREATE INDEX keysend_connection ON keysend (connection) WHERE connection IS NOT NULL;
+                CREATE TABLE walletConnection (
+                    key TEXT PRIMARY KEY NOT NULL,
+                    app TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    place TEXT NOT NULL,
+                    methods TEXT NOT NULL,
+                    notificationTypes TEXT NOT NULL,
+                    maxAmountMsat INTEGER,
+                    renewal TEXT NOT NULL,
+                    expiresAt INTEGER,
+                    overBudget TEXT NOT NULL,
+                    createdAt INTEGER NOT NULL);
+                """)
+        }
         return migrator
     }
 }

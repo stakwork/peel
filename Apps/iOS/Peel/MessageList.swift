@@ -87,7 +87,11 @@ struct MessageList: View {
         if model.opensAtNewMessages(in: composer), let divider = rows.first(where: \.startsNew) {
             return .row(id: divider.id, offset: 0)
         }
-        if case .row(let id, let offset) = model.anchor(of: composer), rows.contains(where: { $0.id == id }) {
+        if case .row(let id, let offset) = model.anchor(of: composer), let index = rows.firstIndex(where: { $0.id == id }) {
+            // Within a few rows of the end it pins by the last row: an offset
+            // there is read off the stack's estimates and can land past the
+            // content, a blank list.
+            if rows.count - index <= 4 { return .newest }
             return .row(id: id, offset: offset)
         }
         return .newest
@@ -150,7 +154,8 @@ struct MessageList: View {
             if new == .idle { settled() }
         }
         .onScrollGeometryChange(for: Layout.Viewport.self) { geometry in
-            Layout.Viewport(inset: geometry.contentInsets.top, offset: geometry.contentOffset.y, end: geometry.endOffset)
+            Layout.Viewport(inset: geometry.contentInsets.top, offset: geometry.contentOffset.y, end: geometry.endOffset,
+                             container: geometry.containerSize.height)
         } action: { [layout] _, new in
             layout.viewport = new
         }
@@ -275,7 +280,13 @@ struct MessageList: View {
             // Past the end the row cannot go; the end then, by the last
             // row, which counts the composer's room below it (an offset
             // stops short of that room).
-            if y >= layout.viewport.end { keepLastRowInView() } else { position.scrollTo(y: y) }
+            // Nor within a screen of it, where the end is still being laid out.
+            if y >= layout.viewport.end - layout.viewport.container { keepLastRowInView() } else { position.scrollTo(y: y) }
+        }
+        // Shown only with a row in view, else by the last row again.
+        for _ in 0..<6 where !userScrolling && !rows.isEmpty && !layout.showsRow {
+            keepLastRowInView()
+            try? await Task.sleep(for: .milliseconds(16))
         }
         self.start = nil
         if case .focus(let id) = start {
@@ -319,6 +330,7 @@ struct MessageList: View {
     /// Still after opening or a scroll: where it stands is kept, and at the
     /// bottom all of it was seen.
     private func settled() {
+        if !opening, !rows.isEmpty, layout.tops.isEmpty { keepLastRowInView() }
         keepPlace()
         guard !opening, bottom.atBottom, phase == .idle else { return }
         var bottom = self.bottom
@@ -457,10 +469,16 @@ private final class Layout {
         var offset: CGFloat = 0
         /// The offset at the end of the content (`ScrollGeometry.endOffset`).
         var end: CGFloat = 0
+        var container: CGFloat = 0
     }
 
     var tops: [String: CGFloat] = [:]
     var viewport = Viewport()
+
+    /// Whether a made row's top is within the viewport.
+    var showsRow: Bool {
+        tops.values.contains { $0 >= viewport.offset && $0 < viewport.offset + viewport.container }
+    }
 
     /// A made row's top below the list's top (under its inset), as on screen now.
     func top(of id: String) -> CGFloat? {

@@ -14,16 +14,6 @@ import Foundation
 public struct CallHandoff: Sendable {
     /// The text stream topic the announcement goes on, apart from the chat's.
     public static let topic = "peel-handoff"
-    /// Asked by a device that has just connected: is another device of this
-    /// account already here? The payload is its announcement. Builds that
-    /// do not know the topic ignore it.
-    public static let probeTopic = "peel-handoff-probe"
-    /// The answer to a probe from another device of this account: the
-    /// answerer's own announcement, same format.
-    public static let hereTopic = "peel-handoff-here"
-    /// How long a new device waits for an answer to its probe before it
-    /// takes the call as before.
-    public static let probeWait: Duration = .seconds(3)
     /// How long to wait before each try again of an announcement that could
     /// not be sent: both devices staying on the call is what it prevents.
     public static let retryDelays: [Duration] = [.seconds(1), .seconds(2)]
@@ -47,7 +37,7 @@ public struct CallHandoff: Sendable {
     }
 
     /// Whether `data` proves `sender`, on `room`, is another device on this
-    /// account (a probe, its answer or a plain announcement): the MAC checks
+    /// account (a plain announcement): the MAC checks
     /// under the sender's identity, which the server stamps, and it is not
     /// this device's own. Says nothing of who joined first.
     public func isOtherDevice(_ data: Data, room: String, sender: String, me: String) -> Bool {

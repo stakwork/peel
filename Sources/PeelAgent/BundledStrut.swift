@@ -271,7 +271,8 @@ public final class BundledStrut {
         if let held = try? Data(contentsOf: memoryImportRecord),
            (try? AgentKit.JSONValue(parsing: String(decoding: held, as: UTF8.self)))?["version"]?.int ?? 1 >= Self.memoryImportVersion { return }
         do {
-            let output = try await server.run(step: "graph/import-memory", [:])
+            // Slow: on a first start it shares the graph with the embedding of every node.
+            let output = try await server.run(step: "graph/import-memory", [:], slow: true)
             // A step's failure comes back as its words, not counts: not done.
             guard output.object != nil else { throw PeelError(TextLine.clean(output.string ?? "no counts", max: 300)) }
             let counts = ["imported", "already", "skipped"].map { ($0, output[$0]?.int ?? 0) }

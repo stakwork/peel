@@ -194,13 +194,14 @@ public enum Web {
     /// 200 and at most `limit` bytes. Anywhere else is refused before anything is sent,
     /// and a redirect is never followed (nor a proxy used for plain http).
     /// `bearer` is the server's key: anything on this Mac can reach a
-    /// loopback port, so the key is what makes it Peel's.
+    /// loopback port, so the key is what makes it Peel's. `slow`: on the slow
+    /// session, for a step that takes minutes.
     public static func postToStrut(
-        _ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String
+        _ url: URL, json body: Data, bearer: String? = nil, limit: Int, what: String, slow: Bool = false
     ) async throws -> Data {
         let request = try strutRequest("POST", url, json: body, bearer: bearer)
         return try await Transfer(limit: limit, what: what, progress: nil)
-            .run(strutSession(for: url).dataTask(with: request)).0
+            .run(strutSession(for: url, slow: slow).dataTask(with: request)).0
     }
 
     /// One request to strut, as `postToStrut` makes it, with its status: any

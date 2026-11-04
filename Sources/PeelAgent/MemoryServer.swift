@@ -48,12 +48,13 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     /// Any strut step by its path (`dictation/correction`), through the same
     /// door, key and whole-string `{{ input }}` as the memory steps: what a
     /// user dictated is never read as a template.
-    public func run(step path: String, _ arguments: AgentKit.JSONValue) async throws -> AgentKit.JSONValue {
+    /// `slow`: on Peel's slow session, for a step that takes minutes (the memory import).
+    public func run(step path: String, _ arguments: AgentKit.JSONValue, slow: Bool = false) async throws -> AgentKit.JSONValue {
         let body = Data(AgentKit.JSONValue.object(["input": arguments, "config": "{{ input }}"]).jsonString.utf8)
         let url = base.appending(path: "steps/\(path)/run")
         let reply: Data
         do {
-            reply = try await Web.postToStrut(url, json: body, bearer: key, limit: Self.replyLimit, what: path)
+            reply = try await Web.postToStrut(url, json: body, bearer: key, limit: Self.replyLimit, what: path, slow: slow)
         } catch {
             throw PeelError(PeelError.problem(error, couldNot: "run \(path) on Peel's strut"))
         }

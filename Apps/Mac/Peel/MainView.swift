@@ -36,7 +36,13 @@ struct MainView: View {
             }
             .webPaneBeside(model.web)
         }
-        .opensLinksInWebPane(model.web)
+        // A Hive link to a paired workspace's app opens the app; any other
+        // link goes where a message's link goes (`WebPane.linkAction`).
+        .environment(\.openURL, OpenURLAction { url in
+            if model.openHiveAppLink(url) { return .handled }
+            model.web.linkAction(url)
+            return .handled
+        })
         .ignoresSafeArea(edges: .top)
         .foregroundStyle(Theme.text)
         .overlay {

@@ -39,6 +39,22 @@ struct MainTabs: View {
         .sheet(item: $router.orgPage) { page in
             OrgPageSheet(page: page)
         }
+        // A tapped Hive link to an app opens it when its workspace is paired
+        // here. Otherwise it says to connect that workspace first and still
+        // goes to the browser, so Hive shows its own sign-in or not-found;
+        // any other link is the system's, as before.
+        .environment(\.openURL, OpenURLAction { url in
+            switch model.stadeum.tap(url) {
+            case .open(let page, _):
+                if case .page(let request) = model.stadeum.opening(page) { router.orgPage = request }
+                return .handled
+            case .connectFirst(let slug):
+                CopyFeedback.announce("Connect @\(slug) first")
+                return .systemAction
+            case .notOurs:
+                return .systemAction
+            }
+        })
         // Its workspace no longer in use (revoked, disconnected, renewed
         // without it): the page and its token go.
         .onChange(of: model.stadeum.live) { _, live in

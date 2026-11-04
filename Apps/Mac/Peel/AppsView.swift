@@ -130,7 +130,11 @@ private struct AppCard: View {
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topTrailing) {
-            AppPinButton(app: app).padding(Theme.Space.sm)
+            HStack(spacing: 0) {
+                AppShareButton(app: app)
+                AppPinButton(app: app)
+            }
+            .padding(Theme.Space.sm)
         }
         .help(app.about ?? app.title)
     }

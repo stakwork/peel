@@ -189,6 +189,26 @@ extension AppModel {
         stadeum.apps.first { $0.peer == peer && $0.name == name }
     }
 
+    /// A tapped Hive link to an app (`WorkspaceApp.shareLink`): opens it
+    /// as its card does when that workspace is paired here and lists it.
+    /// False when the link is not one, or the app is not listed, and the
+    /// caller opens it in the browser as any link. For a workspace not
+    /// paired here it also says to connect it first, then the browser
+    /// still gets it, so Hive shows its own sign-in or not-found.
+    func openHiveAppLink(_ url: URL) -> Bool {
+        switch stadeum.tap(url) {
+        case .notOurs:
+            return false
+        case .open(let page, _):
+            guard let listed = app(peer: page.peer, name: page.value) else { return false }
+            destination = .app(peer: listed.peer, name: listed.name)
+            return true
+        case .connectFirst(let slug):
+            notice = "Connect @\(slug) first"
+            return false
+        }
+    }
+
     /// Opens an app a deliverable names, as its page was left. `title` is
     /// its name in the web pane. False while Peel's own strut is not running.
     @discardableResult

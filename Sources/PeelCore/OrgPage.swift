@@ -145,6 +145,30 @@ public struct OrgPage: Sendable, Equatable {
         OrgPage(peer: peer, query: "app", value: name)
     }
 
+    /// The app a link to Hive's page for it names (`WorkspaceApp.shareLink`):
+    /// https on Hive's own host and port, no userinfo, and exactly
+    /// `/w/<slug>/apps/<name>`, the slug a peer id and the name one strut
+    /// takes. Its query and fragment are ignored. Nil for anything else
+    /// (http, another or a lookalike host, an empty, dotted or version
+    /// segment, an encoded `/`, trailing junk): the link is only ever a name,
+    /// never a way in; the person's own pairing decides whether it opens.
+    public static func hiveApp(_ url: URL, hive: URL = HiveClient.production) -> OrgPage? {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = parts.host?.lowercased(), host == hive.host?.lowercased(),
+              parts.scheme?.lowercased() == "https", parts.port == nil,
+              parts.user == nil, parts.password == nil else { return nil }
+        let segments = parts.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard segments.count >= 5, segments[0].isEmpty, segments[1] == "w", segments[3] == "apps" else { return nil }
+        var decoded: [String] = []
+        for segment in segments.dropFirst(2) {
+            guard let text = segment.removingPercentEncoding, !text.contains("/") else { return nil }
+            decoded.append(text)
+        }
+        let slug = decoded[0], name = decoded.dropFirst(2).joined(separator: "/")
+        guard AgentArtifact.Handle.isPeerID(slug), AgentArtifact.Handle.isAppName(name) else { return nil }
+        return .app(name, on: slug)
+    }
+
     /// The page on the org's strut whose UI is at `base` (its peer record's `baseUrl`).
     public func url(on base: URL) -> URL? {
         StrutUI.page(on: base, query, value)

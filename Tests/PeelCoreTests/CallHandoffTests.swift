@@ -40,7 +40,7 @@ import Testing
         #expect(!mine.isOtherDevice(other, room: "room-2", sender: "tom-2", me: "tom-1"))
         let stranger = CallHandoff(seed: "seed-b").announcement(room: "room-1", identity: "tom-2")
         #expect(!mine.isOtherDevice(stranger, room: "room-1", sender: "tom-2", me: "tom-1"))
-        // A stay announcement is not a probe or an answer.
+        // A stay announcement is not a plain one.
         let stay = mine.announcement(room: "room-1", identity: "tom-2", stay: true)
         #expect(!mine.isOtherDevice(stay, room: "room-1", sender: "tom-2", me: "tom-1"))
     }

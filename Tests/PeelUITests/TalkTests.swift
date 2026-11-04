@@ -250,7 +250,7 @@ private final class Rooms: CallProvider {
 
     var joined: [Room] = []
 
-    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) throws -> any OngoingCall {
+    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) throws -> any OngoingCall {
         throw PeelError("no group calls here")
     }
 

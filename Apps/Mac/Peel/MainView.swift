@@ -52,6 +52,19 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: model.viewer == nil)
+        // The call being joined is on another device of yours too: asked
+        // here, before anything connects, since the call window is not up yet.
+        .overlay(alignment: .top) {
+            if model.calls.choosingDevice != nil {
+                CallDeviceConfirm(
+                    cancel: { model.calls.cancelDeviceChoice() },
+                    stay: { model.calls.stayOnBothDevices() },
+                    switchHere: { model.calls.switchToThisDevice() }
+                )
+                .frame(maxWidth: 460)
+                .padding(Theme.Space.md)
+            }
+        }
         .peelMenuHost(main: true)
         .sheet(item: Binding(get: { model.diagnosticsRecord }, set: { model.diagnosticsRecord = $0 })) {
             DiagnosticRecordSheet(record: $0)

@@ -125,6 +125,22 @@ struct RootView: View {
                     .environment(model)
                     .environment(router)
             }
+            // Your other device is already on the call being joined: choose
+            // before anything connects. Cancel (or dismissing) joins nothing.
+            .confirmationDialog(
+                "You are already on this call on another of your devices.",
+                isPresented: Binding(
+                    get: { model.calls.choosingDevice != nil },
+                    // Deferred: a button's own action runs first, and a choice
+                    // already made leaves nothing to cancel.
+                    set: { if !$0 { Task { @MainActor in model.calls.cancelDeviceChoice() } } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Switch to this device") { model.calls.switchToThisDevice() }
+                Button("Stay on both devices") { model.calls.stayOnBothDevices() }
+                Button("Cancel", role: .cancel) {}
+            }
             // Talk to Jamie (docs/talk.md): up while there is a Talk call,
             // starting or failed; it goes when the call does.
             .fullScreenCover(isPresented: Binding(

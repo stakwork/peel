@@ -1,2 +1,2 @@
-# stakwork/strut#482 (graph memory v1: the import migrates what fits and repairs an earlier one; dictation's vocabulary on the graph; search with embeddings, one rank fusion over nodes and facts) at 9011596, on main after #472.
-9011596daa9054f3f067442bbb687ec38a155925
+# stakwork/strut#482 (graph memory v1: the import migrates what fits and repairs an earlier one; dictation's vocabulary on the graph; search with embeddings, one rank fusion over nodes and facts, catch-up on a worker thread) at 47b0921, on main after #472.
+47b09211f66f8ac7a2a1885c0565b41fcd2bdd18

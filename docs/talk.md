@@ -142,6 +142,12 @@ read them (strut's `plans/private-voice.md` §4.1).
     a steady rate through silence.
 - What stays in the clear is LiveKit's signaling: the room name, the random
   identities, the `lk.agent.state` and `voice` attributes.
+- A failure is said, not hidden. The agent's state comes over that
+  signaling, so a call whose key doesn't match would still say "Speaking"
+  over silence. `TalkSession` hears LiveKit's encryption state for each
+  track, and any text packet that won't decrypt (`TalkEncryption`). The call
+  screen then says "This call's encryption failed: Jamie can't be heard" (or
+  "can't hear you", for the member's own track) before anything else.
 - The key crosses TLS to the home: whoever runs the home (a swarm, the demo
   box) could read it there. Sealing it to an attested home is step 4.
 

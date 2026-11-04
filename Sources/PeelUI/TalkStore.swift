@@ -210,6 +210,41 @@ public enum TalkPhase: Equatable, Sendable {
     }
 }
 
+/// A Talk call's encryption as it goes (docs/talk.md): the tracks LiveKit
+/// says will not encrypt or decrypt, and whether a packet of the agent's text
+/// would not decrypt. The agent's state comes over LiveKit's signaling, which
+/// is not encrypted, so a call whose key does not match would otherwise say
+/// "Speaking" over silence. `notice` is what the call screen says instead.
+public struct TalkEncryption: Equatable, Sendable {
+    /// The tracks failing now, by publication id: true for the member's own
+    /// (it will not encrypt), false for the agent's (it will not decrypt).
+    private var failing: [String: Bool] = [:]
+    /// A text packet would not decrypt. No later state clears it.
+    private var textFailed = false
+
+    public static let agentUnheard = "This call's encryption failed: Jamie can't be heard."
+    public static let youUnheard = "This call's encryption failed: Jamie can't hear you."
+
+    public init() {}
+
+    /// A track's state from LiveKit: `failed` for a missing key or frames
+    /// that will not encrypt or decrypt, `local` for the member's own track.
+    public mutating func track(_ id: String, local: Bool, failed: Bool) {
+        failing[id] = failed ? local : nil
+    }
+
+    /// A packet of the agent's text would not decrypt.
+    public mutating func textFailedToDecrypt() { textFailed = true }
+
+    /// What the call screen says, nil while nothing fails. The agent unheard
+    /// first: then nothing of the call comes through.
+    public var notice: String? {
+        if textFailed || failing.values.contains(false) { return Self.agentUnheard }
+        if failing.values.contains(true) { return Self.youUnheard }
+        return nil
+    }
+}
+
 /// One line of a Talk call's live text: what the member said or what the
 /// agent says, as it comes.
 public struct TalkLine: Identifiable, Equatable, Sendable {

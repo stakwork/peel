@@ -67,6 +67,32 @@ struct TalkTranscriptTests {
     }
 }
 
+/// The call's encryption as the call screen says it: a track of the agent's
+/// that won't decrypt (or a text packet) leaves Jamie unheard, the member's
+/// own that won't encrypt leaves them unheard, and a track that recovers
+/// clears its part.
+struct TalkEncryptionTests {
+    @Test func saysWhatFailsAndClearsWhatRecovers() {
+        var encryption = TalkEncryption()
+        #expect(encryption.notice == nil)
+        encryption.track("TR_mic", local: true, failed: true)
+        #expect(encryption.notice == TalkEncryption.youUnheard)
+        encryption.track("TR_agent", local: false, failed: true)
+        #expect(encryption.notice == TalkEncryption.agentUnheard)
+        encryption.track("TR_agent", local: false, failed: false)
+        #expect(encryption.notice == TalkEncryption.youUnheard)
+        encryption.track("TR_mic", local: true, failed: false)
+        #expect(encryption.notice == nil)
+    }
+
+    @Test func textThatWontDecryptStaysSaid() {
+        var encryption = TalkEncryption()
+        encryption.textFailedToDecrypt()
+        encryption.track("TR_agent", local: false, failed: false)
+        #expect(encryption.notice == TalkEncryption.agentUnheard)
+    }
+}
+
 /// What the call screen says, from the room's connection and the agent's
 /// `lk.agent.state` (agents-js 1.x's states).
 struct TalkPhaseTests {
@@ -166,8 +192,8 @@ struct TalkStoreTests {
         let talk = TalkStore(provider: rooms, defaults: defaults)
         talk.talk(to: home)
         try await settled(talk)
-        let request = try #require(stub.requests.first)
-        #expect(request.contains(#""voice":"am_michael""#))
+        let body = try #require(stub.requests.first.flatMap(HTTPStub.jsonBody(of:)))
+        #expect(body["voice"] == "am_michael" && Data(base64Encoded: body["key"] ?? "")?.count == 32)
         let joined = try #require(rooms.joined.first)
         #expect(talk.voice == .male && joined.voices.isEmpty)
         talk.toggleVoice()
@@ -187,8 +213,8 @@ struct TalkStoreTests {
         talk.talk(to: home)
         talk.toggleVoice()
         try await settled(talk)
-        let request = try #require(stub.requests.first)
-        #expect(request.contains(#""voice":"af_heart""#))
+        let body = try #require(stub.requests.first.flatMap(HTTPStub.jsonBody(of:)))
+        #expect(body["voice"] == "af_heart" && Data(base64Encoded: body["key"] ?? "")?.count == 32)
         #expect(talk.voice == .male && rooms.joined.first?.voices == [.male])
         #expect(TalkVoice.stored(in: defaults) == .male)
         await talk.end()

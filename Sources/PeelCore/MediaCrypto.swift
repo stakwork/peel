@@ -55,7 +55,8 @@ enum MediaCrypto {
                        key: derive(key, salt: encryptionSalt), iv: iv)
     }
 
-    private static func randomBytes(_ count: Int) -> Data {
+    /// `count` random bytes, from the system's secure generator.
+    static func randomBytes(_ count: Int) -> Data {
         var generator = SystemRandomNumberGenerator()
         return Data((0..<count).map { _ in UInt8.random(in: .min ... .max, using: &generator) })
     }

@@ -13,12 +13,6 @@ private func reply(url: String = "ws://127.0.0.1:7880", room tokenRoom: String =
     return #"{"url":"\#(url)","room":"\#(room)","token":"\#(token)","identity":"m-1","agent":"a-1","encrypted":\#(encrypted)\#(voice)}"#
 }
 
-/// The JSON body of a request the stub got.
-private func body(of request: String) throws -> [String: String] {
-    let json = try #require(request.components(separatedBy: "\r\n\r\n").last)
-    return try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String])
-}
-
 /// A home on a loopback stub, as the dev setting names one.
 private func home(_ stub: HTTPStub) throws -> TalkHome {
     try #require(TalkHome.development(url: "http://127.0.0.1:\(stub.port)", token: "person-token-1"))
@@ -37,7 +31,7 @@ struct TalkCallTests {
         let request = try #require(stub.requests.first)
         #expect(request.hasPrefix("POST /voice/calls HTTP/1.1\r\n"))
         #expect(request.lowercased().contains("\r\nauthorization: bearer person-token-1\r\n"))
-        #expect(try body(of: request) == ["key": ticket.key])
+        #expect(HTTPStub.jsonBody(of: request) == ["key": ticket.key])
         // Neither the ticket nor the home tells its token, nor the ticket its key.
         for secret in [ticket.token, ticket.key] {
             #expect(!"\(ticket)".contains(secret) && !String(reflecting: ticket).contains(secret))
@@ -54,7 +48,7 @@ struct TalkCallTests {
         #expect(first.key != second.key)
         for (ticket, request) in zip([first, second], stub.requests) {
             #expect(Data(base64Encoded: ticket.key)?.count == 32)
-            #expect(try body(of: request)["key"] == ticket.key)
+            #expect(HTTPStub.jsonBody(of: request)?["key"] == ticket.key)
         }
     }
 
@@ -72,7 +66,7 @@ struct TalkCallTests {
         let ticket = try await home(stub).startCall(voice: asked)
         #expect(ticket.voice == shown)
         let request = try #require(stub.requests.first)
-        #expect(try body(of: request)["voice"] == asked.rawValue)
+        #expect(HTTPStub.jsonBody(of: request)?["voice"] == asked.rawValue)
     }
 
     /// The toggle: ♀ is `af_heart`, ♂ `am_michael`, as text and never emoji;

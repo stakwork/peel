@@ -82,14 +82,13 @@ public struct TalkHome: Sendable, Equatable, Identifiable, CustomStringConvertib
     /// kept. LiveKit keys the room with this string's UTF-8 bytes, on the
     /// phone (`BaseKeyProvider(sharedKey:)`) and in the home's agent alike.
     static func newKey() -> String {
-        var random = SystemRandomNumberGenerator()
-        return Data((0..<32).map { _ in UInt8.random(in: .min ... .max, using: &random) }).base64EncodedString()
+        MediaCrypto.randomBytes(32).base64EncodedString()
     }
 
     /// `POST /voice/calls`'s body: `{ "key": "<base64>", "voice": "am_michael" }`.
-    static func callBody(key: String, voice: TalkVoice?) -> Data {
+    static func callBody(key: String, voice: TalkVoice?) throws -> Data {
         struct Body: Encodable { let key: String; let voice: String? }
-        return (try? JSONEncoder().encode(Body(key: key, voice: voice?.rawValue))) ?? Data("{}".utf8)
+        return try JSONEncoder().encode(Body(key: key, voice: voice?.rawValue))
     }
 }
 

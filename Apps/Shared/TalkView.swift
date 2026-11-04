@@ -241,6 +241,7 @@ private struct TalkControls: View {
     }
 
     private static func note(_ session: TalkSession) -> String? {
+        if let failed = session.encryptionNotice { return failed }
         if session.micRefused { return "Peel can't use the microphone, so Jamie can't hear you. Allow it in Settings, then unmute." }
         if let notice = session.notice { return notice }
         return session.micOn || !session.micReady ? nil : "Muted: Jamie can't hear you."

@@ -37,7 +37,7 @@ final class TalkSession: TalkMedia {
     private(set) var encryptionNotice: String?
 
     /// The cards Jamie sent (`TalkArtifacts`), in the order they came, each
-    /// with the number of transcript lines there were when it arrived.
+    /// with where it goes in the transcript (`TalkCardAnchor`).
     private(set) var cards: [TalkCard] = []
     /// The newest cards kept.
     static let maxCards = 30
@@ -152,14 +152,14 @@ final class TalkSession: TalkMedia {
         transcript.receive(chunk, stream: stream, sender: sender, attributes: attributes, you: identity, yourTracks: tracks)
     }
 
-    /// One turn's artifacts, each a card after the transcript so far. A
-    /// payload seen before (by its id) adds nothing.
+    /// One turn's artifacts, each a card anchored in the transcript so far.
+    /// A payload seen before (by its id) adds nothing.
     private func receivedArtifacts(_ text: String) {
         guard !leaving, text.utf8.count <= 256 * 1024, let batch = TalkArtifacts.batch(text, workspace: home.id),
               seenArtifacts.insert(batch.id).inserted else { return }
-        let after = transcript.lines.count
+        let anchor = TalkCardAnchor(transcript)
         for (index, artifact) in batch.artifacts.enumerated() {
-            cards.append(TalkCard(id: "\(batch.id)/\(index)", artifact: artifact, after: after))
+            cards.append(TalkCard(id: "\(batch.id)/\(index)", artifact: artifact, anchor: anchor))
         }
         if cards.count > Self.maxCards { cards.removeFirst(cards.count - Self.maxCards) }
     }
@@ -318,12 +318,12 @@ final class TalkSession: TalkMedia {
     }
 }
 
-/// One artifact Jamie sent on the call, shown after the `after` transcript
-/// lines there were when it arrived.
+/// One artifact Jamie sent on the call, shown where its anchor puts it in
+/// the transcript.
 struct TalkCard: Identifiable, Equatable {
     let id: String
     let artifact: AgentArtifact
-    let after: Int
+    let anchor: TalkCardAnchor
 }
 
 /// Hears a Talk room's encryption (a `RoomDelegate`, which LiveKit calls on

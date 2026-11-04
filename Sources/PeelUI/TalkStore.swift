@@ -272,6 +272,8 @@ public struct TalkTranscript: Equatable, Sendable {
     static let maxText = 4000
 
     public private(set) var lines: [TalkLine] = []
+    /// The newest line the cap dropped, by id: the one before the first kept.
+    private(set) var lastDropped: String?
     /// Each line's text as it came, and the stream that last wrote it.
     private var raw: [String: (text: String, stream: String)] = [:]
 
@@ -301,8 +303,51 @@ public struct TalkTranscript: Equatable, Sendable {
             lines.append(TalkLine(id: id, speaker: speaker, text: shown, isFinal: isFinal))
             if lines.count > Self.maxLines {
                 for gone in lines.prefix(lines.count - Self.maxLines) { raw[gone.id] = nil }
+                lastDropped = lines[lines.count - Self.maxLines - 1].id
                 lines.removeFirst(lines.count - Self.maxLines)
             }
+        }
+    }
+}
+
+/// Where one of Jamie's cards goes in a Talk call's live text (docs/talk.md):
+/// under the reply it came with. A card comes as strut's run for a turn ends,
+/// or as a finished job's summary is queued to be spoken, usually before
+/// Jamie's line: LiveKit Agents send that in time with the audio. So it goes
+/// under Jamie's line being spoken when it came; else it waits at the end,
+/// then goes under the next line if that is Jamie's, or stays above it if it
+/// is the member's. It never moves: each later line comes above or below it.
+public enum TalkCardAnchor: Equatable, Sendable {
+    /// Under this line of Jamie's.
+    case under(String)
+    /// Decided by the first line after this one (nil: the call's first line).
+    case next(after: String?)
+
+    /// A card's anchor as it comes, from the live text so far.
+    public init(_ transcript: TalkTranscript) {
+        if let last = transcript.lines.last, last.speaker == .agent, !last.isFinal {
+            self = .under(last.id)
+        } else {
+            self = .next(after: transcript.lines.last?.id)
+        }
+    }
+
+    /// Where the card goes: how many of the transcript's lines are above it.
+    /// A card whose lines the cap dropped goes at the top, where they were.
+    public func linesAbove(in transcript: TalkTranscript) -> Int {
+        let lines = transcript.lines
+        switch self {
+        case .under(let id):
+            return lines.firstIndex { $0.id == id }.map { $0 + 1 } ?? 0
+        case .next(after: let id):
+            // The first line after the anchor's. Past the cap: the first
+            // kept when the anchor is the newest line dropped (nil, before
+            // any drop: the call's first line), else gone too.
+            let next: Int? = if let index = lines.firstIndex(where: { $0.id == id }) { index + 1 }
+                else if id == transcript.lastDropped { 0 } else { nil }
+            guard let next else { return 0 }
+            guard next < lines.count else { return lines.count }
+            return lines[next].speaker == .agent ? next + 1 : next
         }
     }
 }

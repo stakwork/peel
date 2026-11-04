@@ -242,22 +242,25 @@ private struct TalkLive: View {
         let phase = session.phase
         let muted = session.micReady && !session.micOn
         TalkPhaseView(words: phase.words, mode: TalkWave.Mode(phase: phase, muted: muted), session: session)
-        TalkLines(lines: session.transcript.lines, cards: session.cards)
+        TalkLines(transcript: session.transcript, cards: session.cards)
         TalkControls(session: session)
     }
 }
 
 /// The live text, newest at the bottom and kept in view as it grows.
 private struct TalkLines: View {
-    let lines: [TalkLine]
-    /// Jamie's artifacts, each after the lines there were when it came.
+    let transcript: TalkTranscript
+    /// Jamie's artifacts, each where its anchor puts it (`TalkCardAnchor`).
     let cards: [TalkCard]
 
     var body: some View {
+        let lines = transcript.lines
+        // The cards by how many lines are above them, in the order they came.
+        let placed = Dictionary(grouping: cards) { $0.anchor.linesAbove(in: transcript) }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Space.md) {
                 ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                    ForEach(cards.filter { $0.after == index }) { TalkArtifactRow(artifact: $0.artifact) }
+                    ForEach(placed[index] ?? []) { TalkArtifactRow(artifact: $0.artifact) }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(line.speaker == .you ? "You" : "Jamie")
                             .talkFont(13, .semibold, .footnote)
@@ -270,7 +273,7 @@ private struct TalkLines: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityElement(children: .combine)
                 }
-                ForEach(cards.filter { $0.after >= lines.count }) { TalkArtifactRow(artifact: $0.artifact) }
+                ForEach(placed[lines.count] ?? []) { TalkArtifactRow(artifact: $0.artifact) }
             }
             .padding(.horizontal, Theme.Space.lg)
             .padding(.vertical, Theme.Space.md)

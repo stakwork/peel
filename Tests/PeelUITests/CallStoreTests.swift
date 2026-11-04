@@ -98,6 +98,22 @@ struct CallStoreTests {
         #expect(notices["02bb"] == "The call moved to your other device.")
     }
 
+    @Test func theHandoffNoticeGoesWhenYouLeaveItsChat() throws {
+        let (calls, _, _) = try attached()
+        var notices: [String: String] = [:]
+        calls.chatNotice = { chat, change in notices[chat] = change(notices[chat]) }
+        let now = OnCall(link: try link(1), chat: "02bb", people: people(2))
+        calls.call = now
+        calls.movedAway(now)
+        #expect(notices["02bb"] == "The call moved to your other device.")
+
+        calls.chatChanged(to: "02bb")
+        #expect(notices["02bb"] != nil)
+        calls.chatChanged(to: "02cc")
+        #expect(notices["02bb"] == nil)
+    }
+
+
     private func ticket(_ link: CallLink, identity: String = "me-phone", name: String = "Tom") -> CallTicket {
         CallTicket(
             serverURL: URL(string: "ws://127.0.0.1:9")!, token: "token", room: link.room, identity: identity,

@@ -263,10 +263,10 @@ public final class BundledStrut {
 
     /// strut's `graph/import-memory`, the first time memory is on the graph
     /// here: the old database's entities and facts copied into `private`
-    /// (strut reads it and never changes it; again, it would add nothing).
-    /// Its counts are logged and kept in `memoryImportRecord`; the items
-    /// for review are not, as they are memory's own words. A failure is
-    /// logged and tried again at the next start; strut runs on either way.
+    /// (strut reads it and never changes it; what has no place on the graph
+    /// is dropped; again, it repairs what an earlier import wrote). Its counts
+    /// are logged and kept in `memoryImportRecord`. A failure is logged and
+    /// tried again at the next start; strut runs on either way.
     func importMemoryOnce(on server: MemoryServer) async {
         if let held = try? Data(contentsOf: memoryImportRecord),
            (try? AgentKit.JSONValue(parsing: String(decoding: held, as: UTF8.self)))?["version"]?.int ?? 1 >= Self.memoryImportVersion { return }
@@ -274,7 +274,7 @@ public final class BundledStrut {
             let output = try await server.run(step: "graph/import-memory", [:])
             // A step's failure comes back as its words, not counts: not done.
             guard output.object != nil else { throw PeelError(TextLine.clean(output.string ?? "no counts", max: 300)) }
-            let counts = ["imported", "already", "skipped", "for_review"].map { ($0, output[$0]?.int ?? 0) }
+            let counts = ["imported", "already", "skipped"].map { ($0, output[$0]?.int ?? 0) }
             var record: [String: AgentKit.JSONValue] = ["at": .string(Date.now.formatted(.iso8601)), "version": .number(Double(Self.memoryImportVersion))]
             for (key, count) in counts { record[key] = .number(Double(count)) }
             try Data(AgentKit.JSONValue.object(record).jsonString.utf8).write(to: memoryImportRecord, options: .atomic)

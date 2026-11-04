@@ -347,9 +347,10 @@ struct CallSwitchConfirm: View {
     }
 }
 
-/// Joining a call your other device is already on: "Switch to this device"
-/// takes the call (the other leaves), "Stay on both devices" keeps both, and
-/// Cancel leaves the call from this one. Modelled on `CallSwitchConfirm`.
+/// Joining a call your other device is already on, asked before this device
+/// connects: "Switch to this device" takes the call (the other leaves), "Stay
+/// on both devices" keeps both, and Cancel joins nothing. Modelled on
+/// `CallSwitchConfirm`.
 struct CallDeviceConfirm: View {
     let cancel: () -> Void
     let stay: () -> Void

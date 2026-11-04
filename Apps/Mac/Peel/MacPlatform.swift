@@ -59,8 +59,8 @@ extension WebPane: WebPresenting {}
 
 /// Calls over LiveKit, each a `CallSession`.
 struct LiveKitCalls: CallProvider {
-    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) -> any OngoingCall {
-        CallSession(ticket: ticket, link: link, chat: chat, title: title, camera: camera)
+    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) -> any OngoingCall {
+        CallSession(ticket: ticket, link: link, chat: chat, title: title, camera: camera, stay: stay)
     }
 
     func talk(_ ticket: TalkTicket, home: TalkHome) -> any TalkMedia {

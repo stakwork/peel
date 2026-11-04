@@ -88,16 +88,6 @@ private struct CallRoomView: View {
                 CallChatView(call: call)
             }
         }
-        .overlay(alignment: .top) {
-            if model.calls.choosingDevice === call {
-                CallDeviceConfirm(
-                    cancel: { model.calls.cancelDeviceChoice() },
-                    stay: { model.calls.stayOnBothDevices() },
-                    switchHere: { model.calls.switchToThisDevice() }
-                )
-                .padding(Theme.Space.md)
-            }
-        }
         .background(WindowReader { window = $0 })
         .onChange(of: window) {
             window?.collectionBehavior.insert(.fullScreenPrimary)

@@ -1,5 +1,6 @@
 import AgentKit
 import Foundation
+import PeelCore
 
 /// Where "What it learned" keeps Causes and Concepts: the person's own graph
 /// on Peel's own strut (the memory the assistant already has), one graph for
@@ -103,7 +104,7 @@ public actor GraphLearnedStore: LearnedStore {
 
     /// One memory step. A refusal other than "not found" means strut does not
     /// know the types or edges, said in plain words (`unsupported`).
-    private func run(_ verb: String, _ arguments: JSONValue) async throws -> JSONValue {
+    private func run(_ verb: String, _ arguments: AgentKit.JSONValue) async throws -> AgentKit.JSONValue {
         do { return try await graph.run(verb, arguments) } catch let refusal as MemoryServer.Refusal {
             if refusal.code == "not_found" { throw refusal }
             throw LearnedRefusal(Self.unsupported)
@@ -115,9 +116,9 @@ public actor GraphLearnedStore: LearnedStore {
     /// One node as stored.
     private struct Node {
         var ref: String
-        var record: JSONValue?
-        var facts: [JSONValue]
-        func facts(_ predicate: String) -> [JSONValue] { facts.filter { $0["predicate"]?.string == predicate } }
+        var record: AgentKit.JSONValue?
+        var facts: [AgentKit.JSONValue]
+        func facts(_ predicate: String) -> [AgentKit.JSONValue] { facts.filter { $0["predicate"]?.string == predicate } }
     }
 
     /// One fact to write: about the node, or an edge to `object`.
@@ -126,23 +127,23 @@ public actor GraphLearnedStore: LearnedStore {
         var text: String
         var object: (type: String, name: String)?
         /// Carried in the fact's `value` as JSON.
-        var payload: JSONValue?
+        var payload: AgentKit.JSONValue?
     }
 
     private func read(_ ref: String) async throws -> Node? {
-        let output: JSONValue
+        let output: AgentKit.JSONValue
         do { output = try await run("get", ["ref_id": .string(ref)]) } catch let refusal as MemoryServer.Refusal where refusal.code == "not_found" {
             return nil
         }
         let facts = output["facts"]?.array ?? []
         // A newer record is last; an older one is dropped on the next write.
         let record = facts.last { $0["predicate"]?.string == Self.record }.flatMap { $0["text"]?.string }
-            .flatMap { try? JSONValue(parsing: $0) }
+            .flatMap { try? AgentKit.JSONValue(parsing: $0) }
         return Node(ref: ref, record: record, facts: facts)
     }
 
     private func index() async throws -> (ref: String?, index: Index) {
-        let output: JSONValue
+        let output: AgentKit.JSONValue
         do { output = try await run("recall", ["q": .string(Self.indexName)]) } catch let refusal as MemoryServer.Refusal where refusal.code == "not_found" {
             return (nil, Index())
         }
@@ -156,16 +157,16 @@ public actor GraphLearnedStore: LearnedStore {
     /// older facts of the predicates in `replacing` that these replace.
     /// Returns the node's ref_id.
     @discardableResult
-    private func write(type: String, name: String, ref: String?, record: [String: JSONValue]?, edges: [Edge] = [],
+    private func write(type: String, name: String, ref: String?, record: [String: AgentKit.JSONValue]?, edges: [Edge] = [],
                        replacing: Set<String> = []) async throws -> String {
         let old: Node? = if let ref, !replacing.isEmpty { try await read(ref) } else { nil }
-        var entities: [JSONValue] = [["name": .string(name), "type": .string(type)]]
-        var facts: [JSONValue] = []
+        var entities: [AgentKit.JSONValue] = [["name": .string(name), "type": .string(type)]]
+        var facts: [AgentKit.JSONValue] = []
         if let record {
-            facts.append(["subject": .string(name), "predicate": .string(Self.record), "text": .string(JSONValue.object(record).jsonString)])
+            facts.append(["subject": .string(name), "predicate": .string(Self.record), "text": .string(AgentKit.JSONValue.object(record).jsonString)])
         }
         for edge in edges {
-            var fact: [String: JSONValue] = ["subject": .string(name), "predicate": .string(edge.predicate), "text": .string(edge.text)]
+            var fact: [String: AgentKit.JSONValue] = ["subject": .string(name), "predicate": .string(edge.predicate), "text": .string(edge.text)]
             if let object = edge.object {
                 entities.append(["name": .string(object.name), "type": .string(object.type)])
                 fact["object"] = .string(object.name)
@@ -191,14 +192,14 @@ public actor GraphLearnedStore: LearnedStore {
     }
 
     private func writeIndex(_ list: Index) async throws {
-        let record: [String: JSONValue] = ["refs": .object(list.refs.mapValues(JSONValue.string))]
+        let record: [String: AgentKit.JSONValue] = ["refs": .object(list.refs.mapValues(AgentKit.JSONValue.string))]
         let (ref, _) = try await index()
         let old: Node? = if let ref { try await read(ref) } else { nil }
         let output = try await run("remember", [
             "episode": "What it learned: the list of what is kept",
             "entities": [["name": .string(Self.indexName), "type": "LearnedIndex"]],
             "facts": [["subject": .string(Self.indexName), "predicate": .string(Self.record),
-                       "text": .string(JSONValue.object(record).jsonString)]],
+                       "text": .string(AgentKit.JSONValue.object(record).jsonString)]],
         ])
         let kept = Set((output["facts"]?.array ?? []).compactMap { $0["ref_id"]?.string })
         for stale in old?.facts(Self.record) ?? [] {
@@ -208,8 +209,8 @@ public actor GraphLearnedStore: LearnedStore {
 
     // MARK: Records
 
-    static func json(_ cause: PersonalCause) -> [String: JSONValue] {
-        var record: [String: JSONValue] = [
+    static func json(_ cause: PersonalCause) -> [String: AgentKit.JSONValue] {
+        var record: [String: AgentKit.JSONValue] = [
             "kind": "cause", "statement": .string(cause.statement), "cause_type": .string(cause.causeType.rawValue),
             "severity": .string(cause.severity.rawValue), "identity_key": .string(cause.identityKey),
             "status": .string(cause.status.rawValue), "theme": .bool(cause.isTheme),
@@ -220,8 +221,8 @@ public actor GraphLearnedStore: LearnedStore {
 
     /// An `EVIDENCED_BY` edge's fields beyond its excerpt (the fact's text),
     /// as the fact's `value`.
-    static func payload(_ evidence: CauseEvidence) -> JSONValue {
-        var value: [String: JSONValue] = [
+    static func payload(_ evidence: CauseEvidence) -> AgentKit.JSONValue {
+        var value: [String: AgentKit.JSONValue] = [
             "edge": "EVIDENCED_BY", "turn": .string(evidence.turn), "confidence": .number(evidence.confidence),
             "kind": .string(evidence.kind), "why": .string(evidence.why),
         ]
@@ -234,8 +235,8 @@ public actor GraphLearnedStore: LearnedStore {
         Edge(predicate: "EVIDENCED_BY", text: evidence.excerpt, object: ("Turn", evidence.turn), payload: Self.payload(evidence))
     }
 
-    static func evidence(from fact: JSONValue) -> CauseEvidence? {
-        let payload = fact["value"]?.string.flatMap { try? JSONValue(parsing: $0) }
+    static func evidence(from fact: AgentKit.JSONValue) -> CauseEvidence? {
+        let payload = fact["value"]?.string.flatMap { try? AgentKit.JSONValue(parsing: $0) }
         guard let turn = fact["object"]?["name"]?.string ?? payload?["turn"]?.string, let excerpt = fact["text"]?.string else { return nil }
         var confidence = 0.5
         if case .number(let number)? = payload?["confidence"] { confidence = number }
@@ -380,8 +381,8 @@ public actor GraphLearnedStore: LearnedStore {
     public func reject(grouping: RejectedGrouping) async throws {
         let key = GroupingRules.key(leafKeys: Array(grouping.leafKeys), parent: grouping.parent)
         try await write(type: "LearnedRejection", name: "grouping \(key)", ref: nil, record: [
-            "kind": "rejection", "rejected": "grouping", "leaf_keys": .array(grouping.leafKeys.sorted().map(JSONValue.string)),
-            "parent": grouping.parent.map(JSONValue.string) ?? .null,
+            "kind": "rejection", "rejected": "grouping", "leaf_keys": .array(grouping.leafKeys.sorted().map(AgentKit.JSONValue.string)),
+            "parent": grouping.parent.map(AgentKit.JSONValue.string) ?? .null,
         ])
     }
 
@@ -415,11 +416,11 @@ public actor GraphLearnedStore: LearnedStore {
         return edges
     }
 
-    static func json(_ concept: PersonalConcept) -> [String: JSONValue] {
-        var record: [String: JSONValue] = [
+    static func json(_ concept: PersonalConcept) -> [String: AgentKit.JSONValue] {
+        var record: [String: AgentKit.JSONValue] = [
             "kind": "concept", "name": .string(concept.name), "statement": .string(concept.statement),
             "cause": .string(concept.cause), "live": .bool(concept.live),
-            "keywords": .array(concept.keywords.map(JSONValue.string)),
+            "keywords": .array(concept.keywords.map(AgentKit.JSONValue.string)),
         ]
         if let prior = concept.prior {
             record["prior"] = ["name": .string(prior.name), "statement": .string(prior.statement), "live": .bool(prior.live)]

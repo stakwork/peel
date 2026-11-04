@@ -9,8 +9,12 @@ import Synchronization
 /// A Talk call's room (docs/talk.md), on the phone and the Mac: the LiveKit
 /// room an org's home named for a call with its agent, the microphone, and
 /// what the call screen shows of it, the agent's state and the live text
-/// (`TalkPhase`, `TalkTranscript`). The ticket's token goes to LiveKit and is
-/// not kept.
+/// (`TalkPhase`, `TalkTranscript`). The ticket's token and key go to LiveKit
+/// and are not kept.
+///
+/// The room is end-to-end encrypted with the call's key (docs/talk.md), the
+/// audio both ways and the live text: the LiveKit server forwards what it
+/// cannot read.
 ///
 /// Apple's voice processing stays on, as for every call (LiveKit's default,
 /// and on the phone a `.voiceChat` audio session, `IOSCallSession`'s), so
@@ -32,9 +36,7 @@ final class TalkSession: TalkMedia {
 
     @ObservationIgnored private let identity: String
     @ObservationIgnored private let agent: String
-    /// Step 2 joins with `RoomOptions(defaultAudioPublishOptions:
-    /// AudioPublishOptions(dtx: false, red: false), encryptionOptions:)`,
-    /// the call's shared key in a shared-key provider (plans/private-voice.md §2, §4.1).
+    /// One room per call: its encryption is set as it connects (`options(key:)`).
     @ObservationIgnored private let room = Room()
     @ObservationIgnored private var connecting: Task<Void, Never>?
     @ObservationIgnored private var changes: AnyCancellable?
@@ -79,11 +81,26 @@ final class TalkSession: TalkMedia {
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.refresh() } }
         // The microphone after voice processing, as the agent hears it.
         AudioManager.shared.add(localAudioRenderer: micMeter)
-        let url = ticket.url.absoluteString, token = ticket.token
-        connecting = Task { [weak self] in await self?.connect(url: url, token: token) }
+        let url = ticket.url.absoluteString, token = ticket.token, options = Self.options(key: ticket.key)
+        connecting = Task { [weak self] in await self?.connect(url: url, token: token, options: options) }
     }
 
-    private func connect(url: String, token: String) async {
+    /// The room's options for a call's key:
+    /// - `encryptionOptions`, never the deprecated `e2eeOptions`, so the
+    ///   agent's live text on the data channel is encrypted as well as the
+    ///   audio. The shared key is the key string as the home has it (the SDK
+    ///   keys with its UTF-8 bytes, and so does the agent).
+    /// - The microphone without Opus RED, which the server can't repackage
+    ///   for an encrypted track and this SDK leaves on under encryption, and
+    ///   without DTX, so packets keep a steady rate through silence.
+    static func options(key: String) -> RoomOptions {
+        RoomOptions(
+            defaultAudioPublishOptions: AudioPublishOptions(dtx: false, red: false),
+            encryptionOptions: EncryptionOptions(keyProvider: BaseKeyProvider(isSharedKey: true, sharedKey: key))
+        )
+    }
+
+    private func connect(url: String, token: String, options: RoomOptions) async {
         // Before the room connects, so no line is missed.
         try? await room.registerTextStreamHandler(for: TalkTranscript.topic) { [weak self] reader, sender in
             let stream = reader.info.id, attributes = reader.info.attributes
@@ -92,7 +109,7 @@ final class TalkSession: TalkMedia {
             }
         }
         do {
-            try await room.connect(url: url, token: token)
+            try await room.connect(url: url, token: token, roomOptions: options)
         } catch {
             failed = true
             refresh()

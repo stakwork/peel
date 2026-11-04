@@ -101,7 +101,7 @@ struct TalkStoreTests {
     private func answer(voice: String? = nil) -> String {
         let token = unsignedJWT(["sub": "m-1", "video": ["room": Self.room]])
         let voice = voice.map { #","voice":"\#($0)""# } ?? ""
-        return #"{"url":"ws://127.0.0.1:7880","room":"\#(Self.room)","token":"\#(token)","identity":"m-1","agent":"a-1","encrypted":false\#(voice)}"#
+        return #"{"url":"ws://127.0.0.1:7880","room":"\#(Self.room)","token":"\#(token)","identity":"m-1","agent":"a-1","encrypted":true\#(voice)}"#
     }
 
     private func home(answering status: Int = 200, _ body: String? = nil) async throws -> (HTTPStub, TalkHome) {
@@ -167,7 +167,7 @@ struct TalkStoreTests {
         talk.talk(to: home)
         try await settled(talk)
         let request = try #require(stub.requests.first)
-        #expect(request.hasSuffix(#"{"voice":"am_michael"}"#))
+        #expect(request.contains(#""voice":"am_michael""#))
         let joined = try #require(rooms.joined.first)
         #expect(talk.voice == .male && joined.voices.isEmpty)
         talk.toggleVoice()
@@ -188,7 +188,7 @@ struct TalkStoreTests {
         talk.toggleVoice()
         try await settled(talk)
         let request = try #require(stub.requests.first)
-        #expect(request.hasSuffix(#"{"voice":"af_heart"}"#))
+        #expect(request.contains(#""voice":"af_heart""#))
         #expect(talk.voice == .male && rooms.joined.first?.voices == [.male])
         #expect(TalkVoice.stored(in: defaults) == .male)
         await talk.end()

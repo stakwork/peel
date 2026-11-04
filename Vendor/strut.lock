@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #472 (graph search ranked on Ladybug's own index, no English word lists), after #405–#470 (the graph layer: assert, resolve, merge, namespaces, graphReaders; memory: "graph", Personal Concepts the orchestrator follows, the run kept as each fact's source, graph tool wording only on Ladybug).
-655eff8fcb0f62d30a0a04f011dbfc1049623d65
+# stakwork/strut#482 (graph memory v1: the import migrates what fits and repairs an earlier one; dictation's vocabulary on the graph; search with embeddings, one rank fusion over nodes and facts) at 9011596, on main after #472.
+9011596daa9054f3f067442bbb687ec38a155925

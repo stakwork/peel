@@ -375,7 +375,7 @@ final class IOSCallSession {
         let next = [true, false].flatMap { screen in everyone.compactMap { tile($0.0, isYou: $0.1, screen: screen) } }
         if next != tiles {
             tiles = next
-            let everyone = next.filter { !$0.isScreen }.map(\.person)
+            let everyone = next.filter { !$0.isScreen && !$0.isJamie }.map(\.person)
             if everyone != people { people = everyone }
             refocus()
         }

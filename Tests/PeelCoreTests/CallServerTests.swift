@@ -251,6 +251,16 @@ struct CallPresenceTests {
         #expect(S.applying(.joined(alice), to: .ended) == .live([alice]))
     }
 
+    /// Jamie, the voice agent, is not a person on the call: not counted,
+    /// not in the avatars.
+    @Test func leavesOutJamie() {
+        typealias S = CallServer
+        let jamie = CallParticipant(identity: "agent-1", nickname: "Jamie", avatarURL: nil)
+        #expect(S.applying(.current([alice, jamie, bob]), to: .unknown) == .live([alice, bob]))
+        #expect(S.applying(.joined(jamie), to: .live([alice])) == .live([alice]))
+        #expect(S.applying(.current([jamie]), to: .unknown) == .live([]))
+    }
+
     /// The official Mac app counts and shows only participants with a
     /// name: a recorder, an agent or a join LiveKit has not named yet is
     /// not a person on the call (four in the feed, three on the call).

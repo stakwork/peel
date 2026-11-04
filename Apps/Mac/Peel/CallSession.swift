@@ -36,11 +36,13 @@ final class CallSession {
         var muted: Bool
         /// Their camera while it is on and arriving, or the screen they share.
         var video: VideoTrack?
+        /// Jamie, the call's voice agent (`CallChatWire.isJamie`), not its screen.
+        var isJamie = false
         var id: ID { ID(identity: person.identity, isScreen: isScreen) }
 
         static func == (a: Tile, b: Tile) -> Bool {
             a.person == b.person && a.isYou == b.isYou && a.isScreen == b.isScreen && a.speaking == b.speaking
-                && a.muted == b.muted && a.video === b.video
+                && a.muted == b.muted && a.video === b.video && a.isJamie == b.isJamie
         }
     }
 
@@ -588,7 +590,7 @@ final class CallSession {
         let next = [true, false].flatMap { screen in everyone.compactMap { tile($0.0, isYou: $0.1, screen: screen) } }
         if next != tiles {
             tiles = next
-            let everyone = next.filter { !$0.isScreen }.map(\.person)
+            let everyone = next.filter { !$0.isScreen && !$0.isJamie }.map(\.person)
             if everyone != people { people = everyone }
             refocus()
         }
@@ -671,11 +673,12 @@ final class CallSession {
               let person = person(id, name: participant.name, metadata: participant.metadata)
         else { return nil }
         // Jamie keeps its track published with its voice off: muted is what it says.
-        let quiet = Self.isJamie(participant)
+        let jamie = !isYou && Self.isJamie(participant)
+        let quiet = jamie
             ? !CallChatWire.jamieSpeaks(participant.attributes) : !participant.isMicrophoneEnabled()
         return Tile(
             person: person, isYou: isYou, isScreen: screen, speaking: !screen && participant.isSpeaking,
-            muted: !screen && quiet, video: video
+            muted: !screen && quiet, video: video, isJamie: !screen && jamie
         )
     }
 

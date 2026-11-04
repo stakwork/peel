@@ -6,7 +6,7 @@ import Testing
 private let room = "sphinx.call.voice.0123456789abcdef0123456789abcdef"
 
 /// What a home answers to `POST /voice/calls` (strut's plans/private-voice.md §4.1).
-private func reply(url: String = "ws://127.0.0.1:7880", room tokenRoom: String = room, encrypted: Bool = false,
+private func reply(url: String = "ws://127.0.0.1:7880", room tokenRoom: String = room, encrypted: Bool = true,
                    voice: String? = nil) -> String {
     let token = unsignedJWT(["sub": "m-1", "exp": Date.now.timeIntervalSince1970 + 600, "video": ["room": tokenRoom, "roomJoin": true]])
     let voice = voice.map { #","voice":"\#($0)""# } ?? ""
@@ -31,10 +31,25 @@ struct TalkCallTests {
         let request = try #require(stub.requests.first)
         #expect(request.hasPrefix("POST /voice/calls HTTP/1.1\r\n"))
         #expect(request.lowercased().contains("\r\nauthorization: bearer person-token-1\r\n"))
-        #expect(request.hasSuffix("\r\n\r\n{}"))
-        // Neither the ticket nor the home tells its token.
-        #expect(!"\(ticket)".contains(ticket.token) && !String(reflecting: ticket).contains(ticket.token))
+        #expect(HTTPStub.jsonBody(of: request) == ["key": ticket.key])
+        // Neither the ticket nor the home tells its token, nor the ticket its key.
+        for secret in [ticket.token, ticket.key] {
+            #expect(!"\(ticket)".contains(secret) && !String(reflecting: ticket).contains(secret))
+        }
         #expect(!"\(try home(stub))".contains("person-token-1"))
+    }
+
+    /// Every call goes with a fresh key, 32 random bytes as base64, and joins
+    /// the room with the very string sent.
+    @Test func sendsAFreshKeyForEveryCall() async throws {
+        let stub = try await HTTPStub { _ in reply() }
+        defer { stub.stop() }
+        let first = try await home(stub).startCall(), second = try await home(stub).startCall()
+        #expect(first.key != second.key)
+        for (ticket, request) in zip([first, second], stub.requests) {
+            #expect(Data(base64Encoded: ticket.key)?.count == 32)
+            #expect(HTTPStub.jsonBody(of: request)?["key"] == ticket.key)
+        }
     }
 
     /// The voice asked for rides in the body; the screen shows the one the
@@ -51,7 +66,7 @@ struct TalkCallTests {
         let ticket = try await home(stub).startCall(voice: asked)
         #expect(ticket.voice == shown)
         let request = try #require(stub.requests.first)
-        #expect(request.hasSuffix("\r\n\r\n{\"voice\":\"\(asked.rawValue)\"}"))
+        #expect(HTTPStub.jsonBody(of: request)?["voice"] == asked.rawValue)
     }
 
     /// The toggle: ♀ is `af_heart`, ♂ `am_michael`, as text and never emoji;
@@ -111,16 +126,19 @@ struct TalkCallTests {
         #expect(TalkTicket.mediaURL(given)?.absoluteString == used)
     }
 
-    /// An answer it could not join: plain ws off this device, an encrypted
-    /// room (step 1 sends no key), a token for another room, missing fields.
+    /// An answer it could not join: plain ws off this device, a room the
+    /// agent did not join with the call's key (a voice service from before
+    /// encryption answers `encrypted: false`), a token for another room,
+    /// missing fields.
     @Test(arguments: [
         reply(url: "ws://10.0.0.5:7880"),
-        reply(encrypted: true),
+        reply(encrypted: false),
+        reply().replacingOccurrences(of: #","encrypted":true"#, with: ""),
         reply(room: "sphinx.call.voice.other"),
         #"{"url":"ws://127.0.0.1:7880"}"#,
     ])
     func refusesAnAnswerItCannotJoin(body: String) {
-        #expect(throws: PeelError.self) { try TalkTicket(reply: Data(body.utf8), home: "Acme") }
+        #expect(throws: PeelError.self) { try TalkTicket(reply: Data(body.utf8), home: "Acme", key: TalkHome.newKey()) }
     }
 
     /// The dev setting: a strut on this device over http, or anywhere over

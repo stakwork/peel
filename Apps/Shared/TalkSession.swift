@@ -9,8 +9,12 @@ import Synchronization
 /// A Talk call's room (docs/talk.md), on the phone and the Mac: the LiveKit
 /// room an org's home named for a call with its agent, the microphone, and
 /// what the call screen shows of it, the agent's state and the live text
-/// (`TalkPhase`, `TalkTranscript`). The ticket's token goes to LiveKit and is
-/// not kept.
+/// (`TalkPhase`, `TalkTranscript`). The ticket's token and key go to LiveKit
+/// and are not kept.
+///
+/// The room is end-to-end encrypted with the call's key (docs/talk.md), the
+/// audio both ways and the live text: the LiveKit server forwards what it
+/// cannot read.
 ///
 /// Apple's voice processing stays on, as for every call (LiveKit's default,
 /// and on the phone a `.voiceChat` audio session, `IOSCallSession`'s), so
@@ -29,13 +33,16 @@ final class TalkSession: TalkMedia {
     private(set) var micRefused = false
     /// Something that went wrong with the microphone or the voice, said quietly.
     private(set) var notice: String?
+    /// The call's encryption failing (`TalkEncryption`): said before anything else.
+    private(set) var encryptionNotice: String?
 
     @ObservationIgnored private let identity: String
     @ObservationIgnored private let agent: String
-    /// Step 2 joins with `RoomOptions(defaultAudioPublishOptions:
-    /// AudioPublishOptions(dtx: false, red: false), encryptionOptions:)`,
-    /// the call's shared key in a shared-key provider (plans/private-voice.md §2, §4.1).
+    /// One room per call: its encryption is set as it connects (`options(key:)`).
     @ObservationIgnored private let room = Room()
+    @ObservationIgnored private var encryption = TalkEncryption()
+    /// Hears the room's encryption state; the room holds its delegates weakly.
+    @ObservationIgnored private var encryptionWatch: TalkEncryptionWatch?
     @ObservationIgnored private var connecting: Task<Void, Never>?
     @ObservationIgnored private var changes: AnyCancellable?
     @ObservationIgnored private var failed = false
@@ -79,11 +86,30 @@ final class TalkSession: TalkMedia {
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.refresh() } }
         // The microphone after voice processing, as the agent hears it.
         AudioManager.shared.add(localAudioRenderer: micMeter)
-        let url = ticket.url.absoluteString, token = ticket.token
-        connecting = Task { [weak self] in await self?.connect(url: url, token: token) }
+        // Before the room connects, so a key that doesn't match is heard.
+        let watch = TalkEncryptionWatch { [weak self] change in self?.encryptionChanged(change) }
+        room.add(delegate: watch)
+        encryptionWatch = watch
+        let url = ticket.url.absoluteString, token = ticket.token, options = Self.options(key: ticket.key)
+        connecting = Task { [weak self] in await self?.connect(url: url, token: token, options: options) }
     }
 
-    private func connect(url: String, token: String) async {
+    /// The room's options for a call's key:
+    /// - `encryptionOptions`, never the deprecated `e2eeOptions`, so the
+    ///   agent's live text on the data channel is encrypted as well as the
+    ///   audio. The shared key is the key string as the home has it (the SDK
+    ///   keys with its UTF-8 bytes, and so does the agent).
+    /// - The microphone without Opus RED, which the server can't repackage
+    ///   for an encrypted track and this SDK leaves on under encryption, and
+    ///   without DTX, so packets keep a steady rate through silence.
+    static func options(key: String) -> RoomOptions {
+        RoomOptions(
+            defaultAudioPublishOptions: AudioPublishOptions(dtx: false, red: false),
+            encryptionOptions: EncryptionOptions(keyProvider: BaseKeyProvider(isSharedKey: true, sharedKey: key))
+        )
+    }
+
+    private func connect(url: String, token: String, options: RoomOptions) async {
         // Before the room connects, so no line is missed.
         try? await room.registerTextStreamHandler(for: TalkTranscript.topic) { [weak self] reader, sender in
             let stream = reader.info.id, attributes = reader.info.attributes
@@ -92,7 +118,7 @@ final class TalkSession: TalkMedia {
             }
         }
         do {
-            try await room.connect(url: url, token: token)
+            try await room.connect(url: url, token: token, roomOptions: options)
         } catch {
             failed = true
             refresh()
@@ -214,6 +240,17 @@ final class TalkSession: TalkMedia {
         }
     }
 
+    // MARK: Encryption
+
+    private func encryptionChanged(_ change: TalkEncryptionWatch.Change) {
+        guard !leaving else { return }
+        switch change {
+        case let .track(id, local, failed): encryption.track(id, local: local, failed: failed)
+        case .text: encryption.textFailedToDecrypt()
+        }
+        if encryption.notice != encryptionNotice { encryptionNotice = encryption.notice }
+    }
+
     // MARK: The waveform
 
     /// How loud `speaker` has been since the last read, 0…1 (`TalkWave.loudness`):
@@ -254,6 +291,39 @@ final class TalkSession: TalkMedia {
         if next != phase { phase = next }
         let mic = room.localParticipant.isMicrophoneEnabled()
         if mic != micOn { micOn = mic }
+    }
+}
+
+/// Hears a Talk room's encryption (a `RoomDelegate`, which LiveKit calls on
+/// its own queues) and hands each change to the session on the main queue,
+/// in order.
+private final class TalkEncryptionWatch: NSObject, RoomDelegate, Sendable {
+    enum Change: Sendable {
+        /// A track's state: `failed` for a missing key or frames that will
+        /// not encrypt or decrypt; `local` for the member's own track.
+        case track(String, local: Bool, failed: Bool)
+        /// A packet of the agent's text would not decrypt.
+        case text
+    }
+
+    private let onChange: @MainActor @Sendable (Change) -> Void
+
+    init(_ onChange: @escaping @MainActor @Sendable (Change) -> Void) {
+        self.onChange = onChange
+    }
+
+    func room(_ room: Room, trackPublication: TrackPublication, didUpdateE2EEState state: E2EEState) {
+        let failed = [.missing_key, .encryption_failed, .decryption_failed, .internal_error].contains(state)
+        send(.track(trackPublication.sid.stringValue, local: trackPublication is LocalTrackPublication, failed: failed))
+    }
+
+    func room(_ room: Room, didFailToDecryptDataWithEror error: LiveKitError) {
+        send(.text)
+    }
+
+    private func send(_ change: Change) {
+        let onChange = onChange
+        DispatchQueue.main.async { MainActor.assumeIsolated { onChange(change) } }
     }
 }
 

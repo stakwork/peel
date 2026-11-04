@@ -1,8 +1,9 @@
 # Talk to Jamie
 
-Status: step 1 built 2026-11-03 (Peel's side). strut's `/voice/calls` route
-and the voice service it forwards to are not built yet; Peel was checked
-against a stand-in for both (below).
+Status: step 1 built 2026-11-03 (Peel's side), checked against a stand-in
+for the home and the agent (below). Step 2, end-to-end encryption, built
+2026-11-04 (below); it needs the voice service that takes the key
+(stakwork/sphinx-voice, `encryption.ts`).
 
 A member taps **Talk to Jamie** on a paired org and has a live voice call
 with that org's agent. The design is strut's `plans/private-voice.md` (§3.5,
@@ -24,19 +25,22 @@ it.
    `POST {home}/voice/calls`:
    - `{home}` is the org's strut, the workspace's `HivePeer.baseUrl`;
    - the bearer is the person's token for it, from Stadeum's pairing;
-   - the body is `{ "voice": "af_heart" }`, Jamie's voice as kept on this
-     device (below). A 400 is a voice the home does not know, said in its
-     words.
+   - the body is `{ "key": "<base64>", "voice": "af_heart" }`: the call's
+     key (below) and Jamie's voice as kept on this device (below). A 400 is
+     a voice the home does not know, said in its words.
    It goes through `Web.requestStrut`: https anywhere, plain http only to this
    device.
 2. The answer is `{ url, room, token, identity, agent, encrypted, voice }`
    (`TalkTicket`). `voice` is the voice in effect, which the screen shows; one
    Peel does not know, or none, leaves the screen on the one asked for. Peel takes the LiveKit `url` the home names. It does not
    apply the call server's media-host rule (`CallServer.mediaURL`), since
-   the member's own home named it in answer to their own request. Two checks
-   still hold:
+   the member's own home named it in answer to their own request. Three
+   checks still hold:
    - `wss://` anywhere, `ws://` only on this device;
-   - the token must be for the room named.
+   - the token must be for the room named;
+   - `encrypted` must be true: the agent joined with the call's key. A home
+     whose voice service predates it answers false, and the call is refused
+     ("can't make an encrypted call yet"), never made in the clear.
 3. `TalkStore` (`Sources/PeelUI/TalkStore.swift`, `AppModel.talk`) joins the
    room through the platform (`CallProvider.talk`), as a `TalkSession`
    (`Apps/Shared/TalkSession.swift`, both apps). It sits beside `CallStore`,
@@ -118,15 +122,34 @@ It also has `AgentState`, `Participant.agentState` and an internal
 transcription receiver. Peel reads the attribute and the streams itself, so
 its pure parts stay testable without LiveKit.
 
-## Step 2 (not built)
+## End-to-end encryption (step 2)
 
-Peel will make a 32-byte key per call and send `{ "key": "<base64>" }`. It
-will then join with:
-- `RoomOptions(encryptionOptions:)`, the shared key in a shared-key provider;
-- `defaultAudioPublishOptions: AudioPublishOptions(dtx: false, red: false)`.
+Every call is end-to-end encrypted with a key made for it, so the LiveKit
+server forwards the audio both ways and the live text without being able to
+read them (strut's `plans/private-voice.md` §4.1).
 
-The places are marked in `TalkHome.startCall` and `TalkSession.room`. Until
-then, an answer with `encrypted: true` is refused: step 1 sends no key.
+- `TalkHome.newKey()` makes 32 random bytes and sends them as base64 in
+  `POST /voice/calls`; the ticket carries the same string (`TalkTicket.key`,
+  never described or logged, like its token).
+- `TalkSession.options(key:)` joins with
+  `RoomOptions(defaultAudioPublishOptions: AudioPublishOptions(dtx: false, red: false), encryptionOptions: EncryptionOptions(keyProvider: BaseKeyProvider(isSharedKey: true, sharedKey: key)))`:
+  - `encryptionOptions`, not the deprecated `e2eeOptions`, which leaves the
+    data channel, and so the `lk.transcription` text, in the clear;
+  - the SDK keys with the string's UTF-8 bytes, and the agent does the same
+    with the string it was sent, so both derive one AES key;
+  - Opus RED off, which this SDK (2.10.2) leaves on under encryption and the
+    server cannot repackage for an encrypted track; DTX off, so packets keep
+    a steady rate through silence.
+- What stays in the clear is LiveKit's signaling: the room name, the random
+  identities, the `lk.agent.state` and `voice` attributes.
+- A failure is said, not hidden. The agent's state comes over that
+  signaling, so a call whose key doesn't match would still say "Speaking"
+  over silence. `TalkSession` hears LiveKit's encryption state for each
+  track, and any text packet that won't decrypt (`TalkEncryption`). The call
+  screen then says "This call's encryption failed: Jamie can't be heard" (or
+  "can't hear you", for the member's own track) before anything else.
+- The key crosses TLS to the home: whoever runs the home (a swarm, the demo
+  box) could read it there. Sealing it to an attested home is step 4.
 
 ## Trying it locally
 
@@ -149,10 +172,13 @@ xcrun simctl launch <udid> com.sphinx.peel -profile talkdev \
   -talkHome http://127.0.0.1:3999 -talkHomeToken <token> -talkAtLaunch YES
 ```
 
-Without strut's route, a stand-in can play the home and the agent:
+The real home runs on a Mac too: strut and the voice service's 1:1 mode
+beside `livekit-server --dev` (sphinx-voice's AGENTS.md, "Running it locally
+on a Mac"). Or a stand-in can play the home and the agent:
 - `livekit-server --dev --bind 127.0.0.1` (`brew install livekit`);
 - a small server answering `POST /voice/calls` with tokens minted for
-  `devkey` / `secret`;
-- a participant that sets `lk.agent.state` and streams `lk.transcription`
-  text, as agents-js does (the Python `livekit` SDK's `set_attributes` and
-  `stream_text`).
+  `devkey` / `secret` and `encrypted: true`;
+- a participant that joins with the request's `key` (shared-key encryption,
+  the key string's UTF-8 bytes, `encryption` not `e2ee`), sets
+  `lk.agent.state` and streams `lk.transcription` text, as agents-js does
+  (the Python `livekit` SDK's `set_attributes` and `stream_text`).

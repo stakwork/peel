@@ -1,12 +1,16 @@
 import Foundation
 
-// Talk to Jamie (strut's plans/private-voice.md, step 1; docs/talk.md): a
+// Talk to Jamie (strut's plans/private-voice.md, steps 1 and 2; docs/talk.md): a
 // live voice call with an org's agent. Peel asks the org's own strut, its
 // home, with the person's token (`POST /voice/calls`), and joins the LiveKit
 // room the home names. Not a call link: no call server, no chat message, no
 // `CallLink`, and none of `CallServer`'s rule that media sits on the call
 // server's own host, since the home named it in answer to the person's own
 // authenticated request. The media stays in the apps (`TalkSession`).
+//
+// Every call is end-to-end encrypted (step 2): Peel makes a fresh key for it,
+// sends it to the home with the call, and joins the room with it, as the
+// home's agent does. The LiveKit server forwards what it cannot read.
 
 /// Where Talk calls: an org's strut and the person's token for it. Never
 /// described with its token.
@@ -61,24 +65,30 @@ public struct TalkHome: Sendable, Equatable, Identifiable, CustomStringConvertib
     static let replyLimit = 64 * 1024
 
     /// Starts a call with the home's agent in `voice`: `POST /voice/calls`
-    /// with the person's token, answered with the room to join. A refusal
-    /// throws `TalkRefusal` in the home's own words (400 for a voice it does
-    /// not know).
+    /// with the person's token and a fresh key for the call, answered with
+    /// the room to join. A refusal throws `TalkRefusal` in the home's own
+    /// words (400 for a voice it does not know).
     public func startCall(voice: TalkVoice? = nil) async throws -> TalkTicket {
+        let key = Self.newKey()
         let (status, data) = try await Web.requestStrut(
-            "POST", url.appending(path: "voice/calls"), json: Self.callBody(voice: voice), bearer: token,
+            "POST", url.appending(path: "voice/calls"), json: Self.callBody(key: key, voice: voice), bearer: token,
             limit: Self.replyLimit, what: "\(name)'s answer", timeout: 30
         )
         guard status == 200 else { throw TalkRefusal(status: status, reply: data, home: name) }
-        return try TalkTicket(reply: data, home: name)
+        return try TalkTicket(reply: data, home: name, key: key)
     }
 
-    /// `POST /voice/calls`'s body: `{ "voice": "am_michael" }`, or `{}`.
-    static func callBody(voice: TalkVoice?) -> Data {
-        // Step 2 adds `"key": "<base64, 32 bytes>"`, a fresh shared key made
-        // here for this call (plans/private-voice.md §4.1).
-        struct Body: Encodable { let voice: String? }
-        return (try? JSONEncoder().encode(Body(voice: voice?.rawValue))) ?? Data("{}".utf8)
+    /// A call's key: 32 random bytes as base64, made for one call and never
+    /// kept. LiveKit keys the room with this string's UTF-8 bytes, on the
+    /// phone (`BaseKeyProvider(sharedKey:)`) and in the home's agent alike.
+    static func newKey() -> String {
+        MediaCrypto.randomBytes(32).base64EncodedString()
+    }
+
+    /// `POST /voice/calls`'s body: `{ "key": "<base64>", "voice": "am_michael" }`.
+    static func callBody(key: String, voice: TalkVoice?) throws -> Data {
+        struct Body: Encodable { let key: String; let voice: String? }
+        return try JSONEncoder().encode(Body(key: key, voice: voice?.rawValue))
     }
 }
 
@@ -118,8 +128,8 @@ public enum TalkVoice: String, Sendable, CaseIterable {
 }
 
 /// What a home answers to `POST /voice/calls`: the LiveKit room to join and
-/// the person's token for it. In memory for one join, never stored, logged
-/// or described with its token.
+/// the person's token for it, with the call's key. In memory for one join,
+/// never stored, logged or described with its token or key.
 public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomReflectable {
     /// The LiveKit server: `wss://`, or `ws://` on this machine.
     public let url: URL
@@ -133,13 +143,17 @@ public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomRe
     /// The voice in effect, as the home answered; nil when it named none, or
     /// one this Peel does not know.
     public let voice: TalkVoice?
+    /// The call's end-to-end encryption key, as sent to the home: the room's
+    /// shared key.
+    public let key: String
 
-    public var description: String { "TalkTicket(\(url.absoluteString), room \(room), token not shown)" }
+    public var description: String { "TalkTicket(\(url.absoluteString), room \(room), token and key not shown)" }
     public var customMirror: Mirror { Mirror(self, children: ["url": url, "room": room, "identity": identity, "agent": agent, "voice": voice as Any]) }
 
     /// The reply read and checked: a LiveKit server Peel may connect to,
-    /// a token for the room named, two identities.
-    init(reply data: Data, home: String) throws {
+    /// a token for the room named, two identities, and the home's word that
+    /// its agent joined with `key`.
+    init(reply data: Data, home: String, key: String) throws {
         struct Reply: Decodable {
             let url: String
             let room: String
@@ -155,11 +169,11 @@ public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomRe
         guard let url = Self.mediaURL(reply.url) else {
             throw PeelError("\(home) named a call server Peel can't use: only wss://, or ws:// on this device.")
         }
-        // Step 1 sends no key, so a home that answers for an encrypted room is
-        // not one this Peel can join. Step 2 sends the key and joins with it
-        // (and Opus RED off), and expects `encrypted: true` back.
-        guard reply.encrypted != true else {
-            throw PeelError("\(home) wants an encrypted call, which this version of Peel can't make yet.")
+        // A home whose agent did not take the key (a voice service from
+        // before step 2) answers without `encrypted: true`. Never a call in
+        // the clear: refused.
+        guard reply.encrypted == true else {
+            throw PeelError("\(home) can't make an encrypted call yet: its voice service needs an update.")
         }
         guard [reply.room, reply.identity, reply.agent].allSatisfy(CallServer.isIdentity) else {
             throw PeelError("\(home)'s answer could not be read.")
@@ -173,6 +187,7 @@ public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomRe
         identity = reply.identity
         agent = reply.agent
         voice = reply.voice.flatMap(TalkVoice.init(rawValue:))
+        self.key = key
     }
 
     /// The LiveKit server, as LiveKit takes it: `wss://`, or `ws://` only on

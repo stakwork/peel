@@ -119,7 +119,8 @@ public enum Orchestrator {
         returns; if it finds none, make them with graph/create-node and is_owner true, once. A new name for \
         something goes in its alt_names with graph/edit-node. When the words are someone else's (a message from \
         Kate), pass said_by with their ref_id: "I" then means them, and anything they say about the user is their \
-        claim. Pass source as the message, chat or run it came from. Pass valid_at or invalid_at only when the \
+        claim. The turn it was said in is kept as its source on its own; pass source only for a message you read it \
+        from. Pass valid_at or invalid_at only when the \
         words give a time, turned into a date from the time the message starts with ("last week", "in March"), or \
         for someone else's message from when it was sent; leave it out when you cannot tell. Pass ended when the \
         words say it is over ("I used to"), even with no date. How the user likes things done (how to write to \

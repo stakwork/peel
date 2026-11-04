@@ -11,6 +11,8 @@ public struct LearnedReport: Sendable, Equatable {
     /// Corrections the model's words for were refused by the rules (count only).
     public var refused = 0
 
+    public init() {}
+
     public struct Duplicate: Sendable, Equatable {
         public var new: PersonalCause
         public var existing: PersonalCause

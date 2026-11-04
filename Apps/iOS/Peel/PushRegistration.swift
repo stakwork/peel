@@ -52,6 +52,19 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         completionHandler()
     }
 
+    /// A push received (silent, `content-available`): connects and fetches in
+    /// the background window, so the messages are there when the push is
+    /// tapped. The handler is called once, on the main thread.
+    func application(
+        _ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        Task { @MainActor in
+            let fetched = await PushCoordinator.shared.fetchOnReceive()
+            completionHandler(fetched ? .newData : .noData)
+        }
+    }
+
     /// Portrait, except on the chat (see `OrientationLock`).
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         OrientationLock.mask
@@ -71,6 +84,9 @@ final class PushCoordinator {
     private let config = PushConfig.current
     private var token: String?
     private weak var model: AppModel?
+    /// The model for a fetch on receipt, held weakly from launch; `model`
+    /// above is only set while an account is open.
+    private weak var fetchModel: AppModel?
     private var registered: String?
     /// The names map being written; the next write waits for it, so the last
     /// one started is the last one kept.
@@ -88,6 +104,28 @@ final class PushCoordinator {
         launchPermissionAsked = true
         Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
         #endif
+    }
+
+    func use(_ model: AppModel) {
+        fetchModel = model
+    }
+
+    /// A push arrived: a bounded connect and fetch (`AppModel.fetchInBackground`)
+    /// inside a background task, ended exactly once, and cancelled if the
+    /// system is about to suspend the app. A tap meanwhile joins the same work.
+    func fetchOnReceive() async -> Bool {
+        guard let model = fetchModel ?? model else { return false }
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let work = Task { await model.fetchInBackground() }
+        taskID = UIApplication.shared.beginBackgroundTask(withName: "peel.push.fetch") {
+            work.cancel()
+        }
+        let fetched = await work.value
+        if taskID != .invalid {
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        return fetched
     }
 
     /// An account is open: ask permission (only if pushes can come), and

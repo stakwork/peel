@@ -283,7 +283,8 @@ struct MessageList: View {
             // Nor within a screen of it, where the end is still being laid out.
             if y >= layout.viewport.end - layout.viewport.container { keepLastRowInView() } else { position.scrollTo(y: y) }
         }
-        // Shown only with a row in view, else by the last row again.
+        // The loop above can end (a settled estimate, a break) with the viewport
+        // past the made rows, a blank list; pin by the last row again until one shows.
         for _ in 0..<6 where !userScrolling && !rows.isEmpty && !layout.showsRow {
             keepLastRowInView()
             try? await Task.sleep(for: .milliseconds(16))

@@ -169,4 +169,28 @@ struct MemoryServerTests {
                 == "From \u{201C}We moved. To Bristol.\u{201D}")
         #expect(MemoryResult.asked(tool: "read_memory", input: ["type": "Self"]) == nil)
     }
+
+    /// Memory on the graph: a search's or a read's nodes open from the
+    /// graph, and a node's panel holds its other names and its facts, each
+    /// fact its own node with both ends.
+    @Test func graphRowsAndPanelsReadTheGraphsShapes() throws {
+        let search = try AgentKit.JSONValue(parsing: #"{"nodes":[{"ref_id":"k1","name":"Kate","node_type":"Person"}],"facts":[]}"#)
+        #expect(MemoryResult(tool: "graph_graph_search", row: search) == .found([MemoryRef(id: "k1", name: "Kate", type: "Person", graph: true)]))
+        let get = try AgentKit.JSONValue(parsing: #"{"ref_id":"k1","name":"Kate","node_type":"Person","properties":{"alt_names":["Katie","kate"]},"edges":{}}"#)
+        #expect(MemoryResult(tool: "graph_graph_get", row: get) == .found([MemoryRef(id: "k1", name: "Kate", type: "Person", graph: true)]))
+        let neighbors = try AgentKit.JSONValue(parsing: #"""
+        [{"ref_id":"b1","name":"Bath","node_type":"Place","edge_type":"LIVES_IN","direction":"forward","text":"Kate lives in Bath.","valid_at":"2026-01-01T00:00:00.000Z"},
+         {"ref_id":"o1","name":"Tom","node_type":"Person","edge_type":"MARRIED_TO","direction":"reverse","text":"Tom's wife is Kate."},
+         {"ref_id":"c1","name":"Peel","node_type":"Project","edge_type":"ABOUT","direction":"forward"}]
+        """#)
+        let read = try #require(MemoryNode.graph(get: get, neighbors: neighbors))
+        guard case .entity(let kate) = read.node else { Issue.record("not an entity"); return }
+        #expect(kate.ref.graph && kate.aliases == ["Katie"], "its own name left out")
+        #expect(kate.facts.map(\.fact.name) == ["Kate lives in Bath.", "Tom's wife is Kate."], "an edge with no sentence is no fact")
+        #expect(read.facts.count == 2)
+        guard case .fact(let married) = read.facts[1] else { Issue.record("not a fact"); return }
+        #expect(married.subject?.name == "Tom" && married.object?.name == "Kate" && married.object?.graph == true)
+        #expect(married.id == kate.facts[1].fact.id && married.id.hasPrefix("k1#"))
+        #expect(MemoryNode.graph(get: "node not found: k1", neighbors: []) == nil)
+    }
 }

@@ -46,9 +46,9 @@ public final class BundledStrut {
     public var isHomeClient = false
     /// The agent's memory on the workspace graph (strut's `memory: "graph"`,
     /// `Orchestrator.hostConfig(graph:)`) instead of the old memory
-    /// database: off unless the `graphMemory` default says so
-    /// (`-graphMemory YES`). On, its first start imports the old database
-    /// once (`importMemoryOnce`).
+    /// database: on in the app unless the `graphMemory` default turns it off
+    /// (`-graphMemory NO`, `AppModel.strut(for:)`). On, its first start imports
+    /// the old database once (`importMemoryOnce`), again when the import is newer.
     public var graphMemory = false
     /// The person's actor on their Hive orgs, once paired: the orchestrator
     /// is then told its peers are those orgs (strut's
@@ -252,8 +252,14 @@ public final class BundledStrut {
     }
 
     /// Where the one-off import of the old memory database is recorded:
-    /// once it is there, the import never runs again for this data folder.
+    /// once it is there at `memoryImportVersion`, the import never runs again
+    /// for this data folder.
     var memoryImportRecord: URL { data.appending(path: "graph-memory-import.json") }
+
+    /// The import's version: a record older than it runs the import again,
+    /// which repairs what the earlier one wrote (strut#482). 1 is a record
+    /// with no version.
+    static let memoryImportVersion = 2
 
     /// strut's `graph/import-memory`, the first time memory is on the graph
     /// here: the old database's entities and facts copied into `private`
@@ -262,13 +268,14 @@ public final class BundledStrut {
     /// for review are not, as they are memory's own words. A failure is
     /// logged and tried again at the next start; strut runs on either way.
     func importMemoryOnce(on server: MemoryServer) async {
-        guard !FileManager.default.fileExists(atPath: memoryImportRecord.path) else { return }
+        if let held = try? Data(contentsOf: memoryImportRecord),
+           (try? AgentKit.JSONValue(parsing: String(decoding: held, as: UTF8.self)))?["version"]?.int ?? 1 >= Self.memoryImportVersion { return }
         do {
             let output = try await server.run(step: "graph/import-memory", [:])
             // A step's failure comes back as its words, not counts: not done.
             guard output.object != nil else { throw PeelError(TextLine.clean(output.string ?? "no counts", max: 300)) }
             let counts = ["imported", "already", "skipped", "for_review"].map { ($0, output[$0]?.int ?? 0) }
-            var record: [String: AgentKit.JSONValue] = ["at": .string(Date.now.formatted(.iso8601))]
+            var record: [String: AgentKit.JSONValue] = ["at": .string(Date.now.formatted(.iso8601)), "version": .number(Double(Self.memoryImportVersion))]
             for (key, count) in counts { record[key] = .number(Double(count)) }
             try Data(AgentKit.JSONValue.object(record).jsonString.utf8).write(to: memoryImportRecord, options: .atomic)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: memoryImportRecord.path)

@@ -358,8 +358,8 @@ extension AppModel {
     /// account's in Peel's folder; a development profile's only with
     /// `-strut YES` (its agent needs it), its data inside the profile's own
     /// folder, so a test account never writes to the real memory. Its
-    /// memory is on the workspace graph only with the `graphMemory` default
-    /// (`-graphMemory YES`, `BundledStrut.graphMemory`).
+    /// memory is on the workspace graph unless the `graphMemory` default
+    /// turns it off (`-graphMemory NO`, `BundledStrut.graphMemory`).
     static func strut(for profile: Profile) -> BundledStrut? {
         let strut: BundledStrut? = switch profile.kind {
         case .app: BundledStrut(secretKey: profile.strutKey)
@@ -371,7 +371,8 @@ extension AppModel {
                 return strut
             }() : nil
         }
-        strut?.graphMemory = UserDefaults.standard.bool(forKey: "graphMemory")
+        // On unless the `graphMemory` default turns it off (`-graphMemory NO`).
+        strut?.graphMemory = UserDefaults.standard.object(forKey: "graphMemory") as? Bool ?? true
         return strut
     }
 
@@ -477,6 +478,18 @@ final class MemoryPanel: Identifiable {
         guard let ref = current, read[ref.id] == nil else { return }
         loading = Task {
             do {
+                if ref.graph {
+                    // A fact is read with its node ("<node>#<n>"): reading one again reads the node.
+                    let node = String(ref.id.split(separator: "#", maxSplits: 1).first ?? "")
+                    let got = try await server.graphNode(node)
+                    guard !Task.isCancelled else { return }
+                    if let got {
+                        read[node] = got.node
+                        for fact in got.facts { read[fact.ref.id] = fact }
+                    }
+                    if read[ref.id] == nil { problem = "This is no longer in memory." }
+                    return
+                }
                 let node = try await server.node(ref.id)
                 guard !Task.isCancelled else { return }
                 if let node { read[ref.id] = node } else { problem = "This is no longer in memory." }

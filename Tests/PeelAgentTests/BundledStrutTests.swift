@@ -229,6 +229,13 @@ struct BundledStrutTests {
         let kept = try Data(contentsOf: strut.memoryImportRecord)
         _ = try await strut.start()
         #expect(try Data(contentsOf: strut.memoryImportRecord) == kept)
+
+        // A record from an earlier import (no version): it runs again, and the record is this one's.
+        strut.stop(quietly: true)
+        try Data(#"{"imported":1}"#.utf8).write(to: strut.memoryImportRecord)
+        _ = try await strut.start()
+        let again = try AgentKit.JSONValue(parsing: String(decoding: try Data(contentsOf: strut.memoryImportRecord), as: UTF8.self))
+        #expect(again["version"]?.int == BundledStrut.memoryImportVersion, "\(again)")
     }
 
     /// A development profile's memory is inside its own folder, never the app account's.

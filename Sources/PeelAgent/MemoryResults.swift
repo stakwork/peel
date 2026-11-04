@@ -26,7 +26,7 @@ public enum MemoryResult: Sendable, Equatable {
     }
 
     /// The tools whose rows read as one.
-    public static let tools: Set<String> = ["remember", "recall", "read_memory"]
+    public static let tools: Set<String> = ["remember", "recall", "read_memory", "graph_graph_search", "graph_graph_get"]
 
     public init?(tool: String, row: JSONValue) {
         switch tool {
@@ -35,6 +35,13 @@ public enum MemoryResult: Sendable, Equatable {
         case "read_memory":
             guard let node = MemoryNode(row) else { return nil }
             self = .read(node)
+        // Memory on the workspace graph: what a search found, or the node read, each opened from the graph.
+        case "graph_graph_search":
+            let nodes = row["nodes"]?.array ?? row.array ?? []
+            self = .found(MemoryRef.once(nodes.compactMap { MemoryRef(graph: $0) }, \.id))
+        case "graph_graph_get":
+            guard let ref = MemoryRef(graph: row) else { return nil }
+            self = .found([ref])
         default: return nil
         }
     }
@@ -95,11 +102,21 @@ public struct MemoryRef: Sendable, Equatable, Hashable {
     public var id: String
     public var name: String
     public var type: String?
+    /// A node of the workspace graph (memory on the graph), read with
+    /// strut's graph steps, not the old memory's `memory/get`.
+    public var graph = false
 
-    public init(id: String, name: String, type: String? = nil) {
+    public init(id: String, name: String, type: String? = nil, graph: Bool = false) {
         self.id = id
         self.name = name
         self.type = type
+        self.graph = graph
+    }
+
+    /// A graph node as strut's graph steps name one: `{ref_id, name, node_type}`.
+    init?(graph value: JSONValue) {
+        guard let id = value["ref_id"]?.string else { return nil }
+        self.init(id: id, name: Self.clean(value["name"]?.string ?? ""), type: value["node_type"]?.string, graph: true)
     }
 
     init?(_ value: JSONValue, name: String, type: String?) {
@@ -162,6 +179,30 @@ public enum MemoryNode: Sendable, Equatable {
                 }, \.fact.id),
                 mentionedIn: output["mentioned_in_episodes"]?.int ?? 0))
         }
+    }
+
+    /// One graph node as its panel shows it, from `graph/graph-get` and
+    /// `graph/graph-neighbors`: the node with its other names and current
+    /// facts (a neighbor's edge with a sentence), and each fact as its own
+    /// node, opened from the node's panel. Nil when `get` is no node.
+    public static func graph(get: JSONValue, neighbors: JSONValue) -> (node: MemoryNode, facts: [MemoryNode])? {
+        guard let me = MemoryRef(graph: get), let type = me.type else { return nil }
+        let props = get["properties"]
+        let aliases = (props?["alt_names"]?.array ?? []).compactMap { $0.string.map(MemoryRef.clean) }
+        var facts: [Fact] = []
+        for (i, n) in (neighbors.array ?? []).enumerated() {
+            guard let text = n["text"]?.string, let other = MemoryRef(graph: n) else { continue }
+            let forward = n["direction"]?.string != "reverse"
+            facts.append(Fact(
+                id: "\(me.id)#\(i)", text: MemoryRef.clean(text), predicate: (n["edge_type"]?.string ?? "").lowercased(),
+                subject: forward ? me : other, object: forward ? other : me,
+                since: date(n["valid_at"]), expired: date(n["expired_at"]), byAgent: false,
+                from: [], replaced: [], replacedBy: []))
+        }
+        let entity = Entity(ref: MemoryRef(id: me.id, name: me.name, type: type, graph: true), aliases: aliases,
+                            facts: facts.map { Entity.Known(fact: MemoryRef(id: $0.id, name: $0.text, type: "Fact", graph: true), since: $0.since) },
+                            mentionedIn: 0)
+        return (.entity(entity), facts.map(MemoryNode.fact))
     }
 
     public var ref: MemoryRef {

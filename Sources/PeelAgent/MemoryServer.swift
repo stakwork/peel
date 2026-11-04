@@ -88,6 +88,18 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     }
 
     /// One node as `memory/get` reads it; nil when memory no longer has it.
+    /// One node of the workspace graph and its facts (`MemoryNode.graph`); nil when the graph no longer has it.
+    public func graphNode(_ id: String) async throws -> (node: MemoryNode, facts: [MemoryNode])? {
+        let get = try await run(step: "graph/graph-get", ["ref_id": .string(id)])
+        // A step that finds no node says so in words.
+        guard get.object != nil else { return nil }
+        let neighbors = try await run(step: "graph/graph-neighbors", ["ref_id": .string(id)])
+        guard let read = MemoryNode.graph(get: get, neighbors: neighbors) else {
+            throw PeelError("Memory gave back something Peel cannot show.")
+        }
+        return read
+    }
+
     public func node(_ id: String) async throws -> MemoryNode? {
         do {
             guard let node = MemoryNode(try await run("get", ["ref_id": .string(id)])) else {

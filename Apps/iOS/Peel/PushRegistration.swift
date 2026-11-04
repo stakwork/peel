@@ -35,12 +35,21 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
     /// launching, locked or still onboarding; `PushCoordinator.openPending`
     /// opens it when an account is open. Foreground presentation is left to
     /// the system's default (unchanged).
+    ///
+    /// The completion-handler form, not `async`: the system calls this on the
+    /// main thread and UIKit requires the handler there, while a nonisolated
+    /// `async` one has Swift call it from a background thread when the
+    /// function returns, which UIKit traps on ("Call must be made on main
+    /// thread") as the app opens from the tap.
     nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
-    ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
-        PendingNavigation.shared.submit(
-            userInfo: response.notification.request.content.userInfo, id: response.notification.request.identifier)
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            PendingNavigation.shared.submit(
+                userInfo: response.notification.request.content.userInfo, id: response.notification.request.identifier)
+        }
+        completionHandler()
     }
 
     /// Portrait, except on the chat (see `OrientationLock`).

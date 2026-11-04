@@ -75,6 +75,9 @@ public final class CallStore {
     /// `Engine.callTicket(for:in:hive:)`). Nil: every call joins through
     /// the call server.
     @ObservationIgnored var hiveTicket: Engine.HiveTicketSource?
+    /// Why no call can be joined or started now, in words: a Talk call is on
+    /// (`TalkStore.isOn`). Nil when one can.
+    @ObservationIgnored var busy: () -> String? = { nil }
     /// The Jamie picked for calls in each chat, by peer id, "" for none
     /// (`Engine.callJamie`): this device's. A chat with no pick takes its
     /// tribe's (`HivePeer.jamie`).
@@ -250,7 +253,7 @@ public final class CallStore {
     /// goes only once the ticket has come, so a failed join leaves you on it.
     public func join(_ link: CallLink, in chat: String, camera: Bool = false, failureInChat: Bool = false) async -> Bool {
         if isOnCall(link.room) { return true }
-        if let reason = provider.unavailable {
+        if let reason = provider.unavailable ?? busy() {
             Diagnostics.note(errorKind: .call)
             if failureInChat { chatNotice(chat) { _ in reason } } else { failures[link.room] = reason }
             return false
@@ -301,7 +304,7 @@ public final class CallStore {
     public func start(in chat: String, audioOnly: Bool, jamie: HivePeer? = nil) async -> Bool {
         // Nothing posted (a call message costs 3 sats in a tribe) for a
         // call this device could not join.
-        if let reason = provider.unavailable {
+        if let reason = provider.unavailable ?? busy() {
             Diagnostics.note(errorKind: .call)
             chatNotice(chat) { _ in reason }
             return false

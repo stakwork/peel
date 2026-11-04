@@ -159,6 +159,19 @@ struct CallStoreTests {
         observing.cancel()
         await engine.close()
     }
+
+    /// While a Talk call is on, no group call is joined or started: two
+    /// rooms would both hear the microphone (docs/talk.md). A join that got
+    /// past the check would fail on the call server instead, in other words.
+    @Test func aTalkCallKeepsGroupCallsWaiting() async throws {
+        let (calls, engine, _) = try attached()
+        let call = try link(1)
+        calls.busy = { "Hang up the call with Jamie first." }
+        #expect(await calls.join(call, in: "02dm") == false)
+        #expect(calls.failures[call.room] == "Hang up the call with Jamie first.")
+        #expect(await calls.start(in: "02dm", audioOnly: true) == false)
+        await engine.close()
+    }
 }
 
 private func people(_ count: Int) -> [CallParticipant] {

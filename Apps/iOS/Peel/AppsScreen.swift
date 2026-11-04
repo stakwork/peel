@@ -2,12 +2,13 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// Apps, from Chats' top rows: the apps the Stadeum workspaces pinned as
-/// tabs, A–Z, each read and opened on its workspace's own strut with the
-/// person's token (`Stadeum.readApps`, `Stadeum.opening`; strut's
-/// specs/DESKTOP.md, "A device with no strut of its own"). A tap opens one
-/// in the org page sheet; pulling or Refresh reads them again. The Mac's
-/// twin is `AppsView`, which also lists the person's own, on its strut.
+/// Apps, from Chats' top rows: Talk to Jamie on each workspace (docs/talk.md),
+/// then the apps the Stadeum workspaces pinned as tabs, A–Z, each read and
+/// opened on its workspace's own strut with the person's token
+/// (`Stadeum.readApps`, `Stadeum.opening`; strut's specs/DESKTOP.md, "A
+/// device with no strut of its own"). A tap opens one in the org page
+/// sheet; pulling or Refresh reads them again. The Mac's twin is `AppsView`,
+/// which also lists the person's own, on its strut.
 struct AppsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
@@ -27,7 +28,20 @@ struct AppsScreen: View {
         let shownSource = sources.count > 1 && sources.contains(source ?? "") ? source : nil
         let shown = WorkspaceApp.filter(apps, query: query, source: shownSource)
         let unread = stadeum.unreadApps.compactMap { id in stadeum.live.first { $0.id == id }?.name }
+        // Not while searching: the search is of the apps.
+        let homes = query.isEmpty ? model.talkHomes : []
         List {
+            if !homes.isEmpty {
+                Section {
+                    ForEach(homes) { home in
+                        Button { model.talk.talk(to: home) } label: { TalkRow(home: home) }
+                            .buttonStyle(.plain)
+                    }
+                } header: {
+                    PhoneSectionHeader("Talk to Jamie")
+                }
+                .phoneRows()
+            }
             Section {
                 ForEach(shown) { app in
                     Button {
@@ -40,6 +54,13 @@ struct AppsScreen: View {
             } footer: {
                 if !unread.isEmpty, !apps.isEmpty {
                     UnreadNote(names: unread)
+                } else if apps.isEmpty, !homes.isEmpty, !stadeum.readingApps {
+                    // Under the Talk rows rather than over the screen.
+                    Text(stadeum.live.isEmpty ? "Connect Stadeum under You to open the apps your workspaces pin."
+                         : unread.isEmpty ? "Apps your Stadeum workspaces pin show here."
+                         : "\(unread.joined(separator: ", ")) did not answer. Pull to try again.")
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.tertiaryText)
                 }
             }
             .phoneRows()
@@ -70,6 +91,9 @@ struct AppsScreen: View {
         .overlay {
             if !apps.isEmpty, shown.isEmpty {
                 ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
+            } else if apps.isEmpty, !homes.isEmpty {
+                // The Talk rows show; the apps section says why it is empty.
+                if stadeum.readingApps { ProgressView() }
             } else if apps.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
@@ -152,5 +176,40 @@ private struct UnreadNote: View {
         Text("Couldn't read \(names.joined(separator: ", ")) just now. Pull to try again.")
             .phoneFont(.secondary)
             .foregroundStyle(Theme.tertiaryText)
+    }
+}
+
+/// A workspace to talk to Jamie on: its name, its handle, and a mic.
+private struct TalkRow: View {
+    let home: TalkHome
+
+    var body: some View {
+        HStack(spacing: Theme.Space.md) {
+            Image(systemName: "waveform")
+                .font(.system(size: 19))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 30)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(home.name)
+                    .phoneFont(.row)
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                Text(home.id == TalkHome.development ? home.url.absoluteString : "@" + home.id)
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.tertiaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "mic")
+                .foregroundStyle(Theme.accent)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 7)
+        .frame(minHeight: Theme.touchTarget)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Talk to Jamie on \(home.name)")
+        .accessibilityHint("Starts a voice call")
     }
 }

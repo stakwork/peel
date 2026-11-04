@@ -137,7 +137,7 @@ final class VoiceRecorder {
 
     /// Asked the first time the mic is pressed (the system prompt shows
     /// once); a granted or refused answer comes back at once after that.
-    private static func permission() async -> Bool {
+    static func permission() async -> Bool {
         #if os(iOS)
         switch AVAudioApplication.shared.recordPermission {
         case .granted: return true

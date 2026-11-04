@@ -38,6 +38,15 @@ decided (Tom, 2026-10-08; see "Decided" below).
   count at once after switching chats; see its journal.
 - Built (floating call bar): a small always-on-top control bar shows while
   the call window is not key; see its journal.
+- Built (Talk to Jamie, 2026-11-03): a voice call with an org's agent, set
+  up on the org's own strut (`POST /voice/calls`) rather than through a
+  call link, beside `CallStore`; step 1 of strut's plans/private-voice.md,
+  waiting on strut's route and the voice service. See `../talk.md`.
+  Review findings not applied: the member's track ids are read again for
+  each text chunk (one or two tracks, a few chunks a second: not worth a
+  cache), and `TalkSession` keeps its own small room rather than sharing
+  one with `CallSession` / `IOSCallSession` (no tiles, handoff, camera or
+  chat; it reuses their audio session and the recorder's permission).
 - Built (Hive calls, 2026-10-27, waiting for Hive's route): with Stadeum
   connected, the call menu can bring Jamie into a call from one of the
   person's workspaces; see the journal below and `../hive-calls.md`. It

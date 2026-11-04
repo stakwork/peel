@@ -138,6 +138,19 @@ struct PeelApp: App {
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
 
+        // Talk to Jamie: a voice call with an org's agent (docs/talk.md).
+        Window("Talk to Jamie", id: TalkWindow.id) {
+            TalkWindow()
+                .environment(model)
+                .tint(Theme.accent)
+                .preferredColorScheme(.dark)
+        }
+        .defaultSize(width: 400, height: 600)
+        .commandsRemoved()
+        .restorationBehavior(.disabled)
+        // Open at launch only for the dev setting's `-talkAtLaunch`.
+        .defaultLaunchBehavior(model.talk.home != nil ? .presented : .suppressed)
+
         // Development only; never listed, restored or opened without
         // `-callTestToken` and a development profile.
         Window("Test Room", id: CallTest.windowID) {
@@ -221,11 +234,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let model, model.calls.call != nil || model.calls.leaving != nil else { return .terminateNow }
+        guard let model, model.calls.call != nil || model.calls.leaving != nil || model.talk.home != nil
+                || model.talk.leaving != nil else {
+            return .terminateNow
+        }
         quitting = false
         // Whichever comes first: the goodbye, or two seconds, so a quit
         // never waits on a dead network.
-        Task { await model.calls.end(); quit(sender) }
+        Task {
+            await model.calls.end()
+            await model.talk.end()
+            quit(sender)
+        }
         Task { try? await Task.sleep(for: .seconds(2)); quit(sender) }
         return .terminateLater
     }

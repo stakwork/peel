@@ -32,6 +32,8 @@ struct TalkCallTests {
         #expect(request.hasPrefix("POST /voice/calls HTTP/1.1\r\n"))
         #expect(request.lowercased().contains("\r\nauthorization: bearer person-token-1\r\n"))
         #expect(HTTPStub.jsonBody(of: request) == ["key": ticket.key])
+        // The capability: this Peel shows a turn's artifact cards.
+        #expect(request.contains(#""artifacts":true"#))
         // Neither the ticket nor the home tells its token, nor the ticket its key.
         for secret in [ticket.token, ticket.key] {
             #expect(!"\(ticket)".contains(secret) && !String(reflecting: ticket).contains(secret))
@@ -162,5 +164,59 @@ struct TalkCallTests {
         let home = try #require(TalkHome(peer: peer))
         #expect(home.id == "acme" && home.name == "Acme" && home.token == "strut-person.x.y")
         #expect(TalkHome(peer: HivePeer(id: "evil", baseUrl: "http://evil.example.com", token: "t")) == nil)
+    }
+}
+
+/// A turn's artifact cards (`sphinx.artifacts`): strut's entries, resolved
+/// against the call's home.
+struct TalkArtifactsTests {
+    private func payload(_ entries: String, id: String = "p-1") -> String {
+        #"{"id":"\#(id)","timestamp":1760000000000,"artifacts":[\#(entries)]}"#
+    }
+
+    @Test func callBodyAsksForArtifacts() throws {
+        let body = try TalkHome.callBody(key: "k", voice: .male)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["artifacts"] as? Bool == true && json["key"] as? String == "k" && json["voice"] as? String == "am_michael")
+    }
+
+    @Test func readsAPlanOnTheHomesStrut() throws {
+        let text = payload(#"{"id":"a1","kind":"plan","title":"Reminders for Jamie, plan","label":"Plan","url":"/jobs/j1/files/plan.md","path":"plan.md"}"#)
+        let card = try #require(TalkArtifacts.decode(text, workspace: "acme").first)
+        #expect(card.title == "Reminders for Jamie, plan" && card.label == "Plan" && card.id == "a1")
+        #expect(card.handle == AgentArtifact.Handle(path: "/peers/acme/jobs/j1/files/plan.md"))
+        #expect(TalkArtifacts.batch(text, workspace: "acme")?.id == "p-1")
+    }
+
+    @Test func readsAnAppAndAPeersFile() throws {
+        let text = payload(#"""
+        {"id":"a2","kind":"app","title":"Board","url":"/apps/board/v2/files/dist/index.html","app":{"name":"board","version":"v2","hash":"h","builtAt":1}},
+        {"id":"a3","kind":"file","title":"Notes","url":"/jobs/j9/files/n.md","peer":"beta","job":"j9","path":"n.md"}
+        """#)
+        let cards = TalkArtifacts.decode(text, workspace: "acme")
+        #expect(cards.map(\.handle) == [
+            AgentArtifact.Handle(app: "@acme/board@v2"),
+            AgentArtifact.Handle(path: "/peers/acme/peers/beta/jobs/j9/files/n.md"),
+        ])
+    }
+
+    @Test func readsAnHttpsLinkWithoutAHandle() throws {
+        let text = payload(#"{"id":"a4","kind":"pull_request","title":"Fix it","url":"https://github.com/acme/repo/pull/7"}"#)
+        let card = try #require(TalkArtifacts.decode(text, workspace: TalkHome.development).first)
+        #expect(card.handle == nil && card.url == URL(string: "https://github.com/acme/repo/pull/7"))
+    }
+
+    @Test func malformedGivesNothing() {
+        for text in ["", "not json", "[]", #"{"id":"p"}"#, #"{"artifacts":[{"title":"x"}]}"#, #"{"id":"p","artifacts":"x"}"#] {
+            #expect(TalkArtifacts.decode(text, workspace: "acme").isEmpty)
+        }
+        #expect(TalkArtifacts.decode(payload("1, null, \"x\""), workspace: "acme").isEmpty)
+    }
+
+    @Test func skipsAnEntryWithNoTitleAndCaps() {
+        let text = payload(#"{"id":"a5","kind":"plan","url":"/jobs/j1/files/p.md"},{"id":"a6","kind":"plan","title":"Kept","url":"/jobs/j1/files/p.md"}"#)
+        #expect(TalkArtifacts.decode(text, workspace: "acme").map(\.title) == ["Kept"])
+        let many = (0 ..< 30).map { #"{"id":"e\#($0)","title":"T\#($0)","url":"/jobs/j/files/f"}"# }.joined(separator: ",")
+        #expect(TalkArtifacts.decode(payload(many), workspace: "acme").count == AgentArtifact.most)
     }
 }

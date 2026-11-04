@@ -1,6 +1,9 @@
 import PeelCore
 import PeelUI
 import SwiftUI
+#if os(iOS)
+import SafariServices
+#endif
 
 // The Talk call screen (docs/talk.md), the phone's full-screen cover and
 // the Mac's Talk window alike: the org on top, what Jamie is doing, the
@@ -9,6 +12,10 @@ import SwiftUI
 
 struct TalkView: View {
     @Environment(AppModel.self) private var model
+    #if os(iOS)
+    /// What a tapped card opens in, over the call: a sheet of this screen's own.
+    @State private var opener = TalkOpener()
+    #endif
 
     var body: some View {
         let talk = model.talk
@@ -43,6 +50,79 @@ struct TalkView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.callBackground.ignoresSafeArea())
         .foregroundStyle(Theme.text)
+        #if os(iOS)
+        // This screen is a full-screen cover, over which the root's sheet
+        // (`router.orgPage`) does not show: a card opens in a sheet from here,
+        // and the call stays up behind it.
+        .environment(opener)
+        .sheet(item: $opener.opened) { opened in
+            switch opened {
+            case .page(let page): OrgPageSheet(page: page)
+            case .link(let url): TalkSafariView(url: url).ignoresSafeArea()
+            }
+        }
+        // Its workspace no longer in use: the page and its token go.
+        .onChange(of: model.stadeum.live) { _, live in
+            if case .page(let page)? = opener.opened, !live.contains(where: { $0.id == page.peer }) { opener.opened = nil }
+        }
+        #endif
+    }
+}
+
+#if os(iOS)
+/// What a card opened on the call screen shows in a sheet.
+enum TalkOpened: Identifiable {
+    case page(OrgPageRequest)
+    case link(URL)
+
+    var id: String {
+        switch self {
+        case .page(let page): "page/\(page.id)"
+        case .link(let url): "link/\(url.absoluteString)"
+        }
+    }
+}
+
+/// The call screen's sheet for a tapped card (`AgentArtifactLine`).
+@MainActor @Observable
+final class TalkOpener {
+    var opened: TalkOpened?
+}
+
+/// An https link in the system's in-app browser, so the call stays up behind it.
+private struct TalkSafariView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+#endif
+
+/// One of Jamie's artifacts as a tappable row: the app's own line for it
+/// (`AgentArtifactLine`), which says where it lives, opens it, or says why
+/// it cannot be opened here.
+private struct TalkArtifactRow: View {
+    let artifact: AgentArtifact
+
+    var body: some View {
+        line
+            .talkFont(14, .regular, .subheadline)
+            .foregroundStyle(Theme.secondaryText)
+            .padding(.horizontal, Theme.Space.md)
+            .padding(.vertical, Theme.Space.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
+            #if os(iOS)
+            .accessibilityLabel("\(artifact.title), \(artifact.label ?? "Artifact")")
+            #endif
+    }
+
+    @ViewBuilder private var line: some View {
+        #if os(iOS)
+        AgentArtifactLine(artifact: artifact, inTribe: false)
+        #else
+        AgentArtifactLine(artifact: artifact)
+        #endif
     }
 }
 
@@ -162,19 +242,25 @@ private struct TalkLive: View {
         let phase = session.phase
         let muted = session.micReady && !session.micOn
         TalkPhaseView(words: phase.words, mode: TalkWave.Mode(phase: phase, muted: muted), session: session)
-        TalkLines(lines: session.transcript.lines)
+        TalkLines(transcript: session.transcript, cards: session.cards)
         TalkControls(session: session)
     }
 }
 
 /// The live text, newest at the bottom and kept in view as it grows.
 private struct TalkLines: View {
-    let lines: [TalkLine]
+    let transcript: TalkTranscript
+    /// Jamie's artifacts, each where its anchor puts it (`TalkCardAnchor`).
+    let cards: [TalkCard]
 
     var body: some View {
+        let lines = transcript.lines
+        // The cards by how many lines are above them, in the order they came.
+        let placed = Dictionary(grouping: cards) { $0.anchor.linesAbove(in: transcript) }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Space.md) {
-                ForEach(lines) { line in
+                ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                    ForEach(placed[index] ?? []) { TalkArtifactRow(artifact: $0.artifact) }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(line.speaker == .you ? "You" : "Jamie")
                             .talkFont(13, .semibold, .footnote)
@@ -187,6 +273,7 @@ private struct TalkLines: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityElement(children: .combine)
                 }
+                ForEach(placed[lines.count] ?? []) { TalkArtifactRow(artifact: $0.artifact) }
             }
             .padding(.horizontal, Theme.Space.lg)
             .padding(.vertical, Theme.Space.md)

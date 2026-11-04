@@ -85,10 +85,12 @@ public struct TalkHome: Sendable, Equatable, Identifiable, CustomStringConvertib
         MediaCrypto.randomBytes(32).base64EncodedString()
     }
 
-    /// `POST /voice/calls`'s body: `{ "key": "<base64>", "voice": "am_michael" }`.
+    /// `POST /voice/calls`'s body:
+    /// `{ "key": "<base64>", "voice": "am_michael", "artifacts": true }`. `artifacts`
+    /// says this Peel shows a turn's artifact cards (`TalkArtifacts`).
     static func callBody(key: String, voice: TalkVoice?) throws -> Data {
-        struct Body: Encodable { let key: String; let voice: String? }
-        return try JSONEncoder().encode(Body(key: key, voice: voice?.rawValue))
+        struct Body: Encodable { let key: String; let voice: String?; let artifacts: Bool }
+        return try JSONEncoder().encode(Body(key: key, voice: voice?.rawValue, artifacts: true))
     }
 }
 
@@ -247,4 +249,39 @@ public enum TalkRefusal: Error, Equatable, CustomStringConvertible, LocalizedErr
     }
 
     public var errorDescription: String? { description }
+}
+
+/// What Jamie made or found in a turn of a Talk call, as the voice agent
+/// sends it to the member alone: one text stream on `topic` (in the room's
+/// end-to-end encryption, as the transcript is) whose text is
+/// `{ "id", "timestamp" (epoch ms), "artifacts": [strut's ArtifactRef…] }`.
+/// Each entry is resolved against the call's home, the org's strut
+/// (`AgentArtifact(strutEntry:workspace:)`).
+public enum TalkArtifacts {
+    public static let topic = "sphinx.artifacts"
+
+    /// A stream's payload: its id and its entries, capped.
+    public struct Batch: Equatable, Sendable {
+        public let id: String
+        public let artifacts: [AgentArtifact]
+    }
+
+    private struct Payload: Decodable {
+        var id: String?
+        var artifacts: [JSONValue]?
+    }
+
+    /// The payload in `text`, its entries resolved against `workspace` (the
+    /// home's id); nil for malformed JSON or a payload with no id.
+    public static func batch(_ text: String, workspace: String) -> Batch? {
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: Data(text.utf8)),
+              let id = payload.id, !id.isEmpty, let entries = payload.artifacts else { return nil }
+        let artifacts = entries.prefix(AgentArtifact.most).compactMap { AgentArtifact(strutEntry: $0, workspace: workspace) }
+        return Batch(id: id, artifacts: artifacts)
+    }
+
+    /// The entries in `text`, at most `AgentArtifact.most`; none for anything malformed.
+    public static func decode(_ text: String, workspace: String) -> [AgentArtifact] {
+        batch(text, workspace: workspace)?.artifacts ?? []
+    }
 }

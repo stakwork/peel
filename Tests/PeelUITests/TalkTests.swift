@@ -67,6 +67,93 @@ struct TalkTranscriptTests {
     }
 }
 
+/// Where Jamie's cards go in the live text (`TalkCardAnchor`): under the
+/// reply they came with, whose line LiveKit Agents send in time with its
+/// audio, so usually after the card.
+struct TalkCardAnchorTests {
+    private let you = "m-1", yourTrack = "TR_mic", agentTrack = "TR_agent"
+
+    /// A line of the member's or Jamie's, done or still being said.
+    private func say(_ transcript: inout TalkTranscript, _ segment: String, _ speaker: TalkLine.Speaker,
+                     final: Bool = true) {
+        let attributes = ["lk.segment_id": segment, "lk.transcribed_track_id": speaker == .you ? yourTrack : agentTrack,
+                          "lk.transcription_final": final ? "true" : "false"]
+        transcript.receive("words", stream: segment, sender: "a-1", attributes: attributes, you: you, yourTracks: [yourTrack])
+    }
+
+    @Test func aCardBeforeJamiesReplyGoesUnderIt() {
+        var transcript = TalkTranscript()
+        say(&transcript, "u1", .you)
+        let card = TalkCardAnchor(transcript)
+        #expect(card.linesAbove(in: transcript) == 1)
+        say(&transcript, "r1", .agent, final: false)
+        #expect(card.linesAbove(in: transcript) == 2)
+        say(&transcript, "r1", .agent)
+        say(&transcript, "u2", .you)
+        #expect(card.linesAbove(in: transcript) == 2)
+    }
+
+    /// Jamie's line being said is the reply, even when another of Jamie's
+    /// (a job's summary) follows it.
+    @Test func aCardDuringJamiesReplyGoesUnderIt() {
+        var transcript = TalkTranscript()
+        say(&transcript, "u1", .you)
+        say(&transcript, "r1", .agent, final: false)
+        let card = TalkCardAnchor(transcript)
+        #expect(card.linesAbove(in: transcript) == 2)
+        say(&transcript, "r1", .agent)
+        say(&transcript, "r2", .agent)
+        #expect(card.linesAbove(in: transcript) == 2)
+    }
+
+    @Test func aCardAfterJamiesReplyStaysAboveTheMembersNextLine() {
+        var transcript = TalkTranscript()
+        say(&transcript, "u1", .you)
+        say(&transcript, "r1", .agent)
+        let card = TalkCardAnchor(transcript)
+        #expect(card.linesAbove(in: transcript) == 2)
+        say(&transcript, "u2", .you, final: false)
+        #expect(card.linesAbove(in: transcript) == 2)
+        say(&transcript, "u2", .you)
+        say(&transcript, "r2", .agent)
+        #expect(card.linesAbove(in: transcript) == 2)
+    }
+
+    /// A card with no line after it is at the end, in a call with no line
+    /// yet too; the first line then goes above it if it is Jamie's.
+    @Test(arguments: [(TalkLine.Speaker.agent, 1), (.you, 0)] as [(TalkLine.Speaker, Int)])
+    func aCardWithNoLineAfterIsAtTheEnd(first: TalkLine.Speaker, linesAbove: Int) {
+        var transcript = TalkTranscript()
+        let card = TalkCardAnchor(transcript)
+        #expect(card.linesAbove(in: transcript) == 0)
+        say(&transcript, "l1", first)
+        #expect(card.linesAbove(in: transcript) == linesAbove)
+    }
+
+    /// The cap on lines moves no card: each stays by its line while that is
+    /// kept, then is at the top, where its lines were.
+    @Test func theCapMovesNoCard() {
+        var transcript = TalkTranscript()
+        let opening = TalkCardAnchor(transcript)
+        say(&transcript, "u0", .you)
+        let first = TalkCardAnchor(transcript)
+        say(&transcript, "r0", .agent)
+        say(&transcript, "u1", .you)
+        say(&transcript, "r1", .agent, final: false)
+        let second = TalkCardAnchor(transcript)
+        for n in 2...(TalkTranscript.maxLines + 3) {
+            say(&transcript, "u\(n)", .you)
+            let ids = transcript.lines.map(\.id)
+            let underR0 = ids.firstIndex(of: "agent/r0").map { $0 + 1 } ?? 0
+            let underR1 = ids.firstIndex(of: "agent/r1").map { $0 + 1 } ?? 0
+            #expect(opening.linesAbove(in: transcript) == 0)
+            #expect(first.linesAbove(in: transcript) == underR0)
+            #expect(second.linesAbove(in: transcript) == underR1)
+        }
+        #expect(!transcript.lines.contains { $0.speaker == .agent })
+    }
+}
+
 /// The call's encryption as the call screen says it: a track of the agent's
 /// that won't decrypt (or a text packet) leaves Jamie unheard, the member's
 /// own that won't encrypt leaves them unheard, and a track that recovers

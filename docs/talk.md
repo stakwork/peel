@@ -25,8 +25,9 @@ it.
    `POST {home}/voice/calls`:
    - `{home}` is the org's strut, the workspace's `HivePeer.baseUrl`;
    - the bearer is the person's token for it, from Stadeum's pairing;
-   - the body is `{ "key": "<base64>", "voice": "af_heart" }`: the call's
-     key (below) and Jamie's voice as kept on this device (below). A 400 is
+   - the body is `{ "key": "<base64>", "voice": "af_heart", "artifacts": true }`:
+     the call's key (below), Jamie's voice as kept on this device (below),
+     and the capability: this Peel shows artifact cards (below). A 400 is
      a voice the home does not know, said in its words.
    It goes through `Web.requestStrut`: https anywhere, plain http only to this
    device.
@@ -59,6 +60,25 @@ it.
      folds them (one line per speaker and `lk.segment_id`). A line is the
      member's when `lk.transcribed_track_id` names one of their tracks, or
      the stream came from their identity.
+   - the text streams on `sphinx.artifacts` (`TalkArtifacts`, sent to the
+     member only, inside the room's end-to-end encryption like the
+     transcript): one as strut's run for a turn ends, and one as a finished
+     job's summary is queued to be spoken, JSON `{ id, timestamp, artifacts:
+     [strut's ArtifactRef…] }`. Each entry is resolved against the call's
+     home (the org's peer id) as in a call's chat
+     (`AgentArtifact(strutEntry:workspace:)`), capped at 20 a stream; a
+     payload id seen before is ignored. `TalkSession` keeps up to 30 cards,
+     each shown in the transcript under the reply it came with
+     (`TalkCardAnchor`, in `TalkStore.swift`). A card usually comes before
+     that reply's line, which LiveKit Agents send in time with the audio. So
+     it goes under Jamie's line being said when it came; else it waits at
+     the end, then goes under the next line if that is Jamie's, or stays
+     above it if it is the member's. It never moves; once the 200-line cap
+     has dropped its lines it is at the top. Each card is a row
+     (`TalkArtifactRow`) that opens the page. On the phone the page opens in
+     a sheet of the call screen (the full-screen cover hides the root's
+     sheet), an https link in an in-app Safari sheet; the call stays up. One
+     that cannot open here says why.
    The circle above the words is a waveform (`TalkWaveView`; the pure parts
    are `TalkWave` in `Sources/PeelUI/TalkWave.swift`):
    - Speaking: rounded bars in the accent colour move with the agent's

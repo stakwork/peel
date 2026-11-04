@@ -149,6 +149,7 @@ struct RootView: View {
             )) {
                 TalkView()
                     .environment(model)
+                    .environment(router)
             }
             // The call screens are portrait only, even when started from a chat.
             .onChange(of: router.callShown || model.talk.home != nil, initial: true) { _, shown in

@@ -440,7 +440,8 @@ is a short plan. Update the status and the journal when you finish something.
   at a time, each waiting for the other, `CallStore.busy`;
   `AppModel.talkHomes`; `TalkPhase`, what the screen says from the room and
   `lk.agent.state`; `TalkTranscript`, the live text folded from
-  `lk.transcription`; docs/talk.md);
+  `lk.transcription`; `TalkCardAnchor`, where Jamie's cards go in it;
+  docs/talk.md);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
   activate, the badge, notification settings), `MenuHosting` (for
   `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
@@ -1064,9 +1065,10 @@ is a short plan. Update the status and the journal when you finish something.
   state machine, the hotkey's encoding, the WAV writer,
   where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
   correction learned and the dictation models; `DictationEditTests`, when
-  an edit to dictated text is done) and `TalkTests` (the live text and
-  the phase from what LiveKit Agents publish; a Talk call started on a
-  stand-in home, its refusal, and no group call left unasked)
+  an edit to dictated text is done) and `TalkTests` (the live text, where
+  Jamie's cards go in it, and the phase from what LiveKit Agents publish;
+  a Talk call started on a stand-in home, its refusal, and no group call
+  left unasked)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,

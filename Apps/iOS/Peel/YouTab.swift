@@ -184,16 +184,11 @@ private struct BiometricsRow: View {
             }))
             .tint(Theme.accent)
             // Turned on on another device: never enrolled from there, only
-            // offered, through the same PIN step.
+            // offered; the switch above turns it on, through the same PIN step.
             if model.biometricsOffered, !on {
-                HStack {
-                    Text("\(name) is on on your other device")
-                        .phoneFont(.secondary)
-                        .foregroundStyle(Theme.quietText(on: .raised))
-                    Spacer()
-                    Button("Turn on") { asking = true }
-                        .buttonStyle(.borderless)
-                }
+                Text("\(name) is on on your other device")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.quietText(on: .raised))
             }
         }
         .sheet(isPresented: $asking) {

@@ -32,6 +32,7 @@ final class OrgWalletBridge: NSObject, WKScriptMessageHandlerWithReply {
     func attach(_ view: WKWebView, acted: @escaping () -> Bool) {
         webView = view
         self.acted = acted
+        sheets.stillOpen = { [weak model] in model?.phase == .ready }
         listening = model?.listenToWallet { [weak self] push in self?.push(push) }
     }
 
@@ -101,6 +102,8 @@ final class PhoneWalletSheets {
     }
 
     var shown: Sheet?
+    /// Whether an answer still counts when it is given (Peel unlocked).
+    @ObservationIgnored var stillOpen: () -> Bool = { true }
     @ObservationIgnored private var waiting: CheckedContinuation<Answer, Never>?
 
     func ask(_ sheet: Sheet) async -> Answer {
@@ -117,7 +120,8 @@ final class PhoneWalletSheets {
 
     func answer(_ answer: Answer) {
         shown = nil
-        waiting?.resume(returning: answer)
+        // A yes given once Peel locked is a no.
+        waiting?.resume(returning: stillOpen() ? answer : Answer())
         waiting = nil
     }
 
@@ -193,11 +197,16 @@ struct WalletConnectPhoneSheet: View {
                     Button("Connect") {
                         done(WalletConnectAnswer(optional: Array(optional), maxAmountMsat: limitMsat, overBudget: overLimit))
                     }
+                    // Not as the sheet rises: a tap meant for the page is never the yes.
+                    .disabled(!settled)
                 }
             }
         }
         .interactiveDismissDisabled()
+        .task { settled = (try? await Task.sleep(for: TouchPayButton.settle)) != nil }
     }
+
+    @State private var settled = false
 }
 
 /// The PAYMENT sheet on the iPhone, for one payment over the limit: the

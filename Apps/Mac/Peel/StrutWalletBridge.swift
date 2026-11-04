@@ -40,6 +40,8 @@ final class StrutWalletBridge: NSObject, WKScriptMessageHandlerWithReply {
     func attach(_ view: InputWebView) {
         webView = view
         sheets.webView = view
+        // A yes given once Peel locked is a no: the account may not be the person's to spend now.
+        sheets.stillOpen = { [weak model] in model?.phase == .ready }
         listening = model?.listenToWallet { [weak self] push in self?.push(push) }
     }
 
@@ -102,6 +104,8 @@ struct MacWalletPerson: WalletPerson {
 @MainActor
 final class WalletSheetPresenter {
     weak var webView: WKWebView?
+    /// Whether an answer still counts when it is given (Peel unlocked).
+    var stillOpen: () -> Bool = { true }
     private var open: (window: NSWindow, cancel: () -> Void)?
 
     /// The person's answer; nil when there is no window to ask in, or the
@@ -112,8 +116,9 @@ final class WalletSheetPresenter {
             await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
                 let once = Once(continuation)
                 let sheet = NSWindow(contentViewController: NSHostingController(rootView: make { [weak self] answer in
+                    let counts = self?.stillOpen() ?? false
                     self?.close()
-                    once.resume(answer)
+                    once.resume(counts ? answer : nil)
                 }))
                 sheet.styleMask.remove(.resizable)
                 open = (sheet, { once.resume(nil) })

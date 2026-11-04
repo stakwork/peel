@@ -22,6 +22,9 @@ are what this builds. Peel as an NWC wallet service (R4) is later.
   shows the amount Peel decoded, who it pays (their name when they are a
   contact), the memo or message, the fee, and the app's own words marked
   as its; Pay takes a second click (the iPhone's touch-safe second tap).
+  No yes is taken in the first 0.7 s of a sheet or of an armed Pay, and
+  Return never says yes (a key meant for the page, or a double click,
+  cannot), and a yes given after Peel locked counts as a no.
   Your "confirm payments over" amount is not asked for an app: over the
   limit an app's payment is always asked, inside it never.
 - Connected apps (Account › Payments on the Mac, You on the iPhone) lists

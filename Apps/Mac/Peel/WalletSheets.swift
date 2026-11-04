@@ -94,11 +94,29 @@ struct WalletConnectSheetView: View {
                     done(WalletConnectAnswer(optional: Array(optional), maxAmountMsat: limitMsat, overBudget: overLimit))
                 }
                 .buttonStyle(.peel(.primary))
+                // No Return: a key meant for the page must never say yes.
+                .disabled(!settled)
             }
         }
         .font(Theme.font(13))
         .padding(24)
         .frame(width: 460)
+        .task { settled = await WalletSheetSettle.wait() }
+    }
+
+    /// The sheet has been up long enough that a click meant for the page
+    /// cannot land on Connect.
+    @State private var settled = false
+}
+
+/// How long a wallet sheet's yes waits after the sheet opens, and after
+/// Pay arms, so a click or key meant for the page, or a double click, is
+/// never the yes (the iPhone's `TouchPayButton.settle`).
+enum WalletSheetSettle {
+    static let delay: Duration = .milliseconds(700)
+
+    static func wait() async -> Bool {
+        (try? await Task.sleep(for: delay)) != nil
     }
 }
 
@@ -145,15 +163,29 @@ struct WalletPaymentSheetView: View {
                 Button("Decline") { done(false) }
                     .buttonStyle(.peel(.outline))
                     .keyboardShortcut(.cancelAction)
-                PayButton(verb: "Pay", totalMsat: UInt64(max(sheet.amountMsat, 0)), attempt: attempt, send: { confirmed in
-                    confirmed == UInt64(max(sheet.amountMsat, 0)) ? .sent : .needsConfirmation(msat: UInt64(max(sheet.amountMsat, 0)))
-                }, sent: { done(true) }, namesAmount: true)
+                // Pay arms, the second click pays, each only once the sheet
+                // (then the armed button) has settled; never on Return.
+                PayButton(verb: "Pay", totalMsat: settled ? UInt64(max(sheet.amountMsat, 0)) : nil, attempt: attempt,
+                          send: { confirmed in
+                              let amount = UInt64(max(sheet.amountMsat, 0))
+                              return confirmed == amount && armedSettled ? .sent : .needsConfirmation(msat: amount)
+                          }, sent: { done(true) }, isDefault: false, namesAmount: true)
             }
         }
         .font(Theme.font(13))
         .padding(24)
         .frame(width: 440)
+        .task { settled = await WalletSheetSettle.wait() }
+        .task(id: attempt.armed) {
+            armedSettled = false
+            guard attempt.armed != nil else { return }
+            armedSettled = await WalletSheetSettle.wait()
+        }
     }
+
+    @State private var settled = false
+    /// Pay has been armed long enough that the click that armed it, doubled, cannot pay.
+    @State private var armedSettled = false
 }
 
 /// Account › Payments › Connected apps: each app (or org) the person

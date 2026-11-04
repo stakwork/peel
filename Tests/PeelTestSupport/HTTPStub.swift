@@ -17,7 +17,7 @@ final class HTTPStub: Sendable {
     /// A request's body read as a JSON object of strings, nil when it is not one.
     static func jsonBody(of request: String) -> [String: String]? {
         guard let body = request.components(separatedBy: "\r\n\r\n").last else { return nil }
-        return (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: String]
+        return ((try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: Any])?.compactMapValues { $0 as? String }
     }
 
     convenience init(status: Int = 200, body: @escaping @Sendable (UInt16) -> String) async throws {

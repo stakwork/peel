@@ -36,6 +36,13 @@ final class TalkSession: TalkMedia {
     /// The call's encryption failing (`TalkEncryption`): said before anything else.
     private(set) var encryptionNotice: String?
 
+    /// The cards Jamie sent (`TalkArtifacts`), in the order they came, each
+    /// with the number of transcript lines there were when it arrived.
+    private(set) var cards: [TalkCard] = []
+    /// The newest cards kept.
+    static let maxCards = 30
+
+    @ObservationIgnored private var seenArtifacts = Set<String>()
     @ObservationIgnored private let identity: String
     @ObservationIgnored private let agent: String
     /// One room per call: its encryption is set as it connects (`options(key:)`).
@@ -117,6 +124,10 @@ final class TalkSession: TalkMedia {
                 await self?.received(chunk, stream: stream, sender: sender.stringValue, attributes: attributes)
             }
         }
+        try? await room.registerTextStreamHandler(for: TalkArtifacts.topic) { [weak self] reader, _ in
+            let text = try await reader.readAll()
+            await self?.receivedArtifacts(text)
+        }
         do {
             try await room.connect(url: url, token: token, roomOptions: options)
         } catch {
@@ -141,6 +152,18 @@ final class TalkSession: TalkMedia {
         transcript.receive(chunk, stream: stream, sender: sender, attributes: attributes, you: identity, yourTracks: tracks)
     }
 
+    /// One turn's artifacts, each a card after the transcript so far. A
+    /// payload seen before (by its id) adds nothing.
+    private func receivedArtifacts(_ text: String) {
+        guard !leaving, text.utf8.count <= 256 * 1024, let batch = TalkArtifacts.batch(text, workspace: home.id),
+              seenArtifacts.insert(batch.id).inserted else { return }
+        let after = transcript.lines.count
+        for (index, artifact) in batch.artifacts.enumerated() {
+            cards.append(TalkCard(id: "\(batch.id)/\(index)", artifact: artifact, after: after))
+        }
+        if cards.count > Self.maxCards { cards.removeFirst(cards.count - Self.maxCards) }
+    }
+
     /// Hangs up: leaves once a join still in flight has finished, so it
     /// cannot outlive the call, then gives the phone's audio session back.
     func leave() async {
@@ -153,6 +176,7 @@ final class TalkSession: TalkMedia {
         heardTrack?.remove(audioRenderer: agentMeter)
         heardTrack = nil
         await room.unregisterTextStreamHandler(for: TalkTranscript.topic)
+        await room.unregisterTextStreamHandler(for: TalkArtifacts.topic)
         await room.disconnect()
         #if os(iOS)
         routeChanges.map(NotificationCenter.default.removeObserver)
@@ -292,6 +316,14 @@ final class TalkSession: TalkMedia {
         let mic = room.localParticipant.isMicrophoneEnabled()
         if mic != micOn { micOn = mic }
     }
+}
+
+/// One artifact Jamie sent on the call, shown after the `after` transcript
+/// lines there were when it arrived.
+struct TalkCard: Identifiable, Equatable {
+    let id: String
+    let artifact: AgentArtifact
+    let after: Int
 }
 
 /// Hears a Talk room's encryption (a `RoomDelegate`, which LiveKit calls on

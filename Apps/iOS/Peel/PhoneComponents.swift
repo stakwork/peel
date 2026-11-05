@@ -148,6 +148,7 @@ struct ChatListRow: View {
                     .lineLimit(1)
                 if isAgent { AgentTag() }
             }
+            .modifier(PreviewLine(line: isAgent ? nil : conversation.previewLine, unread: unread > 0))
         } trailing: {
             if onCall > 0 {
                 Image(systemName: "phone.fill")
@@ -192,6 +193,33 @@ struct ChatListRow: View {
         if state?.isNew == true, unread == 0 { parts.append("new") }
         if level == .muted { parts.append("muted") } else if level == .mentionsOnly { parts.append("mentions only") }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// Puts a chat's last message under its title on one line: `secondaryText`
+/// when read; `text`, semibold, with a blue dot when unread.
+private struct PreviewLine: ViewModifier {
+    let line: String?
+    let unread: Bool
+
+    func body(content: Content) -> some View {
+        if let line {
+            VStack(alignment: .leading, spacing: 2) {
+                content
+                HStack(spacing: 5) {
+                    if unread {
+                        Circle().fill(Theme.accent).frame(width: 7, height: 7).accessibilityHidden(true)
+                    }
+                    Text(line)
+                        .phoneFont(PhoneFont.row.weight(unread ? .semibold : .regular))
+                        .foregroundStyle(unread ? Theme.text : Theme.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+        } else {
+            content
+        }
     }
 }
 

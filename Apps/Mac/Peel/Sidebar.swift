@@ -456,17 +456,20 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
     let destination: AppModel.Destination
     var unread = false
     var dimmed = false
+    /// A chat's last message, on one line under the title.
+    var preview: String?
     @ViewBuilder let icon: Icon
     @ViewBuilder let accessory: Accessory
 
     init(
         _ title: String, to destination: AppModel.Destination, unread: Bool = false, dimmed: Bool = false,
-        @ViewBuilder icon: () -> Icon, @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+        preview: String? = nil, @ViewBuilder icon: () -> Icon, @ViewBuilder accessory: () -> Accessory = { EmptyView() }
     ) {
         self.title = title
         self.destination = destination
         self.unread = unread
         self.dimmed = dimmed
+        self.preview = preview
         self.icon = icon()
         self.accessory = accessory()
     }
@@ -478,7 +481,23 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
         } label: {
             HStack(spacing: 9) {
                 icon.frame(width: Theme.AvatarSize.sm)
-                Text(title).lineLimit(1)
+                if let preview {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(title).lineLimit(1)
+                        HStack(spacing: 4) {
+                            if unread {
+                                Circle().fill(Theme.accent).frame(width: 6, height: 6).accessibilityHidden(true)
+                            }
+                            Text(preview)
+                                .font(Theme.font(12, unread ? .semibold : .regular))
+                                .foregroundStyle(unread ? Theme.text : Theme.secondaryText)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
+                } else {
+                    Text(title).lineLimit(1)
+                }
                 Spacer(minLength: 4)
                 accessory
             }
@@ -508,7 +527,8 @@ struct ConversationLink: View {
         let onCall = model.calls.liveCount(in: conversation.chat)
         // A muted chat that mentions you is in Unread at full strength.
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0,
-                    dimmed: level == .muted && unread == 0) {
+                    dimmed: level == .muted && unread == 0,
+                    preview: conversation.previewLine) {
             ConversationIcon(conversation: conversation, size: Theme.AvatarSize.sm)
         } accessory: {
             if onCall > 0 {

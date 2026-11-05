@@ -211,8 +211,8 @@ private struct PreviewLine: ViewModifier {
                         Circle().fill(Theme.accent).frame(width: 7, height: 7).accessibilityHidden(true)
                     }
                     Text(line)
-                        .phoneFont(PhoneFont.row.weight(unread ? .semibold : .regular))
-                        .foregroundStyle(unread ? Theme.text : Theme.secondaryText)
+                        .phoneFont(PhoneFont.secondary.weight(unread ? .semibold : .regular))
+                        .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }

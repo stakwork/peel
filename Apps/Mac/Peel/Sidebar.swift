@@ -490,7 +490,7 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
                             }
                             Text(preview)
                                 .font(Theme.font(12, unread ? .semibold : .regular))
-                                .foregroundStyle(unread ? Theme.text : Theme.secondaryText)
+                                .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }

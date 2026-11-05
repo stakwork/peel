@@ -18,7 +18,7 @@ enum AgentToolTitle {
         "merge_memory": "Merged",
         // strut's graph tools, which hold memory when it is on the graph (`graphMemory`),
         // as strut names them: the step's type with "/" and "-" as "_".
-        "graph_resolve": "Looked up",
+        "graph_resolve": "Searched memory",
         "graph_graph_search": "Searched memory",
         "graph_graph_get": "Read memory",
         "graph_graph_neighbors": "Read related memories",

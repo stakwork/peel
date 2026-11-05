@@ -193,10 +193,19 @@ final class PushLog: Sendable {
 
     deinit { task.cancel() }
 
-    /// What came after a short wait (pushes are yielded as the host takes
-    /// each update, so a little time is enough).
-    func take(waiting: Duration = .milliseconds(150)) async -> [WalletPush] {
-        try? await Task.sleep(for: waiting)
+    /// What came: once `count` pushes are in (waiting up to `timeout`, since
+    /// a loaded CI runner can take longer than any fixed wait), then
+    /// `settle` more for any that should not come. With no `count`, only the
+    /// short wait, for a step that expects none.
+    func take(
+        expecting count: Int = 0, timeout: Duration = .seconds(5), settle: Duration = .milliseconds(150)
+    ) async -> [WalletPush] {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while count > 0, box.pushes.withLock({ $0.count }) < count, clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        try? await Task.sleep(for: settle)
         return box.pushes.withLock { p in defer { p = [] }; return p }
     }
 }
@@ -270,8 +279,8 @@ struct WalletHostTests {
             let at = "\(name), step \(n + 1)"
             if let event = step["wallet_event"] {
                 wallet.event(event)
-                let told = await pushes.take()
                 let expected = step["expect"]?.objectValue["notification"]
+                let told = await pushes.take(expecting: expected == nil || expected == .null ? 0 : 1)
                 if let expected, expected != .null {
                     #expect(told.count == 1, "\(at): \(told.count) notifications")
                     let pushed = told.first?.envelope.objectValue
@@ -364,10 +373,12 @@ struct WalletHostTests {
     @Test func oneSheetAtATimeAndNoneForEver() async throws {
         let wallet = ScriptedWallet(), absent = ScriptedPerson(absent: true), other = ScriptedPerson()
         let storage = try profile.storage()
-        let host = WalletHost(storage: storage, wallet: wallet, now: { Self.now }, sheetTimeout: .milliseconds(300))
+        let host = WalletHost(storage: storage, wallet: wallet, now: { Self.now }, sheetTimeout: .seconds(1))
         let asking = message("connect", request: Self.keysendRequest), walkedAway = caller(absent)
         let first = Task { await host.handle(asking, from: walkedAway) }
-        try await Task.sleep(for: .milliseconds(50))
+        // The first sheet is up before the second call (a fixed wait raced on a loaded CI runner).
+        let clock = ContinuousClock(), deadline = clock.now.advanced(by: .seconds(5))
+        while absent.lastConnect == nil, clock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
         let second = await host.handle(message("connect", request: Self.keysendRequest), from: caller(other))
         #expect(second.objectValue["error"]?.objectValue["data"]?.objectValue["code"] == .string("RATE_LIMITED"))
         #expect(other.takeShown().isEmpty)
@@ -492,7 +503,7 @@ struct WalletHostTests {
             "payment_hash": .string(String(repeating: "7", count: 64)), "preimage": .string(String(repeating: "1", count: 64)),
             "amount": .int(2_000), "created_at": .int(Self.now), "settled_at": .int(Self.now + 1),
         ])]))
-        let told = await pushes.take()
+        let told = await pushes.take(expecting: 1)
         #expect(told.map(\.connection) == [other.key])
         #expect(told.first?.envelope.objectValue["app"] == .object(["name": .string("shop"), "peer": .string("acme")]))
         await host.stop()

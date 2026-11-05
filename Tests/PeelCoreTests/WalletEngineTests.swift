@@ -298,7 +298,9 @@ struct WalletEngineTests {
         let updates = EngineWallet(engine: engine).updates()
         let told = Mutex<[WalletRecord]>([])
         let watching = Task { for await record in updates { told.withLock { $0.append(record) } } }
-        try await Task.sleep(for: .milliseconds(100))
+        // Time for the stream's first read, which tells nothing (generous:
+        // on a loaded CI runner a commit before it would read as "before").
+        try await Task.sleep(for: .milliseconds(500))
         _ = try await engine.commit(coreResult(sentStatus: sentStatus(tag: "k1", status: "COMPLETE", preimage: preimage)),
                                     time: "1", expectedSender: nil)
         var page = Storage.Commit()
@@ -307,6 +309,9 @@ struct WalletEngineTests {
         // The same again moves nothing.
         _ = try await engine.commit(coreResult(sentStatus: sentStatus(tag: "k1", status: "COMPLETE", preimage: preimage)),
                                     time: "2", expectedSender: nil)
+        // Both moves in (up to 5 s), then a moment for a third that must not come.
+        let clock = ContinuousClock(), deadline = clock.now.advanced(by: .seconds(5))
+        while told.withLock({ $0.count }) < 2, clock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
         try await Task.sleep(for: .milliseconds(300))
         watching.cancel()
         let moves = told.withLock { $0 }

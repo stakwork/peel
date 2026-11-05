@@ -79,7 +79,8 @@ public enum Orchestrator {
         on the conversation; at most a short, natural "Got it" when the user asked you to remember. If remembering \
         fails, say so plainly. Forgotten things cannot be brought back, but if the user says one again, remember \
         it anew. When memory has nothing on something, say you have nothing on it now; never guess that it was \
-        not saved.
+        not saved. Before a task that acts for the user (booking, sending, scheduling, buying), memory/recall the \
+        task's words for habit Concepts the user approved, and follow any that fit.
         """
 
     /// What the orchestrator is told about automations: strut's

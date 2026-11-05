@@ -30,6 +30,12 @@ struct AppsView: View {
             if !apps.isEmpty {
                 list(apps)
             } else {
+                // Peel's own, beside any app: what it learned from your corrections.
+                HStack {
+                    LearnedCard().frame(width: 260)
+                    Spacer(minLength: 0)
+                }
+                .padding(Theme.Space.xl)
                 // Building one is the way in; a workspace's come with Stadeum.
                 EmptyState("Ask Peel to build you one. Apps your Stadeum workspaces pin show here too.",
                            title: "No apps yet") {
@@ -61,13 +67,16 @@ struct AppsView: View {
         }
         .padding(.horizontal, Theme.Space.xl)
         .padding(.top, Theme.Space.md)
-        if shown.isEmpty {
+        // Peel's own screen first, whichever workspace the apps come from; a source choice other than all hides it.
+        let showsLearned = shownSource == nil && LearnedCard.matches(query)
+        if shown.isEmpty && !showsLearned {
             // Only a search empties it: the choice lists no source without apps.
             EmptyState("No apps match “\(query.trimmingCharacters(in: .whitespaces))”.")
         } else {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Theme.Space.md, alignment: .top)],
                           spacing: Theme.Space.md) {
+                    if showsLearned { LearnedCard() }
                     ForEach(shown) { AppCard(app: $0, showsSource: model.showsAppSources) }
                 }
                 .padding(Theme.Space.xl)

@@ -237,6 +237,9 @@ struct Detail: View {
                 }
             case .apps:
                 AppsView()
+            case .app(nil, LearnedView.appName):
+                // Peel's own screen beside the apps, not one a workspace serves.
+                LearnedView()
             case .app(let peer, let name):
                 if let app = model.app(peer: peer, name: name) {
                     // One view per app: a version picked or read in one is not another's.

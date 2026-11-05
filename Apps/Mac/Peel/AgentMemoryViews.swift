@@ -25,7 +25,7 @@ struct MemoryRowDetail: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 2)
             }
-            switch MemoryResult(tool: tool, row: row) {
+            switch MemoryResult(tool: tool, row: row, input: input) {
             case .remembered(let remembered)?: Remembered(remembered: remembered)
             case .found(let refs)?: Found(refs: refs)
             case .read(let node)?: Read(node: node)

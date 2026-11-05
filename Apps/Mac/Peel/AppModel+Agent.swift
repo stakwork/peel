@@ -479,7 +479,7 @@ final class MemoryPanel: Identifiable {
         loading = Task {
             do {
                 if ref.graph {
-                    // A fact is read with its node ("<node>#<n>"): reading one again reads the node.
+                    // A fact is read with its node ("<node>#<fact>"): reading one again reads the node.
                     let node = String(ref.id.split(separator: "#", maxSplits: 1).first ?? "")
                     let got = try await server.graphNode(node)
                     guard !Task.isCancelled else { return }
@@ -487,6 +487,8 @@ final class MemoryPanel: Identifiable {
                         read[node] = got.node
                         for fact in got.facts { read[fact.ref.id] = fact }
                     }
+                    // A fact a search found or a remember wrote opens the node it is about.
+                    if read[ref.id] == nil, let got, ref.id != node { read[ref.id] = got.node }
                     if read[ref.id] == nil { problem = "This is no longer in memory." }
                     return
                 }

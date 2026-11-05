@@ -554,7 +554,7 @@ final class OffscreenDriver {
         case "agent-memory":
             // A click on the first fact the newest Remembered row shows.
             let rows = model.agent?.turns.flatMap(\.tools).compactMap { tool in
-                tool.row.flatMap { MemoryResult(tool: tool.name, row: $0) }
+                tool.row.flatMap { MemoryResult(tool: tool.name, row: $0, input: tool.input) }
             } ?? []
             guard case .remembered(let remembered)? = rows.last(where: { if case .remembered = $0 { true } else { false } }),
                   let fact = remembered.facts.first?.fact

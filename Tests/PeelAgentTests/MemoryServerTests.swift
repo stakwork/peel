@@ -176,6 +176,26 @@ struct MemoryServerTests {
     @Test func graphRowsAndPanelsReadTheGraphsShapes() throws {
         let search = try AgentKit.JSONValue(parsing: #"{"nodes":[{"ref_id":"k1","name":"Kate","node_type":"Person"}],"facts":[]}"#)
         #expect(MemoryResult(tool: "graph_graph_search", row: search) == .found([MemoryRef(id: "k1", name: "Kate", type: "Person", graph: true)]))
+        // The facts a search found come first, each opening the node it is about.
+        let withFacts = try AgentKit.JSONValue(parsing: #"""
+        {"nodes":[{"ref_id":"k1","name":"Kate","node_type":"Person"}],
+         "facts":[{"ref_id":"e1","edge_type":"LIVES_IN","text":"Kate lives in Bath.","source":{"ref_id":"k1","node_type":"Person"},"target":{"ref_id":"b1","node_type":"Place"}}]}
+        """#)
+        #expect(MemoryResult(tool: "graph_graph_search", row: withFacts) == .found([
+            MemoryRef(id: "k1#e1", name: "Kate lives in Bath.", graph: true),
+            MemoryRef(id: "k1", name: "Kate", type: "Person", graph: true),
+        ]))
+        #expect(MemoryResult.asked(tool: "graph_graph_search", input: ["q": "where does Kate live"]) == "Searched for \u{201C}where does Kate live\u{201D}")
+        // An assert's row: the sentences asked, whether each was new and what it replaced, from its answer.
+        let asked = try AgentKit.JSONValue(parsing: #"{"facts":[{"edge_type":"LIVES_IN","text":"Kate lives in Bath.","source_ref_id":"k1","target_type":"Place","target_data":{"name":"Bath"}},{"edge_type":"LIKES","text":"Kate likes tea.","source_ref_id":"k1","target_ref_id":"t1"}]}"#)
+        let answered = try AgentKit.JSONValue(parsing: #"{"status":"Success","facts":[{"status":"Success","edge_ref_id":"e1","edge_type":"LIVES_IN","source_ref_id":"k1","target_ref_id":"b1","action":"created","superseded":["e0"]},{"status":"Warning","edge_ref_id":"e2","edge_type":"LIKES","source_ref_id":"k1","target_ref_id":"t1","action":"unchanged"}],"created_nodes":[{"ref_id":"b1","node_type":"Place"}]}"#)
+        guard case .remembered(let wrote)? = MemoryResult(tool: "graph_assert", row: answered, input: asked) else { Issue.record("not a remember"); return }
+        #expect(wrote.facts.map(\.fact) == [MemoryRef(id: "k1#e1", name: "Kate lives in Bath.", graph: true), MemoryRef(id: "k1#e2", name: "Kate likes tea.", graph: true)])
+        #expect(wrote.facts.map(\.isNew) == [true, false])
+        #expect(wrote.facts[0].replaced.map(\.id) == ["k1#e0"])
+        let one = try AgentKit.JSONValue(parsing: #"{"status":"Success","edge_ref_id":"e3","edge_type":"WORKS_AT","source_ref_id":"k1","target_ref_id":"s1","action":"created"}"#)
+        guard case .remembered(let single)? = MemoryResult(tool: "graph_assert", row: one, input: ["edge_type": "WORKS_AT", "text": "Kate works at Stakwork.", "source_ref_id": "k1", "target_ref_id": "s1"]) else { Issue.record("not a remember"); return }
+        #expect(single.facts.map(\.fact.name) == ["Kate works at Stakwork."])
         let get = try AgentKit.JSONValue(parsing: #"{"ref_id":"k1","name":"Kate","node_type":"Person","properties":{"alt_names":["Katie","kate"]},"edges":{}}"#)
         #expect(MemoryResult(tool: "graph_graph_get", row: get) == .found([MemoryRef(id: "k1", name: "Kate", type: "Person", graph: true)]))
         let neighbors = try AgentKit.JSONValue(parsing: #"""
@@ -183,6 +203,14 @@ struct MemoryServerTests {
          {"ref_id":"o1","name":"Tom","node_type":"Person","edge_type":"MARRIED_TO","direction":"reverse","text":"Tom's wife is Kate."},
          {"ref_id":"c1","name":"Peel","node_type":"Project","edge_type":"ABOUT","direction":"forward"}]
         """#)
+        // A links row: each sentence opens as the panel names it, then the bare links.
+        #expect(MemoryResult(tool: "graph_graph_neighbors", row: neighbors, input: ["ref_id": "k1"]) == .found([
+            MemoryRef(id: "k1#0", name: "Kate lives in Bath.", graph: true),
+            MemoryRef(id: "k1#1", name: "Tom's wife is Kate.", graph: true),
+            MemoryRef(id: "c1", name: "Peel", type: "Project", graph: true),
+        ]))
+        let resolved = try AgentKit.JSONValue(parsing: #"{"node_type":"Person","match":{"ref_id":"k1","node_type":"Person","title":"Kate","matched_by":"name"},"ambiguous":false,"candidates":[]}"#)
+        #expect(MemoryResult(tool: "graph_resolve", row: resolved) == .found([MemoryRef(id: "k1", name: "Kate", type: "Person", graph: true)]))
         let read = try #require(MemoryNode.graph(get: get, neighbors: neighbors))
         guard case .entity(let kate) = read.node else { Issue.record("not an entity"); return }
         #expect(kate.ref.graph && kate.aliases == ["Katie"], "its own name left out")

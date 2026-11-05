@@ -51,6 +51,7 @@ struct PeelPhoneApp: App {
                         model.becameActive()
                         PushCoordinator.shared.refreshNames()
                         PushCoordinator.shared.openPending(model: model, router: router)
+                        PushCoordinator.shared.removeDeliveredOfReadChats(model: model, frontmost: true)
                     }
                     if phase == .background { model.leftForeground() }
                 }
@@ -58,6 +59,14 @@ struct PeelPhoneApp: App {
                 // every new message.
                 .onChange(of: PushNames.signature(model.conversations)) { _, _ in
                     PushCoordinator.shared.refreshNames()
+                }
+                // Pushes of a chat go when it is read or opened, here or on
+                // another device (its read marker moves).
+                .onChange(of: model.readStates) { _, _ in
+                    PushCoordinator.shared.removeDeliveredOfReadChats(model: model, frontmost: scenePhase == .active)
+                }
+                .onChange(of: model.selectedChat) { _, _ in
+                    PushCoordinator.shared.removeDeliveredOfReadChats(model: model, frontmost: scenePhase == .active)
                 }
                 // The push token waits for the connection: an account opened
                 // before it was up registered nothing.

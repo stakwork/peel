@@ -183,6 +183,40 @@ final class PushCoordinator {
         }
     }
 
+    /// Takes away the delivered pushes of chats that are read, or open in
+    /// front of you (`DeliveredNotificationCleaner`; the Mac does the same for
+    /// its own). Called when the app comes to the front, a read marker moves
+    /// or a chat opens. A push that arrives while this runs is kept.
+    /// Limit: this runs only while the app does; one delivered while it is
+    /// suspended stays until the next run (a server silent push would be
+    /// needed). Touches no badge and logs no content.
+    func removeDeliveredOfReadChats(model: AppModel, frontmost: Bool) {
+        guard model.phase == .ready, let engine = model.engine else { return }
+        var read = Set(model.readStates.values.filter { !$0.isBehind && !$0.isNew && $0.unread == 0 && $0.mentions == 0 }.map(\.chat))
+        if frontmost, let open = model.selectedChat { read.insert(open) }
+        guard !read.isEmpty else { return }
+        let tribes = Set(model.conversations.filter(\.isTribe).map(\.chat))
+        let known = Set(model.conversations.map(\.chat))
+        let observed = Date.now
+        Task {
+            guard let contacts = try? await engine.contacts() else { return }
+            let threads = Set(contacts.filter { read.contains($0.pubkey) && known.contains($0.pubkey) }.map {
+                NotificationRoute.threadIdentifier(kind: tribes.contains($0.pubkey) ? .tribe : .contact, index: $0.childIndex)
+            })
+            guard !threads.isEmpty else { return }
+            let center = UNUserNotificationCenter.current()
+            center.getDeliveredNotifications { notifications in
+                let delivered = notifications.map {
+                    DeliveredNotification(
+                        identifier: $0.request.identifier, threadIdentifier: $0.request.content.threadIdentifier,
+                        date: $0.date, userInfo: $0.request.content.userInfo)
+                }
+                let ids = DeliveredNotificationCleaner.identifiers(removing: threads, from: delivered, observedAt: observed)
+                if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
+            }
+        }
+    }
+
     func accountClosed() {
         model = nil
         registered = nil

@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #482 (graph memory v1: the import, dictation's vocabulary on the graph, search with embeddings), after #405–#472 (the graph layer, memory: "graph", graph search on Ladybug's own index).
-a24684bb41382842a92d0e4f9ce6dd21679e6cb4
+# stakwork/strut main after #504, with #502 (dictation fixer loads at start), #503 (home pull on the graph) and #504 (a fact ranks above its end), on top of #482 (graph memory v1: the import, dictation's vocabulary on the graph, search with embeddings).
+0eeecdf486d5db7bbc262b036cebad2f27400d7e

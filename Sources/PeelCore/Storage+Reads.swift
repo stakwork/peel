@@ -196,7 +196,9 @@ extension Storage {
     /// only those, so the joins and boosts after one are not stepped over;
     /// its terms are this query's, and it must keep them.
     private static let conversationsSQL = """
-        SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe
+        SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe,
+               m.type AS lastType, m.mediaType AS lastMediaType, m.deleted AS lastDeleted,
+               CASE WHEN json_valid(m.sender) THEN json_extract(m.sender, '$.alias') END AS lastSenderAlias
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
             SELECT id FROM message INDEXED BY message_preview

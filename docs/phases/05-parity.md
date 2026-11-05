@@ -173,7 +173,19 @@ The open questions, answered; the look is in `../design/README.md`, "Web pane".
   server had it, so `fields(over:)` round-trips them untouched. A header
   button for each one present.
 - **No `sphinx` bridge in v1:** no message handlers, no injected scripts. No
-  LSATs or in-page payments.
+  LSATs or in-page payments. **Amended 2026-11-04** (stakwork/strut's
+  plans/app-payments.md, ruling R1): Peel's own pages of a strut app (the
+  Mac's strut UI, the iPhone's org page; never the web pane's pages of the
+  web, a tribe's app or an HTML attachment) get one handler, `strutWallet`,
+  so an app can pay with the person's sats. Why a bridge now when there
+  was none: strut's app runs in an opaque sandboxed frame that cannot reach
+  any wallet itself, and the money lives in Peel's engine, so Peel has to
+  be the wallet; and what made the old `sphinx` bridges unsafe (no origin
+  check, any frame answered, budgets kept in the page's script, no request
+  ids, no way to say no) is what the new one is built against: it answers
+  only the main frame at the origin Peel loaded, every call is a promise of
+  its own, and the connection, spending limit and sheets are Peel's, never
+  the page's. docs/app-wallet.md has the rest.
 - **Storage:** one persistent `WKWebsiteDataStore(forIdentifier:)` per
   profile, its UUID in the profile folder (`web-store`), so sign-ins stick
   and profiles never share; never the default store (without a profile

@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #404 (proposals: a card on every record and brief, a person token decides only its actor's), after #391–#403 (live feeds' builder hints, the store front and the package index's llms.txt, one assistant per orchestrator, run log and step output caps, an app's rename is its title, run report blocks, the agent trace view) and #370–#390.
-c23756aee90f367e12522a51525df7b604fa26eb
+# stakwork/strut main at the merge of #484 (the app wallet's contract: strut's UI relays an app's `strut/wallet/*` calls to Peel's `strutWallet` handler, docs/app-wallet.md), after #405–#483 (Peel's memory on the workspace graph behind the host config's `memory: "graph"`, left off here, so memory/* stays as it was; voice calls and `/audio/speak`; the run graph and walk views; docx and sheets steps; paged run lists) and #370–#404.
+30d4c8bf51024b9a1c782d4bfa48b9f31bda6f7f

@@ -350,6 +350,13 @@ public final class AppModel {
     /// a plain file; the window says so.
     public private(set) var profile: Profile?
     public private(set) var engine: Engine?
+    /// The wallet apps' pages pay through, open with the account
+    /// (`AppModel+Wallet`, docs/app-wallet.md).
+    public internal(set) var wallet: WalletHost?
+    /// What the person granted apps' pages: Connected apps.
+    public internal(set) var walletConnections: [WalletConnection] = []
+    /// The pages that hear the wallet's notifications (`listenToWallet`).
+    @ObservationIgnored var walletListeners: [UUID: @MainActor (WalletPush) -> Void] = [:]
     /// The account's agent on this Mac (`AppModel+Agent`), open with the
     /// account: its model, name and rules, and the earlier local chat.
     public var agent: AgentSession?
@@ -1483,6 +1490,7 @@ public final class AppModel {
     private func resetAccountState() {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
+        closeWallet()
         agentHost?.close(in: self)
         proposals.close()
         platform.pasteboard.clearSecret()
@@ -1596,7 +1604,8 @@ public final class AppModel {
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
-        accountTasks = [
+        let walletTasks = await openWallet(engine)
+        accountTasks = walletTasks + [
             Task { await self.observeConversations(storage) },
             Task { await self.observeTribes(storage) },
             Task { await self.observeInvites(storage) },

@@ -59,6 +59,18 @@ extension Storage {
         var pings: [(rhash: String, forHash: String)] = []
         /// Invites made here, written before their payment is published.
         var invites: [InviteRecord] = []
+        /// Keysends sent for an app, written before they are published.
+        var keysends: [KeysendRecord] = []
+        /// An app's payment (the invoice or keysend in this commit) must fit
+        /// its connection's budget, counted in this transaction before it
+        /// is written; refused (`Engine.Failure.overBudget`), the whole
+        /// commit is abandoned and nothing published.
+        var walletBudget: WalletBudgetCheck?
+        /// The connection, what the payment adds, and the budget.
+        typealias WalletBudgetCheck = (connection: String, amountMsat: UInt64, guard: WalletBudget.Guard)
+        /// Preimages the server sent with a send's COMPLETE, by its tag
+        /// (`Storage.keepPreimage` keeps only one that proves the payment).
+        var preimages: [(tag: String, preimage: String)] = []
         /// Whether someone adding this account (type 10, first seen) marks
         /// the contact new: not in a restore, which replays old ones.
         var marksNewContacts = false
@@ -159,8 +171,15 @@ extension Storage {
                 try record.upsert(db)
             }
             applied.confirmed = try Self.reconcile(commit.payments, db)
+            if let check = commit.walletBudget,
+               !check.guard.admits(check.amountMsat, beside: try Self.walletEntries(connection: check.connection, db)) {
+                throw Engine.Failure.overBudget
+            }
             for invoice in commit.invoices {
                 try Self.insert(invoice, db)
+            }
+            for keysend in commit.keysends {
+                try Self.insert(keysend, db)
             }
             for invite in commit.invites {
                 try invite.insert(db)
@@ -182,6 +201,9 @@ extension Storage {
                    let deleted = try Self.applyDelete(delete, purged: &applied.purged, in: db) {
                     applied.stored.append(deleted)
                 }
+            }
+            for (tag, preimage) in commit.preimages {
+                try Self.keepPreimage(preimage, tag: tag, db)
             }
             for (hash, msat) in commit.settling {
                 try db.execute(
@@ -445,6 +467,27 @@ extension Storage {
                     arguments: [row.rhash]
                 )
             }
+            // A keysend sent for an app, by the same rule; settled from the
+            // history it carries no preimage (the server's rows have none).
+            if row.failed {
+                try db.execute(
+                    sql: """
+                        UPDATE keysend SET status = 'FAILED', error = COALESCE(error, ?2)
+                        WHERE paymentHash = ?1 AND status IN ('PENDING', 'UNSETTLED')
+                            AND NOT EXISTS (SELECT 1 FROM payment
+                                WHERE rhash = ?1 AND incoming = 0 AND IFNULL(error, '') = '')
+                        """,
+                    arguments: [row.rhash, row.error]
+                )
+            } else {
+                try db.execute(
+                    sql: """
+                        UPDATE keysend SET status = 'COMPLETE', paidAt = COALESCE(paidAt, ?), error = NULL
+                        WHERE paymentHash = ? AND status IN ('PENDING', 'UNSETTLED', 'FAILED')
+                        """,
+                    arguments: [row.ts, row.rhash]
+                )
+            }
         }
         return arrived
     }
@@ -626,8 +669,9 @@ extension Storage {
     }
 
     /// Moves the send with `tag` by the one forward-only rule
-    /// (`statuses(movingTo:)`), in whichever of the three tables tracks it:
-    /// our message, the invoice we pay, or the invite the payment funds.
+    /// (`statuses(movingTo:)`), in whichever of the four tables tracks it:
+    /// our message, the invoice we pay, the invite the payment funds, or a
+    /// keysend sent for an app (which, like an invoice, can be unsettled).
     /// Only a message that moves sats (`MessageType.moneySends`) can be
     /// unsettled; an invoice we pay can too (held: it is never paid again
     /// until it settles or fails), and it keeps the server's reason for a
@@ -655,6 +699,16 @@ extension Storage {
                 """,
             arguments: ["status": status.rawValue, "tag": tag, "now": Date().millisecondsSince1970, "error": error]
         )
+        try db.execute(
+            sql: """
+                UPDATE keysend SET status = :status,
+                    paidAt = CASE WHEN :status = 'COMPLETE' THEN COALESCE(paidAt, :now) ELSE paidAt END,
+                    error = CASE WHEN :status = 'FAILED' THEN COALESCE(:error, error)
+                        WHEN :status = 'COMPLETE' THEN NULL ELSE error END
+                WHERE tag = :tag AND status IN (\(fromSQL))
+                """,
+            arguments: ["status": status.rawValue, "tag": tag, "now": Date().millisecondsSince1970, "error": error]
+        )
         if let next = inviteStatus(status) {
             let fromInvite = from.compactMap(inviteStatus).map { "'\($0.rawValue)'" }.joined(separator: ", ")
             try db.execute(
@@ -673,17 +727,20 @@ extension Storage {
             db,
             sql: """
                 INSERT INTO invoice
-                    (paymentHash, incoming, bolt11, amountMsat, memo, payee, createdAt, expiresAt, status, tag, chat)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (paymentHash, incoming, bolt11, amountMsat, memo, payee, createdAt, expiresAt, status, tag, chat,
+                     connection, app)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(paymentHash, incoming) DO UPDATE SET
                     status = excluded.status, tag = excluded.tag, createdAt = excluded.createdAt,
-                    chat = COALESCE(excluded.chat, invoice.chat), error = NULL
+                    chat = COALESCE(excluded.chat, invoice.chat), error = NULL,
+                    connection = excluded.connection, app = excluded.app
                 WHERE invoice.incoming = 0 AND invoice.status = 'FAILED'
                 RETURNING paymentHash
                 """,
             arguments: [
                 invoice.paymentHash, invoice.incoming, invoice.bolt11, invoice.amountMsat, invoice.memo,
                 invoice.payee, invoice.createdAt, invoice.expiresAt, invoice.status.rawValue, invoice.tag, invoice.chat,
+                invoice.connection, invoice.app,
             ]
         )
         guard written != nil else { throw PeelError("that invoice is already being paid or paid") }

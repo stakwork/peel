@@ -89,7 +89,7 @@ Reference implementations, in order of authority:
 ### Storage
 
 One SQLite file per account (`peel.sqlite`, WAL), built by the migrations in
-`Storage+Migrations.swift` (`v1` on, append-only). Twelve tables:
+`Storage+Migrations.swift` (`v1` on, append-only). Its tables include:
 
 - `coreState`: opaque key/value owned by the core.
 - `setting`: the account's own state and configuration (server, name,
@@ -114,6 +114,13 @@ One SQLite file per account (`peel.sqlite`, WAL), built by the migrations in
 - `invite`: invites made here with sats (the core keeps none), by code.
 - `deviceRequest`: the agent's requests to this device, with their state
   and stored answer, so a repeat is never done twice (`v25`).
+- `keysend`: keysends sent for a strut app, tracked by tag like every send
+  of ours, with the connection and app they were made for (`v33`,
+  [app-wallet.md](app-wallet.md)); `invoice` gains the same tags and the
+  preimage of one we paid.
+- `walletConnection`: what the person granted each strut app (on the
+  iPhone, each org): methods, spending limit and renewal, what to do over
+  it (`v33`).
 
 The money tables' records are in `Invoice.swift` and their joined history in
 `PaymentHistory.swift`. Live queries use GRDB `ValueObservation`.
@@ -198,6 +205,7 @@ the phase files' names and stay as they are; "—" rows have no phase file.
 | — | Phase 1 of the end state, the agent is a contact: the loop as strut's generic `orchestrator` workflow, Peel its first host, the agent's own Sphinx account in a Rust bridge bundled in Peel.app, device requests in the agent DM for your chats and sends as you (only the Mac answers), one conversation | being built: S1, S2, B1 and PRs 1–7, 6b and 9 merged; PR 8 (Calendar) dropped for now; PR 10 (merged) makes strut the agent in every build (no preview switch, runner in Release inside the sandbox, first-run set-up of its own account); PR 11 removes Peel's own loop, built and merging after Tom's day or two on PR 10 | [agent-on-strut.md](agent-on-strut.md) |
 | — | Phase 2 of the end state, always on and can't lose it: a home server as one Docker bundle (strut and the bridge, no Peel), handover of the whole brain and back; the iPhone answers device requests (first to accept); sealed backups, memory first; model budgets, auth on strut, optional Tailscale | planned 2026-10-19, for Tom's review; starts when Phase 1 is in daily use | [phase-2.md](phase-2.md) |
 | — | Always on, simpler: the brain moves to a home server and back by copying the stopped strut and bridge folders; one Compose file (strut and runner, no Tailscale) for a Pi, NAS, Umbrel or VPS | planned 2026-10-25, replaces phase-2.md step 1 | [always-on.md](always-on.md) |
+| — | The app wallet (2026-11-04): strut apps shown in Peel pay with the person's sats through one native handler (`strutWallet`, strut's specs/WALLET.md), with a per-app connection and spending limit, sheets only after a click or tap, Connected apps; Mac and iPhone together | built on `feature/app-wallet`, not merged; tested offline, not on a device | [app-wallet.md](app-wallet.md) |
 | — | On-device crash and memory diagnostics (2026-10-25): the record, uploaded nowhere; PLCrashReporter, an event ring with no free text, a redactor, the notice and record sheet; the agent reads the redacted record when asked (`diagnostics.latest`) | built and checked on a Mac | [diagnostics.md](diagnostics.md) |
 | — | Later: Inbox quick capture (⌃⌥Space anywhere sends a line to the agent) | planned after the Inbox | [phases/09b-inbox.md](phases/09b-inbox.md), "Quick capture" |
 

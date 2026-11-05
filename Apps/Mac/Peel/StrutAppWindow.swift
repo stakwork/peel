@@ -1,6 +1,7 @@
 import AppKit
 import PeelAgent
 import PeelCore
+import PeelUI
 import SwiftUI
 import WebKit
 
@@ -19,7 +20,7 @@ final class StrutAppWindows {
         let closing: NSObjectProtocol
     }
 
-    func show(_ page: StrutPage, link: OpenURLAction, openApp: @escaping (StrutAppLink) -> Void) {
+    func show(_ page: StrutPage, link: OpenURLAction, model: AppModel?, openApp: @escaping (StrutAppLink) -> Void) {
         let key = page.shownApp.map { "\($0.peer ?? "")/\($0.app?.name ?? page.name)" } ?? page.name
         if let existing = open[key] {
             existing.window.makeKeyAndOrderFront(nil)
@@ -29,7 +30,10 @@ final class StrutAppWindows {
         configuration.websiteDataStore = .nonPersistent()
         WebPane.limit(configuration)
         let coordinator = AppPage.Coordinator(page: page, open: link, moved: { _ in }, openApp: openApp)
+        let wallet = StrutWalletBridge.install(in: configuration, for: page, model: model)
         let view = InputWebView(frame: .zero, configuration: configuration)
+        wallet?.attach(view)
+        coordinator.wallet = wallet
         view.navigationDelegate = coordinator
         view.uiDelegate = coordinator
         view.allowsLinkPreview = false
@@ -54,6 +58,7 @@ final class StrutAppWindows {
     private func closed(_ key: String) {
         guard let entry = open.removeValue(forKey: key) else { return }
         NotificationCenter.default.removeObserver(entry.closing)
+        entry.coordinator.wallet?.detach()
         entry.view.stopLoading()
         entry.view.navigationDelegate = nil
         entry.view.uiDelegate = nil

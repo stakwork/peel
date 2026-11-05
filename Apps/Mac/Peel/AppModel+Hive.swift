@@ -235,7 +235,7 @@ extension AppModel {
             return true
         }
         guard let server = memoryServer, let url = server.page(showing: app, input: link?.input) else { return false }
-        web.open(StrutPage(url: url, server: server, name: StrutPage.name(title, on: app.peer))) { [weak self] in
+        web.open(StrutPage(url: url, server: server, name: StrutPage.name(title, on: app.peer)), model: self) { [weak self] in
             self?.open($0)
         }
         return true

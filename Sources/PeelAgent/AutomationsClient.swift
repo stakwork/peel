@@ -282,10 +282,15 @@ public struct AutomationsClient: Sendable {
         _ = try await call("POST", path(automation) + "/fire", what: "the run")
     }
 
-    /// Its most recent runs, newest first (strut keeps every run of the
-    /// workflow in one list, unpaged).
+    /// Its most recent runs, newest first: picked out of the workflow's
+    /// newest runs, which strut serves a page at a time (50 unless asked,
+    /// at most 500), so this asks for the most, in case the workflow also
+    /// runs outside this automation. An older strut ignores `limit` and
+    /// sends every run.
     public func runs(of automation: Automation, limit: Int = 20) async throws -> [AutomationRunRecord] {
-        let reply = try await call("GET", "workflows/\(Self.escaped(path: automation.workflow))/runs", what: "the runs")
+        let reply = try await call(
+            "GET", "workflows/\(Self.escaped(path: automation.workflow))/runs?limit=500", what: "the runs"
+        )
         return (reply.array ?? []).filter { $0["automation"]?["id"]?.string == automation.id }.prefix(limit)
             .compactMap { AutomationRunRecord($0, workflow: automation.workflow) }
     }

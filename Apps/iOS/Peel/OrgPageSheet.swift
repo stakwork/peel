@@ -13,15 +13,19 @@ import WebKit
 /// key it sends on every call. The web view keeps nothing and goes nowhere
 /// but that strut's UI (its folder on the host: a swarm's `/lab/`, which
 /// shares its host with other services). The Mac's twin is `StrutPage`, on
-/// its own strut.
+/// its own strut. Its one message handler is the app wallet's, keyed by the
+/// org (`OrgWalletBridge`, docs/app-wallet.md).
 struct OrgPageSheet: View {
     let page: OrgPageRequest
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
     @State private var controller = OrgPageController()
+    /// The app wallet's sheets over this page (`OrgWalletBridge`).
+    @State private var wallet = PhoneWalletSheets()
 
     var body: some View {
         NavigationStack {
-            OrgWebView(page: page, controller: controller)
+            OrgWebView(page: page, controller: controller, model: model, wallet: wallet)
                 .overlay(alignment: .top) {
                     if controller.isLoading {
                         ProgressView(value: controller.progress)
@@ -59,6 +63,14 @@ struct OrgPageSheet: View {
         }
         .sheet(item: $controller.shared) { file in
             ShareSheet(url: file.url).ignoresSafeArea()
+        }
+        .sheet(item: $wallet.shown) { shown in
+            switch shown {
+            case .connect(let sheet):
+                WalletConnectPhoneSheet(sheet: sheet) { wallet.answer(.init(connect: $0)) }
+            case .payment(let sheet):
+                WalletPaymentPhoneSheet(sheet: sheet) { wallet.answer(.init(paid: $0)) }
+            }
         }
         .alert("Couldn't save it", isPresented: Binding(
             get: { controller.notice != nil }, set: { if !$0 { controller.notice = nil } }
@@ -203,6 +215,8 @@ private final class OrgPageController {
 private struct OrgWebView: UIViewRepresentable {
     let page: OrgPageRequest
     let controller: OrgPageController
+    let model: AppModel
+    let wallet: PhoneWalletSheets
 
     func makeCoordinator() -> Coordinator { Coordinator(page: page, controller: controller) }
 
@@ -211,7 +225,12 @@ private struct OrgWebView: UIViewRepresentable {
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.addUserScript(
             WKUserScript(source: page.handOver, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // The one message handler: the app wallet's, for the main frame at the org's origin.
+        let bridge = OrgWalletBridge(page: page, model: model, sheets: wallet)
+        bridge.install(in: configuration)
         let webView = TouchWebView(frame: .zero, configuration: configuration)
+        bridge.attach(webView) { [weak webView] in webView?.acted(within: StrutWallet.gestureWindow) ?? false }
+        context.coordinator.wallet = bridge
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsLinkPreview = false
@@ -227,6 +246,7 @@ private struct OrgWebView: UIViewRepresentable {
     static func dismantleUIView(_ webView: TouchWebView, coordinator: Coordinator) {
         webView.stopLoading()
         webView.configuration.userContentController.removeAllUserScripts()
+        coordinator.wallet?.detach()
         coordinator.finish()
     }
 
@@ -240,6 +260,8 @@ private struct OrgWebView: UIViewRepresentable {
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
         let page: OrgPageRequest
         private let controller: OrgPageController
+        /// The app wallet's handler on this page.
+        var wallet: OrgWalletBridge?
         /// Downloads under way and the folder each saves in.
         private var downloads: [ObjectIdentifier: (download: WKDownload, folder: URL, file: URL?)] = [:]
 
@@ -404,7 +426,11 @@ private final class TouchWebView: WKWebView {
     private var lastTouch: ContinuousClock.Instant?
 
     /// The person touched it within the last second.
-    var personActed: Bool { lastTouch.map { .now - $0 < .seconds(1) } ?? false }
+    var personActed: Bool { acted(within: .seconds(1)) }
+
+    /// The person touched it within `window`: the app wallet's sheets open
+    /// only then (`OrgWalletBridge`).
+    func acted(within window: Duration) -> Bool { lastTouch.map { .now - $0 < window } ?? false }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if event?.type == .touches { lastTouch = .now }

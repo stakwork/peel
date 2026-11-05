@@ -40,6 +40,9 @@ struct YouTab: View {
                         LabeledContent("Boost amount", value: Sats.format(msat: model.boostAmountMsat))
                     }
                     PaymentConfirmationRow()
+                    NavigationLink(value: YouRoute.connectedApps) {
+                        LabeledContent("Connected apps", value: model.walletConnections.isEmpty ? "None" : "\(model.walletConnections.count)")
+                    }
                     AutoDownloadMediaRow()
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
@@ -87,6 +90,7 @@ struct YouTab: View {
                 case .words: WordsScreen()
                 case .changePIN: ChangePIN()
                 case .boostAmount: BoostAmountScreen()
+                case .connectedApps: ConnectedAppsScreen()
                 case .agent, .server: EmptyView()
                 }
             }

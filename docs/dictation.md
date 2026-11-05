@@ -192,6 +192,13 @@ on this Mac, turns it into text: nothing leaves it.
   space. Known gap: a paste that lands nowhere (focus on nothing
   Accessibility can see) loses the text once the clipboard is put back.
 
+## Voice mode
+
+Voice mode (`docs/voice-mode.md`) reuses the vocabulary read here
+(`DictationLingo.lexicon`, read-only) as the recogniser's contextual strings and
+as a rewrite of what was said, never of its commands. It does not use dictation's
+recogniser or record audio for it. The iPhone has no copy of the vocabulary yet.
+
 ## Turning it on
 
 Account › Dictation. Allow Microphone, Input Monitoring and Accessibility

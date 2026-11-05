@@ -926,14 +926,14 @@ account is cheap to replace (open question 2).
   `OrchestratorTests` now checks the seeded orchestrator offers them
   beside Peel's.
 - **Starting and continuing** show as the turn's tool rows: "Started a
-  job", "Sent a job your answer", "Checked on a job", with the job's title
+  task", "Answered a task's question", "Checked on a task", with the job's title
   when the bridge's one line of its input holds it (never its whole
   prompt, and never half a JSON object). Runner sorts the input's keys
   and cuts the line at 80 characters, so the title, after the prompt,
   rarely survives: runner item 4 below.
 - **A job's message** (`metadata.peel.job = {id, title?, state?}`, state
   `working`, `asking`, `done` or `failed`) shows its job above its text,
-  one quiet line ("Job · Lisbon plan · Asks you", orange while it waits
+  one quiet line ("Task · Lisbon plan · Asks you", orange while it waits
   on you; "Done"; "Didn't finish"), and what it points to under it
   (`metadata.peel.artifacts`, strut's reply shape `{id, title, kind?,
   label?, summary?, url?}`): each by its label and title, with Open for an
@@ -946,7 +946,7 @@ account is cheap to replace (open question 2).
   unknown states), `ControlRowTests` (the agent chat's rows carry them; a
   plain DM's do not), `OrchestratorTests` (the grant). In the app, on a
   development profile with a real model: "Start a job to write a
-  three-line plan for a weekend in Lisbon" started one ("Started a job")
+  three-line plan for a weekend in Lisbon" started one ("Started a task")
   and the reply said so; its result did not reach the DM, since runner
   drops a run it did not launch until sphinx#387.
 - **What runner needs (stakwork/sphinx; not opened, for Tom to decide).**
@@ -973,7 +973,7 @@ account is cheap to replace (open question 2).
      working") when a job starts, so the DM shows it before its result;
      Peel already shows status lines.
   4. **A job tool's title.** Put `title` first in a job step's one-line
-     summary (`strut::one_line`), so "Started a job · Lisbon plan" shows.
+     summary (`strut::one_line`), so "Started a task · Lisbon plan" shows.
   All three sit in `runner/src/bridge/turns.rs`, beside #387's change.
 
 ### Built: PR 9, the agent's DM on the iPhone (2026-10-18)

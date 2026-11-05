@@ -67,7 +67,7 @@ A sheet with three steps, one at a time with Continue:
   into a thread row in the main conversation. The thread panel on the right
   holds the conversation.
 - **Plain thread.** Bubbles in Markdown. A job the agent started shows as a
-  quiet line ("Started a job · Weekly plan") and its result arrives later
+  quiet line ("Started a task · Weekly plan") and its result arrives later
   in the same thread.
 - **Bound thread.** The thread panel's header names the worker, folder and
   mode, with Running or Idle, Stop and Unbind. "Hand to a worker" in a

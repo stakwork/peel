@@ -67,7 +67,7 @@ private struct MCPServerRow: View {
                         grantSwitch("Assistant", isOn: connections.grants.assistant.contains(server.name)) {
                             model.setGrant(server.name, assistant: $0)
                         }
-                        grantSwitch("Jobs", isOn: connections.grants.jobs.contains(server.name)) {
+                        grantSwitch("Tasks", isOn: connections.grants.jobs.contains(server.name)) {
                             model.setGrant(server.name, jobs: $0)
                         }
                     }

@@ -237,7 +237,7 @@ struct AgentDMRow: View {
     AnyView(VStack(alignment: .leading, spacing: 2) { lines() }.agentNoteRow())
 }
 
-/// The job an agent's message is about, one quiet line: "Job · Lisbon
+/// The job an agent's message is about, one quiet line: "Task · Lisbon
 /// flights · Asks you", orange while it waits on your answer (your next
 /// message continues it), "Done", or "Didn't finish".
 private struct AgentJobLine: View {
@@ -248,7 +248,7 @@ private struct AgentJobLine: View {
             Image(systemName: "briefcase")
                 .font(.system(size: 11))
                 .accessibilityHidden(true)
-            Text(job.title.map { "Job · \($0)" } ?? "Job")
+            Text(job.title.map { "Task · \($0)" } ?? "Task")
                 .lineLimit(1)
                 .truncationMode(.tail)
             switch job.state {

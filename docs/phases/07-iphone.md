@@ -1202,6 +1202,53 @@ registration (0.8.40); the mixer keeps one registration per app; the hub's
 routing is a Strut workflow (the mixer's `PUSH_WORKFLOW_URL` and
 `PUSH_WORKFLOW_KEY`), not AWS SNS platform apps.
 
+### Tapping a push opens its chat
+
+- **Payload.** The server sends only `aps.custom_data.child` (encrypted index),
+  so the tap cannot name a chat by itself. The extension
+  (`PushNotificationResolver.resolveWithRoute`) already has the decrypted index
+  and the names map, so it writes `userInfo["peelChild"] = {kind, index}`
+  into the delivered content and sets `threadIdentifier` to
+  `child-<kind>-<index>` (`NotificationRoute`, `Sources/PeelPush`). No server
+  change; an unknown index or a Hive link carries no route (the tap just opens the app).
+- **Tap.** `PeelAppDelegate` is the `UNUserNotificationCenter` delegate, set in
+  `didFinishLaunching` so the tap that launches a killed app is delivered. Its
+  `didReceive` only submits the route to `PendingNavigation.shared` (once per
+  notification id; the latest tap wins). Foreground presentation is untouched
+  (the phone's Notifier posts nothing: `postsNotifications` is false).
+- **Opening.** `PushCoordinator.openPending` runs on the pending change, when
+  the account phase becomes `.ready` and when the app becomes active. Locked,
+  onboarding or loading keeps the route pending (so after the PIN it opens).
+  It takes the route once, maps the child index to the contact's key
+  (`Engine.Contact.childIndex` → `pubkey`, the chat id), checks the chat exists
+  (waiting up to 3 s for chats to load) and calls `router.openChat`; an unknown
+  chat is dropped silently.
+- Tests: `NotificationRouteTests` (parsing, malformed payloads,
+  `PendingNavigation`: once, de-duplicated, latest wins, route from the resolver).
+  *Not verified:* the UIKit wiring (no Swift toolchain on the dev server); to be
+  checked on a device: tap from background, foreground and killed, locked and not.
+
+### Fetch on receipt (silent push)
+
+`UIBackgroundModes` is `audio remote-notification`. A push received with
+`content-available` reaches `PeelAppDelegate.application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`,
+which runs `PushCoordinator.fetchOnReceive()` inside a background task and calls
+the handler once (`.newData` if the account was reached, else `.noData`).
+`AppModel.fetchInBackground()` opens the account (`start()` is re-entrant),
+connects if offline, and waits for the history catch-up, within a 25 s budget.
+A tap or launch meanwhile joins the same `start()` and fetch; nothing opens or
+connects twice. If the fetch brought the connection up and the app is still in
+the background it disconnects again and reconnects on `becameActive`; a
+connection that was already up is left alone. PIN-locked accounts are skipped.
+
+- **Server side (not in this repo):** the hub/push server must send
+  `aps: {"content-available": 1}` alongside the existing alert and `mutable-content`.
+- **iOS limits:** silent pushes are throttled and best-effort, and are not
+  delivered after the user force-quits the app.
+- **Not the notification service extension:** it is a separate process with
+  ~30 s and a small memory limit, no engine or database access, and cannot
+  hold an MQTT session and fetch reliably.
+
 ### The names map (what a push shows)
 
 A push carries no text, only `aps.custom_data.child`, the child index encrypted
@@ -1283,7 +1330,7 @@ Left to do:
 
 1. **Apple portal and Strut setup** as above (nothing here can do it).
 2. **Device check of the names map** (below).
-3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (17): move
+3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (20): move
    them together. The project's `DEVELOPMENT_TEAM` is `8297M44YTW` (shared
    with Sphinx); the Personal Team is only for the Mac's local signing.
 

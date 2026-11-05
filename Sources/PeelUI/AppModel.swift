@@ -120,6 +120,7 @@ public final class AppModel {
             // The agent chat is its DM while it has one (`agentChat`).
             followAgentChat()
             if selectedChat != oldValue?.chat {
+                calls.chatChanged(to: selectedChat)
                 heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
                 newMessages = nil
                 keepsUnread = nil
@@ -330,6 +331,8 @@ public final class AppModel {
     public let money = MoneyArrivals()
     /// Calls: presence, the recent calls, and the call this device is on.
     public let calls: CallStore
+    /// Talk to Jamie: the voice call with an org's agent (docs/talk.md).
+    public let talk: TalkStore
     /// The person's Stadeum workspaces, paired on this device, and the apps listed.
     public let stadeum = Stadeum()
     /// The proposals shown as cards in the agent chat: Peel's own strut's
@@ -347,6 +350,13 @@ public final class AppModel {
     /// a plain file; the window says so.
     public private(set) var profile: Profile?
     public private(set) var engine: Engine?
+    /// The wallet apps' pages pay through, open with the account
+    /// (`AppModel+Wallet`, docs/app-wallet.md).
+    public internal(set) var wallet: WalletHost?
+    /// What the person granted apps' pages: Connected apps.
+    public internal(set) var walletConnections: [WalletConnection] = []
+    /// The pages that hear the wallet's notifications (`listenToWallet`).
+    @ObservationIgnored var walletListeners: [UUID: @MainActor (WalletPush) -> Void] = [:]
     /// The account's agent on this Mac (`AppModel+Agent`), open with the
     /// account: its model, name and rules, and the earlier local chat.
     public var agent: AgentSession?
@@ -420,6 +430,7 @@ public final class AppModel {
         self.platform = platform
         notifier = Notifier(presence: platform.presence)
         calls = CallStore(provider: platform.calls)
+        talk = TalkStore(provider: platform.calls)
         do {
             if let development = UserDefaults.standard.string(forKey: "profile") {
                 profile = try Profile(name: development, kind: .development)
@@ -429,6 +440,14 @@ public final class AppModel {
         } catch {
             notice = PeelError.noted(error)
         }
+        talk.developmentHome = profile.flatMap { TalkHome.development(for: $0) }
+        // One call at a time: Talk and a group call each wait for the other.
+        talk.otherCall = { [weak self] in self?.calls.call?.title }
+        talk.groupCallsLeft = { [weak self] in await self?.calls.leaving?.value }
+        calls.busy = { [weak self] in self?.talk.isOn == true ? "Hang up the call with Jamie first." : nil }
+        // The dev setting's `-talkAtLaunch YES`: the call starts as Peel opens,
+        // with or without an account (docs/talk.md).
+        if let home = talk.developmentHome, UserDefaults.standard.bool(forKey: "talkAtLaunch") { talk.talk(to: home) }
         notifier.model = self
         proposals.orgs = { [weak self] in (self?.stadeum.live ?? [], self?.stadeum.link?.actor) }
         stadeum.sphinxProof = { [weak self] in try await self?.engine?.sphinxProof() }
@@ -550,7 +569,26 @@ public final class AppModel {
     public private(set) var invites: [String: InviteRecord] = [:]
     public private(set) var pendingInvites: [InviteRecord] = []
 
+    @ObservationIgnored private var startTask: Task<Void, Never>?
+    @ObservationIgnored private var fetchTask: Task<Bool, Never>?
+    /// The connection was closed after a background fetch; it comes back when
+    /// the app does.
+    @ObservationIgnored private var needsReconnect = false
+
+    /// Joins a start in flight, so a background start and the one at launch
+    /// or tap never open the account twice.
     public func start() async {
+        if let startTask {
+            await startTask.value
+            return
+        }
+        let task = Task { await self.performStart() }
+        startTask = task
+        await task.value
+        startTask = nil
+    }
+
+    private func performStart() async {
         guard phase == .loading, let profile else { return }
         Diagnostics.setAction(.launch)
         defer { Diagnostics.setAction(.other) }
@@ -571,6 +609,57 @@ public final class AppModel {
             notice = PeelError.noted(error, couldNot: "open the account")
             phase = .onboarding
         }
+    }
+
+    /// A push was received: connects if needed and waits (at most 25 seconds,
+    /// inside the ~30 the system gives) for the catch-up, so the messages are
+    /// stored when the push is tapped. A second caller joins the one in flight.
+    /// A PIN-locked account is not opened. Returns whether the account was reached.
+    public func fetchInBackground() async -> Bool {
+        if let fetchTask { return await fetchTask.value }
+        let task = Task { await self.performBackgroundFetch() }
+        fetchTask = task
+        let result = await task.value
+        fetchTask = nil
+        return result
+    }
+
+    private func performBackgroundFetch() async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(25)
+        if phase == .loading {
+            // Locked accounts cannot be opened here, and `start()` would clear
+            // the delivered notifications.
+            guard profile?.hasAccount == true, profile?.requiresPIN == false else { return false }
+            await start()
+        }
+        guard phase == .ready, let engine else { return false }
+        let wasOffline = connection != .connected
+        var reached = connection == .connected
+        if wasOffline {
+            await engine.reconnectNow()
+            while connection != .connected, ContinuousClock.now < deadline, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            reached = connection == .connected
+        }
+        if reached {
+            // Catch-up starts as the connection comes up; give it a moment to begin.
+            try? await Task.sleep(for: .seconds(1))
+            while await engine.isSyncingHistory, ContinuousClock.now < deadline, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+        // Only a connection this fetch brought up is closed again, and never
+        // when the app came to the front (a tap): that one carries on.
+        if wasOffline, !isFrontmost {
+            await engine.disconnect()
+            needsReconnect = true
+            if isFrontmost {
+                needsReconnect = false
+                await engine.start()
+            }
+        }
+        return reached
     }
 
     /// Opens the account with its PIN at launch, or lets the user back in after
@@ -744,6 +833,10 @@ public final class AppModel {
     public func becameActive() {
         Diagnostics.setForeground(true)
         lockIfDue()
+        if needsReconnect {
+            needsReconnect = false
+            Task { await engine?.start() }
+        }
         // A pairing under way polls now (the person may have just approved
         // it in the browser); the workspaces are renewed if due, which the
         // hourly look may have slept through.
@@ -1048,6 +1141,7 @@ public final class AppModel {
     }
 
     public func dismissNotice(in chat: String) {
+        calls.noticeDismissed(in: chat)
         conversationNotices[chat] = nil
     }
 
@@ -1396,6 +1490,7 @@ public final class AppModel {
     private func resetAccountState() {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
+        closeWallet()
         agentHost?.close(in: self)
         proposals.close()
         platform.pasteboard.clearSecret()
@@ -1445,6 +1540,7 @@ public final class AppModel {
         refreshMentionAliases()
         myServer = nil
         calls.reset()
+        talk.hangUp()
         money.reset()
         balanceMsat = nil
         wordsConfirmed = true
@@ -1508,7 +1604,8 @@ public final class AppModel {
         notifier.attach(storage, showsText: settings.notificationShowsText ?? false)
         // A notification clicked on the lock screen chose the chat before there was an engine.
         if selectedChat != nil { observeMessages() }
-        accountTasks = [
+        let walletTasks = await openWallet(engine)
+        accountTasks = walletTasks + [
             Task { await self.observeConversations(storage) },
             Task { await self.observeTribes(storage) },
             Task { await self.observeInvites(storage) },

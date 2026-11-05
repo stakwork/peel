@@ -8,10 +8,13 @@ import os
 
 /// The app delegate SwiftUI's `@UIApplicationDelegateAdaptor` needs for the
 /// APNs callbacks, which `App` has no way to receive.
-final class PeelAppDelegate: NSObject, UIApplicationDelegate {
+final class PeelAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Set before launch finishes, so the tap that launched a killed app is
+        // delivered here (it is held in `PendingNavigation` until the account is open).
+        UNUserNotificationCenter.current().delegate = self
         // A token needs no permission, so it is asked for at every launch
         // (Apple advises it: the token can change).
         application.registerForRemoteNotifications()
@@ -26,6 +29,40 @@ final class PeelAppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
         PushCoordinator.shared.failed(error)
+    }
+
+    /// A tap on a push: the route is kept, not opened, since the app may be
+    /// launching, locked or still onboarding; `PushCoordinator.openPending`
+    /// opens it when an account is open. Foreground presentation is left to
+    /// the system's default (unchanged).
+    ///
+    /// The completion-handler form, not `async`: the system calls this on the
+    /// main thread and UIKit requires the handler there, while a nonisolated
+    /// `async` one has Swift call it from a background thread when the
+    /// function returns, which UIKit traps on ("Call must be made on main
+    /// thread") as the app opens from the tap.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            PendingNavigation.shared.submit(
+                userInfo: response.notification.request.content.userInfo, id: response.notification.request.identifier)
+        }
+        completionHandler()
+    }
+
+    /// A push received (silent, `content-available`): connects and fetches in
+    /// the background window, so the messages are there when the push is
+    /// tapped. The handler is called once, on the main thread.
+    func application(
+        _ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        Task { @MainActor in
+            let fetched = await PushCoordinator.shared.fetchOnReceive()
+            completionHandler(fetched ? .newData : .noData)
+        }
     }
 
     /// Portrait, except on the chat (see `OrientationLock`).
@@ -47,6 +84,9 @@ final class PushCoordinator {
     private let config = PushConfig.current
     private var token: String?
     private weak var model: AppModel?
+    /// The model for a fetch on receipt, held weakly from launch; `model`
+    /// above is only set while an account is open.
+    private weak var fetchModel: AppModel?
     private var registered: String?
     /// The names map being written; the next write waits for it, so the last
     /// one started is the last one kept.
@@ -64,6 +104,28 @@ final class PushCoordinator {
         launchPermissionAsked = true
         Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
         #endif
+    }
+
+    func use(_ model: AppModel) {
+        fetchModel = model
+    }
+
+    /// A push arrived: a bounded connect and fetch (`AppModel.fetchInBackground`)
+    /// inside a background task, ended exactly once, and cancelled if the
+    /// system is about to suspend the app. A tap meanwhile joins the same work.
+    func fetchOnReceive() async -> Bool {
+        guard let model = fetchModel ?? model else { return false }
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let work = Task { await model.fetchInBackground() }
+        taskID = UIApplication.shared.beginBackgroundTask(withName: "peel.push.fetch") {
+            work.cancel()
+        }
+        let fetched = await work.value
+        if taskID != .invalid {
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        return fetched
     }
 
     /// An account is open: ask permission (only if pushes can come), and
@@ -84,6 +146,41 @@ final class PushCoordinator {
     /// registered is not sent twice.
     func connected() {
         Task { await registerIfReady() }
+    }
+
+    private var opening = false
+
+    /// Opens the tapped push's chat if one waits and an account is open;
+    /// otherwise it stays pending (locked, onboarding, still loading). The
+    /// route is taken once, so a second call finds nothing. A chat the
+    /// account does not have is dropped quietly; one whose chats have not
+    /// loaded yet is kept pending, not dropped.
+    func openPending(model: AppModel, router: PhoneRouter) {
+        guard !opening, model.phase == .ready, let engine = model.engine, PendingNavigation.shared.hasPending else { return }
+        guard let route = PendingNavigation.shared.take() else { return }
+        opening = true
+        Task {
+            defer { opening = false }
+            // Chats load just after the account opens; a cold start can be slow.
+            for _ in 0..<33 where model.conversations.isEmpty && model.phase == .ready {
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            guard model.phase == .ready else { PendingNavigation.shared.submit(route); return }
+            // Still no chats: they have not loaded, so keep the route for the next try.
+            guard !model.conversations.isEmpty else { PendingNavigation.shared.submit(route); return }
+            let chat: String?
+            switch route {
+            case .chat(let id): chat = id
+            case .child(let kind, let index):
+                let contacts = (try? await engine.contacts()) ?? []
+                chat = contacts.first { $0.childIndex == index }.map(\.pubkey).flatMap { key in
+                    model.conversations.first { $0.chat == key && $0.isTribe == (kind == .tribe) }?.chat
+                }
+            }
+            guard model.phase == .ready else { PendingNavigation.shared.submit(route); return }
+            guard let chat, model.conversations.contains(where: { $0.chat == chat }) else { return }
+            router.openChat(chat)
+        }
     }
 
     func accountClosed() {

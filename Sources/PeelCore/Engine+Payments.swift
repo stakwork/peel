@@ -283,7 +283,10 @@ extension Engine {
         try await serverInvoice(amountMsat: amountMsat, memo: memo, chat: nil)
     }
 
-    private func serverInvoice(amountMsat: UInt64, memo: String, chat: String?) async throws -> InvoiceRecord {
+    /// Made for an app (`wallet`): the invoice keeps its connection and app.
+    func serverInvoice(
+        amountMsat: UInt64, memo: String, chat: String?, wallet: WalletTag? = nil
+    ) async throws -> InvoiceRecord {
         guard amountMsat > 0 else { throw Failure.invalidAmount }
         guard isRegistered, transport != nil, let server = try ownKeys()?.server else { throw Failure.notConnected }
         let memo = memo.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -312,7 +315,7 @@ extension Engine {
             paymentHash: invoice.paymentHash, incoming: true, bolt11: invoice.bolt11,
             amountMsat: Int64(clamping: amountMsat), memo: invoice.memo, payee: invoice.payee,
             createdAt: Date().millisecondsSince1970, expiresAt: invoice.expiresAt?.millisecondsSince1970,
-            status: .open, chat: chat
+            status: .open, chat: chat, connection: wallet?.connection, app: wallet?.app
         )
         _ = try storage.apply(Storage.Commit(invoices: [record]))
         return record
@@ -400,7 +403,7 @@ extension Engine {
     /// stays so, never to be paid again, until the server says how it went.
     @discardableResult
     public func payInvoice(_ bolt11: String, confirmedMsat: UInt64? = nil) async throws -> InvoiceRecord {
-        try await pay(Invoice(bolt11), chat: nil, confirmedMsat: confirmedMsat)
+        try await pay(Invoice(bolt11), chat: nil, confirmation: .threshold(confirmedMsat))
     }
 
     /// Pays someone's payment request in their chat. When the invoice pays
@@ -412,7 +415,7 @@ extension Engine {
               let bolt11 = BodyFields.decode(message.body)?.invoice else {
             throw Failure.notAPaymentRequest
         }
-        return try await pay(Invoice(bolt11), chat: message.chat, confirmedMsat: confirmedMsat)
+        return try await pay(Invoice(bolt11), chat: message.chat, confirmation: .threshold(confirmedMsat))
     }
 
     /// What stops paying this invoice from here, as paying it checks (the
@@ -443,11 +446,15 @@ extension Engine {
         return overflow || needed > balance ? .insufficientBalance : nil
     }
 
-    private func pay(_ invoice: Invoice, chat: String?, confirmedMsat: UInt64?) async throws -> InvoiceRecord {
+    /// An app's (`wallet`) is paid unasked: the person's threshold is not
+    /// asked, its connection's budget is, in the commit (`WalletTag.budget`).
+    func pay(
+        _ invoice: Invoice, chat: String?, confirmation: Confirmation, wallet: WalletTag? = nil
+    ) async throws -> InvoiceRecord {
         let hash = invoice.paymentHash
         if let problem = try invoiceProblem(invoice) { throw problem }
         // The balance and fee reserve are `invoiceProblem`'s; this asks the threshold.
-        try checkPayment(invoice.amountMsat, .threshold(confirmedMsat))
+        try checkPayment(invoice.amountMsat, confirmation)
         guard transport != nil else { throw Failure.notConnected }
         guard money.sendsInFlight.insert(hash).inserted else { throw Failure.invoicePending }
         defer { money.sendsInFlight.remove(hash) }
@@ -485,11 +492,14 @@ extension Engine {
         let record = InvoiceRecord(
             paymentHash: hash, incoming: false, bolt11: invoice.bolt11, amountMsat: Int64(clamping: invoice.amountMsat),
             memo: invoice.memo, payee: invoice.payee, createdAt: Date().millisecondsSince1970,
-            expiresAt: invoice.expiresAt?.millisecondsSince1970, status: .pending, tag: tag, chat: chat
+            expiresAt: invoice.expiresAt?.millisecondsSince1970, status: .pending, tag: tag, chat: chat,
+            connection: wallet?.connection, app: wallet?.app
         )
         // Written with the state before publishing; refused (and nothing
-        // published) if the invoice is already being paid or paid.
-        switch try await commitAndPublish(result, time: time, invoices: [record]) {
+        // published) if the invoice is already being paid or paid, or an
+        // app's would take its connection over budget.
+        let budget = wallet?.budget.map { (wallet!.connection, invoice.amountMsat, $0) }
+        switch try await commitAndPublish(result, time: time, invoices: [record], walletBudget: budget) {
         case .all:
             break
         case .none:

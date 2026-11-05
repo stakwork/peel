@@ -40,6 +40,14 @@ public struct CallParticipant: Sendable, Equatable, Identifiable {
 }
 
 extension CallParticipant {
+    /// Jamie, the call's voice agent, as the presence feed shows it: by its
+    /// name alone, since the feed carries no attributes (in the room itself
+    /// `CallChatWire.isJamie` also wants the `tts` attribute). Jamie is not
+    /// a person on the call: it is left out of the count and the avatars.
+    public var isJamie: Bool {
+        nickname.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Jamie") == .orderedSame
+    }
+
     /// Someone in the media room itself, from the name and metadata
     /// (`{"profilePictureUrl":…}`) they joined with, cleaned as the
     /// presence feed's are. Nil for an identity the feed would refuse.
@@ -406,7 +414,8 @@ actor CallServer {
     /// participant with no name is left out, as the official Mac app leaves
     /// them out (`NewChatTableDataSource+CellDelegateExtension.swift`): the
     /// room's recorder or agent, or someone whose name LiveKit has not
-    /// passed on yet (`receive` asks again for those).
+    /// passed on yet (`receive` asks again for those). Jamie, the voice
+    /// agent, is left out too (`CallParticipant.isJamie`).
     static func applying(_ change: Change, to presence: CallPresence) -> CallPresence {
         switch (change, presence) {
         case (.current(let participants), _):
@@ -417,10 +426,11 @@ actor CallServer {
             // One entry per identity, the last word kept, as for a join.
             var seen = Set<String>()
             return .live(Array(participants.reversed().compactMap { person -> CallParticipant? in
-                guard seen.insert(person.identity).inserted else { return nil }
-                return person.nickname.isEmpty ? known[person.identity] : person
+                guard seen.insert(person.identity).inserted, !person.isJamie else { return nil }
+                let named = person.nickname.isEmpty ? known[person.identity] : person
+                return named?.isJamie == true ? nil : named
             }.reversed()))
-        case (.joined(let participant), _) where participant.nickname.isEmpty:
+        case (.joined(let participant), _) where participant.nickname.isEmpty || participant.isJamie:
             return presence
         case (.joined(let participant), .live(var participants)):
             participants.removeAll { $0.identity == participant.identity }

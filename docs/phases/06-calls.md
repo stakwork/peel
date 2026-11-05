@@ -38,6 +38,15 @@ decided (Tom, 2026-10-08; see "Decided" below).
   count at once after switching chats; see its journal.
 - Built (floating call bar): a small always-on-top control bar shows while
   the call window is not key; see its journal.
+- Built (Talk to Jamie, 2026-11-03): a voice call with an org's agent, set
+  up on the org's own strut (`POST /voice/calls`) rather than through a
+  call link, beside `CallStore`; step 1 of strut's plans/private-voice.md,
+  waiting on strut's route and the voice service. See `../talk.md`.
+  Review findings not applied: the member's track ids are read again for
+  each text chunk (one or two tracks, a few chunks a second: not worth a
+  cache), and `TalkSession` keeps its own small room rather than sharing
+  one with `CallSession` / `IOSCallSession` (no tiles, handoff, camera or
+  chat; it reuses their audio session and the recorder's permission).
 - Built (Hive calls, 2026-10-27, waiting for Hive's route): with Stadeum
   connected, the call menu can bring Jamie into a call from one of the
   person's workspaces; see the journal below and `../hive-calls.md`. It
@@ -1791,6 +1800,26 @@ the Mac.
   Layout menu and the strip toggle by click (the drive has no click step),
   the iPhone app (not built: the iOS slices on this Mac predate the
   pinned v0.8.41), and a call on production.
+
+## The other-device prompt comes before connecting (bug fix)
+
+"You are already on this call on another of your devices" used to appear
+only after the second device had connected, because the in-room probe
+(LiveKit text streams) needs a connection. Now `CallStore.join` takes a
+bounded snapshot (2.5 s) of the call server's presence feed after getting
+the ticket and before `provider.join`: another participant with a different
+identity, the ticket's `participantName` and not Jamie means another device
+of this account. Then the join is held (`choosingDevice`, a `PendingJoin`)
+and nothing is connected. Switch leaves this device's current call, joins
+and announces as before; Stay on both joins and announces with `stay`;
+Cancel (or dismissing) drops the join and touches no call. Unknown, failed
+or late presence counts as none, so a join is never blocked. The prompt is
+a heuristic only: leaving on a handoff still rests on the MAC in
+`CallHandoff`. The in-room probe (`probeTopic`, `hereTopic`, `listenForDevices`)
+is removed rather than kept as a fallback, so a confirmed choice can never
+be asked twice. The dialog moved out of the call screens to the root views
+(phone `RootView`, Mac `MainView`), since no call window is up yet. Not run:
+nothing was built or tested in this change.
 
 ## Decided (Tom, 2026-10-08)
 

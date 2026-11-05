@@ -1,5 +1,9 @@
 # Apps: a sidebar entry and a browser
 
+An app that asks for a wallet pays with your sats through Peel's
+`strutWallet` handler, whichever way it opened (the detail column, its own
+window, a deliverable in the web pane): see [app-wallet.md](app-wallet.md).
+
 Status: PR 1 built, 2026-10-26. Tom chose layout A (grid) and personal
 pinned apps under the Apps row; opening an app stays `WorkspaceAppView`.
 

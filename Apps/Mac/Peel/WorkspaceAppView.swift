@@ -35,6 +35,7 @@ struct WorkspaceAppView: View {
                     AppVersionsControl(title: app.title, versions: versions, previewing: $previewing, busy: changing,
                                        change: change)
                 }
+                AppShareButton(app: app)
                 AppPinButton(app: app)
                 IconButton("arrow.up.forward.app", help: "Open in new window") { openInNewWindow() }
                     .disabled(model.memoryServer == nil)
@@ -73,7 +74,7 @@ struct WorkspaceAppView: View {
         guard let server = model.memoryServer,
               let page = server.page(of: app, version: previewing, input: place.input) else { return }
         StrutAppWindows.shared.show(StrutPage(url: page, server: server, name: app.title), link: model.web.linkAction,
-                                    openApp: { [model] in model.open($0) })
+                                    model: model, openApp: { [model] in model.open($0) })
     }
 
     /// The source when several are listed; the version is the chip's to show.
@@ -139,6 +140,22 @@ struct AppPinButton: View {
     }
 }
 
+/// Copies the link that shares an app (`WorkspaceApp.shareLink`): to the
+/// clipboard only, nothing is sent. Not shown for one of the person's own.
+struct AppShareButton: View {
+    @Environment(AppModel.self) private var model
+    let app: WorkspaceApp
+
+    var body: some View {
+        if let link = app.shareLink() {
+            IconButton("link", help: "Copy link to share") {
+                guard Clipboard.copy(link.absoluteString) else { return }
+                (model.mainPresenter as? MenuPresenter)?.showToast("Link copied")
+            }
+        }
+    }
+}
+
 /// Which page of an app a web view shows: another of any of these is another page.
 struct AppPageID: Hashable {
     let app: String
@@ -174,6 +191,7 @@ extension AppPages {
     /// Three apps at most: the one shown longest ago is closed.
     static func make() -> AppPages {
         KeepAlive(limit: 3) { kept in
+            kept.coordinator.wallet?.detach()
             kept.view.stopLoading()
             kept.view.navigationDelegate = nil
             kept.view.uiDelegate = nil
@@ -188,7 +206,8 @@ extension AppPages {
 /// opens beside it as a message's link does, and one to another app goes to
 /// `openApp`, only right after the person clicked or typed in it, since the
 /// page's scripts are the workspace's. Where the page moves to in place is
-/// told to `moved`. No download, camera or microphone.
+/// told to `moved`. No download, camera or microphone. Its one message
+/// handler is the app wallet's (`StrutWalletBridge`).
 struct AppPage: NSViewRepresentable {
     let page: StrutPage
     let id: AppPageID
@@ -197,6 +216,7 @@ struct AppPage: NSViewRepresentable {
     let moved: (String?) -> Void
     let openApp: (StrutAppLink) -> Void
     @Environment(\.openURL) private var openURL
+    @Environment(AppModel.self) private var model
 
     func makeCoordinator() -> Coordinator {
         Coordinator(page: page, open: openURL, moved: moved, openApp: openApp)
@@ -207,7 +227,10 @@ struct AppPage: NSViewRepresentable {
             let configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = .nonPersistent()
             WebPane.limit(configuration)
+            let wallet = StrutWalletBridge.install(in: configuration, for: page, model: model)
             let view = InputWebView(frame: .zero, configuration: configuration)
+            wallet?.attach(view)
+            context.coordinator.wallet = wallet
             view.navigationDelegate = context.coordinator
             view.uiDelegate = context.coordinator
             // A force click's preview would load a link outside these rules.
@@ -234,6 +257,8 @@ struct AppPage: NSViewRepresentable {
         private let openApp: (StrutAppLink) -> Void
         private var crashes = CrashReload()
         private var moves: NSKeyValueObservation?
+        /// The app wallet's handler on this page, if it shows an app.
+        var wallet: StrutWalletBridge?
 
         init(page: StrutPage, open: OpenURLAction, moved: @escaping (String?) -> Void,
              openApp: @escaping (StrutAppLink) -> Void) {

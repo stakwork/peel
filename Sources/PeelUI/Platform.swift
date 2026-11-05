@@ -122,12 +122,33 @@ public protocol CallProvider {
     /// and the iPhone both can). Asked before a call is started or joined, so
     /// nothing is posted or fetched for a call that cannot happen.
     var unavailable: String? { get }
-    /// Throws where this device cannot join calls (see `unavailable`).
-    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) throws -> any OngoingCall
+    /// Throws where this device cannot join calls (see `unavailable`). With
+    /// `stay`, the person chose to keep another device of theirs on the call
+    /// too: it is announced as staying, so that device does not leave.
+    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) throws -> any OngoingCall
+    /// Joins a Talk call: the room `home` named for a call with its agent
+    /// (`TalkStore`, docs/talk.md).
+    func talk(_ ticket: TalkTicket, home: TalkHome) throws -> any TalkMedia
 }
 
 extension CallProvider {
     public var unavailable: String? { nil }
+
+    public func talk(_ ticket: TalkTicket, home: TalkHome) throws -> any TalkMedia {
+        throw PeelError("Talk is not on this device.")
+    }
+}
+
+/// A Talk call's room (`TalkSession`, in the apps): the call screen reads
+/// the rest from the app's own type.
+@MainActor
+public protocol TalkMedia: AnyObject {
+    /// Leaves the room, saying goodbye: hanging up.
+    func leave() async
+    /// Asks the agent for `voice` from its next sentence: the member's
+    /// participant attribute `voice` (`TalkVoice.attribute`), set once the
+    /// room is connected.
+    func setVoice(_ voice: TalkVoice)
 }
 
 /// The call this device is on.
@@ -151,12 +172,6 @@ public protocol OngoingCall: AnyObject {
     /// Called when a newer device on this account joined the same call
     /// (`CallHandoff`): this one should leave it.
     var movedAway: (() -> Void)? { get set }
-    /// Called when joining found another device of this account already on
-    /// the call: nothing is announced until `resolveOtherDevice`.
-    var otherDeviceFound: (() -> Void)? { get set }
-    /// The person's choice after `otherDeviceFound`: `stay` keeps both
-    /// devices on the call, else this one takes it and the other leaves.
-    func resolveOtherDevice(stay: Bool)
     /// Leaves the room, saying goodbye.
     func leave() async
 }

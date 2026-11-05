@@ -26,14 +26,6 @@ struct YouTab: View {
                     PhoneSectionHeader("Agent")
                 }
                 .phoneRows(.grouped)
-                Section {
-                    VoiceModeSettingsFields()
-                } header: {
-                    PhoneSectionHeader("Voice mode")
-                } footer: {
-                    Text("Talk to Peel by voice from its chat. Speech is recognised on this iPhone. Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default.")
-                }
-                .phoneRows(.grouped)
                 StadeumSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
@@ -48,6 +40,9 @@ struct YouTab: View {
                         LabeledContent("Boost amount", value: Sats.format(msat: model.boostAmountMsat))
                     }
                     PaymentConfirmationRow()
+                    NavigationLink(value: YouRoute.connectedApps) {
+                        LabeledContent("Connected apps", value: model.walletConnections.isEmpty ? "None" : "\(model.walletConnections.count)")
+                    }
                     AutoDownloadMediaRow()
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
@@ -95,6 +90,7 @@ struct YouTab: View {
                 case .words: WordsScreen()
                 case .changePIN: ChangePIN()
                 case .boostAmount: BoostAmountScreen()
+                case .connectedApps: ConnectedAppsScreen()
                 case .agent, .server: EmptyView()
                 }
             }
@@ -192,16 +188,11 @@ private struct BiometricsRow: View {
             }))
             .tint(Theme.accent)
             // Turned on on another device: never enrolled from there, only
-            // offered, through the same PIN step.
+            // offered; the switch above turns it on, through the same PIN step.
             if model.biometricsOffered, !on {
-                HStack {
-                    Text("\(name) is on on your other device")
-                        .phoneFont(.secondary)
-                        .foregroundStyle(Theme.quietText(on: .raised))
-                    Spacer()
-                    Button("Turn on") { asking = true }
-                        .buttonStyle(.borderless)
-                }
+                Text("\(name) is on on your other device")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.quietText(on: .raised))
             }
         }
         .sheet(isPresented: $asking) {

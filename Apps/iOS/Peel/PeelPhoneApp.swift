@@ -1,4 +1,6 @@
+import Combine
 import PeelCore
+import PeelPush
 import PeelUI
 import SwiftUI
 import UIKit
@@ -18,6 +20,9 @@ struct PeelPhoneApp: App {
         umask(0o077)
         let model = AppModel(platform: .phone())
         _model = State(initialValue: model)
+        // A push can launch the app in the background with no window, so
+        // `.task { model.start() }` never runs; the fetch reaches the model here.
+        PushCoordinator.shared.use(model)
         _router = State(initialValue: PhoneRouter(model: model))
         // The tab badge is Sphinx blue, as on the Mac's rows, not the system's
         // red. iOS 26's tab bar ignores `UITabBarItem.badgeColor`; it reads
@@ -45,6 +50,7 @@ struct PeelPhoneApp: App {
                     if phase == .active {
                         model.becameActive()
                         PushCoordinator.shared.refreshNames()
+                        PushCoordinator.shared.openPending(model: model, router: router)
                     }
                     if phase == .background { model.leftForeground() }
                 }
@@ -75,6 +81,7 @@ struct PeelPhoneApp: App {
                         // Renewed when due, not at every unlock.
                         model.stadeum.open(profile, renewNow: false)
                         PushCoordinator.shared.accountOpened(model)
+                        PushCoordinator.shared.openPending(model: model, router: router)
                     } else {
                         // An account exists but is locked, or failed to open:
                         // the launch-time question is not held back. With
@@ -84,6 +91,12 @@ struct PeelPhoneApp: App {
                         model.stadeum.close()
                         router.orgPage = nil
                     }
+                }
+                // A tapped push: opened now if an account is open, else it
+                // waits for the PIN or onboarding (the phase handler above).
+                // Delivered on main: the delegate submits from a background thread.
+                .onReceive(NotificationCenter.default.publisher(for: PendingNavigation.didChange).receive(on: DispatchQueue.main)) { _ in
+                    PushCoordinator.shared.openPending(model: model, router: router)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Diagnostics.memoryWarning()
@@ -112,8 +125,34 @@ struct RootView: View {
                     .environment(model)
                     .environment(router)
             }
-            // The call screen is portrait only, even when started from a chat.
-            .onChange(of: router.callShown, initial: true) { _, shown in
+            // Your other device is already on the call being joined: choose
+            // before anything connects. Cancel (or dismissing) joins nothing.
+            .confirmationDialog(
+                "You are already on this call on another of your devices.",
+                isPresented: Binding(
+                    get: { model.calls.choosingDevice != nil },
+                    // Deferred: a button's own action runs first, and a choice
+                    // already made leaves nothing to cancel.
+                    set: { if !$0 { Task { @MainActor in model.calls.cancelDeviceChoice() } } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Switch to this device") { model.calls.switchToThisDevice() }
+                Button("Stay on both devices") { model.calls.stayOnBothDevices() }
+                Button("Cancel", role: .cancel) {}
+            }
+            // Talk to Jamie (docs/talk.md): up while there is a Talk call,
+            // starting or failed; it goes when the call does.
+            .fullScreenCover(isPresented: Binding(
+                get: { model.talk.home != nil },
+                set: { if !$0 { model.talk.hangUp() } }
+            )) {
+                TalkView()
+                    .environment(model)
+                    .environment(router)
+            }
+            // The call screens are portrait only, even when started from a chat.
+            .onChange(of: router.callShown || model.talk.home != nil, initial: true) { _, shown in
                 OrientationLock.shared.callShown = shown
                 OrientationLock.shared.update()
             }

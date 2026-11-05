@@ -98,43 +98,98 @@ struct CallStoreTests {
         #expect(notices["02bb"] == "The call moved to your other device.")
     }
 
-    @Test func joiningWhereYourOtherDeviceIsAsksAndNothingMovesUntilYouChoose() async throws {
+    @Test func theHandoffNoticeGoesWhenYouLeaveItsChat() throws {
+        let (calls, _, _) = try attached()
+        var notices: [String: String] = [:]
+        calls.chatNotice = { chat, change in notices[chat] = change(notices[chat]) }
+        let now = OnCall(link: try link(1), chat: "02bb", people: people(2))
+        calls.call = now
+        calls.movedAway(now)
+        #expect(notices["02bb"] == "The call moved to your other device.")
+
+        calls.chatChanged(to: "02bb")
+        #expect(notices["02bb"] != nil)
+        calls.chatChanged(to: "02cc")
+        #expect(notices["02bb"] == nil)
+    }
+
+
+    private func ticket(_ link: CallLink, identity: String = "me-phone", name: String = "Tom") -> CallTicket {
+        CallTicket(
+            serverURL: URL(string: "ws://127.0.0.1:9")!, token: "token", room: link.room, identity: identity,
+            participantName: name, expires: .now.addingTimeInterval(600), roomAdmin: false
+        )
+    }
+
+    private func device(_ identity: String, _ name: String) -> CallParticipant {
+        CallParticipant(identity: identity, nickname: name, avatarURL: nil)
+    }
+
+    /// A store with a provider that records joins, and the call on the room
+    /// being joined (`here`) as the presence snapshot has it.
+    private func joining(_ here: [CallParticipant]) throws -> (CallStore, Engine, Joins) {
+        let storage = try profile.storage()
+        try storage.set(server, for: .callServer)
+        let engine = try testEngine(storage)
+        let joins = Joins()
+        let calls = CallStore(provider: joins)
+        calls.attach(engine, server: server)
+        calls.peopleOnCall = { _ in here }
+        return (calls, engine, joins)
+    }
+
+    @Test func joiningWhereYourOtherDeviceIsAsksBeforeConnectingAndNothingMovesUntilYouChoose() async throws {
         for choice in ["switch", "stay", "cancel"] {
-            let (calls, _, _) = try attached()
-            var notices: [String: String?] = [:]
-            calls.chatNotice = { chat, change in notices[chat] = change(nil) }
-            let now = OnCall(link: try link(1), chat: "02aa", people: people(2))
-            calls.call = now
+            let (calls, engine, joins) = try joining([device("tom-tablet", "Tom"), device("eve", "Eve")])
+            let room = try link(1)
+            let earlier = OnCall(link: try link(2), chat: "02bb", people: people(2))
+            calls.call = earlier
+            let attempt = Task { try await calls.join(with: ticket(room), link: room, chat: "02aa", camera: false, engine: engine) }
 
-            // A device that is not on this call (or one left) is never asked about.
-            calls.otherDeviceFound(OnCall(link: try link(2), chat: "02bb", people: people(2)))
-            #expect(calls.choosingDevice == nil)
+            // Asked first: nothing is connected, and the call you are on is untouched.
+            try await until { calls.choosingDevice != nil }
+            #expect(calls.choosingDevice?.link == room)
+            #expect(joins.joined.isEmpty)
+            #expect(calls.call === earlier)
+            #expect(!earlier.left)
 
-            calls.otherDeviceFound(now)
-            #expect(calls.choosingDevice === now)
-            #expect(now.resolved.isEmpty)
             switch choice {
             case "switch": calls.switchToThisDevice()
             case "stay": calls.stayOnBothDevices()
             default: calls.cancelDeviceChoice()
             }
+            let joined = try await attempt.value
             await calls.leaving?.value
             #expect(calls.choosingDevice == nil)
             switch choice {
             case "switch":
-                #expect(now.resolved == [false])
-                #expect(calls.call === now)
+                #expect(joined)
+                #expect(joins.joined.map { $0.stay } == [false])
+                #expect(earlier.left)
             case "stay":
-                // Both stay: this one is still on it, and no "moved" notice.
-                #expect(now.resolved == [true])
-                #expect(calls.call === now)
+                #expect(joined)
+                #expect(joins.joined.map { $0.stay } == [true])
+                #expect(earlier.left)
             default:
-                #expect(now.resolved.isEmpty)
-                #expect(calls.call == nil)
-                #expect(now.left)
+                // Cancelled: never connected, and neither call touched.
+                #expect(!joined)
+                #expect(joins.joined.isEmpty)
+                #expect(calls.call === earlier)
+                #expect(!earlier.left)
             }
-            #expect(notices.isEmpty)
+            await engine.close()
         }
+    }
+
+    @Test func joiningWithNoOtherDeviceOfYoursOnTheCallJustJoins() async throws {
+        let room = try link(1)
+        // Another name, Jamie, and this side's own identity are not another device.
+        let (calls, engine, joins) = try joining([device("eve", "Eve"), device("jamie-1", "Jamie"), device("me-phone", "Tom")])
+        let joined = try await calls.join(with: ticket(room, name: "Tom"), link: room, chat: "02aa", camera: false, engine: engine)
+        #expect(joined)
+        #expect(calls.choosingDevice == nil)
+        #expect(joins.joined.map { $0.stay } == [false])
+        await engine.close()
     }
 
     @Test func lockingStopsTheRecentCallsWatchesAndUnlockingStartsThemAgain() async throws {
@@ -159,6 +214,19 @@ struct CallStoreTests {
         observing.cancel()
         await engine.close()
     }
+
+    /// While a Talk call is on, no group call is joined or started: two
+    /// rooms would both hear the microphone (docs/talk.md). A join that got
+    /// past the check would fail on the call server instead, in other words.
+    @Test func aTalkCallKeepsGroupCallsWaiting() async throws {
+        let (calls, engine, _) = try attached()
+        let call = try link(1)
+        calls.busy = { "Hang up the call with Jamie first." }
+        #expect(await calls.join(call, in: "02dm") == false)
+        #expect(calls.failures[call.room] == "Hang up the call with Jamie first.")
+        #expect(await calls.start(in: "02dm", audioOnly: true) == false)
+        await engine.close()
+    }
 }
 
 private func people(_ count: Int) -> [CallParticipant] {
@@ -177,7 +245,7 @@ private func until(_ condition: () -> Bool) async throws {
 
 /// Joins nothing: these tests never join.
 private struct NoCalls: CallProvider {
-    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) throws -> any OngoingCall {
+    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) throws -> any OngoingCall {
         throw PeelError("no calls here")
     }
 }
@@ -194,8 +262,6 @@ private final class OnCall: OngoingCall {
     let wantsCamera = false
     let people: [CallParticipant]
     var movedAway: (() -> Void)?
-    var otherDeviceFound: (() -> Void)?
-    var resolved: [Bool] = []
     var left = false
 
     init(link: CallLink, chat: String, people: [CallParticipant]) {
@@ -204,6 +270,16 @@ private final class OnCall: OngoingCall {
         self.people = people
     }
 
-    func resolveOtherDevice(stay: Bool) { resolved.append(stay) }
     func leave() async { left = true }
+}
+
+/// Records the calls it joins, and how.
+@MainActor
+private final class Joins: CallProvider {
+    var joined: [(link: CallLink, stay: Bool)] = []
+
+    func join(_ ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) throws -> any OngoingCall {
+        joined.append((link, stay))
+        return OnCall(link: link, chat: chat, people: [])
+    }
 }

@@ -213,7 +213,7 @@ struct AutomationsClientTests {
         try await client.delete(tidy)
         #expect(Set(lines(stub).dropFirst(before)) == [
             "POST /workflows/tidy-memory/automations/tidy/fire", "PATCH /workflows/tidy-memory/automations/tidy",
-            "GET /workflows/tidy-memory/runs", "DELETE /workflows/tidy-memory/automations/tidy",
+            "GET /workflows/tidy-memory/runs?limit=500", "DELETE /workflows/tidy-memory/automations/tidy",
         ])
     }
 

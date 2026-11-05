@@ -68,6 +68,7 @@ struct AccountView: View {
                     BoostAmountRow()
                 }
             }
+            ConnectedAppsSection()
         case .assistant:
             if let agent = model.agent { AgentSettingsSection(agent: agent) }
         case .brain:

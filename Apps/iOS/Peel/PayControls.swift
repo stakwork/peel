@@ -17,6 +17,8 @@ struct TouchPayButton: View {
     let attempt: PaymentAttempt
     let send: (_ confirmedMsat: UInt64?) async -> PaymentOutcome
     var sent: () -> Void = {}
+    /// What the armed button says above it.
+    var armedNote = "That's over your confirmation amount. Check it, then confirm."
 
     /// The armed button takes taps only once this has passed.
     static let settle: Duration = .milliseconds(700)
@@ -27,7 +29,7 @@ struct TouchPayButton: View {
     var body: some View {
         VStack(spacing: Theme.Space.sm) {
             if let armed = attempt.armed {
-                Text("That's over your confirmation amount. Check it, then confirm.")
+                Text(armedNote)
                     .phoneFont(.secondary)
                     .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)

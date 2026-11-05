@@ -808,9 +808,12 @@ struct AgentArtifactLines: View {
     }
 }
 
-private struct AgentArtifactLine: View {
+struct AgentArtifactLine: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
+    /// Set on the Talk call's screen (`TalkView`): a full-screen cover, over
+    /// the root's sheet, so a page or link opens in a sheet of its own there.
+    @Environment(TalkOpener.self) private var talkOpener: TalkOpener?
     @Environment(\.openURL) private var openURL
     let artifact: AgentArtifact
     let inTribe: Bool
@@ -867,9 +870,12 @@ private struct AgentArtifactLine: View {
     /// Made again on the tap: the tokens may have been renewed since.
     private var open: (() -> Void)? {
         if let handle = artifact.handle, case .page = model.stadeum.opening(handle, title: artifact.title) {
-            return { if case .page(let page) = model.stadeum.opening(handle, title: artifact.title) { router.orgPage = page } }
+            return {
+                guard case .page(let page) = model.stadeum.opening(handle, title: artifact.title) else { return }
+                if let talkOpener { talkOpener.opened = .page(page) } else { router.orgPage = page }
+            }
         }
-        return artifact.url.map { url in { openURL(url) } }
+        return artifact.url.map { url in { if let talkOpener { talkOpener.opened = .link(url) } else { openURL(url) } } }
     }
 
     /// Where it is: the workspace, the link's host, or why it does not open here.

@@ -35,13 +35,25 @@ public final class CallStore {
     public private(set) var recent: [CallLink] = []
     /// The call this device is on, and its window.
     public internal(set) var call: (any OngoingCall)?
-    /// The call just joined, while it waits for the person to say what to do
-    /// about their other device already on it: "Switch to this device" or
-    /// "Stay on both devices". Nothing is announced to the other device
-    /// until they choose.
-    public private(set) var choosingDevice: (any OngoingCall)?
+    /// A join held back because another device of this account is already
+    /// on the call, until the person says what to do: "Switch to this
+    /// device" or "Stay on both devices", or Cancel. Nothing is connected
+    /// (and no call of this device's left) until they choose.
+    public private(set) var choosingDevice: PendingJoin?
+    /// The person's answer for the join held in `choosingDevice`.
+    @ObservationIgnored private var deviceChoice: CheckedContinuation<DeviceChoice, Never>?
+    /// Looks up who is on a call before it is joined (`otherDevice`), nil for
+    /// the engine's presence feed; a test sets it.
+    @ObservationIgnored var peopleOnCall: ((_ link: CallLink) async -> [CallParticipant]?)?
     /// The goodbye of the calls left, which a quit waits for.
     @ObservationIgnored public private(set) var leaving: Task<Void, Never>?
+    /// How long "The call moved to your other device." stays in its chat.
+    static let movedNoticeDuration: Duration = .seconds(5)
+    static let movedNotice = "The call moved to your other device."
+    /// The chat showing that notice and the timer that takes it down;
+    /// a new handoff restarts the timer.
+    @ObservationIgnored private var movedChat: String?
+    @ObservationIgnored private var movedTimer: Task<Void, Never>?
     /// How many are on each chat's watched calls (the busiest), for chats
     /// with someone on one: the sidebar's green phone, with the call you
     /// are on (`liveCount(in:)`). Kept apart so a presence tick that
@@ -75,10 +87,28 @@ public final class CallStore {
     /// `Engine.callTicket(for:in:hive:)`). Nil: every call joins through
     /// the call server.
     @ObservationIgnored var hiveTicket: Engine.HiveTicketSource?
+    /// Why no call can be joined or started now, in words: a Talk call is on
+    /// (`TalkStore.isOn`). Nil when one can.
+    @ObservationIgnored var busy: () -> String? = { nil }
     /// The Jamie picked for calls in each chat, by peer id, "" for none
     /// (`Engine.callJamie`): this device's. A chat with no pick takes its
     /// tribe's (`HivePeer.jamie`).
     public private(set) var jamiePicks: [String: String] = [:]
+
+    /// A join waiting for the person's choice about their other device.
+    public struct PendingJoin {
+        public let link: CallLink
+        public let chat: String
+        public let title: String
+        let ticket: CallTicket
+        let camera: Bool
+    }
+
+    enum DeviceChoice { case switchHere, stay, cancel }
+
+    /// How long a join waits to hear who is on the call before it goes
+    /// ahead without knowing.
+    static let presenceWait: Duration = .milliseconds(2500)
 
     @ObservationIgnored private let provider: any CallProvider
     @ObservationIgnored private var engine: Engine?
@@ -109,6 +139,7 @@ public final class CallStore {
         failures = [:]
         joiningRoom = nil
         startingIn = nil
+        answerDeviceChoice(.cancel)
         leave()
     }
 
@@ -250,7 +281,7 @@ public final class CallStore {
     /// goes only once the ticket has come, so a failed join leaves you on it.
     public func join(_ link: CallLink, in chat: String, camera: Bool = false, failureInChat: Bool = false) async -> Bool {
         if isOnCall(link.room) { return true }
-        if let reason = provider.unavailable {
+        if let reason = provider.unavailable ?? busy() {
             Diagnostics.note(errorKind: .call)
             if failureInChat { chatNotice(chat) { _ in reason } } else { failures[link.room] = reason }
             return false
@@ -266,12 +297,7 @@ public final class CallStore {
         do {
             let ticket = try await engine.callTicket(for: link, in: chat, hive: hiveTicket)
             guard self.engine === engine else { return false }
-            leave()
-            let joined = try provider.join(ticket, link: link, chat: chat, title: chatTitle(chat), camera: camera)
-            joined.movedAway = { [weak self, weak joined] in if let joined { self?.movedAway(joined) } }
-            joined.otherDeviceFound = { [weak self, weak joined] in if let joined { self?.otherDeviceFound(joined) } }
-            call = joined
-            return true
+            return try await join(with: ticket, link: link, chat: chat, camera: camera, engine: engine)
         } catch {
             if failureInChat {
                 let notice = PeelError.noted(error, couldNot: "join the call")
@@ -281,6 +307,93 @@ public final class CallStore {
             }
             return false
         }
+    }
+
+    /// The join once its ticket is in hand: asks first when another device
+    /// of this account is already on the call (before anything connects),
+    /// then leaves the call this device is on and joins. Cancel connects
+    /// nothing and touches no call.
+    func join(with ticket: CallTicket, link: CallLink, chat: String, camera: Bool, engine: Engine) async throws -> Bool {
+        var stay = false
+        let title = chatTitle(chat)
+        if await otherDevice(on: link, ticket: ticket, engine: engine) {
+            switch await askAboutOtherDevice(PendingJoin(link: link, chat: chat, title: title, ticket: ticket, camera: camera)) {
+            case .cancel: return false
+            case .stay: stay = true
+            case .switchHere: break
+            }
+            guard self.engine === engine else { return false }
+        }
+        leave()
+        let joined = try provider.join(ticket, link: link, chat: chat, title: title, camera: camera, stay: stay)
+        joined.movedAway = { [weak self, weak joined] in if let joined { self?.movedAway(joined) } }
+        call = joined
+        return true
+    }
+
+    /// Whether another device of this account looks to be on the call: a
+    /// participant with another identity, this side's name and not Jamie
+    /// (both devices join under the same name), in a snapshot of the
+    /// presence feed taken in at most `presenceWait`. Unknown, failed or
+    /// late is no: a join is never held up by it. Only decides whether to
+    /// ask; leaving on a handoff rests on `CallHandoff`'s MAC.
+    private func otherDevice(on link: CallLink, ticket: CallTicket, engine: Engine) async -> Bool {
+        let people: [CallParticipant]?
+        if let peopleOnCall {
+            people = await peopleOnCall(link)
+        } else {
+            people = await Self.snapshot(of: link, engine: engine)
+        }
+        // This device's own call on the room, dropped and joined again, may
+        // still be listed under its old identity.
+        let mine = call?.link.room == link.room ? call?.identity : nil
+        return (people ?? []).contains {
+            $0.identity != ticket.identity && $0.identity != mine && !$0.isJamie && $0.nickname == ticket.participantName
+        }
+    }
+
+    /// The first word of the presence feed that says who is on, or nil if
+    /// it says nothing in `presenceWait`.
+    private static func snapshot(of link: CallLink, engine: Engine) async -> [CallParticipant]? {
+        let wait = presenceWait
+        return await withTaskGroup(of: [CallParticipant]?.self) { group in
+            group.addTask {
+                guard let stream = try? await engine.callPresence(of: link) else { return nil }
+                for await presence in stream {
+                    switch presence {
+                    case .live(let people): return people
+                    case .ended: return []
+                    case .unknown: continue
+                    }
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(for: wait)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// Holds the join while the person chooses.
+    private func askAboutOtherDevice(_ pending: PendingJoin) async -> DeviceChoice {
+        // One prompt at a time (`joiningRoom` keeps a second join out): a
+        // stray earlier one is cancelled rather than left hanging.
+        answerDeviceChoice(.cancel)
+        return await withCheckedContinuation { continuation in
+            deviceChoice = continuation
+            choosingDevice = pending
+        }
+    }
+
+    private func answerDeviceChoice(_ choice: DeviceChoice) {
+        choosingDevice = nil
+        let waiting = deviceChoice
+        deviceChoice = nil
+        waiting?.resume(returning: choice)
     }
 
     /// Calls in `chat` bring Jamie from `peer`'s workspace, or none (nil),
@@ -301,7 +414,7 @@ public final class CallStore {
     public func start(in chat: String, audioOnly: Bool, jamie: HivePeer? = nil) async -> Bool {
         // Nothing posted (a call message costs 3 sats in a tribe) for a
         // call this device could not join.
-        if let reason = provider.unavailable {
+        if let reason = provider.unavailable ?? busy() {
             Diagnostics.note(errorKind: .call)
             chatNotice(chat) { _ in reason }
             return false
@@ -326,7 +439,6 @@ public final class CallStore {
     public func leave() {
         guard let call else { return }
         self.call = nil
-        choosingDevice = nil
         let earlier = leaving
         leaving = Task {
             await earlier?.value
@@ -339,34 +451,44 @@ public final class CallStore {
     func movedAway(_ moved: any OngoingCall) {
         guard call === moved else { return }
         leave()
-        chatNotice(moved.chat) { _ in "The call moved to your other device." }
+        let chat = moved.chat
+        clearMovedNotice()
+        chatNotice(chat) { _ in Self.movedNotice }
+        movedChat = chat
+        movedTimer = Task { [weak self] in
+            try? await Task.sleep(for: Self.movedNoticeDuration)
+            if !Task.isCancelled { self?.clearMovedNotice() }
+        }
     }
 
-    /// Another device of this account is already on the call just joined:
-    /// ask which to keep (Two sessions on one room are fine: `isOnCall`
-    /// and `otherCall` are about this device's call only.)
-    func otherDeviceFound(_ found: any OngoingCall) {
-        guard call === found else { return }
-        choosingDevice = found
+    /// Takes the handoff notice down (timer, dismissal or leaving its
+    /// chat), leaving any other notice the chat has since shown.
+    func clearMovedNotice() {
+        movedTimer?.cancel()
+        movedTimer = nil
+        guard let chat = movedChat else { return }
+        movedChat = nil
+        chatNotice(chat) { $0 == Self.movedNotice ? nil : $0 }
     }
 
-    /// "Switch to this device": announce, and the other device leaves.
-    public func switchToThisDevice() { resolveDevice(stay: false) }
+    /// A chat's notice was dismissed by hand: stop the timer if it was ours.
+    func noticeDismissed(in chat: String) {
+        if movedChat == chat { clearMovedNotice() }
+    }
+
+    /// The open chat changed: the handoff notice does not follow.
+    func chatChanged(to chat: String?) {
+        if movedChat != nil, movedChat != chat { clearMovedNotice() }
+    }
+
+    /// "Switch to this device": the join goes on, and the other device leaves.
+    public func switchToThisDevice() { answerDeviceChoice(.switchHere) }
 
     /// "Stay on both devices": both keep the call.
-    public func stayOnBothDevices() { resolveDevice(stay: true) }
+    public func stayOnBothDevices() { answerDeviceChoice(.stay) }
 
-    /// Dismissed without choosing: this device leaves, the other is untouched.
-    public func cancelDeviceChoice() {
-        guard choosingDevice != nil else { return }
-        leave()
-    }
-
-    private func resolveDevice(stay: Bool) {
-        guard let choosing = choosingDevice else { return }
-        choosingDevice = nil
-        if call === choosing { choosing.resolveOtherDevice(stay: stay) }
-    }
+    /// Dismissed without choosing: nothing is joined, no call is touched.
+    public func cancelDeviceChoice() { answerDeviceChoice(.cancel) }
 
     /// Leaves, and waits until every room left has said goodbye: when Peel quits.
     public func end() async {

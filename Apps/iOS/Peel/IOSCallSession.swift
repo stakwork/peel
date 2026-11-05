@@ -62,14 +62,9 @@ final class IOSCallSession {
     /// Called when a newer device on this account joins the call.
     @ObservationIgnored var movedAway: (() -> Void)?
     @ObservationIgnored private let handoff: CallHandoff?
-    /// Called when this device, on joining, found another device of this
-    /// account already on the call and waits for the person's choice
-    /// (`resolveOtherDevice`).
-    @ObservationIgnored var otherDeviceFound: (() -> Void)?
-    /// Where the check for another of the account's devices stands: nothing
-    /// is announced (so the other device keeps the call) until it is done.
-    private enum DeviceProbe { case idle, probing, choosing, done }
-    @ObservationIgnored private var deviceProbe = DeviceProbe.idle
+    /// Whether the person chose to stay on both devices: the announcement
+    /// on connecting says so, and an earlier device does not leave.
+    @ObservationIgnored private let stay: Bool
     private(set) var state = State.connecting
     /// When the room first connected: the running time counts from here.
     private(set) var connectedAt: Date?
@@ -119,12 +114,13 @@ final class IOSCallSession {
     /// speak, their metadata almost never.
     @ObservationIgnored private var readPeople: [String: (name: String?, metadata: String?, person: CallParticipant?)] = [:]
 
-    init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool) {
+    init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) {
         self.link = link
         self.chat = chat
         self.title = title
         identity = ticket.identity
         handoff = ticket.handoff
+        self.stay = stay
         wantsCamera = camera
         refreshAccess()
         Self.activateAudioSession()
@@ -186,7 +182,7 @@ final class IOSCallSession {
         }
         guard !Task.isCancelled else { return }
         refresh()
-        probeForOtherDevice()
+        announce(stay: stay)
         // Not awaited by `leave`: a microphone prompt nobody answers must not
         // hold the call open.
         Task {
@@ -246,14 +242,14 @@ final class IOSCallSession {
 
     /// A voice call's session: record and play, with the earpiece or speaker
     /// as the system's voice processing routes them, and Bluetooth headsets.
-    private static func activateAudioSession() {
+    static func activateAudioSession() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .defaultToSpeaker])
         try? session.setActive(true)
     }
 
     /// Lets other apps' audio come back.
-    private static func deactivateAudioSession() {
+    static func deactivateAudioSession() {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -375,7 +371,7 @@ final class IOSCallSession {
         let next = [true, false].flatMap { screen in everyone.compactMap { tile($0.0, isYou: $0.1, screen: screen) } }
         if next != tiles {
             tiles = next
-            let everyone = next.filter { !$0.isScreen }.map(\.person)
+            let everyone = next.filter { !$0.isScreen && !$0.isJamie }.map(\.person)
             if everyone != people { people = everyone }
             refocus()
         }
@@ -464,42 +460,9 @@ extension IOSCallSession {
         Task { await handoff.announce(on: room, roomName: link.room, identity: identity, stay: stay) { [weak self] in self?.leaving ?? true } }
     }
 
-    /// Asks whether another device of this account is on the call. If one
-    /// answers, the person chooses first (`otherDeviceFound`, then
-    /// `resolveOtherDevice`) and nothing is announced meanwhile; if none
-    /// does in `CallHandoff.probeWait`, this device takes the call as before.
-    fileprivate func probeForOtherDevice() {
-        guard let handoff else { return }
-        deviceProbe = .probing
-        Task {
-            await handoff.announce(
-                on: room, roomName: link.room, identity: identity, topic: CallHandoff.probeTopic
-            ) { [weak self] in self?.leaving ?? true }
-            try? await Task.sleep(for: CallHandoff.probeWait)
-            guard self.deviceProbe == .probing, !self.leaving else { return }
-            self.deviceProbe = .done
-            self.announce()
-        }
-    }
-
-    /// The person's choice once another device was found: switch (announce,
-    /// so the other leaves) or stay on both (announce as staying).
-    func resolveOtherDevice(stay: Bool) {
-        guard deviceProbe == .choosing, !leaving else { return }
-        deviceProbe = .done
-        announce(stay: stay)
-    }
-
     /// Leaves when a newer device on this account joins: set up before the
     /// room connects, so no announcement is missed.
     fileprivate func listenForHandoff() async {
-        await handoff?.listenForDevices(on: room, roomName: link.room, me: identity) { [weak self] in
-            // Only while this device is asking: an answer meant for another
-            // device's probe, or a late one, changes nothing.
-            guard let self, !self.leaving, self.deviceProbe == .probing else { return }
-            self.deviceProbe = .choosing
-            self.otherDeviceFound?()
-        }
         await handoff?.listen(on: room, roomName: link.room, me: identity) { [weak self] in
             guard let self, !self.leaving else { return }
             self.movedAway?()

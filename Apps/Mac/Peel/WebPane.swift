@@ -12,8 +12,11 @@ import PeelUI
 /// and closing it ends the page.
 ///
 /// A page is only a page: no `sphinx` bridge, no message handlers and no
-/// injected scripts. Website data lives in one store per profile
-/// (`WebPage.storeIdentifier`), never the shared default one.
+/// injected scripts. The one exception is Peel's own strut's page of an app,
+/// a deliverable: strut's UI may reach the app wallet's handler, answered
+/// for its main frame alone (`StrutWalletBridge`, docs/app-wallet.md).
+/// Website data lives in one store per profile (`WebPage.storeIdentifier`),
+/// never the shared default one.
 @MainActor @Observable
 final class WebPane: NSObject, Identifiable {
     /// Open, with a page or (from the header's Browser) only its address field.
@@ -84,13 +87,18 @@ final class WebPane: NSObject, Identifiable {
     @ObservationIgnored private var strut: StrutPage?
     /// Where a link from it to another app goes (`open(_ page:)`).
     @ObservationIgnored private var strutOpensApp: ((StrutAppLink) -> Void)?
+    /// The model the deliverable's app wallet answers through (`StrutWalletBridge`).
+    @ObservationIgnored private weak var strutModel: AppModel?
+    /// The deliverable's app wallet handler, when it shows an app.
+    @ObservationIgnored private var strutWallet: StrutWalletBridge?
 
     /// The deliverable on show is a Strut app or page: it can have a window of its own.
     var canOpenInNewWindow: Bool { strut != nil }
 
     func openInNewWindow() {
         guard let strut, let opensApp = strutOpensApp else { return }
-        StrutAppWindows.shared.show(StrutPage(url: strut.url(at: webView?.url), server: strut.server, name: strut.name), link: linkAction, openApp: opensApp)
+        StrutAppWindows.shared.show(StrutPage(url: strut.url(at: webView?.url), server: strut.server, name: strut.name), link: linkAction,
+                                    model: strutModel, openApp: opensApp)
     }
 
     /// An HTML attachment or a deliverable is on show: no web address to
@@ -149,12 +157,14 @@ final class WebPane: NSObject, Identifiable {
     /// handed goes when it does. The address field shows its name, never its
     /// address. A link clicked in it opens here as a page of the web, ending
     /// it, and one to another app goes to `openApp`; a download comes only
-    /// from strut's own page, never a frame in it.
-    func open(_ page: StrutPage, openApp: @escaping (StrutAppLink) -> Void) {
+    /// from strut's own page, never a frame in it. An app's page gets the
+    /// app wallet's handler (`StrutWalletBridge`), through `model`.
+    func open(_ page: StrutPage, model: AppModel?, openApp: @escaping (StrutAppLink) -> Void) {
         endPage()
         strut = page
         strutOpensApp = openApp
-        let view = makeWebView(keepsNothing: true)
+        strutModel = model
+        let view = makeWebView(keepsNothing: true, wallet: page)
         isOpen = true
         problem = nil
         view.load(URLRequest(url: page.url))
@@ -200,8 +210,11 @@ final class WebPane: NSObject, Identifiable {
         page = Page()
         if let document { IncomingFiles.discard(document.file, root: Self.pagesRoot) }
         document = nil
+        strutWallet?.detach()
+        strutWallet = nil
         strut = nil
         strutOpensApp = nil
+        strutModel = nil
     }
 
     /// Peel's strut started again (on another port, with another key) or
@@ -264,7 +277,9 @@ final class WebPane: NSObject, Identifiable {
 
     /// A web view for the web, with `offline` rules for an HTML attachment,
     /// or one that `keepsNothing` for a deliverable on Peel's own strut.
-    private func makeWebView(offline rules: WKContentRuleList? = nil, keepsNothing: Bool = false) -> PaneWebView {
+    private func makeWebView(
+        offline rules: WKContentRuleList? = nil, keepsNothing: Bool = false, wallet page: StrutPage? = nil
+    ) -> PaneWebView {
         let configuration = WKWebViewConfiguration()
         if let rules {
             // Someone else's page: no script, nothing kept, nothing fetched.
@@ -279,9 +294,13 @@ final class WebPane: NSObject, Identifiable {
             // default store other apps' pages and other profiles would share.
             configuration.websiteDataStore = storeID(create: true).map(WKWebsiteDataStore.init) ?? .nonPersistent()
         }
-        // No message handlers, no user scripts: the controller holds at most the rules.
+        // No user scripts, and no message handler but the app wallet's on a
+        // deliverable that is an app: the controller holds at most the rules.
         Self.limit(configuration)
+        let wallet = page.flatMap { StrutWalletBridge.install(in: configuration, for: $0, model: strutModel) }
         let view = PaneWebView(frame: .zero, configuration: configuration)
+        wallet?.attach(view)
+        strutWallet = wallet
         view.navigationDelegate = self
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true

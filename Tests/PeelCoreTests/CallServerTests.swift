@@ -15,10 +15,7 @@ private func link(on server: String, _ query: String = "") -> CallLink {
 }
 
 /// An unsigned LiveKit-shaped token with these claims.
-private func token(_ claims: [String: Any]) -> String {
-    let body = MediaToken.base64URLEncode(try! JSONSerialization.data(withJSONObject: claims)).replacingOccurrences(of: "=", with: "")
-    return "eyJhbGciOiJIUzI1NiJ9.\(body).c2lnbmF0dXJl"
-}
+private func token(_ claims: [String: Any]) -> String { unsignedJWT(claims) }
 
 private func claims(room: String = room, exp: Double = Date.now.timeIntervalSince1970 + 3600) -> [String: Any] {
     ["sub": "alice-1", "exp": exp, "video": ["room": room, "roomJoin": true]]
@@ -252,6 +249,16 @@ struct CallPresenceTests {
         #expect(presence == .ended)
         #expect(S.applying(.left("bob-2"), to: .ended) == .ended)
         #expect(S.applying(.joined(alice), to: .ended) == .live([alice]))
+    }
+
+    /// Jamie, the voice agent, is not a person on the call: not counted,
+    /// not in the avatars.
+    @Test func leavesOutJamie() {
+        typealias S = CallServer
+        let jamie = CallParticipant(identity: "agent-1", nickname: "Jamie", avatarURL: nil)
+        #expect(S.applying(.current([alice, jamie, bob]), to: .unknown) == .live([alice, bob]))
+        #expect(S.applying(.joined(jamie), to: .live([alice])) == .live([alice]))
+        #expect(S.applying(.current([jamie]), to: .unknown) == .live([]))
     }
 
     /// The official Mac app counts and shows only participants with a

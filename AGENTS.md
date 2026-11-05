@@ -49,6 +49,13 @@ is a short plan. Update the status and the journal when you finish something.
     - `Engine+Payments.swift` — payments, boosts, confirmation thresholds,
       invoices (made, requested, paid), payment history and the
       reconciliation against it (`reconcileInBackground`)
+    - `Engine+Wallet.swift` — the app wallet's engine side
+      (`docs/app-wallet.md`): `keysend` to any node or Sphinx address over
+      the core's raw `keysend`, an invoice paid or made for an app
+      (`WalletTag`: its connection, app and the limit checked in the
+      payment's own commit), `awaitFinal`; `EngineWallet`, the host's wallet
+      over an engine (`AppWallet`: decode, problems, pay, records, the state
+      stream `updates`, the engine's refusals as the contract's codes)
     - `Engine+Attachments.swift` — sending, downloading and buying
       attachments; payment templates (the list, their pictures, the
       token a payment carries); the memes server sign-in
@@ -113,6 +120,12 @@ is a short plan. Update the status and the journal when you finish something.
     (`DictationRecord`, `dictation`, v28): kept with a keep time that
     drops older ones, watched newest first, cleared. Tested in
     `DictationHistoryTests`
+  - `Storage+Wallet.swift` — the app wallet's tables (v33):
+    `WalletConnection` (what the person granted an app, or on the iPhone an
+    org; its reads, live updates, save and revoke), the tagged keysends and
+    invoices as `WalletRecord`s (`walletRecords`, `walletRecordUpdates`,
+    fees from the history and the ping), `keepPreimage` (only one that
+    hashes to the payment's hash)
   - `Storage+DeviceRequests.swift` — the device requests' ledger
     (`deviceRequest`, a request's id within its agent): `admit` (the
     stored row wins; a message seen before is not a new copy), `claim` and
@@ -144,6 +157,26 @@ is a short plan. Update the status and the journal when you finish something.
     body JSON kept whole), `MessageType` and the fields read from a body
   - `Invoice.swift` — `Invoice` (an invoice as the core reads it) and the
     money tables' records, `InvoiceRecord` and `PaymentRecord`
+  - `WalletProtocol.swift` — strut's wallet contract in Swift (its
+    specs/WALLET.md, `kit/src/wallet/protocol.ts`): the methods, codes,
+    `WalletError` and its JSON-RPC body, `checkParams` (a port, the params
+    normalized), `connectionRequestProblems`, `resultProblems`,
+    `notificationProblems`, `verifyPreimage`, `SphinxAddress` and its route
+    hint; tested against strut's vectors
+  - `WalletLedger.swift` — `KeysendRecord` (an app's keysend, tracked by
+    its tag), `WalletRecord` (an app's transaction as the contract shapes
+    it: `payment`, `transaction`, `lookup`, and what a limit counts,
+    `entry`) and `WalletBudget` (pending counts, settled adds fees, failed
+    refunds; `Guard`, the check in the payment's own write; `period`, the
+    renewal from creation)
+  - `WalletHost.swift` — the native wallet host strut's UI relays to
+    (`docs/app-wallet.md`): `AppWallet`, `WalletScope` (an app on the Mac,
+    an org on the iPhone), `WalletApp` and `WalletRequest` (what a message
+    names), the sheets (`WalletConnectSheet`, `WalletPaymentSheet`,
+    `WalletPerson`), and `WalletHost`: the params, the connection, the
+    limit, sheets only after a gesture, one at a time, given up after nine
+    minutes, notifications of a connection's own transactions after its
+    pay call's answer (`WalletPush`)
   - `PaymentHistory.swift` — `PaymentItem`, `PaymentRequest`,
     `PurchaseState` and the Storage reads that join the money tables
   - `Sats.swift` — amounts as people see and type them (display and input
@@ -180,6 +213,14 @@ is a short plan. Update the status and the journal when you finish something.
     /api/connection-details`, the media server allowlist, the token's claims;
     never stored or logged) and the `/ws` presence feed (`CallPresence`), one
     per engine
+  - `TalkCall.swift` — Talk to Jamie (docs/talk.md): `TalkHome` (an org's
+    strut and the person's token, from a `HivePeer` or a development
+    profile's `-talkHome`), `startCall` (`POST /voice/calls`), `TalkTicket`
+    (the LiveKit room the home names: `wss://`, or `ws://` on this device,
+    a token for that room, never described with it, and the voice in effect),
+    `TalkVoice` (Jamie's voice, `af_heart` ♀ or `am_michael` ♂, kept per
+    device under `talkVoice`) and `TalkRefusal` (the home's own words; 402's
+    balance and minimum); tested in `TalkCallTests`
   - `Media.swift` — what an attachment is: `AttachmentKind` (by its bytes),
     `OutgoingFile`, media tokens, `AttachmentFields`, `DownloadedAttachment`,
     `MediaInfo` (a cached video's or recording's duration, picture size and
@@ -190,11 +231,6 @@ is a short plan. Update the status and the journal when you finish something.
     the player's progress and seek maths, `Engine.sendVoiceMessage` (tested in
     `VoiceMessageTests`); the shared `Apps/Shared/Voice` (`VoiceRecorder`, `VoicePlayer`,
     `VoiceControls`) use it on the phone and the Mac
-  - Voice mode with the agent (`docs/voice-mode.md`): the pure parts are in
-    `Sources/PeelUI/Voice/` (`VoiceCommandParser`, `SpokenText`, `VoiceMachine`,
-    `VoiceSettings`; tested in `VoiceCommandParserTests`, `SpokenTextTests`,
-    `VoiceModeStateTests`); the shared `Apps/Shared/Voice` has `VoiceModeController`,
-    `VoiceListener`, `VoiceSpeaker` and `VoiceModeViews`
   - `MediaCrypto.swift` — the official apps' attachment encryption
     (RNCryptor v3)
   - `MemesServer.swift` — the memes server: sign-in, upload, download,
@@ -381,7 +417,11 @@ is a short plan. Update the status and the journal when you finish something.
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Jamie`
   (Jamie in tribes: who sees the row, the one-tap org, and approving
-  Jamie's request to join unasked, docs/hive-tribes.md), `AppModel+Contacts`
+  Jamie's request to join unasked, docs/hive-tribes.md),
+  `AppModel+Wallet` (the app wallet's host, open with the account, its
+  notifications handed to the pages that listen, Connected apps:
+  `walletConnections`, the limit, over the limit, revoke; `WalletWords`, its
+  words for the person, a spending limit never a budget), `AppModel+Contacts`
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
@@ -431,10 +471,18 @@ is a short plan. Update the status and the journal when you finish something.
   Hive for the ticket first, `hiveTicket`), leave; the view passes the call
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
+  `TalkStore` (`AppModel.talk`, beside `CallStore`: the Talk call with an
+  org's agent, starting, failed in words or in its room, `hangUp`,
+  `toggleVoice` (Jamie's voice, kept and told to the room); one call
+  at a time, each waiting for the other, `CallStore.busy`;
+  `AppModel.talkHomes`; `TalkPhase`, what the screen says from the room and
+  `lk.agent.state`; `TalkTranscript`, the live text folded from
+  `lk.transcription`; `TalkCardAnchor`, where Jamie's cards go in it;
+  docs/talk.md);
   `Platform` (what the app supplies at init: `AppPresence` (in front,
   activate, the badge, notification settings), `MenuHosting` (for
   `takesCommands`), `FilePicking`, `Pasteboard`, `Playback`,
-  `WebPresenting`, `CallProvider` and `OngoingCall`, and `AgentHost`, the
+  `WebPresenting`, `CallProvider` (with `talk`, a Talk call's room) and `OngoingCall`, `TalkMedia`, and `AgentHost`, the
   agent's PeelAgent side); `ChatRow` (`Sender`, `Quote`, the rows built
   once per change; in a tribe a member's deliverables and the proposals
   their post made, `strutProposals`); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
@@ -482,7 +530,8 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
   restart Peel's strut with the new grants; below them
-  `StadeumSection`, the Stadeum workspaces paired as peers),
+  `StadeumSection`, the Stadeum workspaces paired as peers, each with
+  Talk to Jamie, which opens `TalkWindow`),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Assistant show of its own account,
@@ -519,6 +568,12 @@ is a short plan. Update the status and the journal when you finish something.
   `InputWebView` knows of, and a link to another app to `AppModel.open`;
   "Built: a deliverable opens beside the chat", `docs/apps-browser.md`
   "Built: deep links");
+  `StrutWalletBridge` (the app wallet's `strutWallet` handler on an app's
+  page of Peel's strut, its main frame at that strut's origin only, the app
+  named by the web view's own address; `MacWalletPerson` and
+  `WalletSheetPresenter`, the sheets over the page's window) and
+  `WalletSheets` (the connect sheet, the payment sheet with `PayButton`'s
+  second click, Account › Payments › Connected apps; `docs/app-wallet.md`);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -690,11 +745,15 @@ is a short plan. Update the status and the journal when you finish something.
   team and bundle ID over them. `Assets/AppIcon.icon` is the icon Xcode
   compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
   flat logo for docs and pages. `Shared/` holds the files both apps
-  compile: `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
+  compile: `TalkSession` and `TalkView` (Talk to Jamie's room and screen,
+  docs/talk.md; the Mac's `TalkWindow`), `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
   `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
   `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
-  `AppStatus`'s header icon (over PeelUI's `WorkspaceAppIcon`);
+  `AppStatus`'s header icon (over PeelUI's `WorkspaceAppIcon`), and
+  `StrutWallet`, the app wallet handler's rules both apps keep (the main
+  frame at the origin Peel loaded, the message read as JSON, a notification
+  pushed as an argument to strut's own function);
   they must build for AppKit and UIKit. `Mac/` is the Mac app (below, as
   `Apps/Mac/Peel/`, a synchronized folder), `Mac/Peel.entitlements` (the
   Keychain access group, microphone and camera) and `Mac/Info.plist` (the
@@ -726,8 +785,12 @@ is a short plan. Update the status and the journal when you finish something.
   their words), `Stadeum` (`StadeumSection`, You's Stadeum over
   `AppModel.stadeum`: connect, the workspaces, Connect again, Disconnect;
   `readWorkspaceApps`, each org's pinned apps on its own strut), `AppsScreen`
-  (Chats' Apps row: the workspaces' pinned apps, A–Z, opened in
-  `OrgPageSheet`, pulled to read again), `OrgPageSheet` (a
+  (Chats' Apps row: Talk to Jamie on each workspace, its screen a
+  full-screen cover; then the workspaces' pinned apps, A–Z, opened in
+  `OrgPageSheet`, pulled to read again), `OrgWallet` (the app wallet on the iPhone: `OrgWalletBridge`, keyed by
+  the org, the main frame at its origin only; `PhoneWalletSheets` and the
+  connect and payment sheets, the latter with `TouchPayButton`; You ›
+  Connected apps), `OrgPageSheet` (a
   deliverable or an app on its org's own strut, strut's UI showing it alone in a
   `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
   request's bearer and handed to the page's storage before its script
@@ -1040,12 +1103,18 @@ is a short plan. Update the status and the journal when you finish something.
   `EngineTests`, `EngineFailureTests`, `ConnectionDropTests`, `AutoResendTests`,
   `PublishPlanTests`, `HistoryCursorTests`, `PaymentTests`, `InvoiceTests`,
   `MoneyRefusalTests`, `PaymentTemplateTests`, `SatsTests`, `MediaTests`, `MediaInfoTests`,
-  `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`,
+  `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`, `TalkCallTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
   `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`,
   `ProposalTests` (strut's record and card read, each status, a record
   without a card, the words cleaned, the store, a workspace's strut asked
   with the person's token, a tribe post's proposals and outcomes);
+  `WalletProtocolTests` (strut's wallet vectors, `WalletVectors/vectors.json`,
+  a copy from the strut commit docs/app-wallet.md names),
+  `WalletHostTests` (the ten scenarios against a scripted wallet and
+  person, and the gesture, one sheet, timeout, isolation, an org, renewal),
+  `WalletEngineTests` (the preimage, a keysend through the real core, the
+  limit in the payment's own write, the history, the state stream);
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS
@@ -1060,7 +1129,10 @@ is a short plan. Update the status and the journal when you finish something.
   state machine, the hotkey's encoding, the WAV writer,
   where dictated text goes) and `LingoTests` (reading strut's lexicon, what a
   correction learned and the dictation models; `DictationEditTests`, when
-  an edit to dictated text is done)
+  an edit to dictated text is done) and `TalkTests` (the live text, where
+  Jamie's cards go in it, and the phase from what LiveKit Agents publish;
+  a Talk call started on a stand-in home, its refusal, and no group call
+  left unasked)
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,

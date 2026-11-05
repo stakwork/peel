@@ -268,6 +268,13 @@ extension Engine {
         case wrongWords(positions: [Int])
         /// Words to check against that are not this account's.
         case notThisAccountsWords
+        /// An app's payment that would take its connection past its budget
+        /// (`Storage.Commit.walletBudget`); nothing was written or sent.
+        case overBudget
+        /// A keysend to something that is not a node's key.
+        case notANodeKey
+        /// A keysend to this account itself.
+        case keysendToSelf
 
         public var description: String {
             switch self {
@@ -367,6 +374,9 @@ extension Engine {
             case .keyWithoutRoute: "that names only a key, not how to reach it; ask for their whole contact info"
             case .inviteWithoutInviter: "that invite names nobody to add"
             case .tribeLinkNotContact: "that is a tribe link; join it from Join a tribe"
+            case .overBudget: "that is over what this app may spend without asking"
+            case .notANodeKey: "that is not a node's key"
+            case .keysendToSelf: "that is this account's own key"
             case .ownContactInfo: "that is this account's own contact info"
             case .contactNeedsSats:
                 // The key exchange's sats and their ping.

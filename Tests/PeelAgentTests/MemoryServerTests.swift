@@ -64,7 +64,7 @@ struct MemoryServerTests {
             _ = try MemoryServer.output(of: Data(notFound.utf8))
             Issue.record("expected a failure")
         } catch {
-            // Typed, so the panel can say it is gone; in strut's words.
+            // Typed, with strut's code; in strut's words.
             #expect((error as? MemoryServer.Refusal)?.code == "not_found")
             #expect("\(error)".contains("not_found"))
             // Its own words, not Foundation's.
@@ -168,6 +168,28 @@ struct MemoryServerTests {
         #expect(MemoryResult.asked(tool: "remember", input: ["episode": "We moved.\nTo Bristol."])
                 == "From \u{201C}We moved. To Bristol.\u{201D}")
         #expect(MemoryResult.asked(tool: "read_memory", input: ["type": "Self"]) == nil)
+    }
+
+    /// A saved chat from before memory moved to the graph: its `remember`,
+    /// `recall` and `read_memory` rows still read as they did, and what they
+    /// name is the old database's (`graph` false), which the memory panel
+    /// says is no longer in memory rather than looking it up.
+    @Test func rowsFromBeforeTheGraphStillReadAndOpenNothing() throws {
+        let remembered = try JSONValue(parsing: #"{"facts":[{"ref_id":"f1","text":"Tom lives in Bristol.","status":"created"}]}"#)
+        let found = try JSONValue(parsing: #"[{"ref_id":"k","name":"Kate","node_type":"Person"}]"#)
+        let read = try JSONValue(parsing: #"{"ref_id":"k","node_type":"Person","name":"Kate"}"#)
+        for tool in ["remember", "recall", "read_memory"] { #expect(MemoryResult.tools.contains(tool), "\(tool)") }
+        guard case .remembered(let wrote)? = MemoryResult(tool: "remember", row: remembered),
+              case .found(let refs)? = MemoryResult(tool: "recall", row: found),
+              case .read(let node)? = MemoryResult(tool: "read_memory", row: read) else {
+            Issue.record("an old row no longer reads")
+            return
+        }
+        #expect(wrote.facts.map(\.fact) == [MemoryRef(id: "f1", name: "Tom lives in Bristol.")])
+        #expect((wrote.facts.map(\.fact) + refs + [node.ref]).allSatisfy { !$0.graph })
+        // A row whose saved output is not strut's reads as no row, never a crash.
+        #expect(MemoryResult(tool: "read_memory", row: "Remembered 1 fact") == nil)
+        #expect(MemoryResult(tool: "remember", row: .null) == .remembered(MemoryResult.Remembered(.null)))
     }
 
     /// Memory on the graph: a search's or a read's nodes open from the

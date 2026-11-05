@@ -357,11 +357,9 @@ extension AppModel {
     /// The strut `profile`'s agent uses, if this build ships one: the app
     /// account's in Peel's folder; a development profile's only with
     /// `-strut YES` (its agent needs it), its data inside the profile's own
-    /// folder, so a test account never writes to the real memory. Its
-    /// memory is on the workspace graph unless the `graphMemory` default
-    /// turns it off (`-graphMemory NO`, `BundledStrut.graphMemory`).
+    /// folder, so a test account never writes to the real memory.
     static func strut(for profile: Profile) -> BundledStrut? {
-        let strut: BundledStrut? = switch profile.kind {
+        switch profile.kind {
         case .app: BundledStrut(secretKey: profile.strutKey)
         case .development:
             UserDefaults.standard.bool(forKey: "strut") ? {
@@ -371,9 +369,6 @@ extension AppModel {
                 return strut
             }() : nil
         }
-        // On unless the `graphMemory` default turns it off (`-graphMemory NO`).
-        strut?.graphMemory = UserDefaults.standard.object(forKey: "graphMemory") as? Bool ?? true
-        return strut
     }
 
     func closeAgent() {
@@ -476,25 +471,24 @@ final class MemoryPanel: Identifiable {
         loading?.cancel()
         problem = nil
         guard let ref = current, read[ref.id] == nil else { return }
+        // A row from before memory moved to the graph names the old database's nodes, which are gone.
+        guard ref.graph else {
+            problem = "This is no longer in memory."
+            return
+        }
         loading = Task {
             do {
-                if ref.graph {
-                    // A fact is read with its node ("<node>#<fact>"): reading one again reads the node.
-                    let node = String(ref.id.split(separator: "#", maxSplits: 1).first ?? "")
-                    let got = try await server.graphNode(node)
-                    guard !Task.isCancelled else { return }
-                    if let got {
-                        read[node] = got.node
-                        for fact in got.facts { read[fact.ref.id] = fact }
-                    }
-                    // A fact a search found or a remember wrote opens the node it is about.
-                    if read[ref.id] == nil, let got, ref.id != node { read[ref.id] = got.node }
-                    if read[ref.id] == nil { problem = "This is no longer in memory." }
-                    return
-                }
-                let node = try await server.node(ref.id)
+                // A fact is read with its node ("<node>#<fact>"): reading one again reads the node.
+                let node = String(ref.id.split(separator: "#", maxSplits: 1).first ?? "")
+                let got = try await server.graphNode(node)
                 guard !Task.isCancelled else { return }
-                if let node { read[ref.id] = node } else { problem = "This is no longer in memory." }
+                if let got {
+                    read[node] = got.node
+                    for fact in got.facts { read[fact.ref.id] = fact }
+                }
+                // A fact a search found or a remember wrote opens the node it is about.
+                if read[ref.id] == nil, let got, ref.id != node { read[ref.id] = got.node }
+                if read[ref.id] == nil { problem = "This is no longer in memory." }
             } catch {
                 guard !Task.isCancelled else { return }
                 problem = PeelError.noted(error, couldNot: "read this memory")

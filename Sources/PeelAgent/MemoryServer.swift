@@ -2,9 +2,9 @@ import AgentKit
 import Foundation
 import PeelCore
 
-/// The agent's long-term memory: a Ladybug graph that strut owns
+/// The agent's long-term memory: the workspace graph that strut owns
 /// (`docs/agent-brain.md`), reached through strut's synchronous
-/// `POST /steps/memory/<verb>/run`. Peel never opens the graph's file.
+/// `POST /steps/<step>/run`. Peel never opens the graph's file.
 /// Peel's own strut on this Mac, which says its address and key when it
 /// starts (`BundledStrut`); always with its key: anything on the Mac can
 /// reach a loopback port.
@@ -35,19 +35,13 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
     /// The most a reply may be.
     static let replyLimit = 2_000_000
 
-    /// Runs one memory step with `arguments`: its output, or the step's
-    /// refusal in its own words. The arguments go as the run's `input`, and
-    /// the step's config is the single template `{{ input }}`: strut resolves
-    /// `{{ … }}` anywhere in a config, so memory text sent as config would be
-    /// evaluated ("Hi {{ name }}" stored as "Hi "), while a whole-string
-    /// template's value is used as it is.
-    public func run(_ verb: String, _ arguments: AgentKit.JSONValue) async throws -> AgentKit.JSONValue {
-        try await run(step: "memory/\(verb)", arguments)
-    }
-
-    /// Any strut step by its path (`dictation/correction`), through the same
-    /// door, key and whole-string `{{ input }}` as the memory steps: what a
-    /// user dictated is never read as a template.
+    /// Runs one strut step by its path (`graph/graph-get`) with `arguments`:
+    /// its output, or the step's refusal in its own words. The arguments go
+    /// as the run's `input`, and the step's config is the single template
+    /// `{{ input }}`: strut resolves `{{ … }}` anywhere in a config, so memory
+    /// text or what a user dictated sent as config would be evaluated ("Hi
+    /// {{ name }}" stored as "Hi "), while a whole-string template's value is
+    /// used as it is.
     /// `slow`: on Peel's slow session, for a step that takes minutes (the memory import).
     public func run(step path: String, _ arguments: AgentKit.JSONValue, slow: Bool = false) async throws -> AgentKit.JSONValue {
         let body = Data(AgentKit.JSONValue.object(["input": arguments, "config": "{{ input }}"]).jsonString.utf8)
@@ -88,7 +82,6 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
         public var errorDescription: String? { description }
     }
 
-    /// One node as `memory/get` reads it; nil when memory no longer has it.
     /// One node of the workspace graph and its facts (`MemoryNode.graph`); nil when the graph no longer has it.
     public func graphNode(_ id: String) async throws -> (node: MemoryNode, facts: [MemoryNode])? {
         let get = try await run(step: "graph/graph-get", ["ref_id": .string(id)])
@@ -99,16 +92,5 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
             throw PeelError("Memory gave back something Peel cannot show.")
         }
         return read
-    }
-
-    public func node(_ id: String) async throws -> MemoryNode? {
-        do {
-            guard let node = MemoryNode(try await run("get", ["ref_id": .string(id)])) else {
-                throw PeelError("Memory gave back something Peel cannot show.")
-            }
-            return node
-        } catch let refusal as Refusal where refusal.code == "not_found" {
-            return nil
-        }
     }
 }

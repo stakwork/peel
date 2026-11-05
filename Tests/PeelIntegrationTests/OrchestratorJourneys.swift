@@ -791,7 +791,7 @@ extension Journeys {
             for person in [alice, other] { await person.close() }
         }
 
-        /// Memory on the workspace graph (`BundledStrut.graphMemory`), the
+        /// Memory on the workspace graph, the
         /// October scenario (memory-test-2026-10-14) through the orchestrator's
         /// own turns on the staged strut: the user saying who they are, a fact
         /// Kate said, "used to", a dated move, a way they like things done, a
@@ -813,7 +813,6 @@ extension Journeys {
             setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:\(model.port)", 1)
             let strut = try #require(BundledStrut(folder: BundledStrut.staged, data: root.appending(path: "strut"),
                                                   secretKey: FileItem(file: root.appending(path: "strut-key"))))
-            strut.graphMemory = true
             defer {
                 strut.stop(quietly: true)
                 model.stop()
@@ -823,7 +822,7 @@ extension Journeys {
             let server = try await strut.start()
             let client = AutomationsClient(server: server)
             try await client.setModel(AgentCredential(provider: .anthropic, model: "claude-sonnet-4-5", apiKey: "stand-in"))
-            try await client.installOrchestrator(graphMemory: true)
+            try await client.installOrchestrator()
             // A first start with no old database: recorded as done, nothing imported.
             #expect(FileManager.default.fileExists(atPath: strut.memoryImportRecord.path))
 

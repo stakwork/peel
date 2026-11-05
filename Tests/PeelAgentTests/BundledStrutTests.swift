@@ -153,7 +153,7 @@ struct BundledStrutTests {
     }
 
     /// The staged strut, run as the app runs it: ready with Peel's key,
-    /// answering the memory steps, and gone once stopped.
+    /// answering the graph's steps, and gone once stopped.
     @Test(.enabled(if: FileManager.default.fileExists(atPath: BundledStrut.staged.path)))
     func theStagedStrutStartsAnswersAndStops() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "peel-strut-\(UUID().uuidString)")
@@ -163,10 +163,10 @@ struct BundledStrutTests {
 
         let server = try await strut.start()
         #expect(server.base.host() == "127.0.0.1")
-        _ = try await server.run("ontology", [:])
+        _ = try await server.run(step: "graph/get-ontology", [:])
         strut.stop()
         #expect(strut.server == nil)
-        await #expect(throws: (any Error).self) { _ = try await server.run("ontology", [:]) }
+        await #expect(throws: (any Error).self) { _ = try await server.run(step: "graph/get-ontology", [:]) }
     }
 
     /// What Peel hands strut's secret store (here the connected model's
@@ -189,30 +189,30 @@ struct BundledStrutTests {
         #expect(holding.isEmpty, "\(holding.map(\.lastPathComponent))")
     }
 
-    /// Memory on the graph (`graphMemory`): the old database's facts are
-    /// imported on the first start only, its counts kept; then strut
-    /// gives the orchestrator the graph tools and no agent the memory steps,
-    /// and the old database still answers dictation's lexicon.
+    /// The old database's facts are imported on the first start only, its
+    /// counts kept; strut gives the orchestrator the graph tools and no
+    /// agent the memory steps; at the next start the old database is
+    /// removed, one copy kept beside it.
     @Test(.enabled(if: FileManager.default.fileExists(atPath: BundledStrut.staged.appending(path: "build/steps/lib/graph/import-memory.js").path)))
-    func theStagedStrutImportsTheOldMemoryOnceWhenItIsOnTheGraph() async throws {
+    func theStagedStrutImportsTheOldMemoryOnceThenRemovesIt() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "peel-strut-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        // Off: what the agent remembered, on the old database.
-        let old = try stagedStrut(in: root)
-        old.graphMemory = false
-        let legacy = try await old.start()
-        let me = try #require(try await legacy.run("ontology", [:])["user_type"]?.string)
+        let strut = try stagedStrut(in: root)
+        defer { strut.stop(quietly: true) }
+        // A first start with no old database: recorded as done, nothing imported.
+        let legacy = try await strut.start()
+        #expect(FileManager.default.fileExists(atPath: strut.memoryImportRecord.path))
+        // What a Peel from before the graph remembered, on the old database, with no import yet.
+        let me = try #require(try await legacy.run(step: "memory/ontology", [:])["user_type"]?.string)
         let user: AgentKit.JSONValue = ["type": .string(me), "name": "Tom"]
-        _ = try await legacy.run("remember", [
+        _ = try await legacy.run(step: "memory/remember", [
             "episode": "I live in Bristol.", "mentions": [user],
             "facts": [["subject": user, "predicate": "lives_in", "text": "Tom lives in Bristol.", "object": ["type": "Place", "name": "Bristol"]]],
         ])
-        old.stop(quietly: true)
-        #expect(!FileManager.default.fileExists(atPath: old.memoryImportRecord.path), "off, nothing is imported")
+        strut.stop(quietly: true)
+        try FileManager.default.removeItem(at: strut.memoryImportRecord)
+        #expect(FileManager.default.fileExists(atPath: strut.oldMemory.path))
 
-        let strut = try stagedStrut(in: root)
-        strut.graphMemory = true
-        defer { strut.stop(quietly: true) }
         let server = try await strut.start()
         let record = try AgentKit.JSONValue(parsing: String(decoding: try Data(contentsOf: strut.memoryImportRecord), as: UTF8.self))
         #expect((record["imported"]?.int ?? 0) >= 1, "\(record)")
@@ -221,21 +221,65 @@ struct BundledStrutTests {
         let flow = try await AutomationsClient(server: server).call("GET", "workflows/orchestrator/flow", nil, what: "the orchestrator")
         let tools = flow["params"]?["tools"]?.array?.compactMap(\.string) ?? []
         #expect(tools.contains("graph/assert") && !tools.contains { $0.hasPrefix("memory/") }, "\(tools)")
-        // Dictation's lexicon stays on the old database.
-        _ = try await server.run("lexicon", [:])
+        // Dictation's lexicon is on the graph.
+        _ = try await server.run(step: "memory/lexicon", [:])
+        // Kept while strut has it open after the import.
+        #expect(FileManager.default.fileExists(atPath: strut.oldMemory.path))
 
-        // Again: the record stands, so nothing runs.
+        // Again: the record stands, so nothing runs, and the old database goes, its copy kept.
         strut.stop(quietly: true)
         let kept = try Data(contentsOf: strut.memoryImportRecord)
-        _ = try await strut.start()
+        let old = try Data(contentsOf: strut.oldMemory)
+        let again = try await strut.start()
         #expect(try Data(contentsOf: strut.memoryImportRecord) == kept)
+        #expect(!FileManager.default.fileExists(atPath: strut.oldMemory.path))
+        #expect(try Data(contentsOf: strut.oldMemoryBackup) == old)
+        // Memory still answers from the graph.
+        #expect(try await again.run(step: "graph/graph-search", ["q": "Bristol", "facts": true]).jsonString.contains("Tom lives in Bristol."))
 
         // A record from an earlier import (no version): it runs again, and the record is this one's.
         strut.stop(quietly: true)
         try Data(#"{"imported":1}"#.utf8).write(to: strut.memoryImportRecord)
         _ = try await strut.start()
-        let again = try AgentKit.JSONValue(parsing: String(decoding: try Data(contentsOf: strut.memoryImportRecord), as: UTF8.self))
-        #expect(again["version"]?.int == BundledStrut.memoryImportVersion, "\(again)")
+        let rerun = try AgentKit.JSONValue(parsing: String(decoding: try Data(contentsOf: strut.memoryImportRecord), as: UTF8.self))
+        #expect(rerun["version"]?.int == BundledStrut.memoryImportVersion, "\(rerun)")
+    }
+
+    /// The old memory database is removed only once the import of it
+    /// succeeded at this version, a copy written beside it first; never
+    /// when the import failed, never ran or is from an earlier version, and
+    /// the one copy is never written over.
+    @Test(arguments: [
+        (#"{"version":\#(BundledStrut.memoryImportVersion),"imported":3}"#, true),
+        (#"{"imported":3}"#, false),
+        (nil, false),
+    ] as [(String?, Bool)])
+    func theOldMemoryGoesOnlyOnceItsImportSucceeded(record: String?, removed: Bool) async throws {
+        let (strut, data) = try fake(Self.ready + "\nexec cat > /dev/null\n")
+        defer { strut.stop(quietly: true) }
+        try FileManager.default.createDirectory(at: strut.oldMemory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("old memory".utf8).write(to: strut.oldMemory)
+        let wal = strut.oldMemory.appendingPathExtension("wal")
+        try Data("unwritten".utf8).write(to: wal)
+        if let record { try Data(record.utf8).write(to: strut.memoryImportRecord) }
+        _ = try await strut.start()
+        #expect(strut.oldMemory.path.hasPrefix(data.appending(path: "workspace/memory").path))
+        #expect(FileManager.default.fileExists(atPath: strut.oldMemory.path) == !removed)
+        #expect(FileManager.default.fileExists(atPath: strut.oldMemoryBackup.path) == removed)
+        // Its write-ahead log goes with it, copied beside the copy.
+        #expect(FileManager.default.fileExists(atPath: wal.path) == !removed)
+        if removed {
+            #expect(try Data(contentsOf: strut.oldMemoryBackup) == Data("old memory".utf8))
+            #expect(try Data(contentsOf: strut.oldMemoryBackup.appendingPathExtension("wal")) == Data("unwritten".utf8))
+        }
+
+        // Back again (a read copy pulled from a home): removed again, the first copy kept.
+        guard removed else { return }
+        strut.stop(quietly: true)
+        try Data("later".utf8).write(to: strut.oldMemory)
+        _ = try await strut.start()
+        #expect(!FileManager.default.fileExists(atPath: strut.oldMemory.path))
+        #expect(try Data(contentsOf: strut.oldMemoryBackup) == Data("old memory".utf8))
     }
 
     /// A development profile's memory is inside its own folder, never the app account's.

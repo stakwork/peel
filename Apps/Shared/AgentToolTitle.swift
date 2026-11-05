@@ -10,14 +10,14 @@ enum AgentToolTitle {
         "read_threads": "Read threads",
         "search_messages": "Searched messages",
         "send_sphinx_message": "Send a message",
+        // The old memory database's tools, still named in chats from before memory moved to the graph.
         "remember": "Remembered",
         "recall": "Searched memory",
         "read_memory": "Read memory",
         "memory_ontology": "Read memory's vocabulary",
         "forget_memory": "Forgot",
         "merge_memory": "Merged",
-        // strut's graph tools, which hold memory when it is on the graph (`graphMemory`),
-        // as strut names them: the step's type with "/" and "-" as "_".
+        // strut's graph tools, which hold memory, as strut names them: the step's type with "/" and "-" as "_".
         "graph_resolve": "Searched memory",
         "graph_graph_search": "Searched memory",
         "graph_graph_get": "Read memory",

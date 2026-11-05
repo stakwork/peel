@@ -44,12 +44,6 @@ public final class BundledStrut {
     /// scheduler off (`STRUT_SCHEDULER=0`) and its `home-sync` workflow seeded
     /// (`STRUT_HOME_SYNC=copy`). The box's CA is in its peer record.
     public var isHomeClient = false
-    /// The agent's memory on the workspace graph (strut's `memory: "graph"`,
-    /// `Orchestrator.hostConfig(graph:)`) instead of the old memory
-    /// database: on in the app unless the `graphMemory` default turns it off
-    /// (`-graphMemory NO`, `AppModel.strut(for:)`). On, its first start imports
-    /// the old database once (`importMemoryOnce`), again when the import is newer.
-    public var graphMemory = false
     /// The person's actor on their Hive orgs, once paired: the orchestrator
     /// is then told its peers are those orgs (strut's
     /// `personalOrchestratorSystem`), from the next start.
@@ -180,6 +174,7 @@ public final class BundledStrut {
         try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: data.path)
+        removeOldMemory()
         let key = try Self.newKey()
         let secrets = try Self.secretKey(in: secretKey)
         // Peel's part of the orchestrator strut seeds at boot (`Orchestrator`), written each launch.
@@ -187,7 +182,7 @@ public final class BundledStrut {
         let (grants, person) = (grants, person)
         var personal: String?
         if let person { personal = await personalSection(for: person) }
-        try Orchestrator.hostConfig(grants: grants, personal: personal, graph: graphMemory).write(to: hostConfig, options: .atomic)
+        try Orchestrator.hostConfig(grants: grants, personal: personal).write(to: hostConfig, options: .atomic)
         launchedGrants = grants
         launchedPerson = person
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hostConfig.path)
@@ -242,10 +237,8 @@ public final class BundledStrut {
             throw PeelError("Peel's strut \(why).")
         }
         // Before anyone reads memory: what the old database held, on the graph.
-        if graphMemory {
-            await importMemoryOnce(on: server)
-            guard self.process === process else { throw PeelError("Peel's strut stopped as it started.") }
-        }
+        await importMemoryOnce(on: server)
+        guard self.process === process else { throw PeelError("Peel's strut stopped as it started.") }
         self.server = server
         onChange?()
         return server
@@ -259,17 +252,16 @@ public final class BundledStrut {
     /// The import's version: a record older than it runs the import again,
     /// which repairs what the earlier one wrote (strut#482). 1 is a record
     /// with no version.
-    static let memoryImportVersion = 2
+    nonisolated static let memoryImportVersion = 2
 
-    /// strut's `graph/import-memory`, the first time memory is on the graph
-    /// here: the old database's entities and facts copied into `private`
+    /// strut's `graph/import-memory`, the first time strut starts here with
+    /// memory on the graph: the old database's entities and facts copied into `private`
     /// (strut reads it and never changes it; what has no place on the graph
     /// is dropped; again, it repairs what an earlier import wrote). Its counts
     /// are logged and kept in `memoryImportRecord`. A failure is logged and
     /// tried again at the next start; strut runs on either way.
     func importMemoryOnce(on server: MemoryServer) async {
-        if let held = try? Data(contentsOf: memoryImportRecord),
-           (try? AgentKit.JSONValue(parsing: String(decoding: held, as: UTF8.self)))?["version"]?.int ?? 1 >= Self.memoryImportVersion { return }
+        if memoryImported { return }
         do {
             // Slow: on a first start it shares the graph with the embedding of every node.
             let output = try await server.run(step: "graph/import-memory", [:], slow: true)
@@ -284,6 +276,44 @@ public final class BundledStrut {
             Self.log.info("graph memory import: \(line, privacy: .public)")
         } catch {
             Self.log.error("graph memory import failed; tried again at the next start: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    /// The import record is there at `memoryImportVersion`: written only
+    /// once an import succeeded.
+    var memoryImported: Bool {
+        guard let held = try? Data(contentsOf: memoryImportRecord) else { return false }
+        return (try? AgentKit.JSONValue(parsing: String(decoding: held, as: UTF8.self)))?["version"]?.int ?? 1 >= Self.memoryImportVersion
+    }
+
+    /// The old memory database, where strut's `memory/_db.ts` finds it
+    /// (`<STRUT_WORKSPACE>/memory/graph.lbug`; Peel sets no `STRUT_MEMORY_DB`).
+    var oldMemory: URL { data.appending(path: "workspace/memory/graph.lbug") }
+
+    /// The one copy of `oldMemory` kept once it is removed.
+    var oldMemoryBackup: URL { oldMemory.appendingPathExtension("pre-graph.bak") }
+
+    /// Removes the old memory database once the import of it succeeded at
+    /// this version, a copy kept beside it first (`oldMemoryBackup`), so
+    /// nothing is lost if the import missed something. Before strut starts,
+    /// so nothing has it open. Never when the import failed or never ran;
+    /// a failure is logged and tried again at the next start. Ladybug's log
+    /// of what a database not closed cleanly has yet to write (`<file>.wal`)
+    /// goes with it, so the copy opens as the database was.
+    func removeOldMemory() {
+        let files = FileManager.default
+        guard memoryImported, files.fileExists(atPath: oldMemory.path) else { return }
+        let pairs = [(oldMemory, oldMemoryBackup), (oldMemory.appendingPathExtension("wal"), oldMemoryBackup.appendingPathExtension("wal"))]
+            .filter { files.fileExists(atPath: $0.0.path) }
+        do {
+            if !files.fileExists(atPath: oldMemoryBackup.path) {
+                for (file, copy) in pairs { try files.copyItem(at: file, to: copy) }
+            }
+            // The database last, so a failure part way leaves it to be tried again.
+            for (file, _) in pairs.reversed() { try files.removeItem(at: file) }
+            Self.log.info("old memory database removed; its copy is kept")
+        } catch {
+            Self.log.error("old memory database not removed: \(error.localizedDescription, privacy: .private)")
         }
     }
 

@@ -46,7 +46,7 @@ final class DictationLingo {
     func refresh() async {
         guard let server, isUnlocked() else { return }
         do {
-            let read = LingoLexicon(lexicon: try await server.run("lexicon", [:]))
+            let read = LingoLexicon(lexicon: try await server.run(step: "memory/lexicon", [:]))
             // Not if another strut (another account) took this one's place, or the account locked, meanwhile.
             guard server == self.server, isUnlocked() else { return }
             lexicon = read

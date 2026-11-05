@@ -19,59 +19,50 @@ struct OrchestratorTests {
                           "sphinx/send", "automation/list", "automation/preview", "automation/create", "automation/update",
                           "automation/delete", "automation/run-now",
                           // Memory is Peel's to grant: strut's default orchestrator has none.
-                          "memory/remember", "memory/recall", "memory/get", "memory/ontology", "memory/forget", "memory/merge"])
+                          ] + Orchestrator.memoryTools)
         // Only the automation steps ask for a card: the model never words one itself.
         #expect(!tools.contains("sphinx/approve"))
         #expect(config["orchestrator"]?["model"] == .null, "the connected model runs it")
-        #expect(config["orchestrator"]?["system"]?.string == Orchestrator.section())
+        #expect(config["orchestrator"]?["system"]?.string == Orchestrator.section)
         #expect(config["automation"] == ["workflow": "peel-automation-run", "approve": "sphinx/approve", "grants": true])
         // A call to an org's assistant waits on a card; paired, strut's section for the person's orgs follows Peel's.
         #expect(config["orchestrator"]?["approve"] == ["strut/run-workflow"] && config["job"]?["approve"] == ["strut/run-workflow"])
         let paired = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(personal: "Its peers are orgs."), as: UTF8.self))
-        #expect(paired["orchestrator"]?["system"]?.string == Orchestrator.section() + "\n\nIts peers are orgs.")
+        #expect(paired["orchestrator"]?["system"]?.string == Orchestrator.section + "\n\nIts peers are orgs.")
         // The builder works with no card and no reach limit; no other strut may launch it.
         #expect(config["builder"] == ["peer": false])
         // An automation's run reads, remembers and posts within its grant; it never sends on a card or schedules.
-        #expect(!Orchestrator.automationRunTools().contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
-        #expect(Orchestrator.automationRunTools().contains("sphinx/post") && !tools.contains("sphinx/post"))
+        #expect(!Orchestrator.automationRunTools.contains { $0.hasPrefix("automation/") || $0 == "sphinx/send" })
+        #expect(Orchestrator.automationRunTools.contains("sphinx/post") && !tools.contains("sphinx/post"))
     }
 
     @Test func peelsSectionNamesStrutsToolsAndTheMac() {
-        let section = Orchestrator.section()
+        let section = Orchestrator.section
         for words in ["sphinx/unseen with no chat", "on their Mac, by asking it", "waiting for their Mac", "sphinx/send sends",
-                      "memory/remember", "memory/get with user true", "from the time the message starts with",
+                      "graph/assert", "from the time the message starts with",
                       "automation/list before changing it", ChatData.begin, AgentMessageLink.instruction] {
             #expect(section.contains(words), "\(words)")
         }
         for swift in ["read_unseen_messages", "current_time", "read_memory", "list_automations", "send_sphinx_message", "this device"] {
             #expect(!section.contains(swift), "\(swift)")
         }
-        let unattended = Orchestrator.unattended()
-        #expect(unattended.contains("sphinx/unseen") && unattended.contains("memory/remember"))
+        let unattended = Orchestrator.unattended
+        #expect(unattended.contains("sphinx/unseen") && unattended.contains("graph/assert"))
         #expect(!unattended.contains("sphinx/send") && !unattended.contains("automation/") && unattended.contains("sphinx/post"))
-        #expect(!Orchestrator.automationRunTools().contains(DeviceStep.diagnostics.type), "an automation never reads Peel's record")
+        #expect(!Orchestrator.automationRunTools.contains(DeviceStep.diagnostics.type), "an automation never reads Peel's record")
         #expect(section.contains("give it a grant"))
         // The prompts name the steps by hand: each one granted is named.
         for step in DeviceStep.reads.map(\.type) + [DeviceStep.diagnostics.type, DeviceStep.send.type] + Orchestrator.memoryTools + ["automation/list"] {
             #expect(section.contains(step), "\(step)")
         }
-        for step in Orchestrator.automationRunTools() { #expect(unattended.contains(step), "\(step)") }
+        for step in Orchestrator.automationRunTools { #expect(unattended.contains(step), "\(step)") }
     }
 
-    /// Off, the delta has nothing of the graph's: memory stays on the old database.
-    @Test func offTheDeltaKeepsTheOldMemory() throws {
+    /// strut's memory on the graph, the Personal root, the readers, and
+    /// the graph tools, never `memory/*`, on the orchestrator and an
+    /// automation's run, with a prompt that names each one and no type.
+    @Test func theDeltaPutsMemoryOnTheGraph() throws {
         let config = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(), as: UTF8.self))
-        for key in ["memory", "concepts", "graphReaders"] { #expect(config[key] == nil, "\(key)") }
-        #expect(try Orchestrator.hostConfig() == Orchestrator.hostConfig(graph: false))
-        #expect(!Orchestrator.automationRunYAML().contains("graph/"))
-    }
-
-    /// On (`BundledStrut.graphMemory`): strut's memory on the graph, the
-    /// Personal root, the readers, and the graph tools in place of
-    /// `memory/*` on the orchestrator and an automation's run, with a
-    /// prompt that names each one and no type.
-    @Test func onTheDeltaPutsMemoryOnTheGraph() throws {
-        let config = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(graph: true), as: UTF8.self))
         #expect(config["memory"] == "graph" && config["concepts"] == ["personal": true])
         let readers = try #require(config["graphReaders"])
         #expect(readers["assistant"]?["workflows"] == ["orchestrator", "peel-automation-run"])
@@ -79,17 +70,17 @@ struct OrchestratorTests {
         for outside in ["apps", "peers"] { #expect(readers[outside]?["namespaces"] == ["shared"], "\(outside)") }
         let tools = config["orchestrator"]?["tools"]?.array?.compactMap(\.string) ?? []
         #expect(!tools.contains { $0.hasPrefix("memory/") })
-        #expect(Set(Orchestrator.graphMemoryTools).isSubset(of: tools))
+        #expect(Set(Orchestrator.memoryTools).isSubset(of: tools))
         #expect(Set(["graph/resolve", "graph/assert", "graph/merge", "graph/unmerge", "graph/create-triplet"]).isSubset(of: tools))
-        let run = Orchestrator.automationRunTools(graph: true)
-        #expect(!run.contains { $0.hasPrefix("memory/") } && Set(Orchestrator.graphMemoryTools).isSubset(of: run))
-        #expect(Orchestrator.automationRunYAML(graph: true).contains("graph/assert"))
+        let run = Orchestrator.automationRunTools
+        #expect(!run.contains { $0.hasPrefix("memory/") } && Set(Orchestrator.memoryTools).isSubset(of: run))
+        #expect(Orchestrator.automationRunYAML().contains("graph/assert") && !Orchestrator.automationRunYAML().contains("memory/"))
         // A job's tools are its MCP grants only: the graph tools are the assistant's.
         #expect(config["job"]?["tools"] == [])
 
-        let section = Orchestrator.section(graph: true), unattended = Orchestrator.unattended(graph: true)
+        let section = Orchestrator.section, unattended = Orchestrator.unattended
         #expect(config["orchestrator"]?["system"]?.string == section)
-        for step in Orchestrator.graphMemoryTools {
+        for step in Orchestrator.memoryTools {
             #expect(section.contains(step), "\(step)")
             #expect(unattended.contains(step), "\(step)")
         }
@@ -100,7 +91,7 @@ struct OrchestratorTests {
         #expect(!section.contains("memory/"))
         // No type or edge names: the ontology has them.
         for type in ["Person", "Place", "Topic", "Lingo", "LIVES_IN", "WORKS_AT"] {
-            #expect(Orchestrator.graphMemoryPrompt.range(of: "\\b\(type)\\b", options: .regularExpression) == nil, "\(type)")
+            #expect(Orchestrator.memoryPrompt.range(of: "\\b\(type)\\b", options: .regularExpression) == nil, "\(type)")
         }
     }
 

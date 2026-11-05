@@ -489,7 +489,7 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
                                 Circle().fill(Theme.accent).frame(width: 6, height: 6).accessibilityHidden(true)
                             }
                             Text(preview)
-                                .font(Theme.font(12, unread ? .semibold : .regular))
+                                .font(Theme.font(11, unread ? .semibold : .regular))
                                 .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
                                 .lineLimit(1)
                                 .truncationMode(.tail)

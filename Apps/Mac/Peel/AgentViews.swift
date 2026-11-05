@@ -370,7 +370,7 @@ private struct AgentToolLineRow: View {
     let tool: AgentToolLine
 
     var body: some View {
-        let asked = AgentToolTitle.asked(tool.summary)
+        let asked = AgentToolTitle.asked(tool.summary, tool: tool.name)
         HStack(spacing: 6) {
             Text(AgentToolTitle.of(tool.name))
                 .layoutPriority(1)

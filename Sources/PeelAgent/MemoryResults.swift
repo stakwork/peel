@@ -19,22 +19,52 @@ public enum MemoryResult: Sendable, Equatable {
     /// or what was said that it remembered.
     public static func asked(tool: String, input: JSONValue) -> String? {
         switch tool {
-        case "recall": input["q"]?.string.map { "Searched for \u{201C}\(MemoryRef.clean($0))\u{201D}" }
+        case "recall", "graph_graph_search": input["q"]?.string.map { "Searched for \u{201C}\(MemoryRef.clean($0))\u{201D}" }
         case "remember": input["episode"]?.string.map { "From \u{201C}\(MemoryRef.clean($0))\u{201D}" }
         default: nil
         }
     }
 
     /// The tools whose rows read as one.
-    public static let tools: Set<String> = ["remember", "recall", "read_memory"]
+    public static let tools: Set<String> = ["remember", "recall", "read_memory", "graph_graph_search", "graph_graph_get", "graph_graph_neighbors", "graph_resolve", "graph_assert"]
 
-    public init?(tool: String, row: JSONValue) {
+    /// `input`: what the tool was asked, for the graph's assert, whose
+    /// answer leaves out the sentences it wrote.
+    public init?(tool: String, row: JSONValue, input: JSONValue = .null) {
         switch tool {
         case "remember": self = .remembered(Remembered(row))
         case "recall": self = .found(MemoryRef.once((row.array ?? []).compactMap { MemoryRef($0, name: "name", type: "node_type") }, \.id))
         case "read_memory":
             guard let node = MemoryNode(row) else { return nil }
             self = .read(node)
+        // Memory on the workspace graph: what a search found, or the node read, each opened from the graph.
+        // The facts found come first: they answer; the nodes are what they are about.
+        case "graph_graph_search":
+            let nodes = row["nodes"]?.array ?? row.array ?? []
+            let facts = (row["facts"]?.array ?? []).compactMap { fact -> MemoryRef? in
+                guard let text = fact["text"]?.string, let about = fact["source"]?["ref_id"]?.string else { return nil }
+                return MemoryRef.graphFact(about: about, id: fact["ref_id"]?.string ?? text, text: text)
+            }
+            self = .found(MemoryRef.once(facts + nodes.compactMap { MemoryRef(graph: $0) }, \.id))
+        // What a name was matched to, or the nodes close to it.
+        case "graph_resolve":
+            let found = row["match"].flatMap { MemoryRef(graph: $0) }.map { [$0] }
+                ?? (row["candidates"]?.array ?? []).compactMap { MemoryRef(graph: $0) }
+            self = .found(MemoryRef.once(found, \.id))
+        // A node's links: each sentence opens as the node's panel names it (`MemoryNode.graph`), then the bare links.
+        case "graph_graph_neighbors":
+            let node = input["ref_id"]?.string ?? ""
+            let links = row.array ?? []
+            let facts = links.enumerated().compactMap { i, n in
+                n["text"]?.string.map { MemoryRef(id: "\(node)#\(i)", name: MemoryRef.clean($0), graph: true) }
+            }
+            let others = links.filter { $0["text"]?.string == nil }.compactMap { MemoryRef(graph: $0) }
+            self = .found(MemoryRef.once(facts + others, \.id))
+        case "graph_assert":
+            self = .remembered(Remembered(graph: row, input: input))
+        case "graph_graph_get":
+            guard let ref = MemoryRef(graph: row) else { return nil }
+            self = .found([ref])
         default: return nil
         }
     }
@@ -69,6 +99,26 @@ public enum MemoryResult: Sendable, Equatable {
             }
             notes = MemoryRef.once((output["ontology"]?["notes"]?.array ?? []).compactMap { $0.string.map(MemoryRef.clean) }, \.self)
         }
+
+        /// The graph's assert: one fact's fields, or `facts`, asked and
+        /// answered in the same order. The sentences come from what was
+        /// asked; whether each was new and what it replaced, from the answer.
+        init(graph output: JSONValue, input: JSONValue) {
+            let asked = input["facts"]?.array ?? [input]
+            let answered = output["facts"]?.array ?? [output]
+            facts = MemoryRef.once(zip(asked, answered).compactMap { ask, answer in
+                guard let text = ask["text"]?.string, let about = answer["source_ref_id"]?.string, !about.isEmpty else { return nil }
+                let replaced = (answer["superseded"]?.array ?? []).compactMap { old in
+                    (old.string ?? old["ref_id"]?.string).map { MemoryRef.graphFact(about: about, id: $0, text: old["text"]?.string ?? "") }
+                }
+                return Written(fact: MemoryRef.graphFact(about: about, id: answer["edge_ref_id"]?.string ?? text, text: text),
+                               isNew: answer["action"]?.string != "unchanged", replaced: replaced)
+            }, \.fact.id)
+            // Its answer names no one by name: the facts say who they are about.
+            about = []
+            proposed = []
+            notes = []
+        }
     }
 
     public struct Written: Sendable, Equatable {
@@ -95,16 +145,33 @@ public struct MemoryRef: Sendable, Equatable, Hashable {
     public var id: String
     public var name: String
     public var type: String?
+    /// A node of the workspace graph (memory on the graph), read with
+    /// strut's graph steps, not the old memory's `memory/get`.
+    public var graph = false
 
-    public init(id: String, name: String, type: String? = nil) {
+    public init(id: String, name: String, type: String? = nil, graph: Bool = false) {
         self.id = id
         self.name = name
         self.type = type
+        self.graph = graph
+    }
+
+    /// A graph node as strut's graph steps name one: `{ref_id, name, node_type}`
+    /// (`title` for the name in a resolve's match).
+    init?(graph value: JSONValue) {
+        guard let id = value["ref_id"]?.string else { return nil }
+        self.init(id: id, name: Self.clean(value["name"]?.string ?? value["title"]?.string ?? ""), type: value["node_type"]?.string, graph: true)
     }
 
     init?(_ value: JSONValue, name: String, type: String?) {
         guard let id = value["ref_id"]?.string else { return nil }
         self.init(id: id, name: Self.clean(value[name]?.string ?? ""), type: type.flatMap { value[$0]?.string })
+    }
+
+    /// A fact on the graph, named by its subject node: it opens that node's
+    /// panel, which holds the fact (`"<node>#<fact>"`, as `MemoryNode.graph`).
+    static func graphFact(about node: String, id: String, text: String) -> MemoryRef {
+        MemoryRef(id: "\(node)#\(id)", name: clean(text), graph: true)
     }
 
     /// A replaced fact: `{ref_id, text}`, or a bare ref_id.
@@ -162,6 +229,30 @@ public enum MemoryNode: Sendable, Equatable {
                 }, \.fact.id),
                 mentionedIn: output["mentioned_in_episodes"]?.int ?? 0))
         }
+    }
+
+    /// One graph node as its panel shows it, from `graph/graph-get` and
+    /// `graph/graph-neighbors`: the node with its other names and current
+    /// facts (a neighbor's edge with a sentence), and each fact as its own
+    /// node, opened from the node's panel. Nil when `get` is no node.
+    public static func graph(get: JSONValue, neighbors: JSONValue) -> (node: MemoryNode, facts: [MemoryNode])? {
+        guard let me = MemoryRef(graph: get), let type = me.type else { return nil }
+        let props = get["properties"]
+        let aliases = (props?["alt_names"]?.array ?? []).compactMap { $0.string.map(MemoryRef.clean) }
+        var facts: [Fact] = []
+        for (i, n) in (neighbors.array ?? []).enumerated() {
+            guard let text = n["text"]?.string, let other = MemoryRef(graph: n) else { continue }
+            let forward = n["direction"]?.string != "reverse"
+            facts.append(Fact(
+                id: "\(me.id)#\(i)", text: MemoryRef.clean(text), predicate: (n["edge_type"]?.string ?? "").lowercased(),
+                subject: forward ? me : other, object: forward ? other : me,
+                since: date(n["valid_at"]), expired: date(n["expired_at"]), byAgent: false,
+                from: [], replaced: [], replacedBy: []))
+        }
+        let entity = Entity(ref: MemoryRef(id: me.id, name: me.name, type: type, graph: true), aliases: aliases,
+                            facts: facts.map { Entity.Known(fact: MemoryRef(id: $0.id, name: $0.text, type: "Fact", graph: true), since: $0.since) },
+                            mentionedIn: 0)
+        return (.entity(entity), facts.map(MemoryNode.fact))
     }
 
     public var ref: MemoryRef {

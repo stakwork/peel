@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #484 (the app wallet's contract: strut's UI relays an app's `strut/wallet/*` calls to Peel's `strutWallet` handler, docs/app-wallet.md), after #405–#483 (Peel's memory on the workspace graph behind the host config's `memory: "graph"`, left off here, so memory/* stays as it was; voice calls and `/audio/speak`; the run graph and walk views; docx and sheets steps; paged run lists) and #370–#404.
-30d4c8bf51024b9a1c782d4bfa48b9f31bda6f7f
+# stakwork/strut main after #504: #502 (dictation's fixer loads at start), #503 (home pull on the graph), #504 (a fact ranks above its end), on top of #482 (graph memory v1: the import, dictation's vocabulary on the graph, search with embeddings) and #484 (the app wallet's contract, docs/app-wallet.md).
+0eeecdf486d5db7bbc262b036cebad2f27400d7e

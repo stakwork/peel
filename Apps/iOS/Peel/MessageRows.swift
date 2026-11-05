@@ -764,7 +764,7 @@ struct AgentToolLines: View {
         VStack(alignment: .leading, spacing: 2) {
             // By position: a reply may run one tool twice.
             ForEach(Array(tools.enumerated()), id: \.offset) { _, tool in
-                let asked = AgentToolTitle.asked(tool.summary)
+                let asked = AgentToolTitle.asked(tool.summary, tool: tool.name)
                 HStack(spacing: 6) {
                     Text(AgentToolTitle.of(tool.name))
                         .layoutPriority(1)

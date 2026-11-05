@@ -115,12 +115,19 @@ final class WalletSheetPresenter {
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
                 let once = Once(continuation)
-                let sheet = NSWindow(contentViewController: NSHostingController(rootView: make { [weak self] answer in
+                let host = NSHostingController(rootView: make { [weak self] answer in
                     let counts = self?.stillOpen() ?? false
                     self?.close()
                     once.resume(counts ? answer : nil)
-                }))
+                })
+                let sheet = NSWindow(contentViewController: host)
                 sheet.styleMask.remove(.resizable)
+                // At the content's own size: left to the hosting view, the
+                // sheet opens at the smallest height the content allows,
+                // each fact squeezed to its least and its lines over the
+                // next one's.
+                sheet.setContentSize(host.sizeThatFits(in: NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                                                  height: .greatestFiniteMagnitude)))
                 open = (sheet, { once.resume(nil) })
                 parent.beginSheet(sheet)
             }

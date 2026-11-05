@@ -72,6 +72,18 @@ final class VoiceModeController {
     /// The draft held while muted; what is heard after unmuting is added to it
     /// (the listener's own text starts again at each mute and unmute).
     @ObservationIgnored private var draftBase = ""
+    /// The draft held while something is read over it (a failed send's
+    /// "say Peel send to try again", a reply that came while you paused):
+    /// it comes back when the speech ends or is stopped.
+    @ObservationIgnored private var heldDraft: String?
+    /// When the draft last changed, so a reply waits while you are talking.
+    @ObservationIgnored private var lastDictation = Date.distantPast
+    /// The agent's messages already read or there before voice mode, by uuid.
+    @ObservationIgnored private var seen: Set<String> = []
+    @ObservationIgnored private var lastThinkingCue = Date.distantPast
+    /// Voice mode is ending on a problem: the problem tone, not the off one.
+    @ObservationIgnored private var problemEnding = false
+    private let cues = VoiceCues()
 
     /// A message sent and not yet answered.
     private struct PendingTurn {
@@ -84,7 +96,11 @@ final class VoiceModeController {
         var announcedApproval = false
     }
 
-    private static let confirmation = "Voice mode on. Say Peel send when you are done."
+    private static let sendFailed = "I could not send that. Say Peel send to try again."
+    /// How long the draft must be still before a reply is read over it.
+    private static let quietBeforeSpeaking: TimeInterval = 3
+    /// How often the thinking tone sounds while the agent works.
+    private static let thinkingEvery: TimeInterval = 10
     private static let approval = "Peel is waiting for your approval. Approve it on your Mac."
     /// How long a sent message may take to show in the chat before voice mode stops waiting for it.
     private static let findTimeout: TimeInterval = 20
@@ -132,7 +148,9 @@ final class VoiceModeController {
         settings = VoiceSettings(defaults: .standard)
         retries = 0
         draftBase = ""
+        heldDraft = nil
         echo.reset()
+        seen = Set(model.timeline.messages.filter { $0.chat == chat }.compactMap(\.uuid))
         perform(machine.apply(.start))
         do {
             try activateSession()
@@ -143,7 +161,8 @@ final class VoiceModeController {
         }
         observe()
         supervise()
-        if settings.spokenReplies { say([Self.confirmation]) }
+        // A tone, not a sentence: words said over a spoken greeting were lost.
+        cues.play(.start)
     }
 
     func stop() {
@@ -164,6 +183,7 @@ final class VoiceModeController {
     /// The panel's Stop speaking.
     func stopSpeaking() {
         perform(machine.apply(.command(.stopSpeaking)))
+        restoreHeldDraft()
     }
 
     /// Voice mode, any way it ends: everything it holds is given back.
@@ -181,14 +201,30 @@ final class VoiceModeController {
         observers = []
         pendingTurn = nil
         draftBase = ""
+        heldDraft = nil
+        seen = []
         echo.reset()
         level = 0
-        deactivateSession()
-        rearmIfWanted()
+        let ending: VoiceCues.Cue = problemEnding ? .problem : .end
+        problemEnding = false
+        if wantsWake {
+            // `arm` sets the session up for itself.
+            rearmIfWanted()
+        } else {
+            cues.play(ending)
+            // Long enough for the tone; not if voice mode came back meanwhile.
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(400))
+                guard let self, !phase.isActive, !isArmed, !starting else { return }
+                cues.stop()
+                deactivateSession()
+            }
+        }
     }
 
     private func fail(_ problem: String) {
         if let chat = model?.agentChat { model?.conversationNotices[chat] = problem }
+        problemEnding = true
         perform(machine.apply(.failure(problem)))
     }
 
@@ -244,15 +280,23 @@ final class VoiceModeController {
         }
         let before = Set(model.timeline.messages.compactMap(\.uuid))
         Task {
-            let sent = await model.send(text, from: .chat(chat))
+            // The text alone: not the composer's files or reply target.
+            let sent = await model.sendDictated(text, to: chat)
             perform(machine.apply(.sendFinished(sent: sent)))
             guard phase.isActive else { return }
             if sent {
+                // A turn still unanswered is replaced: its reply is read
+                // when it comes, as a new message (`announceNew`).
                 pendingTurn = PendingTurn(chat: chat, text: text, before: before)
                 draftBase = ""
                 listener?.resetTranscript()
+                cues.play(.sent)
+                lastThinkingCue = Date()
             } else {
-                say(["I could not send that."])
+                // The draft is kept (`say` holds it): a tunnel must not cost
+                // what was said.
+                cues.play(.problem)
+                say([Self.sendFailed])
             }
         }
     }
@@ -261,6 +305,8 @@ final class VoiceModeController {
 
     private func say(_ chunks: [String]) {
         guard phase.isActive, !chunks.isEmpty else { return }
+        // Read over a draft: it is kept and comes back after.
+        if phase == .hearing, heldDraft == nil { heldDraft = machine.draft }
         speaker.stop()
         silence?.cancel()
         routeEchoSafe = Self.isEchoSafeRoute()
@@ -275,7 +321,20 @@ final class VoiceModeController {
         // `.speechEnded` clears the draft and the listener's text: a fresh
         // recognition task, so what the room heard is never dictation.
         perform(machine.apply(.speechEnded))
+        restoreHeldDraft()
         if pendingTurn != nil { perform(machine.apply(.awaitReply)) }
+        if phase == .listening || phase == .hearing { cues.play(.ready) }
+    }
+
+    /// The draft held over a speech is the draft again, and what is said
+    /// next is added to it.
+    private func restoreHeldDraft() {
+        guard let held = heldDraft else { return }
+        heldDraft = nil
+        guard phase == .listening || phase == .waiting else { return }
+        draftBase = held
+        perform(machine.apply(.transcript(held)))
+        lastDictation = Date()
     }
 
     // MARK: Listening
@@ -321,6 +380,7 @@ final class VoiceModeController {
             perform(machine.apply(.command(command)))
             // What was said is the command, not the next draft.
             if command != .send, command != .deactivate { listener?.resetTranscript() }
+            if command == .stopSpeaking { restoreHeldDraft() }
         case .none:
             // Only the user's message is taken as text; while muted, while the
             // agent answers or the speech plays, anything else is discarded
@@ -330,6 +390,7 @@ final class VoiceModeController {
                 return
             }
             perform(machine.apply(.transcript(compose(text))))
+            lastDictation = now
             scheduleSilence()
         }
     }
@@ -430,10 +491,47 @@ final class VoiceModeController {
             return
         }
         pollReply(model, hooks)
+        announceNew(model)
+        if phase == .waiting, !machine.isMuted, Date().timeIntervalSince(lastThinkingCue) >= Self.thinkingEvery {
+            lastThinkingCue = Date()
+            cues.play(.thinking)
+        }
+    }
+
+    /// Whether something may be read now: not over your words while you are
+    /// still saying them, nor over another speech.
+    private var canSpeakNow: Bool {
+        switch phase {
+        case .listening, .waiting: true
+        case .hearing: Date().timeIntervalSince(lastDictation) > Self.quietBeforeSpeaking
+        default: false
+        }
+    }
+
+    /// The agent's messages that are not the reply being waited for (a job
+    /// that finished, the answer to a message sent before the last one) are
+    /// read too when they come, so nothing it says is missed while driving.
+    private func announceNew(_ model: AppModel) {
+        guard canSpeakNow, let chat = model.agentChat else { return }
+        // Until the message just sent is found its reply cannot be told apart.
+        if let turn = pendingTurn, turn.sentUUID == nil { return }
+        let new = model.timeline.messages.filter { message in
+            guard message.chat == chat, !message.fromMe, message.type == MessageType.text, !message.deleted,
+                  message.control == nil, let uuid = message.uuid, !seen.contains(uuid) else { return false }
+            return pendingTurn == nil || message.replyUUID != pendingTurn?.sentUUID
+        }
+        guard !new.isEmpty else { return }
+        new.compactMap(\.uuid).forEach { seen.insert($0) }
+        guard settings.spokenReplies else { return }
+        let spoken = new.map { SpokenText(markdown: $0.shownText) }.filter { !$0.chunks.isEmpty }
+        guard !spoken.isEmpty else { return }
+        let intro = new.contains { $0.replyUUID != nil } ? "Peel answered an earlier message." : "A new message from Peel."
+        lastReply = spoken.last
+        say([intro] + spoken.flatMap(\.chunks))
     }
 
     private func pollReply(_ model: AppModel, _ hooks: Hooks) {
-        guard var turn = pendingTurn, phase == .waiting || phase == .listening else { return }
+        guard var turn = pendingTurn, phase != .sending, phase != .speaking else { return }
         let messages = model.timeline.messages.filter { $0.chat == turn.chat }
         defer { if pendingTurn != nil { pendingTurn = turn } }
 
@@ -444,6 +542,8 @@ final class VoiceModeController {
             }
             return
         }
+        // Read nothing over your words while you are still saying them.
+        guard canSpeakNow else { return }
         if hooks.isWaitingApproval(), !turn.announcedApproval {
             turn.announcedApproval = true
             pendingTurn = turn
@@ -454,7 +554,9 @@ final class VoiceModeController {
             !message.fromMe && message.type == MessageType.text && !message.deleted && message.replyUUID == turn.sentUUID
         }
         if let reply {
-            finishTurn(&turn, reply: reply.shownText)
+            let already = reply.uuid.map { seen.contains($0) } ?? false
+            reply.uuid.map { _ = seen.insert($0) }
+            finishTurn(&turn, reply: already ? nil : reply.shownText)
         } else if !hooks.isAnswering() {
             // Not answering and nothing came (the turn was stopped here): stop waiting.
             let since = turn.idleSince ?? Date()
@@ -481,6 +583,7 @@ final class VoiceModeController {
         if let spoken, !spoken.chunks.isEmpty { lastReply = spoken }
         guard let spoken, settings.spokenReplies, !spoken.chunks.isEmpty else {
             perform(machine.apply(.replyReady(hasReply: false)))
+            if reply != nil, phase == .listening { cues.play(.ready) }
             return
         }
         perform(machine.apply(.replyReady(hasReply: true)))
@@ -551,10 +654,13 @@ final class VoiceModeController {
         let session = AVAudioSession.sharedInstance()
         // .voiceChat gives echo cancellation, so barge-in and speech coexist,
         // at the cost of a little speech volume and quality.
-        try session.setCategory(
-            .playAndRecord, mode: .voiceChat,
-            options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker, .interruptSpokenAudioAndMixWithOthers]
-        )
+        // Music and podcasts pause unless the user asked to keep them
+        // (`pauseOtherAudio`): mixed in, the microphone writes their words
+        // into the draft. They resume when voice mode ends
+        // (`.notifyOthersOnDeactivation`).
+        var options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
+        if !settings.pauseOtherAudio { options.insert(.interruptSpokenAudioAndMixWithOthers) }
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: options)
         try session.setActive(true)
         #endif
     }
@@ -562,7 +668,10 @@ final class VoiceModeController {
     private func activateWakeSession() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .defaultToSpeaker, .mixWithOthers])
+        // Not `.allowBluetoothHFP`: it would put AirPods in call quality, and
+        // the music with them, for as long as the chat is open. The phone's
+        // own microphone hears "Hey Peel"; voice mode takes the headset's.
+        try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothA2DP, .defaultToSpeaker, .mixWithOthers])
         try session.setActive(true)
         #endif
     }

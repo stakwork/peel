@@ -4,8 +4,8 @@ Talk to the Peel agent entirely by voice and listen to its answers, for
 example while driving: work on features, start jobs. The phone matters most;
 the Mac gets the same thing.
 
-**Status: written without a build or a device. Nothing here has been
-compiled, run or tested; see "Untested".**
+**Status: both apps build and the unit tests pass (2026-11-05); not yet
+tried on a device. See "Untested".**
 
 Serves `docs/VISION.md`: principle 1 (privacy: speech is recognised and
 spoken on the device, no reply leaves it) and principle 3 (the human
@@ -60,11 +60,14 @@ Tests: `VoiceCommandParserTests`, `EchoFilterTests`, `SpokenTextTests`,
    (`model.calls.call`) or a Mac dictation (`hooks.blocked`), asks for the
    microphone and speech permissions (a denied one leaves a notice in
    `model.conversationNotices[agentChat]`), configures the audio session,
-   starts the listener, says "Voice mode on. Say Peel send when you are done."
+   starts the listener and plays the start tone (a tone, not a sentence:
+   what was said over a spoken greeting was lost).
 2. The transcript is the draft, live. Send happens on a trailing "Peel send"
    (primary), or after a pause if the user turned that on (off by default).
-3. The draft goes through `AppModel.send(_:from: .chat(agentChat))`, the
-   composer's own path. No new send path.
+3. The draft goes through `AppModel.sendDictated(_:to:)`: the text alone,
+   so the composer's files, reply target and thread stay in the composer.
+   A failed send keeps the draft: "I could not send that. Say Peel send to
+   try again." is read over it (`heldDraft`) and the draft comes back after.
 4. `pollReply` (every 0.25 s with the meter) finds the message just sent in
    `model.timeline` (new uuid, same words), then waits for the agent's text
    that names it (`replyUUID`, the bridge's "one reply per message"), which is
@@ -77,7 +80,24 @@ Tests: `VoiceCommandParserTests`, `EchoFilterTests`, `SpokenTextTests`,
    nothing reaches the draft; the listener runs only for barge-in, under the
    echo rules below.
 6. After the speech: listening again with a fresh recognition task (empty
-   text), the draft cleared.
+   text), the draft cleared, unless one was held over the speech.
+7. While the agent answers you may already say the next message (`waiting`
+   is a dictating context). A reply that comes while you talk waits until
+   the draft has been still for 3 s, then is read over it and the draft
+   comes back. A second message replaces the turn waited for; the first
+   one's answer is then read as "Peel answered an earlier message."
+8. The agent's other messages while voice mode is on (a job that finished,
+   anything not the reply waited for) are read too, after "A new message
+   from Peel." (`announceNew`). Messages there before voice mode are not.
+
+### Sounds
+
+`VoiceCues` (Apps/Shared/Voice/VoiceCues.swift), sine tones made in code
+and played with `AVAudioPlayer` on voice mode's session, so the iPhone's
+silent switch does not hide them: start, sent, ready (listening again
+after a reply), thinking (every 10 s while the agent works), problem (a
+failed send, a failure that ends voice mode) and end. The end tone plays
+before the session is let go (400 ms later).
 
 The phone has no `agentAnswering`, `agentWaiting` or `stopAgentTurn` (they are
 the Mac's, `AppModel+Bridge.swift`): the phone uses `agentUnanswered` and
@@ -155,7 +175,7 @@ is dictation. The variants are in the same table (`wakeVariants`).
 
 | Command | Say | Heard |
 |---|---|---|
-| send | peel send, peel send it, peel send message, peel over | listening |
+| send | peel send, peel send it, peel send message, peel over (and "sent", "sent it", how the recogniser often writes "send" at the end) | listening |
 | discard the draft | peel scratch that, peel cancel message, peel never mind | listening |
 | stop speaking | peel stop | speaking |
 | repeat | peel repeat that, peel say that again, peel repeat | listening, waiting, speaking |
@@ -272,8 +292,11 @@ default.
 iPhone session (`VoiceModeController.activateSession`): category
 `.playAndRecord`, mode `.voiceChat`, options `.allowBluetoothHFP`,
 `.allowBluetoothA2DP`, `.defaultToSpeaker`,
-`.interruptSpokenAudioAndMixWithOthers` (music pauses or ducks while Peel
-speaks; not `.duckOthers`). Active on entering, deactivated with
+and, only when "Pause music while voice mode is on" is off,
+`.interruptSpokenAudioAndMixWithOthers`. Paused is the default: mixed in,
+music and podcasts are heard by the microphone and their words end up in
+the draft. They resume when voice mode ends. A navigation app's prompts
+still mix in and may be heard. Active on entering, deactivated with
 `.notifyOthersOnDeactivation` on leaving. `.voiceChat` gives echo
 cancellation (best effort; see "Echo" for what is done on top); the trade-off is that speech is
 a little quieter and flatter than in `.spokenAudio`, which would suit a
@@ -308,7 +331,8 @@ recording and ends if one starts.
 
 ## Settings
 
-Voice mode (iOS You tab, Mac Account › Agent): spoken replies, send after a
+Voice mode (iOS You tab, Mac Account › Agent): spoken replies, pause music
+(iPhone only, on by default), send after a
 pause (off by default; the seconds, 2–15, only when on), "Listen for Hey Peel while this chat is open",
 speaking speed, and which voice quality is installed with the hint to
 download one (iOS: Settings > Accessibility > Spoken Content > Voices; Mac:
@@ -379,7 +403,9 @@ b. Opt-in "Listen for Hey Peel while this chat is open": a light on-device
    loop (`arm()`) only while the agent chat is on screen and foreground
    (iPhone: `scenePhase == .active`; Mac: the window is key). It matches the
    activate phrases, with the phrase at the end of what it has heard. It uses
-   a `.playAndRecord` / `.mixWithOthers` session.
+   a `.playAndRecord` / `.mixWithOthers` session with `.allowBluetoothA2DP` and
+not `.allowBluetoothHFP`, so AirPods stay in music quality while the chat
+is open (the phone's microphone hears "Hey Peel").
 c. System routes that do work hands-free: Siri, and App Shortcuts.
 
 `StartVoiceModeIntent` ("Talk to Peel", "Hey Peel voice mode", an
@@ -395,13 +421,10 @@ category, iOS 26.4 and later) and is a later step. `peel-android` later.
 
 Everything: it was written without building or running. To try on a device:
 
-- the build itself (Swift 6 strictness around the audio tap, the recogniser's
-  callbacks and `NotificationCenter` closures were written to avoid main-actor
-  isolation traps, but not compiled)
-- the unit tests (`VoiceCommandParserTests`, `EchoFilterTests`, `SpokenTextTests`,
-  `VoiceModeStateTests`): written, not run; checked by hand only. One
-  mismatch was found that way and fixed: the sentence splitter does not break
-  before a lowercase word, so a quoted line is now its own sentence
+- the build: both apps build (Xcode 26.2, 2026-11-05); the audio tap's and
+  the recogniser's threads are not yet seen running
+- the unit tests: all five suites (86 tests) pass, run on 2026-11-05 in a
+  package holding only the voice sources
 - Bluetooth HFP and a car stereo, in and out of range
 - the lock screen with voice mode running; the orange indicator
 - Siri and phone-call interruptions, with and without resume
@@ -427,7 +450,11 @@ Everything: it was written without building or running. To try on a device:
   may ignore many), rewrite false positives (a mishearing form that is also a
   real word), the iPhone having no vocabulary at all, and the missing strut
   dictation pass (latency, once written)
-- `VoiceVocabularyTests`: written, desk-traced, not run
+- the tones: loud enough in a car, and not written down by the recogniser
+- echo on the iPhone speaker: voice processing cancels what the engine
+  plays, and `AVSpeechSynthesizer` plays outside it, so "Peel stop" over the
+  speech may not be heard there. If so, render the speech with
+  `AVSpeechSynthesizer.write` into a player node on the same engine
 
 ## Open questions and follow-ups
 

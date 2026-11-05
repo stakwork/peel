@@ -123,6 +123,7 @@ struct VoiceModeSettingsFields: View {
     @AppStorage(VoiceDefaults.autoSendKey) private var autoSend = VoiceDefaults.autoSend
     @AppStorage(VoiceDefaults.autoSendSecondsKey) private var seconds = VoiceDefaults.autoSendSeconds
     @AppStorage(VoiceDefaults.wakeListenKey) private var wakeListen = VoiceDefaults.wakeListen
+    @AppStorage(VoiceDefaults.pauseOtherAudioKey) private var pauseOtherAudio = VoiceDefaults.pauseOtherAudio
     @AppStorage(VoiceDefaults.speechRateKey) private var rate = VoiceDefaults.speechRate
 
     var body: some View {
@@ -134,6 +135,10 @@ struct VoiceModeSettingsFields: View {
             }
         }
         Toggle("Listen for \"Hey Peel\" while this chat is open", isOn: $wakeListen)
+        #if os(iOS)
+        // The Mac has no app audio session to pause other apps with.
+        Toggle("Pause music while voice mode is on", isOn: $pauseOtherAudio)
+        #endif
         Stepper(value: $rate, in: VoiceDefaults.speechRateRange, step: 0.1) {
             Text("Speaking speed: \(rate.formatted(.number.precision(.fractionLength(1))))×")
         }

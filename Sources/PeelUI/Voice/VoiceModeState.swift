@@ -35,11 +35,12 @@ public enum VoicePhase: Equatable, Sendable {
         }
     }
 
-    /// The context transcripts are heard in (`VoiceCommandParser`).
+    /// The context transcripts are heard in (`VoiceCommandParser`). While
+    /// the agent answers you may already say the next message.
     public var context: VoiceContext? {
         switch self {
-        case .listening, .hearing: .dictating
-        case .sending, .waiting: .waiting
+        case .listening, .hearing, .waiting: .dictating
+        case .sending: .waiting
         case .speaking: .speaking
         case .idle, .failed: nil
         }
@@ -141,6 +142,13 @@ public struct VoiceMachine: Equatable, Sendable {
         }
 
         switch (phase, event) {
+        case (.waiting, .transcript(let text)):
+            // The next message, said while the agent answers; silence (an
+            // empty text) keeps it waiting.
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+            draft = text
+            phase = .hearing
+            return []
         case (.listening, .transcript(let text)), (.hearing, .transcript(let text)):
             draft = text
             phase = hasDraft ? .hearing : .listening
@@ -205,6 +213,7 @@ public enum VoiceDefaults {
     public static let autoSendKey = "voice.autoSend.v2"
     public static let autoSendSecondsKey = "voice.autoSendSeconds.v2"
     public static let wakeListenKey = "voice.wakeListen"
+    public static let pauseOtherAudioKey = "voice.pauseOtherAudio"
     public static let speechRateKey = "voice.speechRate"
 
     public static let spokenReplies = true
@@ -214,6 +223,9 @@ public enum VoiceDefaults {
     public static let autoSendSeconds: Double = 5.0
     public static let autoSendRange: ClosedRange<Double> = 2.0...15.0
     public static let wakeListen = false
+    /// Music and podcasts pause while voice mode is on (iPhone), so the
+    /// microphone does not write down their words.
+    public static let pauseOtherAudio = true
     /// A factor of the system's default speaking rate.
     public static let speechRate: Double = 1.0
     public static let speechRateRange: ClosedRange<Double> = 0.7...1.5
@@ -232,6 +244,7 @@ public struct VoiceSettings: Equatable, Sendable {
     public var autoSend = VoiceDefaults.autoSend
     public var autoSendSeconds = VoiceDefaults.autoSendSeconds
     public var wakeListen = VoiceDefaults.wakeListen
+    public var pauseOtherAudio = VoiceDefaults.pauseOtherAudio
     public var speechRate = VoiceDefaults.speechRate
 
     public init() {}
@@ -243,6 +256,7 @@ public struct VoiceSettings: Equatable, Sendable {
         autoSendSeconds = value(VoiceDefaults.autoSendSecondsKey, VoiceDefaults.autoSendSeconds)
             .clamped(to: VoiceDefaults.autoSendRange)
         wakeListen = value(VoiceDefaults.wakeListenKey, VoiceDefaults.wakeListen)
+        pauseOtherAudio = value(VoiceDefaults.pauseOtherAudioKey, VoiceDefaults.pauseOtherAudio)
         speechRate = value(VoiceDefaults.speechRateKey, VoiceDefaults.speechRate)
             .clamped(to: VoiceDefaults.speechRateRange)
     }

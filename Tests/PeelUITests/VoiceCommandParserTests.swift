@@ -24,6 +24,8 @@ struct VoiceCommandParserTests {
         #expect(parse("peel send it") == .command(.send, textBefore: ""))
         #expect(parse("peel send message") == .command(.send, textBefore: ""))
         #expect(parse("peel over") == .command(.send, textBefore: ""))
+        #expect(parse("add a login page Peel sent") == .command(.send, textBefore: "add a login page"))
+        #expect(parse("peel sent it") == .command(.send, textBefore: ""))
         #expect(parse("peel stop") == .command(.stopSpeaking, textBefore: ""))
         #expect(parse("peel never mind") == .command(.discard, textBefore: ""))
         #expect(parse("peel cancel message") == .command(.discard, textBefore: ""))

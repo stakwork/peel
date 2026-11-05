@@ -56,14 +56,28 @@ struct VoiceModeStateTests {
         #expect(machine.draft == "")
     }
 
-    @Test func transcriptsAreIgnoredWhileWaitingAndSpeaking() {
+    @Test func theNextMessageCanBeSaidWhileWaiting() {
         var machine = started()
         _ = machine.apply(.transcript("hello"))
         _ = machine.apply(.command(.send))
         _ = machine.apply(.sendFinished(sent: true))
-        _ = machine.apply(.transcript("noise"))
+        _ = machine.apply(.transcript(" "))
         #expect(machine.phase == .waiting)
         #expect(machine.draft == "")
+        _ = machine.apply(.transcript("and another thing"))
+        #expect(machine.phase == .hearing)
+        #expect(machine.draft == "and another thing")
+        #expect(machine.apply(.command(.send)) == [.send("and another thing")])
+    }
+
+    @Test func transcriptsAreIgnoredWhileSendingAndSpeaking() {
+        var machine = started()
+        _ = machine.apply(.transcript("hello"))
+        _ = machine.apply(.command(.send))
+        _ = machine.apply(.transcript("noise"))
+        #expect(machine.phase == .sending)
+        #expect(machine.draft == "hello")
+        _ = machine.apply(.sendFinished(sent: true))
         _ = machine.apply(.speechStarted)
         _ = machine.apply(.transcript("the reply itself"))
         #expect(machine.phase == .speaking)
@@ -187,7 +201,7 @@ struct VoiceModeStateTests {
         #expect(machine.context == .muted)
         _ = machine.apply(.command(.unmute))
         #expect(machine.phase == .waiting)
-        #expect(machine.context == .waiting)
+        #expect(machine.context == .dictating)
     }
 
     @Test func aSendInFlightFinishesWhileMuted() {

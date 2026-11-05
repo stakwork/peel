@@ -60,7 +60,8 @@ public struct VoiceCommandPhrases: Sendable, Equatable {
             .deactivate: [
                 "end voice mode", "end voice session", "stop voice mode", "exit voice mode", "goodbye",
             ],
-            .send: ["send", "send it", "send message", "over"],
+            // "sent": how the recogniser often writes "send" at the end of a sentence.
+            .send: ["send", "send it", "send message", "over", "sent", "sent it"],
             .discard: ["scratch that", "cancel message", "never mind"],
             .stopSpeaking: ["stop"],
             .repeatReply: ["repeat that", "say that again", "repeat"],

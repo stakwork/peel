@@ -200,16 +200,18 @@ struct BundledStrutTests {
         let strut = try stagedStrut(in: root)
         defer { strut.stop(quietly: true) }
         // A first start with no old database: recorded as done, nothing imported.
-        let legacy = try await strut.start()
+        _ = try await strut.start()
         #expect(FileManager.default.fileExists(atPath: strut.memoryImportRecord.path))
-        // What a Peel from before the graph remembered, on the old database, with no import yet.
-        let me = try #require(try await legacy.run(step: "memory/ontology", [:])["user_type"]?.string)
-        let user: AgentKit.JSONValue = ["type": .string(me), "name": "Tom"]
-        _ = try await legacy.run(step: "memory/remember", [
-            "episode": "I live in Bristol.", "mentions": [user],
-            "facts": [["subject": user, "predicate": "lives_in", "text": "Tom lives in Bristol.", "object": ["type": "Place", "name": "Bristol"]]],
-        ])
         strut.stop(quietly: true)
+        // What a Peel from before the graph remembered ("Tom lives in Bristol."), on the
+        // old database, with no import yet: strut no longer has the steps that wrote it.
+        let fixture = try #require(Bundle.module.resourceURL).appending(path: "Fixtures/old-memory")
+        try FileManager.default.createDirectory(at: strut.oldMemory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        for name in ["graph.lbug", "graph.lbug.wal"] {
+            let to = strut.oldMemory.deletingLastPathComponent().appending(path: name)
+            try? FileManager.default.removeItem(at: to)
+            try FileManager.default.copyItem(at: fixture.appending(path: name), to: to)
+        }
         try FileManager.default.removeItem(at: strut.memoryImportRecord)
         #expect(FileManager.default.fileExists(atPath: strut.oldMemory.path))
 

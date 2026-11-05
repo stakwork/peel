@@ -106,7 +106,9 @@ let package = Package(
         // PeelAgent is Mac-only, and so are its tests.
         .testTarget(
             name: "PeelAgentTests",
-            dependencies: ["PeelAgent", "AgentKit", "PeelCore", "PeelTestSupport"]
+            dependencies: ["PeelAgent", "AgentKit", "PeelCore", "PeelTestSupport"],
+            // An old memory database, as a Peel from before the graph left it.
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(name: "AgentKitTests", dependencies: ["AgentKit", .product(name: "GRDB", package: "GRDB.swift")]),
         // Journeys through the real core against a local stack

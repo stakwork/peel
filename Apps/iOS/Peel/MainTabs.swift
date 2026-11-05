@@ -95,11 +95,22 @@ private struct YouTabIcon: View {
             .renderingMode(.original)
             .accessibilityHidden(true)
             .task(id: key) {
-                // `Avatar` draws a photo only once it is in the cache.
-                if let photo = key.photo?.httpsOnly.flatMap(URL.init), ImageCache.photos.cached(photo: photo) == nil {
-                    _ = await ImageCache.photos.image(photo: photo)
-                }
+                // Initials (or the cached photo) at once, as the fallback.
                 image = Self.render(key)
+                // `Avatar` draws a photo only once it is in the cache, and a
+                // fetch at launch can fail: try again, a few times, slower.
+                guard let photo = key.photo?.httpsOnly.flatMap(URL.init),
+                      ImageCache.photos.cached(photo: photo) == nil else { return }
+                var delay: UInt64 = 1
+                for _ in 0..<5 {
+                    if Task.isCancelled { return }
+                    _ = await ImageCache.photos.image(photo: photo)
+                    if ImageCache.photos.cached(photo: photo) != nil { break }
+                    try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+                    delay *= 2
+                }
+                if Task.isCancelled { return }
+                if ImageCache.photos.cached(photo: photo) != nil { image = Self.render(key) }
             }
     }
 

@@ -1,9 +1,9 @@
 #!/bin/sh
 # Stages the strut Peel ships, for bundle-app.sh to copy into
 # Contents/Strut: strut's desktop package (scripts/package-desktop.mjs in a
-# strut checkout, with dictation's speech engine and fixer, with Ladybug, its extensions, the
-# memory/* steps, the graph memory steps (graph/assert, graph/import-memory and the graph
-# tidy-memory, for memory: "graph"), and the orchestrator with its automation/* steps) and
+# strut checkout, with dictation's speech engine, fixer and lexicon, with Ladybug, its
+# extensions, the graph memory steps (graph/assert, graph/import-memory and
+# tidy-memory), and the orchestrator with its automation/* steps) and
 # the Node that runs it, a pinned release checked against its SHA-256 on every
 # run. Apple silicon only. Built from the strut commit Vendor/strut.lock names
 # (its first line that is not a # comment), taken from the checkout with git
@@ -68,10 +68,10 @@ STAGE="$WORK/strut"
 # none of: desktop.js stamps it as STRUT_VERSION, and `strut move check`
 # refuses a box whose strut is not this exact commit.
 plutil -replace strut -string "$COMMIT" "$STAGE/desktop.json"
-for needed in native/lbugjs.node build/steps/lib/memory/remember.js build/workflows/orchestrator.yaml \
+for needed in native/lbugjs.node build/steps/lib/memory/lexicon.js build/workflows/orchestrator.yaml \
     build/steps/lib/automation/create.js build/steps/lib/graph/assert.js build/steps/lib/graph/import-memory.js \
-    build/workflows/system/tidy-memory/workflow.graph.yaml desktop.js desktop.json; do
-  [ -e "$STAGE/$needed" ] || { echo "stage-strut: the package has no $needed; the strut commit in Vendor/strut.lock lacks the memory steps, the graph memory steps (assert, import-memory, the graph tidy-memory), the orchestrator and its automation steps, or the desktop Ladybug package" >&2; exit 1; }
+    build/workflows/system/tidy-memory/workflow.yaml desktop.js desktop.json; do
+  [ -e "$STAGE/$needed" ] || { echo "stage-strut: the package has no $needed; the strut commit in Vendor/strut.lock lacks dictation's lexicon, the graph memory steps (assert, import-memory, tidy-memory), the orchestrator and its automation steps, or the desktop Ladybug package" >&2; exit 1; }
 done
 # Dictation's speech engine (sherpa), which /audio/transcribe needs, in native/ to be signed.
 [ "$(plutil -extract stt raw -o - "$STAGE/desktop.json")" = true ] && [ -e "$STAGE/native/sherpa-onnx.node" ] \

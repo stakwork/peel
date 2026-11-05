@@ -1,2 +1,2 @@
-# stakwork/strut main after #504: #502 (dictation's fixer loads at start), #503 (home pull on the graph), #504 (a fact ranks above its end), on top of #482 (graph memory v1: the import, dictation's vocabulary on the graph, search with embeddings) and #484 (the app wallet's contract, docs/app-wallet.md).
-0eeecdf486d5db7bbc262b036cebad2f27400d7e
+# stakwork/strut main at the merge of #506: the old memory retired (graph memory only; a read-only reader kept for the one-time import), Peel Home pull carries the whole memory graph; after #507 (fixer test), #502–#504 (dictation fixer at start, home pull on the graph, a fact ranks above its end), #482 (graph memory v1) and #484 (the app wallet's contract).
+f99b436047c7691275d6df190e7c2b85d243bf2e

@@ -23,11 +23,11 @@ enum AgentToolTitle {
         "delete_automation": "Delete an automation",
         "run_automation_now": "Run an automation",
         // strut's own job steps, on the orchestrator.
-        "job_start": "Started a job",
-        "job_continue": "Sent a job your answer",
-        "job_list": "Looked for a job",
-        "job_get": "Checked on a job",
-        "job_read": "Read a job's file",
+        "job_start": "Started a task",
+        "job_continue": "Answered a task's question",
+        "job_list": "Looked at your tasks",
+        "job_get": "Checked on a task",
+        "job_read": "Read a task's file",
         // Hive workspaces, paired as peers.
         "strut_list-peers": "Looked at your Stadeum workspaces",
         "strut_run-workflow": "Asked a Stadeum workspace",

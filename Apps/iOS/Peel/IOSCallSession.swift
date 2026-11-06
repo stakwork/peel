@@ -68,6 +68,9 @@ final class IOSCallSession {
     private(set) var state = State.connecting
     /// When the room first connected: the running time counts from here.
     private(set) var connectedAt: Date?
+    /// When the first participant joined the room, the earliest seen; the
+    /// timer counts from it so everyone's agrees.
+    private(set) var callStartedAt: Date?
     /// Everyone on the call, the others in the order they joined, you last.
     private(set) var tiles: [Tile] = []
     private(set) var micOn = false
@@ -164,8 +167,8 @@ final class IOSCallSession {
         case .reconnecting: return "Reconnecting…"
         case .lost: return "Disconnected"
         case .connected:
-            guard let connectedAt else { return "" }
-            let seconds = Int(max(0, now.timeIntervalSince(connectedAt)))
+            guard let start = callStartedAt ?? connectedAt else { return "" }
+            let seconds = Int(max(0, now.timeIntervalSince(start)))
             return Duration.seconds(seconds)
                 .formatted(.time(pattern: seconds >= 3600 ? .hourMinuteSecond : .minuteSecond(padMinuteToLength: 2)))
         }
@@ -389,6 +392,10 @@ final class IOSCallSession {
         case .connected:
             now = .connected
             if connectedAt == nil { connectedAt = .now }
+            let started = CallStart.earliest(
+                callStartedAt,
+                [room.localParticipant.joinedAt] + room.remoteParticipants.values.map(\.joinedAt))
+            if started != callStartedAt { callStartedAt = started }
         case .reconnecting:
             now = .reconnecting
         case .connecting:

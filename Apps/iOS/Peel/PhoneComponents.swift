@@ -33,11 +33,14 @@ struct CountBadge: View {
 struct PhoneSectionHeader: View {
     let title: String
     var expanded: Binding<Bool>?
+    /// Over a centred block (a QR code), not at the leading edge.
+    var centered = false
     @Environment(\.surface) private var surface
 
-    init(_ title: String, expanded: Binding<Bool>? = nil) {
+    init(_ title: String, expanded: Binding<Bool>? = nil, centered: Bool = false) {
         self.title = title
         self.expanded = expanded
+        self.centered = centered
     }
 
     var body: some View {
@@ -60,6 +63,7 @@ struct PhoneSectionHeader: View {
 
     private func label(open: Bool?) -> some View {
         HStack(spacing: 6) {
+            if centered { Spacer(minLength: 0) }
             Text(title).phoneFont(.sectionHeader)
             if let open {
                 Image(systemName: "chevron.down")

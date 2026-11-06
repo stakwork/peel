@@ -698,8 +698,8 @@ private struct TimeZoneRow: View {
 }
 
 /// Automatic, then every zone this Mac knows, filtered as you type a city
-/// or an offset.
-private struct ZonePicker: View {
+/// or an offset. Also the chat details' (`ChatTimeZoneSection`).
+struct ZonePicker: View {
     let chosen: String?
     let close: () -> Void
     let choose: (String?) -> Void

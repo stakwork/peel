@@ -5,7 +5,7 @@ import PeelUI
 import SwiftUI
 import WebKit
 
-/// A Strut app in a window of its own, at the screen's size, so the person
+/// A Strut app in a window of its own, in a regular window (not full screen), so the person
 /// need not go back and forth between the app and the conversation. Same rules as `AppPage`: a store that keeps nothing, `WebPane.limit`. Opening the same app again brings its window forward. Never described with its address, which holds strut's key.
 @MainActor
 final class StrutAppWindows {
@@ -40,19 +40,20 @@ final class StrutAppWindows {
         coordinator.watch(view)
         view.load(URLRequest(url: page.url))
 
-        let frame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        let size = NSSize(width: min(1100, screen.width), height: min(760, screen.height))
+        let frame = NSRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = page.name
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.contentView = view
-        window.setFrame(frame, display: true)
+        window.center()
         let closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.closed(key) }
         }
         open[key] = Entry(window: window, coordinator: coordinator, view: view, closing: closing)
         window.makeKeyAndOrderFront(nil)
-        window.toggleFullScreen(nil)
     }
 
     private func closed(_ key: String) {

@@ -89,7 +89,7 @@ final class CallFloatingBar {
                 NSApplication.shared.activate()
                 if window.isMiniaturized { window.deminiaturize(nil) }
                 window.makeKeyAndOrderFront(nil)
-            }, leave: leave)
+            }, leave: leave, panel: { [weak panel] in panel }, moved: { Self.remembered = $0 })
             let host = NSHostingView(rootView: bar)
             panel.contentView = host
             panel.setFrame(NSRect(origin: origin(for: host.fittingSize), size: host.fittingSize), display: true)
@@ -155,9 +155,20 @@ private struct CallFloatingBarView: View {
     let call: CallSession
     let returnToCall: () -> Void
     let leave: () -> Void
+    /// The panel this is shown in, to move it while the handle is dragged.
+    let panel: () -> NSWindow?
+    /// Called with the panel's origin when a drag ends.
+    let moved: (NSPoint) -> Void
+
+    /// The panel origin and mouse location (screen coordinates) when the
+    /// current drag began. Screen coordinates, since the panel moves under
+    /// the pointer and a window-relative location would feed back.
+    @State private var dragStart: (origin: NSPoint, mouse: NSPoint)?
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: Theme.Space.md) {
+            handle
             IconButton(help: call.micOn ? "Mute" : "Unmute", variant: .outline, action: call.toggleMicrophone) {
                 Image(systemName: call.micOn ? "mic" : "mic.slash")
                     .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
@@ -192,6 +203,47 @@ private struct CallFloatingBarView: View {
         .fixedSize()
     }
 
+    /// A grip on the left that drags the panel.
+    private var handle: some View {
+        Image(systemName: "ellipsis.vertical")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.secondaryText)
+            .frame(width: 28, height: IconButton<Image>.Size.md.side)
+            .contentShape(Rectangle())
+            // The panel is movable by its background; this keeps that from
+            // moving it a second time under the gesture.
+            .background(NoWindowDrag())
+            .onHover { inside in
+                guard inside != hovering else { return }
+                hovering = inside
+                if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
+            }
+            .onDisappear {
+                if hovering {
+                    hovering = false
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { _ in
+                        guard let panel = panel() else { return }
+                        let mouse = NSEvent.mouseLocation
+                        let start = dragStart ?? (origin: panel.frame.origin, mouse: mouse)
+                        dragStart = start
+                        panel.setFrameOrigin(NSPoint(x: start.origin.x + mouse.x - start.mouse.x,
+                                                     y: start.origin.y + mouse.y - start.mouse.y))
+                    }
+                    .onEnded { _ in
+                        dragStart = nil
+                        // Explicit, rather than relying on didMoveNotification.
+                        if let panel = panel() { moved(panel.frame.origin) }
+                    }
+            )
+            .help("Drag to move")
+            .accessibilityLabel("Move call bar")
+    }
+
     /// Share the entire screen, or stop sharing.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
@@ -205,4 +257,14 @@ private struct CallFloatingBarView: View {
             .disabled(call.state != .connected)
         }
     }
+}
+
+/// A view that does not let a mouse-down on it move the window.
+private struct NoWindowDrag: NSViewRepresentable {
+    private final class View: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+    }
+
+    func makeNSView(context: Context) -> NSView { View() }
+    func updateNSView(_ view: NSView, context: Context) {}
 }

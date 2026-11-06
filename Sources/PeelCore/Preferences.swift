@@ -375,7 +375,7 @@ public enum Preferences {
 }
 
 /// A chat's time zone item: share the offset there, and a zone for that
-/// chat only (set on another device; Peel never writes one of its own).
+/// chat only (chosen in the chat's details here or on another device).
 public struct TimeZoneSharing: Sendable, Equatable {
     public var enabled: Bool
     /// Nil means the account's zone ("" in the file).

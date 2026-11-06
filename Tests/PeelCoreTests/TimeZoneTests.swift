@@ -246,6 +246,66 @@ struct TimeZoneSharingTests {
         await #expect(throws: Engine.Failure.unknownTimeZone("BST")) { try await engine.setTimeZone("BST") }
     }
 
+    /// The picker's choice is kept per chat, as the official `timezone` item,
+    /// and the offset sent follows it, not the account's.
+    @Test func aChosenZoneIsKeptPerChatAndSent() async throws {
+        let (engine, storage) = try engine()
+        try await engine.setTimeZone("Europe/London")
+        try await engine.setChatTimeZone("Asia/Kolkata", in: person)
+        #expect(try await engine.chatTimeZone(in: person) == "Asia/Kolkata")
+        #expect(try storage.chatTimeZone(person) == TimeZoneSharing(enabled: true, identifier: "Asia/Kolkata"))
+        #expect(try await engine.chatTimeZone(in: privateTribe) == nil)
+        #expect(try await sent(to: person, engine) == "GMT+5:30")
+        #expect(try await engine.sharedOffset(in: privateTribe, type: MessageType.text) != "GMT+5:30")
+        // Another zone replaces it.
+        try await engine.setChatTimeZone("Asia/Bangkok", in: person)
+        #expect(try await sent(to: person, engine) == "GMT+7")
+    }
+
+    /// The switch and the zone are set apart: neither undoes the other.
+    @Test func theSwitchKeepsTheZoneAndTheZoneKeepsTheSwitch() async throws {
+        let (engine, storage) = try engine()
+        try await engine.setChatTimeZone("Asia/Bangkok", in: person)
+        try await engine.setTimeZoneSharing(false, in: person)
+        #expect(try storage.chatTimeZone(person) == TimeZoneSharing(enabled: false, identifier: "Asia/Bangkok"))
+        // Choosing with sharing off keeps it off and sends nothing.
+        try await engine.setChatTimeZone("Asia/Kolkata", in: person)
+        #expect(try storage.chatTimeZone(person) == TimeZoneSharing(enabled: false, identifier: "Asia/Kolkata"))
+        #expect(try await sent(to: person, engine) == nil)
+        try await engine.setTimeZoneSharing(true, in: person)
+        #expect(try storage.chatTimeZone(person) == TimeZoneSharing(enabled: true, identifier: "Asia/Kolkata"))
+        #expect(try await sent(to: person, engine) == "GMT+5:30")
+    }
+
+    /// Nil (or empty) is automatic again: the account's zone, "" in the file.
+    @Test func nilResetsToAutomatic() async throws {
+        let (engine, storage) = try engine()
+        try await engine.setTimeZone("Europe/London")
+        try await engine.setChatTimeZone("Asia/Bangkok", in: person)
+        try await engine.setChatTimeZone(nil, in: person)
+        #expect(try await engine.chatTimeZone(in: person) == nil)
+        #expect(try storage.chatTimeZone(person) == TimeZoneSharing(enabled: true, identifier: nil))
+        #expect(try await engine.timeZone(for: person).identifier == "Europe/London")
+        try await engine.setChatTimeZone("Asia/Bangkok", in: person)
+        try await engine.setChatTimeZone("", in: person)
+        #expect(try await engine.chatTimeZone(in: person) == nil)
+    }
+
+    /// A name Peel cannot read is refused and nothing is stored; so is a key
+    /// that is no chat. A public tribe may hold a choice (it never sends).
+    @Test func anUnknownZoneOrChatIsRefused() async throws {
+        let (engine, storage) = try engine()
+        await #expect(throws: Engine.Failure.unknownTimeZone("BST")) { try await engine.setChatTimeZone("BST", in: person) }
+        await #expect(throws: Engine.Failure.unknownTimeZone("../etc/passwd")) {
+            try await engine.setChatTimeZone("../etc/passwd", in: person)
+        }
+        #expect(try storage.chatTimeZone(person) == nil)
+        await #expect(throws: Engine.Failure.notAChat) { try await engine.setChatTimeZone("Asia/Bangkok", in: strangerKey) }
+        try await engine.setChatTimeZone("Asia/Bangkok", in: publicTribe)
+        #expect(try await engine.chatTimeZone(in: publicTribe) == "Asia/Bangkok")
+        #expect(try await sent(to: publicTribe, engine) == nil)
+    }
+
     @Test func theirLocalTimeIsTheNewestReadableOffsetWithin90Days() async throws {
         let (engine, storage) = try engine()
         try await engine.setTimeZone("UTC")

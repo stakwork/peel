@@ -103,6 +103,16 @@ extension AppModel {
         try await signedIn().setTimeZoneSharing(on, in: chat)
     }
 
+    /// The zone chosen for `chat` alone, nil for automatic.
+    public func chatTimeZone(in chat: String) async -> String? {
+        try? await engine?.chatTimeZone(in: chat)
+    }
+
+    /// Chooses the zone your offset comes from in `chat`, or nil for automatic.
+    public func setChatTimeZone(_ identifier: String?, in chat: String) async throws {
+        try await signedIn().setChatTimeZone(identifier, in: chat)
+    }
+
     /// Chooses this account's zone (an IANA name), or nil for this Mac's.
     public func setTimeZone(_ identifier: String?) async throws {
         try await signedIn().setTimeZone(identifier)

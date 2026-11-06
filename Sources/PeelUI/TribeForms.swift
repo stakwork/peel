@@ -312,19 +312,34 @@ public final class TribeJamiePicker {
     public static let showsSenders = "Knows who is speaking"
 }
 
-/// A chat's time zone switch, on the Mac and the iPhone: whether your
-/// offset goes with what you send there. Set at once, put back if the
-/// change is refused.
+/// A chat's time zone switch and zone, on the Mac and the iPhone: whether
+/// your offset goes with what you send there, and the zone it comes from
+/// (nil: automatic). Set at once, put back if the change is refused.
 @MainActor @Observable
 public final class TimeZoneSharingSwitch {
     /// Nil until read.
     public private(set) var sharing: Bool?
+    /// The zone chosen for the chat; nil is automatic.
+    public private(set) var identifier: String?
     public private(set) var problem: String?
 
     public init() {}
 
     public func load(_ chat: String, with model: AppModel) async {
         sharing = await model.timeZoneSharing(in: chat)
+        identifier = await model.chatTimeZone(in: chat)
+    }
+
+    public func setIdentifier(_ identifier: String?, in chat: String, with model: AppModel) async {
+        let was = self.identifier
+        self.identifier = identifier
+        problem = nil
+        do {
+            try await model.setChatTimeZone(identifier, in: chat)
+        } catch {
+            self.identifier = was
+            problem = PeelError.problem(error, couldNot: "change the time zone")
+        }
     }
 
     public func set(_ on: Bool, in chat: String, with model: AppModel) async {

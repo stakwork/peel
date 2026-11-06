@@ -88,7 +88,7 @@ private struct ContactDetailsView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    PhoneSectionHeader("Public key")
+                    PhoneSectionHeader("Public key", centered: true)
                     ShareableCode(text: conversation.chat, label: "QR code of their public key",
                                   copyTitle: "Copy key", showsText: true)
                 }
@@ -148,7 +148,7 @@ private struct TribeDetailsView: View {
                 facts
                 if let link = tribe.link {
                     VStack(alignment: .leading, spacing: Theme.Space.md) {
-                        PhoneSectionHeader("Tribe link")
+                        PhoneSectionHeader("Tribe link", centered: true)
                         ShareableCode(text: link, label: "QR code of the tribe link", copyTitle: "Copy link")
                     }
                 }
@@ -466,15 +466,18 @@ private struct TribeIdentity: View {
     }
 }
 
-/// Whether your time zone goes with what you send here, under a "Time
-/// zone" heading (`TimeZoneSharingSwitch`, the Mac's too). Nothing in a
-/// public tribe: it never gets it.
+/// Whether your time zone goes with what you send here, and the zone it
+/// comes from (a row that opens `TimeZoneList`, shown whether sharing is on
+/// or not, as in the official app), under a "Time zone" heading
+/// (`TimeZoneSharingSwitch`, the Mac's too). Nothing in a public tribe: it
+/// never gets it.
 private struct TimeZoneSwitch: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let tribe: Tribe?
 
     @State private var zone = TimeZoneSharingSwitch()
+    @State private var picking = false
 
     var body: some View {
         if conversation.offersTimeZoneSwitch(tribe: tribe) {
@@ -485,11 +488,138 @@ private struct TimeZoneSwitch: View {
                               isOn: Binding { sharing } set: { on in
                                   Task { await zone.set(on, in: conversation.chat, with: model) }
                               })
+                    zoneRow(zone.identifier)
                     if let problem = zone.problem { ProblemText(problem) }
                 }
             }
             .task(id: conversation.chat) { await zone.load(conversation.chat, with: model) }
+            .sheet(isPresented: $picking) {
+                SheetStack {
+                    TimeZoneList(chosen: zone.identifier) { identifier in
+                        Task { await zone.setIdentifier(identifier, in: conversation.chat, with: model) }
+                    }
+                }
+            }
         }
+    }
+
+    /// "Time zone" with the zone chosen and its offset, or Automatic and
+    /// this phone's.
+    private func zoneRow(_ identifier: String?) -> some View {
+        let shown = identifier.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent
+        return Button { picking = true } label: {
+            PhoneCard {
+                HStack(spacing: Theme.Space.sm) {
+                    Text("Time zone").phoneFont(.row).foregroundStyle(Theme.text)
+                    Spacer(minLength: Theme.Space.sm)
+                    Text(identifier.map { "\(TimeZoneList.label($0)) · \(TimeZoneOffset.format(shown))" }
+                         ?? "Automatic · \(TimeZone.current.identifier)")
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.tertiaryText)
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, Theme.Space.sm)
+                .frame(minHeight: Theme.touchTarget)
+                .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Time zone")
+        .accessibilityValue(identifier.map(TimeZoneList.label) ?? "Automatic")
+    }
+}
+
+/// A searchable list of zones: Automatic first, then every zone the phone
+/// knows (`TimeZone.knownTimeZoneIdentifiers`) that Peel can read, filtered
+/// by a city or an offset as you type. Choosing one closes it.
+private struct TimeZoneList: View {
+    let chosen: String?
+    let choose: (String?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    /// Offsets as of opening, so they follow summer time.
+    @State private var zones: [Zone] = []
+
+    struct Zone: Identifiable {
+        let id: String
+        let label: String
+        let offset: String
+        /// What a search matches, lowercased once.
+        let searched: String
+    }
+
+    /// "America/New York".
+    static func label(_ identifier: String) -> String {
+        identifier.replacingOccurrences(of: "_", with: " ")
+    }
+
+    var body: some View {
+        let search = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let matches = search.isEmpty ? zones : zones.filter { $0.searched.contains(search) }
+        List {
+            if search.isEmpty {
+                Section {
+                    row("Automatic", detail: "\(TimeZone.current.identifier) · \(TimeZoneOffset.format(.current))",
+                        checked: chosen == nil, pick: nil)
+                }
+                .phoneRows()
+            }
+            Section {
+                ForEach(matches) { zone in
+                    row(zone.label, detail: zone.offset, checked: zone.id == chosen, pick: zone.id)
+                }
+            } header: {
+                if search.isEmpty { PhoneSectionHeader("All time zones") }
+            }
+            .phoneRows()
+        }
+        .phoneList()
+        .searchable(text: $query, prompt: "Search cities or GMT+…")
+        .overlay {
+            if !zones.isEmpty, matches.isEmpty { ContentUnavailableView.search(text: search) }
+        }
+        .navigationTitle("Time zone")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
+        }
+        .onAppear {
+            guard zones.isEmpty else { return }
+            zones = TimeZone.knownTimeZoneIdentifiers.compactMap { id in
+                guard TimeZoneOffset.zone(id) != nil, let zone = TimeZone(identifier: id) else { return nil }
+                let label = Self.label(id), offset = TimeZoneOffset.format(zone)
+                return Zone(id: id, label: label, offset: offset, searched: "\(label) \(offset)".lowercased())
+            }
+        }
+    }
+
+    private func row(_ title: String, detail: String, checked: Bool, pick: String?) -> some View {
+        Button {
+            choose(pick)
+            dismiss()
+        } label: {
+            HStack(spacing: Theme.Space.sm) {
+                Text(title).phoneFont(.row).foregroundStyle(Theme.text)
+                Spacer(minLength: Theme.Space.sm)
+                Text(detail).phoneFont(.secondary).foregroundStyle(Theme.secondaryText).monospacedDigit()
+                Image(systemName: "checkmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .opacity(checked ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: Theme.touchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(checked ? .isSelected : [])
     }
 }
 

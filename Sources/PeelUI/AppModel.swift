@@ -143,8 +143,16 @@ public final class AppModel {
     public var search: ChatSearch?
     /// The thread open in the side panel, and what it holds.
     public var openThread: ThreadRef? {
-        didSet { if openThread != oldValue { observeThread() } }
+        didSet {
+            if openThread != oldValue {
+                if openThread != nil { detailsChat = nil }
+                observeThread()
+            }
+        }
     }
+    /// The chat whose details (a contact's, a tribe's) are open in the side
+    /// panel, in the thread's place: opening either closes the other.
+    public var detailsChat: String?
     public private(set) var thread: ChatThread?
     /// Threads this account started or wrote in, for the Threads list.
     public private(set) var threads: [ThreadSummary] = []

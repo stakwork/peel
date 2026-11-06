@@ -18,19 +18,57 @@ struct ConversationView: View {
 
     var body: some View {
         let thread = model.openThread.flatMap { $0.chat == conversation.chat ? $0 : nil }
-        SidePanelSplit(item: thread, width: $threadWidth, range: Self.threadRange,
+        // The details of a chat take the thread's place; each closes the other.
+        let side: ChatSide? = thread.map { ChatSide.thread($0) }
+            ?? (model.detailsChat == conversation.chat ? .details : nil)
+        SidePanelSplit(item: side, width: $threadWidth, range: Self.threadRange,
                        standard: ThreadPanel.width, minimumMain: Self.minimumWidth) {
             // Its draft lives in the model, so it survives being covered.
             ChatColumn(conversation: conversation)
-        } panel: { thread, beside in
-            ThreadPanel(conversation: conversation, ref: thread, beside: beside)
+        } panel: { side, beside in
+            switch side {
+            case .thread(let thread):
+                ThreadPanel(conversation: conversation, ref: thread, beside: beside)
+            case .details:
+                ChatDetailsPanel(conversation: conversation)
+            }
         }
         // The thread closed (its X, Escape): the keys go back to the chat's
         // composer, not left on the window. Not when the sidebar has them.
-        .onChange(of: thread == nil) { _, closed in
+        .onChange(of: side == nil) { _, closed in
             if closed, !model.sidebarHasKeys { model.composerFocus[.chat(conversation.chat), default: 0] += 1 }
         }
     }
+}
+
+/// What the chat's side panel shows.
+private enum ChatSide: Identifiable {
+    case thread(ThreadRef)
+    /// The contact's or the tribe's details.
+    case details
+
+    var id: String {
+        switch self {
+        case .thread(let ref): "thread-\(ref.uuid)"
+        case .details: "details"
+        }
+    }
+}
+
+/// A contact's or a tribe's details, in the chat's side panel.
+private struct ChatDetailsPanel: View {
+    @Environment(AppModel.self) private var model
+    let conversation: Conversation
+
+    var body: some View {
+        if conversation.isTribe, let tribe = model.tribes[conversation.chat] {
+            TribeDetailsPanel(conversation: conversation, tribe: tribe, done: close)
+        } else {
+            ChatInfoPanel(conversation: conversation, done: close)
+        }
+    }
+
+    private func close() { model.detailsChat = nil }
 }
 
 /// A column with a panel beside it on the right (a thread, the web pane, a
@@ -284,8 +322,9 @@ struct ChatFooter: View {
 /// A tribe's name, what it is about and what a message costs, then Call
 /// and More (H1): Browser, the second brain and the app (tabs in the web pane), Members,
 /// Tribe details (⌘I), the link, Notifications, Edit tribe for the owner and
-/// Leave, confirmed in the menu. Members, Tribe details and Edit open below
-/// More, the details from a click on the tribe's name or icon too.
+/// Leave, confirmed in the menu. Members and Edit open below
+/// More; Tribe details open in the side panel, from a click on the tribe's
+/// name or icon too.
 struct TribeHeader: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -294,7 +333,7 @@ struct TribeHeader: View {
     @State private var panel: HeaderPanel?
 
     /// Which of the tribe's panels is open below More.
-    private enum HeaderPanel: Equatable { case members, details, edit }
+    private enum HeaderPanel: Equatable { case members, edit }
 
     private var subtitle: String? {
         guard let tribe else { return nil }
@@ -305,7 +344,7 @@ struct TribeHeader: View {
     }
 
     var body: some View {
-        DetailHeader(title: conversation.name, subtitle: subtitle, onTitle: { panel = .details }) {
+        DetailHeader(title: conversation.name, subtitle: subtitle, onTitle: { model.openDetails(of: conversation.chat) }) {
             ConversationIcon(conversation: conversation, size: Theme.AvatarSize.lg)
         } trailing: {
             HStack(spacing: Theme.Space.xs) {
@@ -313,11 +352,7 @@ struct TribeHeader: View {
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
                 }
-                HeaderMoreButton(
-                    chat: conversation.chat, detailsTitle: "Tribe details", showsDetails: shows(.details), entries: entries
-                ) {
-                    details
-                }
+                HeaderMoreButton(chat: conversation.chat, detailsTitle: "Tribe details", entries: entries)
                 .peelPopover(isPresented: shows(.members)) {
                     TribeMembersPanel(conversation: conversation, tribe: tribe) { panel = nil }
                 }
@@ -328,14 +363,6 @@ struct TribeHeader: View {
         }
         // A panel asked for in one tribe never opens over the next.
         .onChange(of: conversation.chat) { panel = nil }
-    }
-
-    @ViewBuilder private var details: some View {
-        if let tribe {
-            TribeDetailsPanel(
-                conversation: conversation, tribe: tribe, members: { panel = .members }, edit: { panel = .edit }
-            ) { panel = nil }
-        }
     }
 
     private func entries(details: MenuEntry) -> [MenuEntry] {
@@ -360,26 +387,23 @@ struct TribeHeader: View {
     }
 }
 
-/// A chat header's More (•••): its menu below it, and the chat's details
-/// panel, which opens below it however it is asked for: the menu's Details
-/// (handed to `entries` to place), ⌘I from anywhere in the chat, or a click
-/// on the header's name or icon (the header sets `showsDetails`).
-struct HeaderMoreButton<Details: View>: View {
+/// A chat header's More (•••): its menu below it, and the chat's details,
+/// which open in the side panel however they are asked for: the menu's
+/// Details (handed to `entries` to place), ⌘I from anywhere in the chat, or
+/// a click on the header's name or icon.
+struct HeaderMoreButton: View {
+    @Environment(AppModel.self) private var model
     let chat: String
     /// "Details" for a contact, "Tribe details" for a tribe.
     var detailsTitle = "Details"
-    @Binding var showsDetails: Bool
     /// The menu, given its Details entry.
     let entries: @MainActor (_ details: MenuEntry) -> [MenuEntry]
-    @ViewBuilder let details: () -> Details
 
     var body: some View {
-        let open = $showsDetails
         MenuButton(systemImage: "ellipsis", help: "More", source: "more-\(chat)") {
-            entries(.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) { open.wrappedValue = true })
+            entries(.button(detailsTitle, systemImage: "info.circle", shortcut: .command("i")) { model.openDetails(of: chat) })
         }
-        .hiddenShortcut(KeyboardShortcut("i", modifiers: .command)) { showsDetails = true }
-        .peelPopover(isPresented: $showsDetails, content: details)
+        .hiddenShortcut(KeyboardShortcut("i", modifiers: .command)) { model.openDetails(of: chat) }
     }
 }
 

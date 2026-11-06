@@ -75,6 +75,11 @@ is a short plan. Update the status and the journal when you finish something.
       (`approveWaitingMember`: Jamie, by its key, docs/hive-tribes.md),
       a tribe's details, how you appear in one, the tribes registry and its
       background refresh
+    - Beside `registerPushToken`, `Engine+Push.swift` has `setDeviceActive`
+      (the Mac's active lease, never the iPhone's: `Platform.sendsActiveLease`,
+      PeelUI's `ActiveLease`), `unregisterPush(appID:)` (Forget) and
+      `markEverythingRead` (`readAll`, once the local unread is 0, held to once
+      per session and per 30 minutes by `ReadAllGate`)
     - `Engine+Preferences.swift` — `set`, every change to a user setting
       through `Preferences`; the sync with the official apps' encrypted
       `/preferences` file (`syncPreferences`, one at a time; on connect, 2 s

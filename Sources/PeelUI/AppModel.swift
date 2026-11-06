@@ -100,12 +100,19 @@ public final class AppModel {
                 TimelineLog.log("app phase \(oldValue) -> \(phase)")
                 calls.watchesRecent = phase == .ready
                 phaseChanged(phase)
+                updateActiveLease()
             }
         }
     }
     /// The Mac's dictation drops what it holds of the account when it locks or closes.
     @ObservationIgnored public var phaseChanged: @MainActor (Phase) -> Void = { _ in }
-    public var connection: Engine.ConnectionState = .offline(retryIn: nil)
+    public var connection: Engine.ConnectionState = .offline(retryIn: nil) {
+        didSet { if connection != oldValue { updateActiveLease() } }
+    }
+    /// The Mac's "in use here" lease (`ActiveLease`); idle on the iPhone.
+    @ObservationIgnored let activeLease = ActiveLease()
+    /// When a `readAll` may next be sent (`ReadAllGate`).
+    @ObservationIgnored var readAllGate = ReadAllGate(defaults: .standard)
     public var conversations: [Conversation] = []
     /// The open chat's main conversation: in a tribe with threads collapsed,
     /// plus the messages its replies quote.
@@ -689,6 +696,8 @@ public final class AppModel {
     /// the lock screen while the words remain, onboarding once they are gone.
     public func forgetAccount() async throws {
         guard let profile else { return }
+        // Before anything is wiped: the server stops pushing to this install.
+        await releaseWithServer()
         await engine?.close()
         engine = nil
         resetAccountState()
@@ -840,7 +849,9 @@ public final class AppModel {
     /// changed elsewhere meanwhile.
     public func becameActive() {
         Diagnostics.setForeground(true)
+        activeLease.isForeground = true
         lockIfDue()
+        updateActiveLease()
         if needsReconnect {
             needsReconnect = false
             Task { await engine?.start() }
@@ -857,6 +868,7 @@ public final class AppModel {
         Task {
             await engine?.refreshReadsAndMutes()
             markSelectedChatRead()
+            markEverythingReadIfClear()
         }
         Task { await engine?.refreshPreferences() }
         Task { await notifier.refreshPermission() }
@@ -905,6 +917,7 @@ public final class AppModel {
     /// Peel is quitting: what notifications said must not outlive a PIN.
     public func willTerminate() {
         Diagnostics.markCleanExit()
+        endActiveLeaseOnQuit()
         agentHost?.stop()
         platform.pasteboard.clearSecret()
         if profile?.requiresPIN == true { notifier.removeAllDelivered() }
@@ -1593,7 +1606,9 @@ public final class AppModel {
         autoDownloadsMedia = settings.autoDownloadsMedia ?? true
         savedLayout = settings.sidebarLayout ?? ChatSections.Layout()
         sidebarLayout = savedLayout
+        activeLease.isForeground = platform.presence.isFrontmost
         connection = settings.connection
+        updateActiveLease()
         restoreProgress.restoring = settings.restoring
         // Forgotten while loading.
         guard self.engine === engine else { return }
@@ -1640,6 +1655,10 @@ public final class AppModel {
                     if notice != nil, notice == serverCheckNotice { notice = nil }
                     // The tribes an older Peel linked: their lists need the connection.
                     markLinkedJamies()
+                    Task {
+                        await engine.refreshReadsAndMutes()
+                        markEverythingReadIfClear()
+                    }
                 }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))

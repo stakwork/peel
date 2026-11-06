@@ -26,11 +26,20 @@ public struct Platform {
     /// (`biometric_enabled`): the iPhone's does; the Mac app, as the
     /// official one, neither writes nor applies it.
     public var syncsBiometrics: Bool
+    /// Whether this device tells the server it is being used (`setActive`,
+    /// `ActiveLease`): the Mac does; the iPhone never does, so it still gets
+    /// the pushes the server holds back from an account active elsewhere.
+    public var sendsActiveLease: Bool
+    /// The app ID this install registered its push token with, if it does
+    /// (the iPhone's `PeelAppID`); Forget takes the token off the server
+    /// with it. nil where nothing is registered.
+    public var pushAppID: @MainActor () -> String?
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
-        opensFirstChat: Bool = true, syncsBiometrics: Bool = false
+        opensFirstChat: Bool = true, syncsBiometrics: Bool = false, sendsActiveLease: Bool = false,
+        pushAppID: @escaping @MainActor () -> String? = { nil }
     ) {
         self.presence = presence
         self.files = files
@@ -41,6 +50,8 @@ public struct Platform {
         self.agent = agent
         self.opensFirstChat = opensFirstChat
         self.syncsBiometrics = syncsBiometrics
+        self.sendsActiveLease = sendsActiveLease
+        self.pushAppID = pushAppID
     }
 }
 

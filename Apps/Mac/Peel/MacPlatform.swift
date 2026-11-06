@@ -12,7 +12,9 @@ extension Platform {
         Platform(
             presence: MacPresence(), files: FilePanels(), pasteboard: ClipboardPasteboard(),
             playback: MediaPlayback.shared, web: { WebPane(profile: $0) }, calls: LiveKitCalls(),
-            agent: MacAgent()
+            agent: MacAgent(),
+            // The Mac says it is in use; it registers no push token.
+            sendsActiveLease: true
         )
     }
 }

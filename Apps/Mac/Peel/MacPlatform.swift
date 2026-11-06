@@ -25,6 +25,8 @@ struct MacPresence: AppPresence {
 
     var postsNotifications: Bool { Bundle.main.bundleURL.pathExtension == "app" && !Offscreen.isOn }
 
+    var badgeFollowsPushWhileAway: Bool { false }
+
     func activate() {
         NSApplication.shared.activate()
     }

@@ -68,6 +68,11 @@ public protocol AppPresence {
     func activate()
     /// The unread count on Peel's icon (the Dock's, on the Mac); none for 0.
     func showBadge(_ count: Int)
+    /// Whether the icon's badge is the server's while Peel is away: the
+    /// iPhone's pushes carry the server's count, and Peel writes its own
+    /// only in front and as it leaves (`Notifier.leftForeground`). The Mac's
+    /// Dock badge follows the sidebar all the time.
+    var badgeFollowsPushWhileAway: Bool { get }
     /// Peel's page in the system's notification settings.
     func openNotificationSettings()
     /// Plays a system sound by name ("" for the default alert sound), for a

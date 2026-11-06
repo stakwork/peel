@@ -16,6 +16,8 @@ extension AppModel {
         Diagnostics.setForeground(false)
         activeLease.isForeground = false
         updateActiveLease()
+        // Only an account whose reads have loaded: an empty count would clear it.
+        if phase == .ready, !readStates.isEmpty { notifier.leftForeground(unread: unreadCount) }
     }
 
     /// Opens the record: the newest crash report, redacted now with this

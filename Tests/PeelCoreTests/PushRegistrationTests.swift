@@ -160,14 +160,16 @@ struct PushStateCallTests {
 
     @Test func unregisteringWhileTheFlagIsOffSendsNothing() async throws {
         let calls = try await attempt { engine, recorder in
-            #expect(try await engine.unregister(appID: "com.sphinx.peel", registrationAllowed: false, through: recorder) == false)
+            let sent = try await engine.unregister(appID: "com.sphinx.peel", registrationAllowed: false, through: recorder)
+            #expect(sent == false)
         }
         #expect(calls.isEmpty)
     }
 
     @Test func unregisteringOfflineSendsNothing() async throws {
         let calls = try await attempt(connected: false) { engine, recorder in
-            #expect(try await engine.unregister(appID: "com.sphinx.peel", registrationAllowed: true, through: recorder) == false)
+            let sent = try await engine.unregister(appID: "com.sphinx.peel", registrationAllowed: true, through: recorder)
+            #expect(sent == false)
         }
         #expect(calls.isEmpty)
     }
@@ -175,7 +177,8 @@ struct PushStateCallTests {
     @Test func thePublicUnregisterSendsNothingWhileTheFlagIsOff() async throws {
         let storage = try registeredStorage(profile)
         try await withTestEngine(storage, on: Transport(publishing: { _, _ in })) { engine in
-            #expect(try await engine.unregisterPush(appID: "com.sphinx.peel", registrationAllowed: false) == false)
+            let sent = try await engine.unregisterPush(appID: "com.sphinx.peel", registrationAllowed: false)
+            #expect(sent == false)
         }
     }
 }
@@ -185,8 +188,10 @@ struct ReadAllGateTests {
 
     @Test func theFirstAskIsAllowedOnceAndNotAgainThisSession() {
         var gate = ReadAllGate()
-        #expect(gate.claim(now: t0))
-        #expect(!gate.claim(now: t0.addingTimeInterval(3 * 3600)), "once per session, however long after")
+        let first = gate.claim(now: t0)
+        #expect(first)
+        let second = gate.claim(now: t0.addingTimeInterval(3 * 3600))
+        #expect(!second, "once per session, however long after")
     }
 
     @Test func aRecentRunFromAnotherSessionHoldsItOffForThirtyMinutes() {
@@ -202,16 +207,19 @@ struct ReadAllGateTests {
     @Test func claimingKeepsTheTimeInTheDefaults() throws {
         let defaults = try #require(UserDefaults(suiteName: "ReadAllGateTests-\(UUID())"))
         var gate = ReadAllGate(defaults: defaults)
-        #expect(gate.claim(now: t0, defaults: defaults))
+        let first = gate.claim(now: t0, defaults: defaults)
+        #expect(first)
         #expect(defaults.object(forKey: ReadAllGate.key) as? Date == t0)
         #expect(!ReadAllGate(defaults: defaults).allows(now: t0.addingTimeInterval(60)), "a new session reads it")
-        #expect(!gate.claim(now: t0.addingTimeInterval(60), defaults: defaults))
+        let second = gate.claim(now: t0.addingTimeInterval(60), defaults: defaults)
+        #expect(!second)
     }
 
     @Test func aRefusedClaimWritesNothing() throws {
         let defaults = try #require(UserDefaults(suiteName: "ReadAllGateTests-\(UUID())"))
         var gate = ReadAllGate(last: t0)
-        #expect(!gate.claim(now: t0.addingTimeInterval(60), defaults: defaults))
+        let claimed = gate.claim(now: t0.addingTimeInterval(60), defaults: defaults)
+        #expect(!claimed)
         #expect(defaults.object(forKey: ReadAllGate.key) == nil)
     }
 }

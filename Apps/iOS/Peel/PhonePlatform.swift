@@ -38,6 +38,10 @@ struct PhonePresence: AppPresence {
 
     func activate() {}
 
+    /// A push's badge stays until Peel is back in front: a background wake
+    /// writing the local count over it is what made it jump back.
+    var badgeFollowsPushWhileAway: Bool { true }
+
     func showBadge(_ count: Int) {
         // Shown once notifications are allowed (I5); until then the system ignores it.
         UNUserNotificationCenter.current().setBadgeCount(count, withCompletionHandler: nil)

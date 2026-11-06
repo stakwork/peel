@@ -336,8 +336,9 @@ public final class Notifier {
 
     /// Keeps the Dock badge equal to what the sidebar counts, and takes away
     /// the notifications of chats whose read marker moved, here or elsewhere.
+    /// On the iPhone only while Peel is in front: away, the pushes set it.
     public func readStatesChanged(to states: [String: ChatReadState], from previous: [String: ChatReadState], unread: Int) {
-        setBadge(unread)
+        if !presence.badgeFollowsPushWhileAway || presence.isFrontmost { setBadge(unread) }
         let read = chatsShown.filter { chat in
             guard let before = previous[chat], let after = states[chat]?.lastRead else { return false }
             return after > before.lastRead ?? -1
@@ -345,8 +346,16 @@ public final class Notifier {
         removeDelivered(in: read)
     }
 
-    private func setBadge(_ count: Int) {
-        guard count != badge else { return }
+    /// Peel is leaving the front (the iPhone): the icon shows what it
+    /// counts until the next push. Written even when it matches the last
+    /// count, which a push may have changed since.
+    public func leftForeground(unread: Int) {
+        guard presence.badgeFollowsPushWhileAway else { return }
+        setBadge(unread, always: true)
+    }
+
+    private func setBadge(_ count: Int, always: Bool = false) {
+        guard always || count != badge else { return }
         badge = count
         presence.showBadge(count)
     }

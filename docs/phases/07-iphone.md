@@ -1198,6 +1198,15 @@ Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
   ID as registering, behind the same flag) before the engine closes, within
   3 s (`Platform.pushAppID`). Not compiled here (no Swift in this pod).
 
+- **The icon's badge while away.** A push's `badge` is the server's count,
+  which takes every message past the marker (joins, boosts, muted chats)
+  where Peel's `unreadCount` does not. The phone writes its own count only
+  while in front and once as it goes to the background
+  (`Notifier.leftForeground`, written even if unchanged); a background wake
+  on a push leaves the push's number alone, which it used to overwrite a
+  moment after it showed (`AppPresence.badgeFollowsPushWhileAway`). The
+  Mac's Dock badge follows the sidebar at all times.
+
 Reading the token while debugging: a Debug build prints `[Peel push] APNs
 device token (<environment>, app <id>): <hex>` to Xcode's console and asks for
 notification permission at launch, without turning the hub flag on. Release

@@ -79,7 +79,8 @@ private struct ThreadListRow: View {
                         }
                     }
                     (Text(author.label + " ").foregroundColor(author.hue.name).fontWeight(.semibold)
-                        + Text(summary.original.preview).foregroundColor(Theme.text)
+                        + Text(LinkText.original(summary.original, myAliases: model.mentionAliases(in: summary.original.chat),
+                                                 size: PhoneFont.row.size)).foregroundColor(Theme.text)
                         .fontWeight(unread ? .semibold : .regular))
                         .phoneFont(.row)
                         .lineLimit(2)

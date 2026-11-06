@@ -102,6 +102,16 @@ struct MessageText: View {
 /// links clickable, mentions and inline code set apart, emphasis in bold,
 /// italic or struck through. Anything else stays plain text.
 enum LinkText {
+    /// A thread's original as its row shows it: the text with its inline
+    /// markup styled as in a bubble. A message with no words of its own (a
+    /// GIF, a deleted one, an attachment) keeps its `preview`.
+    static func original(_ message: Message, myAliases: Set<String>, size: CGFloat) -> AttributedString {
+        let words = message.shownText
+        guard !message.deleted, message.type == MessageType.text, !words.isEmpty,
+              message.giphy == nil else { return AttributedString(message.preview) }
+        return attributed(words, myAliases: myAliases, size: size)
+    }
+
     /// Mentions as a soft chip, gold when it names you (by one of `myAliases`,
     /// `AppModel.mentionAliases`) or @all; inline code in a monospaced face
     /// on a soft fill, without its backticks; https links in the link

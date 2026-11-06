@@ -228,7 +228,7 @@ private struct ThreadCard: View {
                         }
                     }
                     (Text(author.label + " ").font(Theme.font(14, .bold)).foregroundColor(author.hue.name)
-                        + Text(original.preview).font(Theme.font(14, unread ? .bold : .regular))
+                        + Text(LinkText.original(original, myAliases: model.mentionAliases(in: original.chat), size: 14)).font(Theme.font(14, unread ? .bold : .regular))
                         .foregroundColor(unread ? Theme.text : Theme.text.opacity(0.85)))
                         .lineLimit(1)
                     HStack(spacing: 6) {

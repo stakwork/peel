@@ -10,9 +10,9 @@ import PeelCore
 @MainActor
 final class ActiveLease {
     /// How often the lease is renewed while it holds.
-    static let interval: Duration = .seconds(25)
+    nonisolated static let interval: Duration = .seconds(25)
     /// The most time ending it (or forgetting the account) may wait on the network.
-    static let cap: Duration = .seconds(3)
+    nonisolated static let cap: Duration = .seconds(3)
 
     /// Whether the lease should be held: Peel in front (and the Mac awake),
     /// the account open and not locked or about to lock, and online.

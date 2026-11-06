@@ -109,8 +109,12 @@ struct ConversationScreen: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { router.openDetails(chat) }
             .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
+            .accessibilityAddTraits([.isHeader, .isButton])
+            .accessibilityHint(detailsHint)
+            .accessibilityAction(named: Text(detailsHint)) { router.openDetails(chat) }
             .task(id: chat) {
                 if conversation?.isTribe == true {
                     await model.loadKnownMembers(chat)
@@ -155,6 +159,11 @@ struct ConversationScreen: View {
         }
     }
 
+    /// What tapping the header opens, by the chat's kind.
+    private var detailsHint: String {
+        conversation?.isTribe == true ? "Tribe details" : "Contact details"
+    }
+
     /// A tribe's member count as its details count it; a person's local time.
     private func subtitle(at now: Date) -> String? {
         if conversation?.isTribe == true {
@@ -173,8 +182,8 @@ struct ConversationScreen: View {
                 CopyFeedback.announce()
             }
         }
-        Section {
-            Text("Members and details are coming to iPhone.")
+        Button(detailsHint, systemImage: conversation?.isTribe == true ? "person.2" : "person.crop.circle") {
+            router.openDetails(chat)
         }
     }
 

@@ -21,6 +21,11 @@ final class NotificationService: UNNotificationServiceExtension {
             return
         }
         bestAttempt = content
+        // The server's badge counts every message type, including ones Peel
+        // never shows, and nothing here can tell them apart. The app sets the
+        // badge from its own unread count (`Notifier.reconcileBadge`), so the
+        // push leaves the icon's badge as it is.
+        content.badge = nil
         // The generic line is already in place if the rest fails or runs out of time.
         if case .text(let title, let body) = PushNotificationContent.generic {
             content.title = title
@@ -48,8 +53,10 @@ final class NotificationService: UNNotificationServiceExtension {
                 content.threadIdentifier = NotificationRoute.threadIdentifier(kind: kind, index: index)
             }
         case .asSent:
-            // A Hive link: the server's own words.
-            contentHandler(request.content)
+            // A Hive link: the server's own words, without its badge.
+            let asSent = request.content.mutableCopy() as? UNMutableNotificationContent
+            asSent?.badge = nil
+            contentHandler(asSent ?? request.content)
             clear()
             return
         }

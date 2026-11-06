@@ -345,8 +345,17 @@ public final class Notifier {
         removeDelivered(in: read)
     }
 
-    private func setBadge(_ count: Int) {
-        guard count != badge else { return }
+    /// Sets the icon's badge to what the sidebar counts, even when it is
+    /// the number last set here: a push (the server's own count, which takes
+    /// every message type) can have changed the icon's badge since, and
+    /// `setBadge` would skip it as unchanged. On launch and each time Peel
+    /// comes to the front; 0 clears it.
+    public func reconcileBadge(unread: Int) {
+        setBadge(unread, force: true)
+    }
+
+    private func setBadge(_ count: Int, force: Bool = false) {
+        guard force || count != badge else { return }
         badge = count
         presence.showBadge(count)
     }

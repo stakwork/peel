@@ -833,6 +833,9 @@ public final class AppModel {
     public func becameActive() {
         Diagnostics.setForeground(true)
         lockIfDue()
+        // The icon's badge is the unread count the sidebar shows, whatever a
+        // push left on it; with no account open that is 0.
+        notifier.reconcileBadge(unread: phase == .ready ? unreadCount : 0)
         if needsReconnect {
             needsReconnect = false
             Task { await engine?.start() }

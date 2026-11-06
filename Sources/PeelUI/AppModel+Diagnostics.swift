@@ -14,6 +14,8 @@ extension AppModel {
     /// Peel left the front (the Mac's app resigning, the phone's background).
     public func leftForeground() {
         Diagnostics.setForeground(false)
+        activeLease.isForeground = false
+        updateActiveLease()
     }
 
     /// Opens the record: the newest crash report, redacted now with this

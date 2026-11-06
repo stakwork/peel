@@ -55,6 +55,13 @@ struct PeelApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     model.willTerminate()
                 }
+                // The Mac asleep is not in use; waking works the lease out again.
+                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
+                    model.systemWillSleep()
+                }
+                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
+                    model.systemDidWake()
+                }
                 #endif
         } defaultValue: {
             .main

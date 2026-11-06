@@ -170,7 +170,11 @@ struct MessageList: View {
             // the end down until the pin catches up; taken as leaving, the
             // first frame stopped the pinning and left the list short.
             // Not while it opens, which places it at its own row.
-            if new.container != old.container, following, reachesNewest, !userScrolling, !opening {
+            // Only a list that was at the bottom, and only as the container
+            // shrinks: a list scrolled up keeps its offset (a thread's
+            // `following` starts true), and the composer growing a line while
+            // typing re-pinned and jumped the reading position.
+            if new.container < old.container, old.atBottom, following, reachesNewest, !userScrolling, !opening {
                 keepLastRowInView()
                 repinOnceSettled()
                 var pinned = new
@@ -188,7 +192,8 @@ struct MessageList: View {
         // Yours always take you to the newest; others' only while following.
         .onChange(of: rows.last?.id) { _, _ in
             guard live, reachesNewest, !opening else { return }
-            if following || rows.last?.shown.last?.fromMe == true { scrollToNewest() }
+            // Following means still at the bottom: one scrolled up stays put.
+            if rows.last?.shown.last?.fromMe == true || (following && bottom.atBottom) { scrollToNewest() }
         }
         .overlay(alignment: .bottom) {
             if showsJump(newCount) {
@@ -374,7 +379,8 @@ struct MessageList: View {
         settledPin?.cancel()
         settledPin = Task {
             try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled, following, reachesNewest, !userScrolling, !opening else { return }
+            // Still at the bottom: a list the reader has since left stays put.
+            guard !Task.isCancelled, following, bottom.atBottom, reachesNewest, !userScrolling, !opening else { return }
             keepLastRowInView()
         }
     }

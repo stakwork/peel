@@ -88,7 +88,11 @@ private struct ContactDetailsView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    PhoneSectionHeader("Public key")
+                    Text("Public key")
+                        .phoneFont(.sectionHeader)
+                        .foregroundStyle(Theme.quietText(on: .background))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .accessibilityAddTraits(.isHeader)
                     ShareableCode(text: conversation.chat, label: "QR code of their public key",
                                   copyTitle: "Copy key", showsText: true)
                 }
@@ -485,6 +489,20 @@ private struct TimeZoneSwitch: View {
                               isOn: Binding { sharing } set: { on in
                                   Task { await zone.set(on, in: conversation.chat, with: model) }
                               })
+                    if sharing {
+                        PhoneCard {
+                            Picker("Time zone", selection: Binding { zone.selection } set: { entry in
+                                Task { await zone.choose(entry, in: conversation.chat, with: model) }
+                            }) {
+                                ForEach(TimeZoneSharingSwitch.choices, id: \.self) { Text($0) }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(Theme.accent)
+                            .padding(.horizontal, Theme.Space.md)
+                            .padding(.vertical, Theme.Space.sm)
+                            .frame(minHeight: Theme.touchTarget)
+                        }
+                    }
                     if let problem = zone.problem { ProblemText(problem) }
                 }
             }

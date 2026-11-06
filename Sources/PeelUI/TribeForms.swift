@@ -320,11 +320,39 @@ public final class TimeZoneSharingSwitch {
     /// Nil until read.
     public private(set) var sharing: Bool?
     public private(set) var problem: String?
+    /// The zone chosen for this chat; nil follows the device's.
+    public private(set) var identifier: String?
+
+    /// The picker's first entry: no zone chosen, the device's is used.
+    public static let defaultValue = "Use device settings"
+
+    /// The picker's entries: the default, then every zone the system knows.
+    public static let choices = [defaultValue] + TimeZone.knownTimeZoneIdentifiers
+
+    /// The picker's current entry.
+    public var selection: String { identifier ?? Self.defaultValue }
 
     public init() {}
 
     public func load(_ chat: String, with model: AppModel) async {
         sharing = await model.timeZoneSharing(in: chat)
+        identifier = await model.timeZoneIdentifier(in: chat)
+    }
+
+    /// Picks the zone to send from in `chat`; the default entry clears it.
+    public func choose(_ entry: String, in chat: String, with model: AppModel) async {
+        let new = entry == Self.defaultValue ? nil : entry
+        guard new != identifier else { return }
+        let was = identifier
+        identifier = new
+        problem = nil
+        do {
+            try await model.setTimeZoneIdentifier(new, in: chat)
+            CopyFeedback.announce("Time zone changed")
+        } catch {
+            identifier = was
+            problem = PeelError.problem(error, couldNot: "change your time zone")
+        }
     }
 
     public func set(_ on: Bool, in chat: String, with model: AppModel) async {

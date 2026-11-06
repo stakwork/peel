@@ -107,4 +107,14 @@ extension AppModel {
     public func setTimeZone(_ identifier: String?) async throws {
         try await signedIn().setTimeZone(identifier)
     }
+
+    /// The zone chosen for `chat` alone, nil when none is.
+    public func timeZoneIdentifier(in chat: String) async -> String? {
+        try? await engine?.timeZoneIdentifier(in: chat)
+    }
+
+    /// Chooses the zone `chat` gets your offset from, nil for the device's.
+    public func setTimeZoneIdentifier(_ identifier: String?, in chat: String) async throws {
+        try await signedIn().setTimeZoneIdentifier(identifier, in: chat)
+    }
 }

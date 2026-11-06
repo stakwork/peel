@@ -218,6 +218,21 @@ extension Engine {
         try set(.timeZoneSharing, TimeZoneSharing(enabled: enabled, identifier: zone), for: chat)
     }
 
+    /// The zone chosen for `chat` alone (an IANA name), nil for none: the
+    /// account's zone, or this device's, goes there.
+    public func timeZoneIdentifier(in chat: String) throws -> String? {
+        try storage.chatTimeZone(chat)?.identifier
+    }
+
+    /// Chooses the zone `chat` gets this account's offset from, or nil to
+    /// follow the account's (the device's). The switch stays as it is.
+    public func setTimeZoneIdentifier(_ identifier: String?, in chat: String) throws {
+        guard chat.isPubkey else { throw Failure.notAChat }
+        if let identifier, TimeZoneOffset.zone(identifier) == nil { throw Failure.unknownTimeZone(identifier) }
+        let enabled = try timeZoneSharing(in: chat)
+        try set(.timeZoneSharing, TimeZoneSharing(enabled: enabled, identifier: identifier), for: chat)
+    }
+
     /// Someone's local time: a contact's, or with `member` a tribe member's
     /// (by alias), from the newest offset they sent within
     /// `timeZoneFreshness` of `now`. Nil when they have not shared one.

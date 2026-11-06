@@ -312,46 +312,33 @@ public final class TribeJamiePicker {
     public static let showsSenders = "Knows who is speaking"
 }
 
-/// A chat's time zone switch, on the Mac and the iPhone: whether your
-/// offset goes with what you send there. Set at once, put back if the
-/// change is refused.
+/// A chat's time zone switch and zone, on the Mac and the iPhone: whether
+/// your offset goes with what you send there, and the zone it comes from
+/// (nil: automatic). Set at once, put back if the change is refused.
 @MainActor @Observable
 public final class TimeZoneSharingSwitch {
     /// Nil until read.
     public private(set) var sharing: Bool?
-    public private(set) var problem: String?
-    /// The zone chosen for this chat; nil follows the device's.
+    /// The zone chosen for the chat; nil is automatic.
     public private(set) var identifier: String?
-
-    /// The picker's first entry: no zone chosen, the device's is used.
-    public static let defaultValue = "Use device settings"
-
-    /// The picker's entries: the default, then every zone the system knows.
-    public static let choices = [defaultValue] + TimeZone.knownTimeZoneIdentifiers
-
-    /// The picker's current entry.
-    public var selection: String { identifier ?? Self.defaultValue }
+    public private(set) var problem: String?
 
     public init() {}
 
     public func load(_ chat: String, with model: AppModel) async {
         sharing = await model.timeZoneSharing(in: chat)
-        identifier = await model.timeZoneIdentifier(in: chat)
+        identifier = await model.chatTimeZone(in: chat)
     }
 
-    /// Picks the zone to send from in `chat`; the default entry clears it.
-    public func choose(_ entry: String, in chat: String, with model: AppModel) async {
-        let new = entry == Self.defaultValue ? nil : entry
-        guard new != identifier else { return }
-        let was = identifier
-        identifier = new
+    public func setIdentifier(_ identifier: String?, in chat: String, with model: AppModel) async {
+        let was = self.identifier
+        self.identifier = identifier
         problem = nil
         do {
-            try await model.setTimeZoneIdentifier(new, in: chat)
-            CopyFeedback.announce("Time zone changed")
+            try await model.setChatTimeZone(identifier, in: chat)
         } catch {
-            identifier = was
-            problem = PeelError.problem(error, couldNot: "change your time zone")
+            self.identifier = was
+            problem = PeelError.problem(error, couldNot: "change the time zone")
         }
     }
 

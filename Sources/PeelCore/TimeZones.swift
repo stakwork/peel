@@ -218,18 +218,23 @@ extension Engine {
         try set(.timeZoneSharing, TimeZoneSharing(enabled: enabled, identifier: zone), for: chat)
     }
 
-    /// The zone chosen for `chat` alone (an IANA name), nil for none: the
-    /// account's zone, or this device's, goes there.
-    public func timeZoneIdentifier(in chat: String) throws -> String? {
+    /// The zone chosen for `chat` alone (an IANA name), as in the official
+    /// apps' picker; nil means the account's (automatic).
+    public func chatTimeZone(in chat: String) throws -> String? {
         try storage.chatTimeZone(chat)?.identifier
     }
 
-    /// Chooses the zone `chat` gets this account's offset from, or nil to
-    /// follow the account's (the device's). The switch stays as it is.
-    public func setTimeZoneIdentifier(_ identifier: String?, in chat: String) throws {
-        guard chat.isPubkey else { throw Failure.notAChat }
-        if let identifier, TimeZoneOffset.zone(identifier) == nil { throw Failure.unknownTimeZone(identifier) }
-        let enabled = try timeZoneSharing(in: chat)
+    /// Chooses the zone `chat`'s offset comes from, an IANA name (or a fixed
+    /// `GMT±H`), or nil or "" for automatic. Allowed wherever the switch
+    /// could be, a public tribe too (it never sends there whatever is
+    /// chosen); the switch stays as stored, on if none is.
+    public func setChatTimeZone(_ identifier: String?, in chat: String) throws {
+        guard chat.isPubkey, knownTribe(chat) != nil || isContact(chat) else { throw Failure.notAChat }
+        let identifier = identifier?.nilIfEmpty
+        if let identifier, TimeZoneOffset.zone(identifier) == nil {
+            throw Failure.unknownTimeZone(identifier)
+        }
+        let enabled = try storage.chatTimeZone(chat)?.enabled ?? true
         try set(.timeZoneSharing, TimeZoneSharing(enabled: enabled, identifier: identifier), for: chat)
     }
 

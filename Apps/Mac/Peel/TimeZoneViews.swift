@@ -215,7 +215,9 @@ struct ChatInfoPanel: View {
 }
 
 /// Whether your time zone goes with what you send in a chat, under a
-/// "Time zone" heading. Nothing in a public tribe: it never gets it.
+/// "Time zone" heading, and the zone it comes from, chosen from the same
+/// searchable list as the Account's, shown whether sharing is on or not as
+/// in the official app. Nothing in a public tribe: it never gets it.
 struct ChatTimeZoneSection: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -223,6 +225,8 @@ struct ChatTimeZoneSection: View {
 
     /// The switch's state (`TimeZoneSharingSwitch`).
     @State private var zone = TimeZoneSharingSwitch()
+    @State private var picking = false
+    @State private var hovering = false
 
     private var target: String { conversation.title }
 
@@ -237,6 +241,7 @@ struct ChatTimeZoneSection: View {
                             Task { await zone.set(on, in: conversation.chat, with: model) }
                         })
                     )
+                    zonePicker
                     if let problem = zone.problem {
                         ProblemText(problem)
                     }
@@ -244,6 +249,43 @@ struct ChatTimeZoneSection: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .task(id: conversation.chat) { await zone.load(conversation.chat, with: model) }
+        }
+    }
+}
+
+extension ChatTimeZoneSection {
+    /// The zone chosen for this chat, or Automatic, with its offset; opens
+    /// the list.
+    fileprivate var zonePicker: some View {
+        let identifier = zone.identifier
+        let shown = identifier.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent
+        return HStack(spacing: Theme.Space.sm) {
+            Text("Time zone")
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.secondaryText)
+            Button { picking = true } label: {
+                HStack(spacing: Theme.Space.sm) {
+                    Text(identifier.map(ZonePicker.label) ?? ZonePicker.automatic)
+                        .lineLimit(1)
+                    Text(TimeZoneOffset.format(shown))
+                        .foregroundStyle(Theme.secondaryText)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .font(Theme.font(13))
+                .monospacedDigit()
+                .dropdownBoxed(hovering: hovering)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .fixedSize()
+            .peelPopover(isPresented: $picking) {
+                ZonePicker(chosen: identifier, close: { picking = false }) { chosen in
+                    picking = false
+                    Task { await zone.setIdentifier(chosen, in: conversation.chat, with: model) }
+                }
+            }
         }
     }
 }

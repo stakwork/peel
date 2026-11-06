@@ -5,20 +5,22 @@ import PeelUI
 // MARK: - In the conversation
 
 /// Under a message: its boosts as a quiet chip ("⚡ 1,210 sats" and the
-/// boosters' photos; tinted when you boosted it), who boosted on a click, and your boosts that are still on
+/// boosters' photos; tinted when you boosted it), who boosted in a card on hover, and your boosts that are still on
 /// their way or failed.
 struct BoostLine: View {
     let boosts: BoostSummary
     /// The boosted message's chat, which keys the boosters' colours.
     let chat: String
     let inTribe: Bool
+    /// Tells this message's hover card from every other's: its message id.
+    let source: AnyHashable
     /// False under a deleted message: only our failed boosts stay, to clear.
     var showsChip = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             if showsChip, boosts.count > 0 {
-                BoostChip(boosts: boosts, chat: chat, inTribe: inTribe)
+                BoostChip(boosts: boosts, chat: chat, inTribe: inTribe, source: source)
             }
             if let since = boosts.pendingSince {
                 WaitingForServer(since: since, what: "Boost", person: inTribe ? nil : chat)
@@ -46,8 +48,8 @@ private struct BoostChip: View {
     let boosts: BoostSummary
     let chat: String
     let inTribe: Bool
-
-    @State private var showing = false
+    /// Keys the hover card, so two chips never share one.
+    let source: AnyHashable
 
     static let shownBoosters = 3
     /// A booster without a photo shows their initial on their colour, as
@@ -69,7 +71,7 @@ private struct BoostChip: View {
         let people = boosters
         let pending = boosts.pendingSince != nil
         let mine = boosts.boostedByMe && !pending
-        Chip(.inset, lit: mine, action: { showing = true }) {
+        Chip(.inset, lit: mine) {
             HStack(spacing: Theme.Space.xs) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 9))
@@ -87,7 +89,7 @@ private struct BoostChip: View {
                             .zIndex(Double(Self.shownBoosters - index))
                     }
                 }
-                // The letters name no one; the help and the panel do.
+                // The letters name no one; the hover card does.
                 .accessibilityHidden(true)
                 if people.count > Self.shownBoosters {
                     Text("+\(people.count - Self.shownBoosters)")
@@ -100,14 +102,10 @@ private struct BoostChip: View {
             .padding(.trailing, people.count > Self.shownBoosters ? 7 : 2)
             .padding(.vertical, 1)
         }
-        .help(help)
-        .peelPopover(isPresented: $showing) {
-            BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe) { showing = false }
+        .accessibilityLabel(boosts.summaryLine + (boosts.boostedByMe ? ", yours among them" : ""))
+        .peelHoverCard(source) {
+            BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe)
         }
-    }
-
-    private var help: String {
-        boosts.summaryLine + (boosts.boostedByMe ? ", yours among them" : "") + ". Click for who."
     }
 }
 
@@ -118,16 +116,18 @@ private extension BoostSummary {
     }
 }
 
-/// Who boosted a message and by how much, oldest first.
+/// Who boosted a message and by how much, oldest first. The body of the
+/// boost chip's hover card, which brings its own box.
 private struct BoostersPanel: View {
     @Environment(AppModel.self) private var model
     let boosts: BoostSummary
     let chat: String
     let inTribe: Bool
-    let done: () -> Void
 
     var body: some View {
-        Panel("Boosts", compact: true, close: done) {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            Text("Boosts")
+                .font(Theme.font(15, .bold))
             Text(boosts.summaryLine)
                 .monospacedDigit()
                 .muted()
@@ -160,11 +160,13 @@ private struct BoostersPanel: View {
                     }
                 }
             }
-            // The rows' own inset lines their text up with the panel's.
+            // The rows' own inset lines their text up with the card's.
             .padding(.horizontal, -8)
             .frame(maxHeight: 240)
             .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(14)
+        .frame(width: 320)
     }
 }
 

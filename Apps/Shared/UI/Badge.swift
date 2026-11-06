@@ -128,7 +128,7 @@ enum ChipStyle {
 ///
 /// ```swift
 /// Chip("design", selected: $on)
-/// Chip(.inset, lit: mine, action: { showing = true }) { boostLabel }
+/// Chip(.inset, lit: mine) { boostLabel }
 /// ```
 struct Chip<Label: View>: View {
     private let style: ChipStyle

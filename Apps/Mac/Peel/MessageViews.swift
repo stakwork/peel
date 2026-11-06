@@ -300,7 +300,8 @@ struct MessageRow: View, Equatable {
                 )
                 .opacity(message.isSending(now: now) ? 0.6 : 1)
                 if let boosts = row.boosts {
-                    BoostLine(boosts: boosts, chat: message.chat, inTribe: row.inTribe, showsChip: !message.deleted)
+                    BoostLine(boosts: boosts, chat: message.chat, inTribe: row.inTribe,
+                              source: AnyHashable(message.id), showsChip: !message.deleted)
                 }
                 if let summary = row.summary {
                     ThreadSummaryLine(summary: summary, inTribe: row.inTribe)

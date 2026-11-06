@@ -1,0 +1,79 @@
+# Peel Home on Umbrel: home/docker-compose.yml, the product, wrapped. Each
+# service extends its namesake there; this file adds only what Umbrel needs:
+# - each image, written out: umbreld pulls what `image:` says here, unresolved;
+# - every mount under ${APP_DATA_DIR}: data/ where Umbrel can move it, and
+#   home/'s scripts from hooks/home/, the one folder an app update copies;
+# - the tile, the app's page behind Umbrel's login (hooks/tile/).
+# The ports, and the address setup's links name, are exports.sh's.
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: peel-home_tile_1
+      APP_PORT: 8080
+
+  # Setup's own page and the move itself (strut move serve). Not behind
+  # app_proxy: the Mac's strut calls /move* there, with no Umbrel login.
+  setup:
+    extends:
+      file: ${APP_DATA_DIR}/hooks/home/docker-compose.yml
+      service: setup
+    image: ghcr.io/stakwork/strut:133e61e@sha256:7049af75b46f48712934763ecb53bdde0751974ba359eeb09788824dfc814bf3
+    environment:
+      # The tile's folder: setup's relay writes status there and takes its requests.
+      SETUP_PAGE: /data/page
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - ${APP_DATA_DIR}/hooks/home/setup.sh:/setup.sh:ro
+      - ${APP_DATA_DIR}/hooks/home/gate.sh:/gate.sh:ro
+
+  strut:
+    extends:
+      file: ${APP_DATA_DIR}/hooks/home/docker-compose.yml
+      service: strut
+    image: ghcr.io/stakwork/strut:133e61e@sha256:7049af75b46f48712934763ecb53bdde0751974ba359eeb09788824dfc814bf3
+    volumes:
+      - ${APP_DATA_DIR}/data/strut:/data/strut
+      - ${APP_DATA_DIR}/data/cache:/data/cache
+      - ${APP_DATA_DIR}/data/env/strut:/data/env/strut:ro
+      - ${APP_DATA_DIR}/data/gate:/data/gate
+      - ${APP_DATA_DIR}/hooks/home/gate.sh:/gate.sh:ro
+
+  bridge:
+    extends:
+      file: ${APP_DATA_DIR}/hooks/home/docker-compose.yml
+      service: bridge
+    image: ghcr.io/stakwork/sphinx-runner:9bf7079@sha256:0da8270f1820e2d35d1c461a821930da870a3eac44cd084fe52eb49aa1fd0cfe
+    volumes:
+      - ${APP_DATA_DIR}/data/bridge:/data/bridge
+      - ${APP_DATA_DIR}/data/env/bridge:/data/env/bridge:ro
+      - ${APP_DATA_DIR}/data/gate:/data/gate
+      - ${APP_DATA_DIR}/hooks/home/gate.sh:/gate.sh:ro
+
+  peer:
+    extends:
+      file: ${APP_DATA_DIR}/hooks/home/docker-compose.yml
+      service: peer
+    image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    volumes:
+      - ${APP_DATA_DIR}/data/peer:/data/peer
+      - ${APP_DATA_DIR}/data/gate:/data/gate:ro
+      - ${APP_DATA_DIR}/hooks/home/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${APP_DATA_DIR}/hooks/home/gate.sh:/gate.sh:ro
+
+  # The app's page: where Peel Home is, its link, and Send back or Cancel.
+  # Its own user, and only data/page: it asks setup's relay, which runs
+  # setup.sh's own status, send-back and cancel. It answers only umbreld's
+  # gateway (hooks/tile/start.sh).
+  tile:
+    image: busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    command: ["sh", "/www/start.sh"]
+    environment:
+      TILE_TOKEN: ${APP_PEEL_HOME_TILE_TOKEN}
+    volumes:
+      - ${APP_DATA_DIR}/hooks/tile:/www:ro
+      - ${APP_DATA_DIR}/data/page:/data/page

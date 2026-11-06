@@ -1568,6 +1568,10 @@ public final class AppModel {
         let settings = await engine.settings()
         myAlias = settings.alias.nilIfEmpty
         myPhotoURL = settings.photoURL
+        // Warm the cache so the You tab's icon has the photo at launch.
+        if let photo = settings.photoURL?.httpsOnly.flatMap(URL.init) {
+            Task { _ = await ImageCache.photos.image(photo: photo) }
+        }
         myContactInfo = settings.contactInfo
         echoedAliases = settings.echoedAliases
         refreshMentionAliases()

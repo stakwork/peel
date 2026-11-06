@@ -13,10 +13,11 @@ struct TribeDetailsPanel: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let tribe: Tribe
-    /// Opens the members panel or the edit form in this panel's place.
-    let members: () -> Void
-    let edit: () -> Void
     let done: () -> Void
+
+    /// Members and Edit tribe… open below their buttons.
+    @State private var showsMembers = false
+    @State private var showsEdit = false
 
     @State private var details: TribeDetails?
     @State private var problem: String?
@@ -27,39 +28,25 @@ struct TribeDetailsPanel: View {
     private var info: TribeInfo? { details?.info }
 
     var body: some View {
-        Panel("Tribe details", close: done) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    hero
-                    facts
-                    if !tribe.pages.isEmpty {
-                        pages
-                    }
-                    if let link = tribe.link {
-                        share(link)
-                    }
-                    if model.offersJamie(in: tribe) {
-                        TribeJamieSection(tribe: tribe)
-                            .padding(.top, 18)
-                    }
-                    if tribe.canPost {
-                        TribeIdentitySection(tribe: tribe)
-                            .padding(.top, 18)
-                    }
-                    ChatTimeZoneSection(conversation: conversation, tribe: tribe)
-                        .padding(.top, 18)
-                }
-                .padding(.bottom, Theme.Space.xs)
-                .endsEditingOnClick()
+        DockedPanel(title: "Tribe details", close: done) {
+            hero
+            facts
+            if !tribe.pages.isEmpty {
+                pages
             }
-            .frame(maxHeight: 560)
-            .fixedSize(horizontal: false, vertical: true)
-            // More below: the content fades into the footer rather than stopping at it.
-            .overlay(alignment: .bottom) {
-                LinearGradient(colors: [Theme.sidebar.opacity(0), Theme.sidebar], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 14)
-                    .allowsHitTesting(false)
+            if let link = tribe.link {
+                share(link)
             }
+            if model.offersJamie(in: tribe) {
+                TribeJamieSection(tribe: tribe)
+                    .padding(.top, 18)
+            }
+            if tribe.canPost {
+                TribeIdentitySection(tribe: tribe)
+                    .padding(.top, 18)
+            }
+            ChatTimeZoneSection(conversation: conversation, tribe: tribe)
+                .padding(.top, 18)
         } footer: {
             footer
         }
@@ -93,7 +80,6 @@ struct TribeDetailsPanel: View {
                 TagChips(tags: tags)
             }
         }
-        .padding(.top, Theme.Space.md)
     }
 
     /// "Public tribe · Created 3 Oct 2026".
@@ -144,45 +130,70 @@ struct TribeDetailsPanel: View {
     /// The tribe's pages (`Tribe.pages`, in the More menu's order), opened
     /// in the web pane beside the chat.
     private var pages: some View {
-        HStack(spacing: Theme.Space.sm) {
-            ForEach(tribe.pages, id: \.kind) { page in
-                Button {
-                    done()
-                    model.web.open(page)
-                } label: {
-                    Label(page.title, systemImage: page.systemImage)
-                }
-                .buttonStyle(.peel(.outline))
-                .help("Opens beside the chat")
-            }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Space.sm) { pageButtons }
+            VStack(alignment: .leading, spacing: Theme.Space.sm) { pageButtons }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 14)
+    }
+
+    @ViewBuilder private var pageButtons: some View {
+        ForEach(tribe.pages, id: \.kind) { page in
+            Button {
+                done()
+                model.web.open(page)
+            } label: {
+                Label(page.title, systemImage: page.systemImage)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.peel(.outline))
+            .help("Opens beside the chat")
+        }
     }
 
     private func share(_ link: String) -> some View {
         Card {
-            HStack(alignment: .top, spacing: 14) {
-                QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    CopyButton("Copy link", text: link, systemImage: "link")
-                    CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(link) }
+            // Side by side while they fit, the buttons under the code when not.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
+                    shareButtons(link)
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.peel(.outline))
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 14) {
+                    QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
+                    shareButtons(link)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Space.md)
         }
         .padding(.top, 14)
     }
 
+    private func shareButtons(_ link: String) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            CopyButton("Copy link", text: link, systemImage: "link")
+            CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(link) }
+        }
+        .buttonStyle(.peel(.outline))
+    }
+
     /// Where to go on the left; Leave, the one destructive action, on the right.
     private var footer: some View {
         HStack(spacing: Theme.Space.sm) {
-            Button("Members", action: members)
+            Button("Members") { showsMembers = true }
                 .buttonStyle(.peel(.outline))
+                .peelPopover(isPresented: $showsMembers) {
+                    TribeMembersPanel(conversation: conversation, tribe: tribe) { showsMembers = false }
+                }
             if tribe.canManage {
-                Button("Edit tribe…", action: edit)
+                Button("Edit tribe…") { showsEdit = true }
                     .buttonStyle(.peel(.outline))
+                    .peelPopover(isPresented: $showsEdit) {
+                        TribeSettingsForm(editing: tribe) { showsEdit = false }
+                    }
             }
             Spacer()
             if let exit = tribe.exit {

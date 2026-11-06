@@ -129,3 +129,41 @@ struct PanelHero<Picture: View, Lines: View>: View {
         }
     }
 }
+
+/// A details panel docked in the side panel (`SidePanelSplit`), in a
+/// thread's place: the title and a close button in the detail header's
+/// bar, the body scrolling under it, then the footer. It takes the width
+/// the side panel gives it, so its content fits that rather than a fixed
+/// width, inset the same on every side.
+struct DockedPanel<Content: View, Footer: View>: View {
+    let title: String
+    let close: () -> Void
+    @ViewBuilder let content: Content
+    @ViewBuilder let footer: Footer
+
+    /// The body's and footer's padding, on every side.
+    static var inset: CGFloat { 18 }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DetailHeader(title: title) {
+                EmptyView()
+            } trailing: {
+                IconButton("xmark", help: "Close", action: close)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    content
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Self.inset)
+                .endsEditingOnClick()
+            }
+            footer
+                .padding(.horizontal, Self.inset)
+                .padding(.bottom, Self.inset)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.panel)
+    }
+}

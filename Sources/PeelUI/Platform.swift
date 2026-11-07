@@ -159,6 +159,8 @@ extension CallProvider {
 /// the rest from the app's own type.
 @MainActor
 public protocol TalkMedia: AnyObject {
+    /// The call's live text so far; read at hang-up to persist it.
+    var transcript: TalkTranscript { get }
     /// Leaves the room, saying goodbye: hanging up.
     func leave() async
     /// Asks the agent for `voice` from its next sentence: the member's

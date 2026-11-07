@@ -285,3 +285,8 @@ public enum TalkArtifacts {
         batch(text, workspace: workspace)?.artifacts ?? []
     }
 }
+extension TalkHome: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+}

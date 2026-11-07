@@ -1,4 +1,5 @@
 import Accelerate
+import AudioToolbox
 import AVFoundation
 import Combine
 import LiveKit
@@ -42,6 +43,8 @@ final class TalkSession: TalkMedia {
     /// The newest cards kept.
     static let maxCards = 30
 
+    /// True once the transcript cap warning sound has been played this call.
+    @ObservationIgnored private var capSoundPlayed = false
     @ObservationIgnored private var seenArtifacts = Set<String>()
     @ObservationIgnored private let identity: String
     @ObservationIgnored private let agent: String
@@ -149,7 +152,13 @@ final class TalkSession: TalkMedia {
     private func received(_ chunk: String, stream: String, sender: String, attributes: [String: String]) {
         guard !leaving else { return }
         let tracks = Set(room.localParticipant.trackPublications.keys.map(\.stringValue))
+        let wasUnderCap = transcript.lines.count < TalkTranscript.maxLines
         transcript.receive(chunk, stream: stream, sender: sender, attributes: attributes, you: identity, yourTracks: tracks)
+        // Warn once when the transcript first hits its cap and lines start being dropped.
+        if wasUnderCap, transcript.lines.count >= TalkTranscript.maxLines, !capSoundPlayed {
+            capSoundPlayed = true
+            AudioServicesPlaySystemSound(1057)
+        }
     }
 
     /// One turn's artifacts, each a card anchored in the transcript so far.

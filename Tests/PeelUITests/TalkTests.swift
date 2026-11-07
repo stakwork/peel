@@ -327,6 +327,7 @@ struct TalkStoreTests {
 @MainActor
 private final class Rooms: CallProvider {
     final class Room: TalkMedia {
+        var transcript: TalkTranscript { TalkTranscript() }
         let ticket: TalkTicket
         var left = false
         var voices: [TalkVoice] = []

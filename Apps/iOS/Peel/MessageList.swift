@@ -44,6 +44,8 @@ struct MessageList: View {
     /// The pin by the last row after the container's height stops changing
     /// (the keyboard's animation), replaced by each change.
     @State private var settledPin: Task<Void, Never>?
+    /// The check after a size change that the list is not blank, replaced by each change.
+    @State private var blankCheck: Task<Void, Never>?
 
     /// Where a list opens.
     enum Start: Equatable {
@@ -174,7 +176,18 @@ struct MessageList: View {
             // shrinks: a list scrolled up keeps its offset (a thread's
             // `following` starts true), and the composer growing a line while
             // typing re-pinned and jumped the reading position.
-            if new.container < old.container, old.atBottom, following, reachesNewest, !userScrolling, !opening {
+            let resized = new.container != old.container && !userScrolling && !opening
+            if resized, new.container > old.container || !(old.atBottom && following && reachesNewest) {
+                // The container grew (the mentions list went, the input
+                // shrank), or a scrolled-up list was resized: the offset is
+                // kept, but the end moved up under it, so it can stand past the
+                // content, or past the rows the stack has made: a blank list.
+                // Not a re-pin of a scrolled-up list (that was the jump while
+                // typing): only a check, once the stack has laid out, that
+                // something shows.
+                checkNotBlank()
+            }
+            if resized, new.container != old.container, old.atBottom, following, reachesNewest {
                 keepLastRowInView()
                 repinOnceSettled()
                 var pinned = new
@@ -373,6 +386,29 @@ struct MessageList: View {
     private func keepLastRowInView() {
         guard let last = rows.last?.id else { return }
         position.scrollTo(id: last, anchor: .bottom)
+    }
+
+    /// After a size change, once the lazy stack has laid out for it: a list
+    /// with no made row in its viewport is blank. At the bottom (and following)
+    /// it is pinned by its last row; otherwise it goes to the nearest valid
+    /// offset, or failing that the made row nearest where it stood, so the
+    /// reading place is kept and the reader never has to scroll to find content.
+    private func checkNotBlank() {
+        blankCheck?.cancel()
+        blankCheck = Task {
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled, live, !userScrolling, !opening, !rows.isEmpty, !layout.showsRow else { return }
+            if following, bottom.atBottom, reachesNewest { return keepLastRowInView() }
+            let view = layout.viewport
+            let y = min(max(view.offset, -view.inset), max(view.end, -view.inset))
+            if abs(y - view.offset) > 0.5 {
+                position.scrollTo(y: y)
+            } else if let nearest = layout.tops.min(by: { abs($0.value - view.offset) < abs($1.value - view.offset) }) {
+                position.scrollTo(id: nearest.key, anchor: .top)
+            } else {
+                keepLastRowInView()
+            }
+        }
     }
 
     /// Once the container's height has stopped changing, by the last row

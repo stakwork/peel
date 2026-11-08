@@ -197,6 +197,20 @@ struct MessageList: View {
             }
             moved(new)
         }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentSize.height
+        } action: { old, new in
+            // Rows measure taller than the lazy stack estimated, or grow after
+            // load (a thread-reply preview, images, avatars): a pin made from
+            // the estimate then stands short of the end, the newest row under
+            // the composer. A list following its bottom (never one the reader
+            // scrolled up: that clears `following`), opening at the newest or
+            // standing there, is pinned again by its last row.
+            guard new != old, !isThread, following, reachesNewest, !userScrolling, !rows.isEmpty,
+                  opening ? start == .newest : bottom.atBottom || layout.viewport.end - layout.viewport.offset <= 24 + max(0, new - old)
+            else { return }
+            keepLastRowInView()
+        }
         .onAppear(perform: open)
         .onChange(of: model.focus?.message.id) { _, _ in if live { takeFocus() } }
         .onChange(of: divider?.id) { _, id in if id != nil { dividerUnread = true } }
@@ -306,6 +320,25 @@ struct MessageList: View {
         for _ in 0..<6 where !userScrolling && !rows.isEmpty && !layout.showsRow {
             keepLastRowInView()
             try? await Task.sleep(for: .milliseconds(16))
+        }
+        // The newest: shown only once the last row's bottom is at the end of the
+        // content, above the composer's room (the end counts the bottom inset).
+        // A row showing is not enough: the estimate can still be short, the rows
+        // measured taller after the pin, leaving the newest behind the composer
+        // and empty room above. Pin again until the end holds still for a few
+        // frames (at most ~0.6 s), not once you take the list.
+        if start == .newest {
+            var steady = 0
+            for _ in 0..<40 where !userScrolling && !rows.isEmpty && steady < 3 {
+                let below = layout.viewport.end - layout.viewport.offset
+                if below <= 2, layout.showsRow {
+                    steady += 1
+                } else {
+                    steady = 0
+                    keepLastRowInView()
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
         }
         self.start = nil
         if case .focus(let id) = start {

@@ -336,7 +336,10 @@ struct MessageList: View {
     /// Still after opening or a scroll: where it stands is kept, and at the
     /// bottom all of it was seen.
     private func settled() {
-        if !opening, !rows.isEmpty, layout.tops.isEmpty { keepLastRowInView() }
+        // Blank-list guard, only for a list at its bottom: `layout.tops` can be
+        // transiently empty while lazy rows recycle mid-scroll, and pinning then
+        // would yank a scrolled-up reader to the bottom at the idle transition.
+        if !opening, !rows.isEmpty, layout.tops.isEmpty, following, bottom.atBottom, reachesNewest { keepLastRowInView() }
         keepPlace()
         guard !opening, bottom.atBottom, phase == .idle else { return }
         var bottom = self.bottom

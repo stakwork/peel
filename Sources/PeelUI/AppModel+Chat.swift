@@ -275,6 +275,28 @@ extension AppModel {
         sent(in: chat)
     }
 
+    /// A text on its own to `chat`, as voice mode sends what was said: none
+    /// of the composer's files, reply target or thread go with it, and they
+    /// stay in the composer. Returns whether it went; why not is the chat's
+    /// notice.
+    public func sendDictated(_ text: String, to chat: String) async -> Bool {
+        guard engine != nil else { return false }
+        guard myAlias?.nilIfEmpty != nil else {
+            conversationNotices[chat] = "Set your name before sending messages"
+            return false
+        }
+        Diagnostics.setAction(.send)
+        defer { Diagnostics.setAction(.other) }
+        conversationNotices[chat] = nil
+        do {
+            try await sendText(text, to: chat)
+            return true
+        } catch {
+            conversationNotices[chat] = PeelError.noted(error, couldNot: "send")
+            return false
+        }
+    }
+
     /// Sends what a composer holds: its files, one message each, with the
     /// text as the last one's caption (or on its own), all with the reply
     /// and thread links the composer was set to. Returns whether the text

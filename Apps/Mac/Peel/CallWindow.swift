@@ -301,7 +301,16 @@ private struct CallTileView: View {
             : (tile.isYou ? "You" : shown.name)
         ZStack(alignment: .bottomLeading) {
             tile.isScreen ? Theme.callBackground : Theme.quote
-            if let video = tile.video {
+            if tile.paused {
+                VStack(spacing: 6) {
+                    Image(systemName: "pause.circle")
+                        .font(.system(size: 28))
+                    Text("Sharing paused")
+                        .font(Theme.font(13, .medium))
+                }
+                .foregroundStyle(Theme.secondaryText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let video = tile.video {
                 // A screen is never cropped.
                 // Clicks go to the tile, not to LiveKit's view.
                 SwiftUIVideoView(video, layoutMode: tile.isScreen ? .fit : .fill)
@@ -414,6 +423,13 @@ private struct CallControls: View {
     /// app; while you share it is one filled button that stops it.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
+            Button { call.toggleScreenSharePause() } label: {
+                pill(call.sharePaused ? "play.fill" : "pause.fill", call.sharePaused ? "Resume" : "Pause", weight: .medium,
+                     text: Theme.text, fill: Theme.hover)
+            }
+            .buttonStyle(.plain)
+            .help(call.sharePaused ? "Resume sharing" : "Pause sharing")
+            .accessibilityLabel(call.sharePaused ? "Resume sharing" : "Pause sharing")
             Button { call.stopScreenShare() } label: {
                 pill("rectangle.inset.filled.and.person.filled", "Stop sharing", weight: .medium,
                      text: Theme.buttonText, fill: Theme.accent)
@@ -509,7 +525,11 @@ private struct CallControls: View {
     /// a connection that was lost.
     @ViewBuilder private var notes: some View {
         if let sharing = call.sharing {
-            note(sharing.note(includingPeel: call.sharingIncludesPeel), action: "Stop", perform: call.stopScreenShare)
+            if call.sharePaused {
+                note("Sharing paused: no one sees your screen", action: "Resume", perform: call.resumeScreenShare)
+            } else {
+                note(sharing.note(includingPeel: call.sharingIncludesPeel), action: "Stop", perform: call.stopScreenShare)
+            }
         }
         let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
             .compactMap { $0 }

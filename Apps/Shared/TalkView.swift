@@ -15,6 +15,7 @@ struct TalkView: View {
     #if os(iOS)
     /// What a tapped card opens in, over the call: a sheet of this screen's own.
     @State private var opener = TalkOpener()
+    @Environment(PhoneRouter.self) private var router
     #endif
 
     var body: some View {
@@ -30,6 +31,17 @@ struct TalkView: View {
             }
             .padding(.top, Theme.Space.lg)
             .padding(.horizontal, Theme.Space.lg)
+            #if os(iOS)
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .topLeading) {
+                Button { router.talkMinimized = true } label: {
+                    Image(systemName: "chevron.down")
+                        .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+                }
+                .accessibilityLabel("Back to the app")
+                .accessibilityHint("The call with Jamie goes on")
+            }
+            #endif
             switch talk.state {
             case .starting:
                 TalkPhaseView(words: "Calling Jamie…", mode: .breathing)

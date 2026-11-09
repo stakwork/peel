@@ -91,6 +91,9 @@ final class PhoneRouter {
     /// The call screen is up over everything (`IOSCallScreen`); the call
     /// goes on, with its bar over the tabs, while it is down.
     var callShown = false
+    /// The Talk screen is put away; the call goes on with `IOSOnTalkBar`.
+    /// Reset when Talk starts or ends.
+    var talkMinimized = false
 
     @ObservationIgnored private let model: AppModel
     /// The thread open over a chat when its tab (Chats or Search) was

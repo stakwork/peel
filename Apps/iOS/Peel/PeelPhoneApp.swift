@@ -153,15 +153,16 @@ struct RootView: View {
             // Talk to Jamie (docs/talk.md): up while there is a Talk call,
             // starting or failed; it goes when the call does.
             .fullScreenCover(isPresented: Binding(
-                get: { model.talk.home != nil },
-                set: { if !$0 { model.talk.hangUp() } }
+                get: { model.talk.home != nil && !router.talkMinimized },
+                set: { if !$0, !router.talkMinimized { model.talk.hangUp() } }
             )) {
                 TalkView()
                     .environment(model)
                     .environment(router)
             }
             // The call screens are portrait only, even when started from a chat.
-            .onChange(of: router.callShown || model.talk.home != nil, initial: true) { _, shown in
+            .onChange(of: model.talk.home?.id) { router.talkMinimized = false }
+            .onChange(of: router.callShown || (model.talk.home != nil && !router.talkMinimized), initial: true) { _, shown in
                 OrientationLock.shared.callShown = shown
                 OrientationLock.shared.update()
             }

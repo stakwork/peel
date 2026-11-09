@@ -415,9 +415,17 @@ struct MessageList: View {
 
     /// To the last row, not the edge: a scroll to the edge while the lazy
     /// stack resizes can leave it with no row made there, a blank list
-    /// (the Mac's `repin` by its last row).
+    /// (the Mac's `repin` by its last row). Except when all of it fits.
     private func keepLastRowInView() {
         guard let last = rows.last?.id else { return }
+        // All of it fits: the bottom edge, which the list clamps. By the last
+        // row it went above the top (the bottom alignment's inset already
+        // takes the room below), where no gesture stands, and stayed there
+        // until a drag bounced it back. Every row is made, so no blank list.
+        if layout.viewport.end <= -layout.viewport.inset + 0.5 {
+            position.scrollTo(edge: .bottom)
+            return
+        }
         position.scrollTo(id: last, anchor: .bottom)
     }
 

@@ -60,4 +60,30 @@ struct AppVersionsTests {
         #expect(app.newest == "v10")
         #expect(app.waiting == waiting)
     }
+
+    /// On Peel's own strut: `source: seed` is built-in; an older strut's
+    /// listing without `source` is by publisher and the `strut/` prefix; the
+    /// views library never; a workspace's seeded app only when pinned.
+    @Test(arguments: [
+        (nil, #""name":"strut/jamie","source":"seed""#, true as Bool?),
+        (nil, #""name":"strut/knowledge","publisher":"strut""#, true),
+        (nil, #""name":"strut/views","source":"seed""#, nil),
+        (nil, #""name":"strut/views","publisher":"strut""#, nil),
+        (nil, #""name":"mine","publisher":"ai","source":"user""#, false),
+        (nil, #""name":"mine","publisher":"ai""#, false),
+        ("acme", #""name":"strut/jamie","source":"seed""#, nil),
+        ("acme", #""name":"strut/jamie","source":"seed","pinned":true"#, false),
+    ] as [(String?, String, Bool?)])
+    func builtInAppsAreToldApart(peer: String?, fields: String, builtIn: Bool?) {
+        let app = WorkspaceApp(peer: peer, entry: Data("{\(fields)}".utf8))
+        #expect(app?.builtIn == builtIn)
+    }
+
+    /// strut seeds a built-in app: even held at an older release it has
+    /// nothing waiting for the person.
+    @Test func aBuiltInAppHasNothingWaiting() throws {
+        let entry = #"{"name":"strut/jamie","source":"seed","activeVersion":"v7","versions":["v7","v10"],"live":"r3"}"#
+        let app = try #require(WorkspaceApp(peer: nil, entry: Data(entry.utf8)))
+        #expect(app.builtIn && app.newest == "v10" && app.waiting == nil)
+    }
 }

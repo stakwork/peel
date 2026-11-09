@@ -781,9 +781,11 @@ public struct OrgPageRequest: Identifiable, Equatable, Sendable, CustomStringCon
 }
 
 extension WorkspaceApp {
-    /// Where it comes from, as the person reads it: `@workspace`, or Yours.
-    public var source: String { peer.map { "@\($0)" } ?? Self.yours }
+    /// Where it comes from, as the person reads it: `@workspace`, Built-in
+    /// (strut's own), or Yours.
+    public var source: String { peer.map { "@\($0)" } ?? (builtIn ? Self.builtIn : Self.yours) }
     public static let yours = "Yours"
+    public static let builtIn = "Built-in"
 
     /// Under its title and at its card's foot: `@workspace · v14`, the
     /// source when asked (several sources listed).
@@ -793,7 +795,7 @@ extension WorkspaceApp {
     }
 
     /// Whether a search for `query` finds it: in its title, what it is for,
-    /// or where it comes from (`@workspace`, Yours).
+    /// or where it comes from (`@workspace`, Yours, Built-in).
     public func matches(_ query: String) -> Bool {
         [title, about ?? "", source].contains { ChatSections.matches($0, query: query) }
     }
@@ -802,7 +804,8 @@ extension WorkspaceApp {
     /// when any is the person's own, then each workspace's `@peer` A–Z.
     public static func sources(of apps: [WorkspaceApp]) -> [String] {
         let peers = Set(apps.compactMap(\.peer)).sorted().map { "@\($0)" }
-        return (apps.contains { $0.peer == nil } ? [yours] : []) + peers
+        return (apps.contains { $0.peer == nil && !$0.builtIn } ? [yours] : [])
+            + (apps.contains { $0.builtIn } ? [builtIn] : []) + peers
     }
 
     /// `apps` from `source` (all when nil) that a search for `query` finds,

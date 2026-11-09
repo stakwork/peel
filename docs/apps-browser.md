@@ -149,8 +149,8 @@ own authoring UI. Your chat with Peel is the way in:
 - The person's own apps, on Peel's strut (the agent's builder publishes
   them there), listed beside the workspaces': `AutomationsClient.ownApps`
   reads `GET /apps` and keeps every one but those strut seeds
-  (`publisher: strut`, its `strut/views` component library; a deny-list:
-  a `source: seed` in strut's listing would be the firmer contract). Such an app
+  (`publisher: strut`; that deny-list was replaced, see "Built: Built-in
+  apps"). Such an app
   has no peer: its key is its name, so it opens as `?app=<name>&solo=1`,
   which strut's single-app view already serves.
 - One read for both (`refreshApps`), with no workspaces too; opening Apps
@@ -164,6 +164,28 @@ own authoring UI. Your chat with Peel is the way in:
   a sample app of yours beside two workspaces' (choice, foot, header,
   pinned row, its page asked of strut by name), and the development
   profile's own strut listing nothing once its `strut/views` is left out.
+
+## Built: Built-in apps (2026-11-09)
+
+- The apps strut seeds on Peel's own strut, Jamie and Knowledge, are listed
+  as their own source, "Built-in" (second in the choice, after Yours), and
+  open and pin like any app (`?app=strut/jamie&solo=1`).
+- Told apart by `source: "seed"` in strut's listing (stakwork/strut#575);
+  for an older strut without `source`, publisher `strut` and a name under
+  `strut/`, which strut reserves for its seeds (`WorkspaceApp.builtIn`).
+- `strut/views` stays out: a component library other apps import, whose
+  page is only a developer gallery. strut does not mark such an app, so it
+  is named (`WorkspaceApp.libraries`), as Stadeum's launcher does.
+- No versions chip or menu, and no Make live, for a built-in app: strut
+  seeds it, and there is nothing for the person to make live (`waiting` is
+  nil).
+- The iPhone gets none: it has no strut of its own, and lists only what a
+  workspace pinned.
+- Open question: a workspace's own seeded apps are not listed; only what it
+  pinned.
+- Checked: `HiveTests.yourOwnAppsAreAllListedAndOpenByName`,
+  `AppVersionsTests` (built-in rules) and `StadeumTests` (source order).
+  Not built on a Mac in this change (written on a Linux pod).
 
 ## Built: versions and releases (2026-10-28)
 

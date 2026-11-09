@@ -171,7 +171,7 @@ extension AppModel {
     /// Whether strut made the change.
     @discardableResult
     func makeLive(_ app: WorkspaceApp, _ target: AppLiveTarget, done: String) async -> Bool {
-        guard app.peer == nil, let server = memoryServer else { return false }
+        guard app.peer == nil, !app.builtIn, let server = memoryServer else { return false }
         let presenter = mainPresenter as? MenuPresenter
         do {
             try await AutomationsClient(server: server).makeLive(app.name, target)
@@ -242,16 +242,13 @@ extension AppModel {
     }
 
     /// Where the listed apps come from, as the person reads them: Yours
-    /// first, then the workspaces A–Z (`WorkspaceApp.source`).
-    var appSources: [String] {
-        let peers = Set(stadeum.apps.compactMap(\.peer)).sorted().map { "@\($0)" }
-        return (stadeum.apps.contains { $0.peer == nil } ? [WorkspaceApp.yours] : []) + peers
-    }
+    /// first, then Built-in, then the workspaces A–Z (`WorkspaceApp.source`).
+    var appSources: [String] { WorkspaceApp.sources(of: stadeum.apps) }
 
     /// Whether an app's source shows (its sidebar row, card and header):
     /// only when the apps come from several (Tom, 2026-10-26).
     var showsAppSources: Bool {
-        Set(stadeum.apps.map(\.peer)).count > 1
+        Set(stadeum.apps.map(\.source)).count > 1
     }
 
     /// Whether the person pinned `app` under the sidebar's Apps row

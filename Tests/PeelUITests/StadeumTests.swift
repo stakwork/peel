@@ -336,6 +336,19 @@ struct StadeumTests {
         again.close()
     }
 
+    /// Where apps come from, as the person reads it: Yours, Built-in, then
+    /// the workspaces A–Z.
+    @Test func sourcesAreYoursThenBuiltInThenWorkspaces() {
+        var jamie = WorkspaceApp(peer: nil, name: "strut/jamie", title: "Jamie", about: nil)
+        jamie.builtIn = true
+        let apps = [WorkspaceApp(peer: "b", name: "x", title: "X", about: nil), jamie,
+                    WorkspaceApp(peer: "a", name: "y", title: "Y", about: nil),
+                    WorkspaceApp(peer: nil, name: "mine", title: "Mine", about: nil)]
+        #expect(WorkspaceApp.sources(of: apps) == ["Yours", "Built-in", "@a", "@b"])
+        #expect(jamie.source == "Built-in" && apps[3].source == "Yours")
+        #expect(WorkspaceApp.sources(of: [jamie]) == ["Built-in"])
+    }
+
     @Test func closingTheAccountLetsGoOfEverythingButThePersonsOwnApps() async throws {
         let profile = try profile()
         try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)

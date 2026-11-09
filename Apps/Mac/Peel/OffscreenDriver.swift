@@ -281,10 +281,13 @@ final class OffscreenDriver {
     }
 
     /// `apps-seed`'s apps, as strut's `GET /apps` lists them: one of the
-    /// person's own and two workspaces', so Apps shows its choice.
+    /// person's own, Jamie built in (and the views library, left out) and two workspaces', so Apps shows its choice.
     private static let sampleApps: [(peer: String?, entry: [String: AgentKit.JSONValue])] = [
         (nil, ["name": "meal-planner", "title": "Meal planner", "icon": "utensils", "activeVersion": "v3",
                "description": "This week's dinners and the shopping list they need."]),
+        (nil, ["name": "strut/jamie", "title": "Jamie", "icon": "message-circle", "publisher": "strut", "source": "seed",
+               "activeVersion": "v1", "description": "Your assistant."]),
+        (nil, ["name": "strut/views", "title": "Views", "publisher": "strut", "source": "seed", "activeVersion": "v1"]),
         ("stakwork", ["name": "benchmarks", "title": "Benchmark board", "icon": "flask-conical", "activeVersion": "v14",
                       "live": "r3", "description": "Scores for every agent run against the eval suites, by attempt."]),
         ("stakwork", ["name": "openhealth", "title": "OpenHealth", "icon": "heart", "activeVersion": "v9",

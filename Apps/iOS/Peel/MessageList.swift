@@ -327,11 +327,14 @@ struct MessageList: View {
         // measured taller after the pin, leaving the newest behind the composer
         // and empty room above. Pin again until the end holds still for a few
         // frames (at most ~0.6 s), not once you take the list.
+        // A pin by the last row leaves the stack's bottom padding below it:
+        // within that it is at the end (asked for 2, it never held, and every
+        // chat stayed hidden the whole 0.6 s).
         if start == .newest {
             var steady = 0
             for _ in 0..<40 where !userScrolling && !rows.isEmpty && steady < 3 {
                 let below = layout.viewport.end - layout.viewport.offset
-                if below <= 2, layout.showsRow {
+                if below <= Theme.Space.sm + 2, layout.showsRow {
                     steady += 1
                 } else {
                     steady = 0

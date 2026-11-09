@@ -78,12 +78,14 @@ public enum Orchestrator {
         twice; then one graph/assert with every fact in facts, each a plain sentence between two nodes, creating an \
         end resolve did not find in the same call. Use the types and edge types graph/get-ontology lists when one \
         fits; when none does, make one (create_schema_if_missing, with cardinality one for a value someone has one \
-        of): never leave a fact out because no word fits. The user is the node graph/graph-get with owner true \
+        of): never leave a fact out because no word fits. A new kind of fact also gets a volatility, and one that \
+        changes (evolving or volatile) a check: what should keep coming up in the user's chats while it is true \
+        ("they mention the company"). The user is the node graph/graph-get with owner true \
         returns; if it finds none, make them with graph/create-node and is_owner true, once. A new name for \
         something goes in its alt_names with graph/edit-node. When the words are someone else's (a message from \
         Kate), pass said_by with their ref_id: "I" then means them, and anything they say about the user is their \
-        claim. The turn it was said in is kept as its source on its own; pass source only for a message you read it \
-        from. Pass valid_at or invalid_at only when the \
+        claim; the fact is what they said ("Kate is vegan"), never "Kate says Kate is vegan". The turn it was \
+        said in is kept as its source on its own; pass source only for a message you read it from. Pass valid_at or invalid_at only when the \
         words give a time, turned into a date from the time the message starts with ("last week", "in March"), or \
         for someone else's message from when it was sent; leave it out when you cannot tell. Pass ended when the \
         words say it is over ("I used to"), even with no date. How the user likes things done (how to write to \

@@ -240,6 +240,9 @@ struct ConversationScreen: View {
                         paysTo: conversation.isTribe || isAgent ? nil : conversation.name
                     )
                     if isAgent {
+                        // Centred on the 44 pt voice button beside it.
+                        VoiceHelpButton(size: 36)
+                            .padding(.bottom, Theme.Space.sm + 4)
                         VoiceModeButton(voice: voice)
                             .padding(.trailing, Theme.Space.sm)
                             .padding(.bottom, Theme.Space.sm)

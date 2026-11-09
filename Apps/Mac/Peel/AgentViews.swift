@@ -136,6 +136,7 @@ private struct AgentChatColumn: View {
                 } else {
                     HStack {
                         Spacer()
+                        VoiceHelpButton(size: 28)
                         VoiceModeButton(voice: voice, size: 28)
                     }
                     .padding(.horizontal, 20)

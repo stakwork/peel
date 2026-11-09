@@ -20,6 +20,71 @@ struct VoiceModeButton: View {
     }
 }
 
+/// The "?" beside voice mode's button and in its panel: a popover with the
+/// phrases to say, from `VoiceCommandPhrases.english` so it never drifts.
+struct VoiceHelpButton: View {
+    var size: CGFloat = 44
+    @State private var shown = false
+
+    var body: some View {
+        Button { shown = true } label: {
+            Image(systemName: "questionmark.circle")
+                .font(.system(size: 17, weight: .medium))
+                .frame(width: size, height: size)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel("Voice mode phrases")
+        .help("Voice mode phrases")
+        .popover(isPresented: $shown) {
+            VoicePhrases()
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
+/// What to say in voice mode: the first phrase of each command.
+private struct VoicePhrases: View {
+    private static let lines: [(VoiceCommand, String)] = [
+        (.send, "Send what you said"),
+        (.discard, "Throw it away"),
+        (.stopSpeaking, "Stop reading"),
+        (.repeatReply, "Read the last reply again"),
+        (.readAll, "Read a summarised reply in full"),
+        (.stopAgent, "Stop the agent's answer"),
+        (.mute, "Stop listening (Peel unmute to resume)"),
+        (.deactivate, "Turn voice mode off"),
+    ]
+
+    var body: some View {
+        let table = VoiceCommandPhrases.english
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Say Peel, then a command")
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                ForEach(Self.lines, id: \.0) { command, meaning in
+                    if let phrase = table.phrases[command]?.first {
+                        GridRow {
+                            Text("Peel \(phrase)").fontWeight(.semibold)
+                            Text(meaning).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .font(.callout)
+            if let wake = VoiceCommandPhrases.english.phrases[.activate]?.first {
+                Text("\"\(wake.capitalized)\" starts voice mode when listening for it is on in settings.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: 360, alignment: .leading)
+    }
+}
+
 /// The compact panel that takes the composer's place while voice mode is
 /// on: what it is doing, the draft as it is heard, a level meter, and the
 /// big buttons.
@@ -32,17 +97,20 @@ struct VoicePanel: View {
         let status = muted ? "Muted — say Peel unmute" : phase.label
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Image(systemName: muted ? "mic.slash.fill" : icon(phase))
-                    .accessibilityHidden(true)
-                Text(status)
-                    .font(.headline)
-                Spacer(minLength: 0)
-                LevelMeter(level: phase == .speaking || muted ? 0 : voice.level)
-                    .opacity(muted ? 0.35 : 1)
-                    .accessibilityHidden(true)
+                HStack(spacing: 10) {
+                    Image(systemName: muted ? "mic.slash.fill" : icon(phase))
+                        .accessibilityHidden(true)
+                    Text(status)
+                        .font(.headline)
+                    Spacer(minLength: 0)
+                    LevelMeter(level: phase == .speaking || muted ? 0 : voice.level)
+                        .opacity(muted ? 0.35 : 1)
+                        .accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(muted ? "Muted. Say Peel unmute to listen again." : phase.label)
+                VoiceHelpButton(size: 28)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(muted ? "Muted. Say Peel unmute to listen again." : phase.label)
             if !voice.draft.isEmpty {
                 Text(voice.draft)
                     .lineLimit(4)

@@ -157,6 +157,7 @@ final class CallSession {
     /// a pause or a reconnect does not take the focus again.
     @ObservationIgnored private var seenScreenTracks: Set<String> = []
     @ObservationIgnored private var changes: AnyCancellable?
+    @ObservationIgnored private var audioSettleTask: Task<Void, Never>?
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
     /// Each person as last read, by identity, with the name and metadata
     /// it was read from: the room changes many times a second while people
@@ -169,6 +170,7 @@ final class CallSession {
     private static var pickedSpeaker: String?
     /// The session audio device changes go to: the newest.
     private static weak var audioDevicesOwner: CallSession?
+    private static let audioSettleDelay: Duration = .milliseconds(1500)
     private static let deviceLog = Logger(subsystem: "dev.peel.mac", category: "call-audio")
 
     init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) {
@@ -242,7 +244,23 @@ final class CallSession {
     private func claimAudioDevices() {
         Self.audioDevicesOwner = self
         AudioManager.shared.onDeviceUpdate = { _ in
-            Task { @MainActor in CallSession.audioDevicesOwner?.audioDevicesChanged() }
+            Task { @MainActor in CallSession.audioDevicesOwner?.scheduleAudioDevicesChanged() }
+        }
+    }
+
+    /// Route changes arrive in bursts (AirPods back in), and each was answered
+    /// by re-pointing the AudioManager, which rebuilt WebRTC's voice-processing
+    /// AVAudioEngine while AVFAudio's AVAudioIOUnit format-change listener
+    /// still fires on the old one: a use-after-free inside AVFAudio
+    /// (EXC_BAD_ACCESS in IsFormatSampleRateAndChannelCountValid beside
+    /// -[AVAudioEngine dealloc]). We cannot fix AVFAudio, so the burst is
+    /// settled and handled once. Best-effort.
+    private func scheduleAudioDevicesChanged() {
+        audioSettleTask?.cancel()
+        audioSettleTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.audioSettleDelay)
+            guard !Task.isCancelled else { return }
+            self?.audioDevicesChanged()
         }
     }
 
@@ -272,6 +290,8 @@ final class CallSession {
     func leave() async {
         guard !leaving else { return }
         leaving = true
+        audioSettleTask?.cancel()
+        audioSettleTask = nil
         connecting?.cancel()
         await connecting?.value
         await stopSharing()
@@ -512,6 +532,7 @@ final class CallSession {
     /// default, which macOS points at it, and the engine is pointed afresh
     /// so the microphone and the playout do not stay bound to a stale device.
     private func audioDevicesChanged() {
+        audioSettleTask = nil
         guard !leaving else { return }
         let audio = AudioManager.shared
         let goneMic = audio.inputDevices.contains { $0.deviceId == microphone } ? nil : microphones.first { $0.id == microphone }
@@ -549,7 +570,12 @@ final class CallSession {
         // The track bound to the old device is replaced; also when the
         // room dropped the microphone though it is meant to be on.
         if wantsMic, moveMic || moveSpeaker || !micOn {
-            Task { await reacquireMicrophone() }
+            // The engine restart from the device changes should finish before
+            // the track is reopened.
+            Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                await reacquireMicrophone()
+            }
         }
     }
 

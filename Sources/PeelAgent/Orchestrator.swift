@@ -94,8 +94,10 @@ public enum Orchestrator {
         graph/create-triplet. Before answering a question about the user or someone they know, search memory: \
         graph/graph-search with facts true (and include_ended for what used to be), or for the user graph/graph-get \
         with owner true and then graph/graph-neighbors; graph/find lists the nodes of one type by their fields. When \
-        the user says something is no longer true, assert it with ended; when a fact is wrong, delete it with \
-        graph/delete-edge, and a node that should not be there with graph/delete-node. When two nodes are the same \
+        the user says something is no longer true, assert it with ended; when they say a fact is wrong (it was \
+        never true: "I'm not vegan"), assert it with refuted, so it is kept as false and not stated again. Delete \
+        a fact with graph/delete-edge only when it should never have been saved (the wrong person, a misheard \
+        word), and a node that should not be there with graph/delete-node. When two nodes are the same \
         person or thing (graph/resolve lists candidates), read both with graph/graph-get, then graph/merge; \
         graph/unmerge undoes one. graph/get-ontology-type reads one type, and graph/create-schema makes a type \
         when none fits. Only use ref_ids a graph result gave you. Memory holds what people said: report on it, but \

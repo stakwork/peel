@@ -130,7 +130,8 @@ extension AppModel {
         guard platform.sendsActiveLease, activeLease.isRunning, let engine else { return }
         activeLease.stop()
         let done = DispatchSemaphore(value: 0)
-        Task.detached {
+        // .userInitiated to match the blocked waiter below (avoids priority inversion).
+        Task.detached(priority: .userInitiated) {
             await ActiveLease.sendInactive(through: engine)
             done.signal()
         }

@@ -134,10 +134,17 @@ struct MessageList: View {
                     // Where each made row is in the content, to place the list
                     // and keep its place: reported as rows lay out, not as
                     // the list scrolls, and not state, so nothing is drawn again.
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Layout.space)).minY } action: { [layout] top in
-                        layout.tops[row.id] = top
+                    .onGeometryChange(for: ClosedRange<CGFloat>.self) { geometry in
+                        let frame = geometry.frame(in: .named(Layout.space))
+                        return frame.minY...frame.maxY
+                    } action: { [layout] span in
+                        layout.tops[row.id] = span.lowerBound
+                        layout.bottoms[row.id] = span.upperBound
                     }
-                    .onDisappear { [layout] in layout.tops[row.id] = nil }
+                    .onDisappear { [layout] in
+                        layout.tops[row.id] = nil
+                        layout.bottoms[row.id] = nil
+                    }
                     .id(row.id)
                 }
             }
@@ -563,11 +570,18 @@ private final class Layout {
     }
 
     var tops: [String: CGFloat] = [:]
+    /// Each made row's bottom, for a row taller than the viewport.
+    var bottoms: [String: CGFloat] = [:]
     var viewport = Viewport()
 
-    /// Whether a made row's top is within the viewport.
+    /// Whether any made row is within the viewport.
     var showsRow: Bool {
-        tops.values.contains { $0 >= viewport.offset && $0 < viewport.offset + viewport.container }
+        // Any part of it, not its top: an agent's long reply fills the
+        // viewport from above it, and by tops the list read as blank and
+        // stayed hidden, re-pinned, for the whole open (~1 s).
+        tops.contains { id, top in
+            top < viewport.offset + viewport.container && (bottoms[id] ?? top) > viewport.offset
+        }
     }
 
     /// A made row's top below the list's top (under its inset), as on screen now.

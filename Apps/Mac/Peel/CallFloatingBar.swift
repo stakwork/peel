@@ -205,9 +205,18 @@ private struct CallFloatingBarView: View {
 
     /// A grip on the left that drags the panel.
     private var handle: some View {
-        Image(systemName: "ellipsis.vertical")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Theme.secondaryText)
+        // Drawn rather than an SF Symbol so it can't fail to render.
+        HStack(spacing: 3) {
+            ForEach(0..<2, id: \.self) { _ in
+                VStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Circle().frame(width: 3.5, height: 3.5)
+                    }
+                }
+            }
+        }
+        .foregroundStyle(Color.white.opacity(0.55))
+        .accessibilityHidden(true)
             .frame(width: 28, height: IconButton<Image>.Size.md.side)
             .contentShape(Rectangle())
             // The panel is movable by its background; this keeps that from

@@ -33,11 +33,14 @@ struct CountBadge: View {
 struct PhoneSectionHeader: View {
     let title: String
     var expanded: Binding<Bool>?
+    /// Over a centred block (a QR code), not at the leading edge.
+    var centered = false
     @Environment(\.surface) private var surface
 
-    init(_ title: String, expanded: Binding<Bool>? = nil) {
+    init(_ title: String, expanded: Binding<Bool>? = nil, centered: Bool = false) {
         self.title = title
         self.expanded = expanded
+        self.centered = centered
     }
 
     var body: some View {
@@ -60,6 +63,7 @@ struct PhoneSectionHeader: View {
 
     private func label(open: Bool?) -> some View {
         HStack(spacing: 6) {
+            if centered { Spacer(minLength: 0) }
             Text(title).phoneFont(.sectionHeader)
             if let open {
                 Image(systemName: "chevron.down")
@@ -148,6 +152,7 @@ struct ChatListRow: View {
                     .lineLimit(1)
                 if isAgent { AgentTag() }
             }
+            .modifier(PreviewLine(line: isAgent ? nil : conversation.previewLine, unread: unread > 0))
         } trailing: {
             if onCall > 0 {
                 Image(systemName: "phone.fill")
@@ -192,6 +197,33 @@ struct ChatListRow: View {
         if state?.isNew == true, unread == 0 { parts.append("new") }
         if level == .muted { parts.append("muted") } else if level == .mentionsOnly { parts.append("mentions only") }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// Puts a chat's last message under its title on one line: `secondaryText`
+/// when read; `text`, semibold, with a blue dot when unread.
+private struct PreviewLine: ViewModifier {
+    let line: String?
+    let unread: Bool
+
+    func body(content: Content) -> some View {
+        if let line {
+            VStack(alignment: .leading, spacing: 2) {
+                content
+                HStack(spacing: 5) {
+                    if unread {
+                        Circle().fill(Theme.accent).frame(width: 7, height: 7).accessibilityHidden(true)
+                    }
+                    Text(line)
+                        .phoneFont(PhoneFont.time.weight(unread ? .semibold : .regular))
+                        .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+        } else {
+            content
+        }
     }
 }
 

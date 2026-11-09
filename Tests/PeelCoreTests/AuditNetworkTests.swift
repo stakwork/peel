@@ -206,10 +206,16 @@ struct AuditPrivacyTests {
                     #expect(!text.replacingOccurrences(of: "setPushTokenForApp", with: "").contains("setPushToken"),
                             "never the old call that carries no app ID")
                     #expect(text.contains("registrationAllowed"), "the call must sit behind the flag")
+                    // The three calls beside it (sphinx-rs 0.8.42): the lease and read-all carry no
+                    // token; the unregister carries the app ID and sits behind the same flag.
+                    for call in ["Sphinxrs.setActive", "Sphinxrs.readAll", "Sphinxrs.unregisterPushTokenForApp"] {
+                        #expect(text.contains(call), "\(call)")
+                    }
                     #expect(text.contains("PeelPushFlags.registerWithHub()"), "the flag must default to the app's switch")
                     continue
                 }
                 #expect(!text.contains("setPushToken"), "\(file.lastPathComponent)")
+                #expect(!text.contains("Sphinxrs.unregisterPushTokenForApp"), "\(file.lastPathComponent)")
                 checked += 1
             }
         }

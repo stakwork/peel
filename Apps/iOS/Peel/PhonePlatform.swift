@@ -1,4 +1,5 @@
 import PeelCore
+import PeelPush
 import PeelUI
 import SwiftUI
 import UIKit
@@ -18,7 +19,11 @@ extension Platform {
             // Chats is a list to come back to, not a pane to fill.
             opensFirstChat: false,
             // Face ID's on/off follows the account, as in the official iOS app.
-            syncsBiometrics: true
+            syncsBiometrics: true,
+            // Never `setActive`: the phone gets badge-only pushes while the Mac is in use.
+            sendsActiveLease: false,
+            // Forget takes the token off the server under the ID it registered with.
+            pushAppID: { PushConfig.current?.appID }
         )
     }
 }
@@ -32,6 +37,10 @@ struct PhonePresence: AppPresence {
     var postsNotifications: Bool { false }
 
     func activate() {}
+
+    /// A push's badge stays until Peel is back in front: a background wake
+    /// writing the local count over it is what made it jump back.
+    var badgeFollowsPushWhileAway: Bool { true }
 
     func showBadge(_ count: Int) {
         // Shown once notifications are allowed (I5); until then the system ignores it.

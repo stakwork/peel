@@ -270,7 +270,7 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
     let title: String
     var subtitle: String?
     /// A click on the icon or the title: the chat's details, which open
-    /// below More (`HeaderMoreButton`), not here.
+    /// in the side panel (`ChatDetailsPanel`), not here.
     var onTitle: (() -> Void)?
     /// Beside the title: the agent chat's AGENT.
     var showsAgentTag = false

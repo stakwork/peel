@@ -12,7 +12,9 @@ extension Platform {
         Platform(
             presence: MacPresence(), files: FilePanels(), pasteboard: ClipboardPasteboard(),
             playback: MediaPlayback.shared, web: { WebPane(profile: $0) }, calls: LiveKitCalls(),
-            agent: MacAgent()
+            agent: MacAgent(),
+            // The Mac says it is in use; it registers no push token.
+            sendsActiveLease: true
         )
     }
 }
@@ -22,6 +24,8 @@ struct MacPresence: AppPresence {
     var isFrontmost: Bool { NSApplication.shared.isActive }
 
     var postsNotifications: Bool { Bundle.main.bundleURL.pathExtension == "app" && !Offscreen.isOn }
+
+    var badgeFollowsPushWhileAway: Bool { false }
 
     func activate() {
         NSApplication.shared.activate()

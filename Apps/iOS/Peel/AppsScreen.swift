@@ -14,6 +14,7 @@ struct AppsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
     @State private var query = ""
+    @State private var historyHome: TalkHome?
     /// A source (`@workspace`) the list is kept to; nil for all.
     @State private var source: String?
 
@@ -37,6 +38,14 @@ struct AppsScreen: View {
                     ForEach(homes) { home in
                         Button { model.talk.talk(to: home) } label: { TalkRow(home: home) }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("New conversation", systemImage: "mic") {
+                                    model.talk.talk(to: home)
+                                }
+                                Button("History", systemImage: "clock.arrow.circlepath") {
+                                    historyHome = home
+                                }
+                            }
                     }
                 } header: {
                     PhoneSectionHeader("Talk to Jamie")
@@ -133,6 +142,9 @@ struct AppsScreen: View {
         .refreshable { await stadeum.readWorkspaceApps()?.value }
         // Read again on opening, and when the workspaces change.
         .task(id: stadeum.live.map(\.id)) { stadeum.readWorkspaceApps() }
+        .navigationDestination(item: $historyHome) { home in
+            TalkHistoryScreen(home: home)
+        }
         .navigationTitle("Apps")
         .navigationBarTitleDisplayMode(.inline)
     }

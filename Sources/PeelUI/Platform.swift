@@ -26,11 +26,20 @@ public struct Platform {
     /// (`biometric_enabled`): the iPhone's does; the Mac app, as the
     /// official one, neither writes nor applies it.
     public var syncsBiometrics: Bool
+    /// Whether this device tells the server it is being used (`setActive`,
+    /// `ActiveLease`): the Mac does; the iPhone never does, so it still gets
+    /// the pushes the server holds back from an account active elsewhere.
+    public var sendsActiveLease: Bool
+    /// The app ID this install registered its push token with, if it does
+    /// (the iPhone's `PeelAppID`); Forget takes the token off the server
+    /// with it. nil where nothing is registered.
+    public var pushAppID: @MainActor () -> String?
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
-        opensFirstChat: Bool = true, syncsBiometrics: Bool = false
+        opensFirstChat: Bool = true, syncsBiometrics: Bool = false, sendsActiveLease: Bool = false,
+        pushAppID: @escaping @MainActor () -> String? = { nil }
     ) {
         self.presence = presence
         self.files = files
@@ -41,6 +50,8 @@ public struct Platform {
         self.agent = agent
         self.opensFirstChat = opensFirstChat
         self.syncsBiometrics = syncsBiometrics
+        self.sendsActiveLease = sendsActiveLease
+        self.pushAppID = pushAppID
     }
 }
 
@@ -57,6 +68,11 @@ public protocol AppPresence {
     func activate()
     /// The unread count on Peel's icon (the Dock's, on the Mac); none for 0.
     func showBadge(_ count: Int)
+    /// Whether the icon's badge is the server's while Peel is away: the
+    /// iPhone's pushes carry the server's count, and Peel writes its own
+    /// only in front and as it leaves (`Notifier.leftForeground`). The Mac's
+    /// Dock badge follows the sidebar all the time.
+    var badgeFollowsPushWhileAway: Bool { get }
     /// Peel's page in the system's notification settings.
     func openNotificationSettings()
     /// Plays a system sound by name ("" for the default alert sound), for a
@@ -143,6 +159,8 @@ extension CallProvider {
 /// the rest from the app's own type.
 @MainActor
 public protocol TalkMedia: AnyObject {
+    /// The call's live text so far; read at hang-up to persist it.
+    var transcript: TalkTranscript { get }
     /// Leaves the room, saying goodbye: hanging up.
     func leave() async
     /// Asks the agent for `voice` from its next sentence: the member's

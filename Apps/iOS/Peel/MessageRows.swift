@@ -539,6 +539,8 @@ private struct BoostChipView: View {
     let chat: String
     let inTribe: Bool
 
+    @State private var showing = false
+
     private static let shownBoosters = 3
     private static let overlap: CGFloat = 5
 
@@ -555,7 +557,7 @@ private struct BoostChipView: View {
         let people = boosters
         let pending = boosts.pendingSince != nil
         let mine = boosts.boostedByMe && !pending
-        Chip(.inset, lit: mine) {
+        Chip(.inset, lit: mine, action: { showing = true }) {
             HStack(spacing: Theme.Space.xs) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 10))
@@ -586,8 +588,60 @@ private struct BoostChipView: View {
             .padding(.trailing, people.count > Self.shownBoosters ? 8 : 3)
             .padding(.vertical, 3)
         }
-        // The row reads the total ("boosted 1,200 sats").
-        .accessibilityHidden(true)
+        .accessibilityLabel("Boosts, \(Sats.format(msat: boosts.totalMsat)), shows who boosted")
+        .popover(isPresented: $showing) {
+            BoostersList(boosts: boosts, chat: chat, inTribe: inTribe)
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
+/// Who boosted a message and by how much, oldest first (the Mac's
+/// boosters panel).
+private struct BoostersList: View {
+    @Environment(AppModel.self) private var model
+    let boosts: BoostSummary
+    let chat: String
+    let inTribe: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            Text("Boosts").font(Theme.font(15, .semibold)).foregroundStyle(Theme.text)
+            Text("\(Sats.format(msat: boosts.totalMsat)) from \(Formatting.count(boosts.count, "boost"))")
+                .font(Theme.font(13))
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    ForEach(Array(boosts.boosts.enumerated()), id: \.offset) { _, boost in
+                        let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
+                                                  chat: chat, inTribe: inTribe)
+                        HStack(spacing: Theme.Space.sm) {
+                            Avatar(name: avatar.avatarName, url: avatar.photoURL, size: Theme.AvatarSize.md, hue: avatar.hue)
+                            Text(avatar.label)
+                                .foregroundStyle(avatar.hue.name)
+                                .lineLimit(1)
+                            Spacer(minLength: Theme.Space.sm)
+                            if boost.pendingSince != nil || boost.unsettled {
+                                Text(boost.unsettled ? "not settled" : "sending")
+                                    .font(Theme.font(12))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .fixedSize()
+                            }
+                            Text(Sats.format(msat: boost.amountMsat))
+                                .font(Theme.font(13))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.secondaryText)
+                                .fixedSize()
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 240)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.Space.md)
+        .frame(minWidth: 260, idealWidth: 300)
     }
 }
 

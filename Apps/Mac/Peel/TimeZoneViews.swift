@@ -114,38 +114,33 @@ struct PersonCard: View {
 
 /// A direct message's header: under the name, "02:14 local time · 6 h
 /// ahead" while their offset is not yours, moving on with the minute; and
-/// the chat's details, below More, also from a click on the name or icon.
+/// the chat's details, in the side panel from More, or a click on the name or icon.
 struct DirectHeader: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
 
     @State private var local: LocalTime?
-    @State private var showingInfo = false
 
     var body: some View {
         TimelineView(.everyMinute) { context in
             DetailHeader(
                 title: conversation.name, subtitle: model.localTimeLine(local, at: context.date),
-                onTitle: { showingInfo = true }
+                onTitle: { model.openDetails(of: conversation.chat) }
             ) {
                 ConversationIcon(conversation: conversation, size: Theme.AvatarSize.lg)
             } trailing: {
                 HStack(spacing: Theme.Space.xs) {
                     SearchHeaderButton(chat: conversation.chat)
                     CallHeaderButton(chat: conversation.chat)
-                    HeaderMoreButton(chat: conversation.chat, showsDetails: $showingInfo) { details in
+                    HeaderMoreButton(chat: conversation.chat) { details in
                         .sections(
                             WebMenuEntries.entries(for: nil, pane: model.web),
                             [details, ConversationMenu.notifications(for: conversation, model: model)]
                         )
-                    } details: {
-                        ChatInfoPanel(conversation: conversation) { showingInfo = false }
                     }
                 }
             }
         }
-        // Details opened for one contact never open over the next.
-        .onChange(of: conversation.chat) { showingInfo = false }
         // Asked again when a message of theirs brings an offset.
         .task(id: model.timeline.messages.last { !$0.fromMe && $0.senderTZ != nil }?.id) {
             local = await model.localTime(of: conversation.chat, member: nil)
@@ -169,7 +164,7 @@ struct ChatInfoPanel: View {
     @State private var removeProblem: String?
 
     var body: some View {
-        Panel("Details", close: done) {
+        DockedPanel(title: "Details", close: done) {
             PanelHero(name: conversation.name) {
                 ConversationIcon(conversation: conversation, size: Theme.AvatarSize.xl)
             } lines: {
@@ -182,7 +177,6 @@ struct ChatInfoPanel: View {
                     }
                 }
             }
-            .padding(.top, Theme.Space.md)
             ContactKeyCard(pubkey: conversation.chat)
                 .padding(.top, 14)
             ChatTimeZoneSection(conversation: conversation, tribe: nil)
@@ -215,7 +209,9 @@ struct ChatInfoPanel: View {
 }
 
 /// Whether your time zone goes with what you send in a chat, under a
-/// "Time zone" heading. Nothing in a public tribe: it never gets it.
+/// "Time zone" heading, and the zone it comes from, chosen from the same
+/// searchable list as the Account's, shown whether sharing is on or not as
+/// in the official app. Nothing in a public tribe: it never gets it.
 struct ChatTimeZoneSection: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -223,6 +219,8 @@ struct ChatTimeZoneSection: View {
 
     /// The switch's state (`TimeZoneSharingSwitch`).
     @State private var zone = TimeZoneSharingSwitch()
+    @State private var picking = false
+    @State private var hovering = false
 
     private var target: String { conversation.title }
 
@@ -237,6 +235,7 @@ struct ChatTimeZoneSection: View {
                             Task { await zone.set(on, in: conversation.chat, with: model) }
                         })
                     )
+                    zonePicker
                     if let problem = zone.problem {
                         ProblemText(problem)
                     }
@@ -244,6 +243,46 @@ struct ChatTimeZoneSection: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .task(id: conversation.chat) { await zone.load(conversation.chat, with: model) }
+        }
+    }
+}
+
+extension ChatTimeZoneSection {
+    /// The zone chosen for this chat, or Automatic, with its offset; opens
+    /// the list.
+    fileprivate var zonePicker: some View {
+        let identifier = zone.identifier
+        let shown = identifier.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent
+        return HStack(spacing: Theme.Space.sm) {
+            Text("Time zone")
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.secondaryText)
+                .fixedSize()
+            Button { picking = true } label: {
+                HStack(spacing: Theme.Space.sm) {
+                    Text(identifier.map(ZonePicker.label) ?? ZonePicker.automatic)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(TimeZoneOffset.format(shown))
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(1)
+                        .fixedSize()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .font(Theme.font(13))
+                .monospacedDigit()
+                .dropdownBoxed(hovering: hovering)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .peelPopover(isPresented: $picking) {
+                ZonePicker(chosen: identifier, close: { picking = false }) { chosen in
+                    picking = false
+                    Task { await zone.setIdentifier(chosen, in: conversation.chat, with: model) }
+                }
+            }
         }
     }
 }
@@ -266,6 +305,7 @@ private struct ContactKeyCard: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 HStack(spacing: Theme.Space.sm) {
                     CopyButton("Copy key", text: pubkey)

@@ -102,6 +102,11 @@ public struct Conversation: Codable, Sendable, Identifiable, Equatable, Fetchabl
     public var lastContent: String?
     public var lastTimestamp: Int64?
     public var lastFromMe: Bool?
+    public var lastType: Int?
+    public var lastMediaType: String?
+    public var lastDeleted: Bool?
+    /// The nickname the last message's sender gave (a tribe's member).
+    public var lastSenderAlias: String?
 
     public var id: String { chat }
 

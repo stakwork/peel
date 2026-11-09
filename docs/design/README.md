@@ -1490,6 +1490,15 @@ What that gives:
   you send here. Turning it off stops sending; Evan keeps the last one you
   sent." A public tribe's panel has no switch, only the line "Your time zone
   is never sent in public tribes."
+- **A zone for one chat**, as in the official apps (their switch sits
+  beside a zone picker whose first entry is "Use Computer Settings"): under
+  the switch a "Time zone" row, always shown (sharing off too), "Automatic ·
+  Europe/London" or the chosen name with its offset, opening the same
+  searchable list as Account's (a `ZonePicker` popover on the Mac, a sheet
+  with a search field on the iPhone). Choosing saves at once as the chat's
+  `timezone` item (`Engine.setChatTimeZone`, which keeps the switch as it
+  is; the switch keeps the zone) and what is sent follows it; Automatic
+  stores "" and goes back to the account's zone.
 - **Account › Time zone** (T4): a row of Account's first section, "Time
   zone: Automatic · Europe/London (GMT+1)", or one chosen from a
   searchable Peel menu. No count of the chats it goes to and no note

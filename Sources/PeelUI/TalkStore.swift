@@ -113,7 +113,18 @@ public final class TalkStore {
     public func hangUp() {
         starting?.cancel()
         starting = nil
-        if case .on(let media) = state { leave(media) }
+        if case .on(let media) = state {
+            // Persist the transcript before the room is left.
+            if let home, !media.transcript.lines.isEmpty {
+                let snapshot = media.transcript
+                let homeId = home.id
+                let homeName = home.name
+                Task.detached(priority: .utility) {
+                    TalkHistoryStore.save(transcript: snapshot, homeId: homeId, homeName: homeName)
+                }
+            }
+            leave(media)
+        }
         home = nil
         state = .starting
     }
@@ -247,8 +258,8 @@ public struct TalkEncryption: Equatable, Sendable {
 
 /// One line of a Talk call's live text: what the member said or what the
 /// agent says, as it comes.
-public struct TalkLine: Identifiable, Equatable, Sendable {
-    public enum Speaker: Sendable { case you, agent }
+public struct TalkLine: Identifiable, Equatable, Codable, Sendable {
+    public enum Speaker: String, Codable, Sendable { case you, agent }
 
     public let id: String
     public let speaker: Speaker
@@ -267,7 +278,7 @@ public struct TalkLine: Identifiable, Equatable, Sendable {
 public struct TalkTranscript: Equatable, Sendable {
     public static let topic = "lk.transcription"
     /// The newest lines kept; older ones go.
-    static let maxLines = 200
+    public static let maxLines = 500
     /// The most characters of a line's text.
     static let maxText = 4000
 

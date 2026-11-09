@@ -201,6 +201,13 @@ extension AppModel {
         }
     }
 
+    /// Opens a chat's details (a contact's, a tribe's) in the side panel,
+    /// closing the open thread.
+    public func openDetails(of chat: String) {
+        closeThread()
+        detailsChat = chat
+    }
+
     public func closeThread() {
         if let openThread { replyTargets[.thread(openThread)] = nil }
         openThread = nil

@@ -1185,6 +1185,28 @@ Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
   they must stay equal: any Release build, archive or Ad Hoc, is signed
   production and reports production.
 
+- **Active lease, read-all and unregister (sphinx-rs 0.8.42).** The Mac alone
+  tells the server it is in use: `Engine.setDeviceActive` (`setActive`, no
+  `ttlSecs`) every 25 s while Peel is in front, open, unlocked and connected
+  (`ActiveLease`, `Platform.sendsActiveLease`), and `false` (best effort,
+  3 s cap) on resign, lock, sleep, quit and Forget. The phone never sends it,
+  so it keeps the badge-only pushes the mixer sends while the Mac is active.
+  Once the local unread count is 0 on either device, `Engine.markEverythingRead`
+  (`readAll`) resets an inflated badge, at most once per session and per 30
+  minutes (`ReadAllGate`, `PeelLastReadAll` in UserDefaults). Forget calls
+  `Engine.unregisterPush(appID:)` (`unregisterPushTokenForApp`, the same app
+  ID as registering, behind the same flag) before the engine closes, within
+  3 s (`Platform.pushAppID`). Not compiled here (no Swift in this pod).
+
+- **The icon's badge while away.** A push's `badge` is the server's count,
+  which takes every message past the marker (joins, boosts, muted chats)
+  where Peel's `unreadCount` does not. The phone writes its own count only
+  while in front and once as it goes to the background
+  (`Notifier.leftForeground`, written even if unchanged); a background wake
+  on a push leaves the push's number alone, which it used to overwrite a
+  moment after it showed (`AppPresence.badgeFollowsPushWhileAway`). The
+  Mac's Dock badge follows the sidebar at all times.
+
 Reading the token while debugging: a Debug build prints `[Peel push] APNs
 device token (<environment>, app <id>): <hex>` to Xcode's console and asks for
 notification permission at launch, without turning the hub flag on. Release
@@ -1330,7 +1352,7 @@ Left to do:
 
 1. **Apple portal and Strut setup** as above (nothing here can do it).
 2. **Device check of the names map** (below).
-3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (20): move
+3. The extension's `CURRENT_PROJECT_VERSION` is a copy of the app's (22): move
    them together. The project's `DEVELOPMENT_TEAM` is `8297M44YTW` (shared
    with Sphinx); the Personal Team is only for the Mac's local signing.
 

@@ -155,6 +155,16 @@ public enum Orchestrator {
         Ask one of the workspaces you can ask with strut/run-workflow and its peer id, never with \
         \(DeviceStep.send.type): a workspace is not a chat, even when a chat has the same name; when the user's words \
         could mean either, ask which.
+
+        Jamie is the assistant of Stakwork's workspaces (Hive and others). Once the user has connected Peel to a \
+        workspace (through Stadeum), you can reach Jamie: ask that workspace, by its handle (@hive), and your \
+        message goes to its assistant, who is Jamie there. So when the user asks you to ask Jamie something, never \
+        say you cannot: ask the workspace they mean with strut/run-workflow, putting their question in the \
+        message; when they have connected several and did not say which, ask which. You cannot tag @Jamie by \
+        itself from here: Jamie is in many workspaces, so the name alone is ambiguous, and the workspace's handle \
+        says which Jamie. Tagging @Jamie works directly only in a Sphinx tribe, which points at one workspace \
+        (that is a message to the tribe, not something you ask). When no workspace is connected, say Peel must \
+        first be connected to one in Stadeum.
         """
 
     /// How a Peel bug reaches a workspace: the redacted record, summed up,

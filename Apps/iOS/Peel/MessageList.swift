@@ -44,6 +44,8 @@ struct MessageList: View {
     /// The pin by the last row after the container's height stops changing
     /// (the keyboard's animation), replaced by each change.
     @State private var settledPin: Task<Void, Never>?
+    /// The check after a size change that the list is not blank, replaced by each change.
+    @State private var blankCheck: Task<Void, Never>?
 
     /// Where a list opens.
     enum Start: Equatable {
@@ -174,7 +176,18 @@ struct MessageList: View {
             // shrinks: a list scrolled up keeps its offset (a thread's
             // `following` starts true), and the composer growing a line while
             // typing re-pinned and jumped the reading position.
-            if new.container < old.container, old.atBottom, following, reachesNewest, !userScrolling, !opening {
+            let resized = new.container != old.container && !userScrolling && !opening
+            if resized, new.container > old.container || !(old.atBottom && following && reachesNewest) {
+                // The container grew (the mentions list went, the input
+                // shrank), or a scrolled-up list was resized: the offset is
+                // kept, but the end moved up under it, so it can stand past the
+                // content, or past the rows the stack has made: a blank list.
+                // Not a re-pin of a scrolled-up list (that was the jump while
+                // typing): only a check, once the stack has laid out, that
+                // something shows.
+                checkNotBlank()
+            }
+            if resized, new.container != old.container, old.atBottom, following, reachesNewest {
                 keepLastRowInView()
                 repinOnceSettled()
                 var pinned = new
@@ -183,6 +196,20 @@ struct MessageList: View {
                 return moved(pinned)
             }
             moved(new)
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentSize.height
+        } action: { old, new in
+            // Rows measure taller than the lazy stack estimated, or grow after
+            // load (a thread-reply preview, images, avatars): a pin made from
+            // the estimate then stands short of the end, the newest row under
+            // the composer. A list following its bottom (never one the reader
+            // scrolled up: that clears `following`), opening at the newest or
+            // standing there, is pinned again by its last row.
+            guard new != old, !isThread, following, reachesNewest, !userScrolling, !rows.isEmpty,
+                  opening ? start == .newest : bottom.atBottom || layout.viewport.end - layout.viewport.offset <= 24 + max(0, new - old)
+            else { return }
+            keepLastRowInView()
         }
         .onAppear(perform: open)
         .onChange(of: model.focus?.message.id) { _, _ in if live { takeFocus() } }
@@ -294,6 +321,25 @@ struct MessageList: View {
             keepLastRowInView()
             try? await Task.sleep(for: .milliseconds(16))
         }
+        // The newest: shown only once the last row's bottom is at the end of the
+        // content, above the composer's room (the end counts the bottom inset).
+        // A row showing is not enough: the estimate can still be short, the rows
+        // measured taller after the pin, leaving the newest behind the composer
+        // and empty room above. Pin again until the end holds still for a few
+        // frames (at most ~0.6 s), not once you take the list.
+        if start == .newest {
+            var steady = 0
+            for _ in 0..<40 where !userScrolling && !rows.isEmpty && steady < 3 {
+                let below = layout.viewport.end - layout.viewport.offset
+                if below <= 2, layout.showsRow {
+                    steady += 1
+                } else {
+                    steady = 0
+                    keepLastRowInView()
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
         self.start = nil
         if case .focus(let id) = start {
             following = false
@@ -336,7 +382,10 @@ struct MessageList: View {
     /// Still after opening or a scroll: where it stands is kept, and at the
     /// bottom all of it was seen.
     private func settled() {
-        if !opening, !rows.isEmpty, layout.tops.isEmpty { keepLastRowInView() }
+        // Blank-list guard, only for a list at its bottom: `layout.tops` can be
+        // transiently empty while lazy rows recycle mid-scroll, and pinning then
+        // would yank a scrolled-up reader to the bottom at the idle transition.
+        if !opening, !rows.isEmpty, layout.tops.isEmpty, following, bottom.atBottom, reachesNewest { keepLastRowInView() }
         keepPlace()
         guard !opening, bottom.atBottom, phase == .idle else { return }
         var bottom = self.bottom
@@ -366,10 +415,41 @@ struct MessageList: View {
 
     /// To the last row, not the edge: a scroll to the edge while the lazy
     /// stack resizes can leave it with no row made there, a blank list
-    /// (the Mac's `repin` by its last row).
+    /// (the Mac's `repin` by its last row). Except when all of it fits.
     private func keepLastRowInView() {
         guard let last = rows.last?.id else { return }
+        // All of it fits: the bottom edge, which the list clamps. By the last
+        // row it went above the top (the bottom alignment's inset already
+        // takes the room below), where no gesture stands, and stayed there
+        // until a drag bounced it back. Every row is made, so no blank list.
+        if layout.viewport.end <= -layout.viewport.inset + 0.5 {
+            position.scrollTo(edge: .bottom)
+            return
+        }
         position.scrollTo(id: last, anchor: .bottom)
+    }
+
+    /// After a size change, once the lazy stack has laid out for it: a list
+    /// with no made row in its viewport is blank. At the bottom (and following)
+    /// it is pinned by its last row; otherwise it goes to the nearest valid
+    /// offset, or failing that the made row nearest where it stood, so the
+    /// reading place is kept and the reader never has to scroll to find content.
+    private func checkNotBlank() {
+        blankCheck?.cancel()
+        blankCheck = Task {
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled, live, !userScrolling, !opening, !rows.isEmpty, !layout.showsRow else { return }
+            if following, bottom.atBottom, reachesNewest { return keepLastRowInView() }
+            let view = layout.viewport
+            let y = min(max(view.offset, -view.inset), max(view.end, -view.inset))
+            if abs(y - view.offset) > 0.5 {
+                position.scrollTo(y: y)
+            } else if let nearest = layout.tops.min(by: { abs($0.value - view.offset) < abs($1.value - view.offset) }) {
+                position.scrollTo(id: nearest.key, anchor: .top)
+            } else {
+                keepLastRowInView()
+            }
+        }
     }
 
     /// Once the container's height has stopped changing, by the last row

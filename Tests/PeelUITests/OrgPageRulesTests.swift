@@ -59,8 +59,14 @@ struct OrgPageRulesTests {
         WorkspaceApp(peer: "acme", name: "notes", title: "Notes", about: nil),
     ]
 
-    @Test func sourcesListYoursThenWorkspacesAToZ() {
+    @Test func sourcesListYoursThenWorkspacesAToZ() throws {
         #expect(WorkspaceApp.sources(of: apps) == ["Yours", "@acme", "@globex"])
+        // One strut seeds is Built-in, after Yours, and found by that word.
+        let knowledge = try #require(WorkspaceApp(peer: nil, entry: Data(#"{"name":"strut/knowledge","title":"Knowledge","publisher":"strut"}"#.utf8)))
+        #expect(knowledge.source == "Built-in")
+        #expect(WorkspaceApp.sources(of: [knowledge] + apps) == ["Yours", "Built-in", "@acme", "@globex"])
+        #expect(WorkspaceApp.sources(of: [knowledge]) == ["Built-in"])
+        #expect(WorkspaceApp.filter([knowledge] + apps, query: "built", source: nil).map(\.name) == ["strut/knowledge"])
         #expect(WorkspaceApp.sources(of: apps.filter { $0.peer != nil }) == ["@acme", "@globex"])
         #expect(WorkspaceApp.sources(of: []) == [])
     }

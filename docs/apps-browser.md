@@ -148,9 +148,8 @@ own authoring UI. Your chat with Peel is the way in:
 
 - The person's own apps, on Peel's strut (the agent's builder publishes
   them there), listed beside the workspaces': `AutomationsClient.ownApps`
-  reads `GET /apps` and keeps every one but those strut seeds
-  (`publisher: strut`, its `strut/views` component library; a deny-list:
-  a `source: seed` in strut's listing would be the firmer contract). Such an app
+  reads `GET /apps` and keeps every one but strut's `strut/views`
+  component library (strut's other seeded apps show as Built-in, below). Such an app
   has no peer: its key is its name, so it opens as `?app=<name>&solo=1`,
   which strut's single-app view already serves.
 - One read for both (`refreshApps`), with no workspaces too; opening Apps
@@ -164,6 +163,33 @@ own authoring UI. Your chat with Peel is the way in:
   a sample app of yours beside two workspaces' (choice, foot, header,
   pinned row, its page asked of strut by name), and the development
   profile's own strut listing nothing once its `strut/views` is left out.
+
+## Built: built-in apps (2026-11-09)
+
+The apps strut ships and seeds on every server (`publisher: strut`) now
+show in Apps beside yours: Knowledge (`strut/knowledge`, the Concept tree,
+search and graph) and Jamie (`strut/jamie`), and Canvas (`strut/canvas`)
+once the strut Peel pins seeds it. Before this, Peel dropped every
+`publisher: strut` app to hide one library.
+
+- Left out: `strut/views` alone, a component library with no page to open
+  (`WorkspaceApp.libraries`, the same rule as strut's own list of a
+  member's apps, `LIBRARIES` in its web/src/page.ts). By name, since
+  strut's listing carries no kind: `source: seed` (stakwork/strut#575)
+  would mark the library a seed too.
+- Their source is **Built-in** (`WorkspaceApp.builtIn`, `source`): in the
+  choice after Yours, on a card's foot and in the header by the same rule,
+  and found by a search for it. They open as yours do,
+  `?app=strut/knowledge&solo=1` on Peel's own strut.
+- No versions chip, Make live or "vN waiting" (`hasVersions`): strut
+  always runs a seed's committed version and refuses to hold one.
+- Title, icon and description are the manifest's, as strut lists them.
+  Their descriptions are still strut's developer notes (plans paths, "it
+  acts as its viewer"); rewording them is strut's to do.
+- Checked: `HiveTests.yourOwnAppsAreAllListedAndOpenByName` (Knowledge
+  and Jamie listed and built-in, `strut/views` not, Knowledge's page by
+  name), `OrgPageRulesTests.sourcesListYoursThenWorkspacesAToZ`
+  (Built-in after Yours, searchable).
 
 ## Built: versions and releases (2026-10-28)
 

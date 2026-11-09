@@ -83,7 +83,7 @@ struct WorkspaceAppView: View {
     }
 
     private func readVersions() async {
-        guard app.peer == nil, let server = model.memoryServer else {
+        guard app.hasVersions, let server = model.memoryServer else {
             versions = nil
             return
         }

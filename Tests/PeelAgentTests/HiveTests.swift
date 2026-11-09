@@ -577,21 +577,31 @@ struct HiveTests {
     }
 
     /// The person's own apps come from Peel's strut itself, every one of
-    /// them, pinned or not, but not the ones strut seeds for other apps to
-    /// import; one opens by its name alone, with no workspace.
+    /// them, pinned or not, with the ones strut seeds as built-in (versions
+    /// not theirs to manage), but not the library strut seeds for other
+    /// apps to import; one opens by its name alone, with no workspace.
     @Test func yourOwnAppsAreAllListedAndOpenByName() async throws {
         let strut = try await HTTPStub { _, request in
             guard path(request) == "/apps", request.contains("Authorization: Bearer k") else { return (404, "{}") }
             return (200, #"""
                 {"apps":[{"name":"meal-planner","title":"Meal planner","publisher":"ai"},{"name":"tools/board","title":"Board","pinned":true},
-                         {"name":"strut/views","title":"strut views","publisher":"strut","pinned":true}]}
+                         {"name":"strut/views","title":"strut views","publisher":"strut","pinned":true},
+                         {"name":"strut/knowledge","title":"Knowledge","description":"The Concept tree","icon":"network",
+                          "activeVersion":"v3","publisher":"strut"},
+                         {"name":"strut/jamie","title":"Jamie","icon":"message-circle","publisher":"strut"}]}
                 """#)
         }
         defer { strut.stop() }
         let server = try #require(MemoryServer(base: URL(string: "http://127.0.0.1:\(strut.port)")!, key: "k"))
         let apps = try await AutomationsClient(server: server).ownApps()
-        #expect(apps == [WorkspaceApp(peer: nil, name: "meal-planner", title: "Meal planner", about: nil),
-                         WorkspaceApp(peer: nil, name: "tools/board", title: "Board", about: nil)])
+        #expect(apps.map(\.name) == ["meal-planner", "tools/board", "strut/knowledge", "strut/jamie"])
+        #expect(apps[0] == WorkspaceApp(peer: nil, name: "meal-planner", title: "Meal planner", about: nil))
+        #expect(apps[1] == WorkspaceApp(peer: nil, name: "tools/board", title: "Board", about: nil))
+        #expect(apps.map(\.builtIn) == [false, false, true, true] && apps.map(\.hasVersions) == [true, true, false, false])
+        #expect(apps[2].title == "Knowledge" && apps[2].about == "The Concept tree" && apps[2].icon == "network" && apps[2].version == "v3")
+        let knowledge = try #require(server.page(of: apps[2]))
+        #expect(URLComponents(url: knowledge, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+                == "key=k&app=strut%2Fknowledge&solo=1")
         let page = try #require(server.page(of: apps[1]))
         #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
                 == "key=k&app=tools%2Fboard&solo=1")

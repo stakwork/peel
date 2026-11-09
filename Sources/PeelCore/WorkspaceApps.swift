@@ -36,6 +36,10 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
     /// its page uses the workspace (strut's `src/apps/monitor.ts`); 0 from
     /// a strut that does not count them.
     public internal(set) var problems = 0
+    /// One strut ships and seeds on every server (`publisher: strut`:
+    /// Knowledge, Jamie), on Peel's own strut: always its committed
+    /// version, which strut will not hold, so it has no versions to manage.
+    public internal(set) var builtIn = false
 
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`, or
     /// the name alone for one of the person's own.
@@ -61,9 +65,9 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
 
 extension WorkspaceApp {
     /// One entry of strut's `GET /apps`, as JSON; nil for a workspace's not
-    /// pinned as a tab, for one strut seeds on Peel's own (`publisher:
-    /// strut`: its `strut/views`, components other apps import, not the
-    /// person's), or with a name strut would not have given it.
+    /// pinned as a tab, for a library strut seeds on Peel's own
+    /// (`strut/views`, components other apps import, no page to open), or
+    /// with a name strut would not have given it.
     public init?(peer: String?, entry: Data) {
         guard let entry = try? JSONDecoder().decode(JSONValue.self, from: entry) else { return nil }
         self.init(peer: peer, value: entry)
@@ -71,10 +75,12 @@ extension WorkspaceApp {
 
     init?(peer: String?, value: JSONValue) {
         guard case .object(let json) = value else { return nil }
-        let listed = peer == nil ? json["publisher"]?.string != "strut" : json["pinned"] == .bool(true)
-        guard listed, let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name) else { return nil }
+        let listed = peer == nil || json["pinned"] == .bool(true)
+        guard listed, let name = json["name"]?.string, AgentArtifact.Handle.isAppName(name),
+              peer != nil || !Self.libraries.contains(name) else { return nil }
         self.peer = peer
         self.name = name
+        builtIn = peer == nil && json["publisher"]?.string == "strut"
         let title = TextLine.clean(json["title"]?.string ?? "", max: TextLine.maxName)
         self.title = title.isEmpty ? name : title
         let about = TextLine.clean(json["description"]?.string ?? "", max: 400)
@@ -98,9 +104,18 @@ extension WorkspaceApp {
     /// older one: built, and waiting for them to make it live. A
     /// workspace's waiting versions are its own to make live.
     public var waiting: String? {
-        guard peer == nil, release != nil, let newest, let version, AppVersions.isNewer(newest, than: version) else { return nil }
+        guard peer == nil, !builtIn, release != nil, let newest, let version, AppVersions.isNewer(newest, than: version) else { return nil }
         return newest
     }
+
+    /// strut's apps that are no page but components other apps import, left
+    /// out as strut's own list of a member's apps leaves them out
+    /// (`LIBRARIES`, strut's web/src/page.ts).
+    static let libraries: Set<String> = ["strut/views"]
+
+    /// Whether its versions are the person's to manage: one of their own,
+    /// not a workspace's nor one strut seeds.
+    public var hasVersions: Bool { peer == nil && !builtIn }
 
     /// The apps in strut's `GET /apps` answer (`{ apps: [...] }`), in its
     /// order, as `init(peer:entry:)` keeps them.

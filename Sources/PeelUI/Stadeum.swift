@@ -781,9 +781,11 @@ public struct OrgPageRequest: Identifiable, Equatable, Sendable, CustomStringCon
 }
 
 extension WorkspaceApp {
-    /// Where it comes from, as the person reads it: `@workspace`, or Yours.
-    public var source: String { peer.map { "@\($0)" } ?? Self.yours }
+    /// Where it comes from, as the person reads it: `@workspace`, Yours, or
+    /// Built-in for one strut seeds.
+    public var source: String { peer.map { "@\($0)" } ?? (builtIn ? Self.builtInSource : Self.yours) }
     public static let yours = "Yours"
+    public static let builtInSource = "Built-in"
 
     /// Under its title and at its card's foot: `@workspace · v14`, the
     /// source when asked (several sources listed).
@@ -799,10 +801,12 @@ extension WorkspaceApp {
     }
 
     /// The sources `apps` come from, as the person reads them: Yours first
-    /// when any is the person's own, then each workspace's `@peer` A–Z.
+    /// when any is the person's own, then Built-in when strut seeds any,
+    /// then each workspace's `@peer` A–Z.
     public static func sources(of apps: [WorkspaceApp]) -> [String] {
         let peers = Set(apps.compactMap(\.peer)).sorted().map { "@\($0)" }
-        return (apps.contains { $0.peer == nil } ? [yours] : []) + peers
+        let own = [yours, builtInSource].filter { name in apps.contains { $0.peer == nil && $0.source == name } }
+        return own + peers
     }
 
     /// `apps` from `source` (all when nil) that a search for `query` finds,

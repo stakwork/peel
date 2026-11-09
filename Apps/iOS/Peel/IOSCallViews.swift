@@ -124,6 +124,8 @@ private struct OnCallBannerInset: ViewModifier {
         content.safeAreaInset(edge: .top, spacing: 0) {
             if let call = model.calls.phoneSession, !router.callShown {
                 IOSOnCallBar(call: call)
+            } else if model.talk.home != nil, router.talkMinimized {
+                IOSOnTalkBar()
             }
         }
     }
@@ -137,19 +139,78 @@ struct IOSOnCallBar: View {
     let call: IOSCallSession
 
     var body: some View {
+        OnCallBarLayout(
+            title: call.title,
+            connected: call.state == .connected,
+            micOn: call.micOn,
+            micDisabled: call.micAccess == .refused,
+            returnLabel: "Return to the call in \(call.title)",
+            leaveLabel: "Leave the call",
+            toggleMic: call.toggleMicrophone,
+            returnToCall: { router.callShown = true },
+            leave: { model.calls.leave() }
+        ) {
+            IOSCallStatusText(call: call)
+        }
+    }
+}
+
+/// The same bar for the Talk to Jamie call while its screen is put away.
+struct IOSOnTalkBar: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+
+    var body: some View {
+        let session: TalkSession? = {
+            if case .on(let media) = model.talk.state { return media as? TalkSession }
+            return nil
+        }()
+        let phase = session?.phase
+        OnCallBarLayout(
+            title: "Jamie · " + (model.talk.home?.name ?? ""),
+            connected: phase.map { !$0.isOver && $0 != .connecting && $0 != .reconnecting } ?? false,
+            micOn: session?.micOn ?? false,
+            micDisabled: !(session?.micReady ?? false),
+            returnLabel: "Return to the call with Jamie",
+            leaveLabel: "Hang up",
+            toggleMic: { session?.toggleMicrophone() },
+            returnToCall: { router.talkMinimized = false },
+            leave: { model.talk.hangUp() }
+        ) {
+            Text(phase?.words ?? "Calling Jamie…")
+                .phoneFont(.secondary)
+                .foregroundStyle(Theme.secondaryText)
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct OnCallBarLayout<Status: View>: View {
+    let title: String
+    let connected: Bool
+    let micOn: Bool
+    let micDisabled: Bool
+    let returnLabel: String
+    let leaveLabel: String
+    let toggleMic: () -> Void
+    let returnToCall: () -> Void
+    let leave: () -> Void
+    @ViewBuilder let status: Status
+
+    var body: some View {
         HStack(spacing: Theme.Space.md) {
-            Button { router.callShown = true } label: {
+            Button(action: returnToCall) {
                 HStack(spacing: Theme.Space.sm) {
                     Circle()
-                        .fill(call.state == .connected ? Theme.confirmed : Theme.secondaryText)
+                        .fill(connected ? Theme.confirmed : Theme.secondaryText)
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 0) {
-                        CallTitle(title: call.title)
+                        CallTitle(title: title)
                             .phoneFont(.row)
                             .foregroundStyle(Theme.text)
                             .lineLimit(1)
-                        IOSCallStatusText(call: call)
+                        status
                     }
                     Spacer(minLength: 0)
                 }
@@ -157,22 +218,22 @@ struct IOSOnCallBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Return to the call in \(call.title)")
-            Button(action: call.toggleMicrophone) {
-                Image(systemName: call.micOn ? "mic" : "mic.slash")
-                    .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
+            .accessibilityLabel("\(returnLabel)")
+            Button(action: toggleMic) {
+                Image(systemName: micOn ? "mic" : "mic.slash")
+                    .foregroundStyle(micOn ? Theme.text : Theme.secondaryText)
                     .frame(width: Theme.touchTarget, height: Theme.touchTarget)
             }
             .buttonStyle(.plain)
-            .disabled(call.micAccess == .refused)
-            .accessibilityLabel(call.micOn ? "Mute" : "Unmute")
-            Button { model.calls.leave() } label: {
+            .disabled(micDisabled)
+            .accessibilityLabel(micOn ? "Mute" : "Unmute")
+            Button(action: leave) {
                 Image(systemName: "phone.down.fill")
                     .foregroundStyle(Theme.destructive)
                     .frame(width: Theme.touchTarget, height: Theme.touchTarget)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Leave the call")
+            .accessibilityLabel(leaveLabel)
         }
         .padding(.horizontal, Theme.Space.md)
         .frame(maxWidth: .infinity)

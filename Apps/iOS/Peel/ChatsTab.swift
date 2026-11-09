@@ -41,12 +41,16 @@ extension View {
                     .toolbar(.hidden, for: .tabBar)
             case .threads:
                 ThreadsScreen()
+                    .onCallBannerInset()
             case .mentions:
                 MentionsScreen()
+                    .onCallBannerInset()
             case .automations:
                 AutomationsScreen()
+                    .onCallBannerInset()
             case .apps:
                 AppsScreen()
+                    .onCallBannerInset()
             }
         }
     }

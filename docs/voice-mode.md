@@ -443,7 +443,12 @@ Everything: it was written without building or running. To try on a device:
 - the one-minute recogniser restart, and the 50 s rotation, with no lost words
 - the Mac microphone and speech permission prompts, and a default-input change
 - a call starting during voice mode; a Mac dictation starting
-- engine rebuild loops (voice processing may post configuration changes)
+- engine rebuild loops: seen on the iPhone (voice processing posts
+  configuration changes as it starts; the rebuilds lost words and cut the
+  speech). Fixed: a rebuild happens only when the input changed (route port
+  and rate, the Mac's default input). The speech also came and went word by
+  word under voice processing's adaptive ducking of the app's other audio;
+  ducking is now `.min` and not adaptive. Much better on a device after both
 - the vocabulary: lexicon refresh timing (the Mac's `DictationLingo` may still
   be empty or locked when voice mode starts; contextual strings are read again
   at the next task), the real effect of `contextualStrings` (the recogniser

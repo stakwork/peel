@@ -158,6 +158,9 @@ final class VoiceListener: SpeechListening {
     private let extraStrings: @MainActor () -> [String]
     private var configurationObserver: (any NSObjectProtocol)?
     private var rebuilding: Task<Void, Never>?
+    /// The input the engine was built for (the route's input and its rate),
+    /// so a configuration change that did not change it rebuilds nothing.
+    private var builtFor: String?
     #if os(macOS)
     private var inputListener: AudioObjectPropertyListenerBlock?
     #endif
@@ -214,6 +217,10 @@ final class VoiceListener: SpeechListening {
         rebuilding = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled, let self, running else { return }
+            // Voice processing posts configuration changes of its own as it
+            // starts: rebuilding for those tore the engine down again and
+            // again, losing words and cutting the speech. Only a new input does.
+            if engine.isRunning, Self.inputSignature() == builtFor { return }
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
             do { try buildEngine() } catch { fail("The microphone stopped working.") }
@@ -261,6 +268,12 @@ final class VoiceListener: SpeechListening {
         // user (barge-in listens while it plays). Best effort: without it
         // the controller still ignores everything but whole-utterance controls.
         try? input.setVoiceProcessingEnabled(true)
+        // Voice processing ducks every other sound the app plays, the speech
+        // included (`AVSpeechSynthesizer` plays outside this engine), and by
+        // default it ducks hard and follows voice activity: the reply came
+        // and went word by word. The least ducking, and not adaptive.
+        input.voiceProcessingOtherAudioDuckingConfiguration =
+            AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw VoiceListenerError.noInput }
         feed.install(on: input, format: format)
@@ -270,6 +283,23 @@ final class VoiceListener: SpeechListening {
         }
         engine.prepare()
         try engine.start()
+        builtFor = Self.inputSignature()
+    }
+
+    /// The input as the system has it now: on the phone the route's input
+    /// port and the session's rate, on the Mac the default input device.
+    private static func inputSignature() -> String {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        let port = session.currentRoute.inputs.first.map { "\($0.portType.rawValue) \($0.uid)" } ?? "none"
+        return "\(port) @ \(Int(session.sampleRate))"
+        #else
+        var address = defaultInput
+        var device = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device)
+        return "device \(device)"
+        #endif
     }
 
     /// Starts a recognition task on the feed, replacing the one running.

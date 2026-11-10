@@ -149,8 +149,14 @@ extension AppModel {
             !readStates.isEmpty, unreadCount == 0, let engine,
             readAllGate.allows(now: .now)
         else { return }
-        let defaults = UserDefaults.standard
-        guard readAllGate.claim(now: .now, defaults: defaults) else { return }
-        Task { try? await engine.markEverythingRead() }
+        Task {
+            // Only after history caught up, with nothing new stored meanwhile
+            // and still nothing unread; the gate is claimed only on sending.
+            guard await engine.allowsReadAll(unread: unreadCount),
+                phase == .ready, connection == .connected, unreadCount == 0,
+                readAllGate.claim(now: .now, defaults: UserDefaults.standard)
+            else { return }
+            try? await engine.markEverythingRead()
+        }
     }
 }

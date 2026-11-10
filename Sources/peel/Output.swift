@@ -60,6 +60,8 @@ struct Session {
             "history \(phase): \(reached) of \(end.map(String.init) ?? "?")"
         case .historyDone:
             "history complete"
+        case .caughtUp:
+            "history caught up"
         case .historyFailed(let reason):
             "history failed: \(reason)"
         case .historyResumed(let restart):

@@ -223,3 +223,52 @@ struct ReadAllGateTests {
         #expect(defaults.object(forKey: ReadAllGate.key) == nil)
     }
 }
+
+struct CatchUpTrackerTests {
+    @Test func notCaughtUpNeverAllows() {
+        var t = CatchUpTracker()
+        #expect(!t.allowsReadAll(syncing: false, highestIndex: 5, unread: 0))
+        t.begin(highestIndex: 5)
+        #expect(!t.allowsReadAll(syncing: true, highestIndex: 5, unread: 0))
+    }
+
+    @Test func aFailedOrStalledCatchUpStaysClosedUntilItFinishes() {
+        var t = CatchUpTracker()
+        t.begin(highestIndex: 5)
+        // a stall or failure never calls finish()
+        #expect(!t.isCaughtUp)
+        t.begin(highestIndex: 9)  // Resume
+        #expect(t.startIndex == 5, "counts from where it began")
+        t.finish()
+        #expect(t.allowsReadAll(syncing: false, highestIndex: 5, unread: 0))
+    }
+
+    @Test func aCompletedCatchUpAllowsOnceTheGateClaims() {
+        var t = CatchUpTracker()
+        var gate = ReadAllGate()
+        t.begin(highestIndex: nil)
+        t.finish()
+        var sent = 0
+        for _ in 0..<2 where t.allowsReadAll(syncing: false, highestIndex: nil, unread: 0) && gate.claim(now: .now) { sent += 1 }
+        #expect(sent == 1)
+    }
+
+    @Test func anIndexThatMovedOrUnreadSkips() {
+        var t = CatchUpTracker()
+        t.begin(highestIndex: 5)
+        t.finish()
+        #expect(!t.allowsReadAll(syncing: false, highestIndex: 6, unread: 0))
+        #expect(!t.allowsReadAll(syncing: false, highestIndex: 5, unread: 1))
+        let gate = ReadAllGate()
+        #expect(gate.allows(now: .now), "a skip leaves the gate unclaimed")
+    }
+
+    @Test func resetOnDisconnectClosesIt() {
+        var t = CatchUpTracker()
+        t.begin(highestIndex: 1)
+        t.finish()
+        t.reset()
+        #expect(!t.isCaughtUp)
+        #expect(!t.allowsReadAll(syncing: false, highestIndex: 1, unread: 0))
+    }
+}

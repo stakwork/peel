@@ -12,6 +12,9 @@ extension Engine {
         case history(phase: HistoryPhase, reached: UInt64, end: UInt64?)
         /// The server has nothing more; after a restore, the account is complete.
         case historyDone
+        /// History is fetched to the end on this connection, with no error or
+        /// stall (`Engine.isCaughtUp`).
+        case caughtUp
         case historyFailed(String)
         /// History is being asked for again (`resumeHistory`); `restart`: a
         /// restore's plan from its first page, so its counts start over.

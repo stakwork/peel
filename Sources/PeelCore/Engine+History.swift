@@ -5,10 +5,22 @@ extension Engine {
     /// True while a restore or catch-up is still asking the server for history.
     public var isSyncingHistory: Bool { history.isSyncing }
 
+    /// True once history was fetched to the end on this connection without
+    /// error or stall; false again on disconnect and when a run starts.
+    public var isCaughtUp: Bool { catchUp.isCaughtUp }
+
+    /// Whether `readAll` may be sent now (`CatchUpTracker.allowsReadAll`),
+    /// read in one step so nothing moves between the checks.
+    public func allowsReadAll(unread: Int) -> Bool {
+        catchUp.allowsReadAll(
+            syncing: history.isSyncing, highestIndex: try? storage.highestServerIndex(), unread: unread)
+    }
+
     /// Picks history up where it stands; coming online does this, and so
     /// does Resume after a stall. An ask that does not leave pauses history
     /// again (`historyFailed`), so Resume is offered for it.
     public func resumeHistory() async throws {
+        catchUp.begin(highestIndex: try? storage.highestServerIndex())
         emit.yield(.historyResumed(restart: history.active == nil && restoring))
         do {
             if let run = history.active {
@@ -149,6 +161,8 @@ extension Engine {
         reconcileInBackground()
         checkMentionsIfNeeded()
         emit.yield(.historyDone)
+        catchUp.finish()
+        emit.yield(.caughtUp)
     }
 
     /// The server keeps no profile; the account's own name and photo come back

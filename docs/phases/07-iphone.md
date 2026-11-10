@@ -1191,7 +1191,7 @@ Built, mirroring `sphinx-ios-v2` (`AppDelegate`, `SphinxOnionManager.pushKey`,
   (`ActiveLease`, `Platform.sendsActiveLease`), and `false` (best effort,
   3 s cap) on resign, lock, sleep, quit and Forget. The phone never sends it,
   so it keeps the badge-only pushes the mixer sends while the Mac is active.
-  Once the local unread count is 0 on either device, `Engine.markEverythingRead`
+  Once history has caught up on the connection (`Engine.isCaughtUp`, event `.caughtUp`; none if a message came in during the fetch) and the local unread count is 0 on either device, `Engine.markEverythingRead`
   (`readAll`) resets an inflated badge, at most once per session and per 30
   minutes (`ReadAllGate`, `PeelLastReadAll` in UserDefaults). Forget calls
   `Engine.unregisterPush(appID:)` (`unregisterPushTokenForApp`, the same app

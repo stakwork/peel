@@ -458,18 +458,21 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
     var dimmed = false
     /// A chat's last message, on one line under the title.
     var preview: String?
+    /// When that message was sent, at the preview line's end.
+    var previewDate: String?
     @ViewBuilder let icon: Icon
     @ViewBuilder let accessory: Accessory
 
     init(
         _ title: String, to destination: AppModel.Destination, unread: Bool = false, dimmed: Bool = false,
-        preview: String? = nil, @ViewBuilder icon: () -> Icon, @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+        preview: String? = nil, previewDate: String? = nil, @ViewBuilder icon: () -> Icon, @ViewBuilder accessory: () -> Accessory = { EmptyView() }
     ) {
         self.title = title
         self.destination = destination
         self.unread = unread
         self.dimmed = dimmed
         self.preview = preview
+        self.previewDate = previewDate
         self.icon = icon()
         self.accessory = accessory()
     }
@@ -493,6 +496,14 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
                                 .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
+                            if let previewDate {
+                                Spacer(minLength: 4)
+                                Text(previewDate)
+                                    .font(Theme.font(11, .regular))
+                                    .foregroundStyle(Theme.tertiaryText)
+                                    .lineLimit(1)
+                                    .fixedSize()
+                            }
                         }
                     }
                 } else {
@@ -528,7 +539,7 @@ struct ConversationLink: View {
         // A muted chat that mentions you is in Unread at full strength.
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0,
                     dimmed: level == .muted && unread == 0,
-                    preview: conversation.previewLine) {
+                    preview: conversation.previewLine, previewDate: conversation.dateLabel()) {
             ConversationIcon(conversation: conversation, size: Theme.AvatarSize.sm)
         } accessory: {
             if onCall > 0 {

@@ -35,4 +35,31 @@ struct ConversationPreviewTests {
     @Test func noMessageNoLine() {
         #expect(Conversation(chat: "c", alias: nil, isTribe: true).previewLine == nil)
     }
+
+    private func label(_ ms: Int64?, type: Int? = MessageType.text, now: Date) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return Conversation(chat: "c", alias: "c", isTribe: false, lastContent: "hi", lastTimestamp: ms,
+                            lastType: type)
+            .dateLabel(now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
+    }
+
+    @Test func dateLabelIsTimeToday() {
+        let sent: Int64 = 1_699_456_140_000 // 2023-11-08 15:09 UTC
+        let now = Date(timeIntervalSince1970: 1_699_470_000) // same day, 19:00 UTC
+        let text = label(sent, now: now)
+        #expect(text?.contains("3:09") == true)
+        #expect(text?.contains("PM") == true)
+    }
+
+    @Test func dateLabelIsDateOtherDays() {
+        let sent: Int64 = 1_699_456_140_000
+        let now = Date(timeIntervalSince1970: 1_699_456_140 + 3 * 86_400)
+        #expect(label(sent, now: now) == "Nov 8")
+    }
+
+    @Test func dateLabelNilWithoutMessage() {
+        #expect(label(nil, now: .now) == nil)
+        #expect(label(1_699_456_140_000, type: nil, now: .now) == nil)
+    }
 }

@@ -244,6 +244,11 @@ extension DiagnosticEvent {
         if let value = messageKind { parts.append("msg=\(value)") }
         if let value = recoveryReason { parts.append("recovery=\(value.rawValue)") }
         if let value = recoveryStage { parts.append("stage=\(value.rawValue)") }
+        if let value = exitCause { parts.append("cause=\(value.rawValue)") }
+        if let value = aliveInBackgroundSeconds { parts.append("aliveInBackground=\(value)s") }
+        if let value = sinceAliveSeconds { parts.append("sinceAlive=\(value)s") }
+        if let value = memoryWarnings { parts.append("memoryWarnings=\(value)") }
+        if let value = backgroundTaskExpired { parts.append("backgroundTaskExpired=\(value)") }
         if let value = errorDetail { parts.append("detail=\"\(value)\"") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }

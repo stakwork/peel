@@ -109,6 +109,70 @@ struct MarkerTests {
         return (RunMarkerStore(file: file), file)
     }
 
+    // MARK: Why a killed run ended
+
+    private let start = Date(timeIntervalSince1970: 1_000_000)
+    private func environment(boot: Double = 0, os: String = "26.1", stamp: Double = 0) -> RunEnvironment {
+        RunEnvironment(bootTime: Date(timeIntervalSince1970: boot), osVersion: os, binaryStamp: Date(timeIntervalSince1970: stamp))
+    }
+
+    /// A run left in the background, alive 30 s after leaving the front, with one memory warning.
+    private func killedRun() -> RunMarker? {
+        let (first, _) = store()
+        first.begin(appVersion: "1", crashReportID: nil, now: start, environment: environment())
+        first.setState(.background, footprint: 50 << 20, now: start + 60)
+        first.markAlive(now: start + 90)
+        first.noteMemoryWarning()
+        return first.read()
+    }
+
+    @Test func aKillWithNothingElseChangedIsTheSystems() throws {
+        let detail = try #require(PreviousRunDetail.of(killedRun(), now: start + 1_090, environment: environment()))
+        #expect(detail.cause == .system)
+        #expect(detail.aliveInBackground == 30)
+        #expect(detail.sinceAlive == 1_000)
+        #expect(detail.backgroundFootprint == 50 << 20)
+        #expect(detail.memoryWarnings == 1)
+        #expect(!detail.backgroundTaskExpired)
+    }
+
+    @Test func aNewBootIsARestartAndANewOSAnUpdate() {
+        #expect(PreviousRunDetail.of(killedRun(), environment: environment(boot: 5_000))?.cause == .restarted)
+        #expect(PreviousRunDetail.of(killedRun(), environment: environment(boot: 5_000, os: "26.2"))?.cause == .osUpdated)
+        // The boot clock read again drifts a little: not a restart.
+        #expect(PreviousRunDetail.of(killedRun(), environment: environment(boot: 2))?.cause == .system)
+    }
+
+    @Test func aNewExecutableIsAReinstall() {
+        #expect(PreviousRunDetail.of(killedRun(), environment: environment(stamp: 99))?.cause == .reinstalled)
+    }
+
+    @Test func aRunThatQuitHasNoDetail() {
+        let (first, _) = store()
+        first.begin(appVersion: "1", crashReportID: nil, environment: environment())
+        first.markClean()
+        #expect(PreviousRunDetail.of(first.read(), environment: environment()) == nil)
+    }
+
+    @Test func signsOfLifeComeOnlyOutOfTheFrontAndNotTooOften() {
+        let (first, _) = store()
+        first.begin(appVersion: "1", crashReportID: nil, now: start, environment: environment())
+        first.markAlive(now: start + 10)
+        #expect(first.read()?.lastAliveAt == nil)
+        first.setState(.background, now: start + 20)
+        first.markAlive(now: start + 22)
+        #expect(first.read()?.lastAliveAt == start + 20)
+        first.markAlive(now: start + 30)
+        #expect(first.read()?.lastAliveAt == start + 30)
+    }
+
+    @Test func anOlderMarkerStillReads() throws {
+        let (store, file) = store()
+        let old = #"{"launchID":"a","appVersion":"1","startedAt":1000000,"phase":"running","lastKnownState":"background"}"#
+        try Data(old.utf8).write(to: file)
+        #expect(store.begin(appVersion: "1", crashReportID: nil) == .killedBackground)
+    }
+
     @Test func firstLaunchIsClean() {
         let (store, _) = store()
         #expect(store.begin(appVersion: "1", crashReportID: nil) == .clean)

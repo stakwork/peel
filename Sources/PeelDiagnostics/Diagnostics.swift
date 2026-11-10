@@ -30,13 +30,26 @@ final class DiagnosticsRuntime: Sendable {
         store.prepare()
         ring = DiagnosticsRing(file: store.ringFile)
         marker = RunMarkerStore(file: store.markerFile)
-        previous = marker.begin(appVersion: appVersion, crashReportID: crash, state: state)
+        let environment = RunEnvironment.current()
+        let detail = PreviousRunDetail.of(marker.read(), environment: environment)
+        previous = marker.begin(appVersion: appVersion, crashReportID: crash, state: state, environment: environment)
         var launch = DiagnosticEvent(kind: .launch, lastAction: .launch)
         launch.launchedInFront = state == .foreground
         launch.uptimeSeconds = Int(ProcessInfo.processInfo.systemUptime)
         ring.append(launch)
         Diagnostics.mirror("launch front=\(state == .foreground) uptime=\(Int(ProcessInfo.processInfo.systemUptime))s previous=\(previous.kind.rawValue)")
         ring.append(.init(kind: .previousRun, previousRun: previous.kind))
+        // A kill (no crash report): why, most likely, and what the run was doing out of the front.
+        if let detail, previous.kind != .crashed {
+            var event = DiagnosticEvent(kind: .previousRunDetail, footprintBytes: detail.backgroundFootprint)
+            event.exitCause = detail.cause
+            event.aliveInBackgroundSeconds = detail.aliveInBackground
+            event.sinceAliveSeconds = detail.sinceAlive
+            event.memoryWarnings = detail.memoryWarnings
+            event.backgroundTaskExpired = detail.backgroundTaskExpired
+            ring.append(event)
+            Diagnostics.mirror(event.line)
+        }
     }
 
     func setAction(_ value: DiagnosticEvent.Action) { action.withLock { $0 = value } }
@@ -63,9 +76,11 @@ final class DiagnosticsRuntime: Sendable {
     }
 
     /// Appends `event` (with the current action if it has none) and mirrors it, enum names and numbers only.
+    /// Out of the front, it is also a sign the run was alive then (`RunMarker.lastAliveAt`).
     func record(_ event: DiagnosticEvent) {
         ring.append(event)
         Diagnostics.mirror(event.line)
+        marker.markAlive()
     }
 
     func recordScenePhase(_ phase: DiagnosticEvent.ScenePhase) {
@@ -89,7 +104,7 @@ final class DiagnosticsRuntime: Sendable {
     /// Foreground samples every 60 seconds; the background none.
     func setForeground(_ foreground: Bool) {
         if !foreground { recordBackgroundMemory() }
-        marker.setState(foreground ? .foreground : .background)
+        marker.setState(foreground ? .foreground : .background, footprint: foreground ? nil : MemoryProbe.footprint())
         sampling.withLock { task in
             task?.cancel()
             task = nil
@@ -386,7 +401,21 @@ public enum Diagnostics {
 
     /// iOS's memory warning (the app's notification handler calls this; the
     /// Mac's pressure source is started by `install`).
-    public static func memoryWarning() { current?.sample(pressure: .warning) }
+    public static func memoryWarning() {
+        current?.marker.noteMemoryWarning()
+        current?.sample(pressure: .warning)
+    }
+
+    /// The app is out of the front and still running (its background work ended, say): noted in the run
+    /// marker, so a kill after it is known to have come later.
+    public static func markAlive() { current?.marker.markAlive() }
+
+    /// The system is about to suspend the app before its background task ended (the iPhone's expiry
+    /// handler calls this).
+    public static func backgroundTaskExpired() {
+        current?.marker.noteBackgroundTaskExpired()
+        current?.record(DiagnosticEvent(kind: .backgroundExpired))
+    }
 
     public static func recordStrutExit(reason: DiagnosticEvent.ExitReason, status: Int32, stderrTail: String) {
         current?.recordStrutExit(reason: reason, status: status, tail: stderrTail)

@@ -24,6 +24,9 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         case catchUpCursor, historyPage, liveMessage, transportLifecycle, subscribed, selfCheck
         // The core refusing a call (where, which message kind, redacted text) and the engine reloading its state from storage.
         case coreFailure, coreRecovery
+        // Why the system ended the last run (a restart, a new install, or the system itself) and what it was
+        // doing out of the front; and the background task running out of time.
+        case previousRunDetail, backgroundExpired
     }
 
     /// Where the engine saw the core fail.
@@ -105,6 +108,13 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
 
     public enum ExitReason: String, Codable, Sendable, CaseIterable {
         case exit, uncaughtSignal
+    }
+
+    /// The likeliest reason a run that never quit ended (`PreviousRunDetail`): the device restarted (or
+    /// was updated), the app was installed again (an update, Xcode), or none of those: the system ended
+    /// it (memory, most often, for a suspended app).
+    public enum ExitCause: String, Codable, Sendable, CaseIterable {
+        case restarted, osUpdated, reinstalled, system
     }
 
     /// How the previous run ended (`PreviousRun`, without a report's id).
@@ -229,6 +239,14 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     /// `coreRecovery`: why and how deep.
     public var recoveryReason: CoreRecoveryReason?
     public var recoveryStage: CoreRecoveryStage?
+    /// `previousRunDetail`: why, how long it was known alive out of the front, how long from then to this
+    /// launch, its memory warnings and whether its background task ran out (its footprint on leaving the
+    /// front is `footprintBytes`).
+    public var exitCause: ExitCause?
+    public var aliveInBackgroundSeconds: Int?
+    public var sinceAliveSeconds: Int?
+    public var memoryWarnings: Int?
+    public var backgroundTaskExpired: Bool?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

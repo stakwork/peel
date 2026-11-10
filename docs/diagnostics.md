@@ -94,6 +94,17 @@ Two things, and only these:
   are read at each start, so one still held repeats its lines. The ring
   counts identical consecutive events; the 256 KiB / 2000 cap rotates.
   "Show record" lists them with times, with how the previous run ended.
+  Since 2026-11-10 the run marker also keeps what the run was on and did
+  out of the front (boot time, OS version, the executable's date; when it
+  left the front and its footprint then; when it was last known alive out
+  of the front, from any event recorded there; memory warnings; whether its
+  background task expired, also a `backgroundExpired` event), and a run
+  that never quit gets a `previousRunDetail` line at the next launch:
+  `cause=` `restarted` (a new boot), `osUpdated`, `reinstalled` (a new
+  executable: an update or Xcode) or `system` (none of those: for a
+  suspended app, almost always jetsam reclaiming memory), with
+  `aliveInBackground=`, `sinceAlive=` (the kill came within it),
+  `memoryWarnings=`, `backgroundTaskExpired=` and the footprint.
 - **The strut's exit** (Mac): reason and status in the ring, its last 2 KiB
   of stderr, redacted, in `Diagnostics/strut-stderr-tail.txt`. Its argv and
   environment are never logged.

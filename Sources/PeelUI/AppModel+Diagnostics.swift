@@ -21,9 +21,14 @@ extension AppModel {
         // Only where the app is suspended: the Mac leaves the front at every Cmd-Tab, its connection unharmed.
         if let engine, platform.suspendsInBackground {
             let work = platform.backgroundWork
-            let token = work.begin(name: "peel.catchup") { Task { await engine.expireBackgroundCatchUp() } }
+            let token = work.begin(name: "peel.catchup") {
+                Diagnostics.backgroundTaskExpired()
+                Task { await engine.expireBackgroundCatchUp() }
+            }
             Task {
                 if await engine.appLeftForeground(keepingCatchUp: true) { await engine.finishBackgroundCatchUp() }
+                // Still running as the background work ends: a kill comes after this.
+                Diagnostics.markAlive()
                 work.end(token)
             }
         }

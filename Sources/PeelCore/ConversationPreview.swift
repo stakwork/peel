@@ -40,3 +40,23 @@ extension Conversation {
         }
     }
 }
+
+extension Conversation {
+    /// When the chat's last message was sent, for the end of its preview line:
+    /// the time ("3:09 PM") if it was today, else the short date ("Nov 8"),
+    /// in the locale's own style. Nil with no last message or no preview line.
+    public func dateLabel(now: Date = .now, calendar: Calendar = .current, locale: Locale = .current) -> String? {
+        guard let date = lastDate, previewLine != nil else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        if calendar.isDate(date, inSameDayAs: now) {
+            formatter.timeStyle = .short
+            formatter.dateStyle = .none
+        } else {
+            formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        }
+        return formatter.string(from: date)
+    }
+}

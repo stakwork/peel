@@ -152,7 +152,8 @@ struct ChatListRow: View {
                     .lineLimit(1)
                 if isAgent { AgentTag() }
             }
-            .modifier(PreviewLine(line: isAgent ? nil : conversation.previewLine, unread: unread > 0))
+            .modifier(PreviewLine(line: isAgent ? nil : conversation.previewLine,
+                                  date: isAgent ? nil : conversation.dateLabel(), unread: unread > 0))
         } trailing: {
             if onCall > 0 {
                 Image(systemName: "phone.fill")
@@ -201,9 +202,11 @@ struct ChatListRow: View {
 }
 
 /// Puts a chat's last message under its title on one line: `secondaryText`
-/// when read; `text`, semibold, with a blue dot when unread.
+/// when read; `text`, semibold, with a blue dot when unread. The date of
+/// the message sits at the line's end and never gives way to the text.
 private struct PreviewLine: ViewModifier {
     let line: String?
+    let date: String?
     let unread: Bool
 
     func body(content: Content) -> some View {
@@ -219,6 +222,16 @@ private struct PreviewLine: ViewModifier {
                         .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .layoutPriority(0)
+                    if let date {
+                        Spacer(minLength: 8)
+                        Text(date)
+                            .phoneFont(PhoneFont.time)
+                            .foregroundStyle(Theme.tertiaryText)
+                            .lineLimit(1)
+                            .fixedSize()
+                            .layoutPriority(1)
+                    }
                 }
             }
         } else {

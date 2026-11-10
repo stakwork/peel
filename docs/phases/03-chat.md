@@ -3349,3 +3349,7 @@ card shows `VoiceControls` once the file is there, and its old Load / failed
 states before. Open: a voice message and the Mac's video player (`MediaPlayback`)
 do not pause each other; not built or run here (no Swift toolchain on the
 dev server), so the phone and Mac builds are still to be run.
+
+## The last message's time on the chat list (PR #548)
+
+Each chat row's preview line now ends, right-aligned, with when the last message was sent, on the iPhone list and the Mac sidebar: the time ("3:09 PM") if it was today, else the short date ("Nov 8"), in the locale's style. `Conversation.dateLabel(now:calendar:locale:)` (PeelCore, `ConversationPreview.swift`) is the one string; it is nil when there is no last message or no preview line. Tested in `ConversationPreviewTests` with a fixed calendar, locale and `now`. Not built or run here (no Swift toolchain on the dev server), so the Apple builds are still to be run.

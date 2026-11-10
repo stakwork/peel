@@ -27,17 +27,21 @@ struct ConnectionHealthTests {
         var notices = ConnectionNotices()
         let now = Date(timeIntervalSince1970: 1_000)
         notices.noted(sent, shown: "shown", in: "chat", at: now)
-        #expect(!notices.isStale("shown", in: "chat", synced: false, at: now.addingTimeInterval(10)))
-        #expect(notices.isStale("shown", in: "chat", synced: false, at: now.addingTimeInterval(ConnectionNotices.staleAfter + 1)))
+        let stale1 = notices.isStale("shown", in: "chat", synced: false, at: now.addingTimeInterval(10))
+        #expect(!stale1)
+        let stale2 = notices.isStale("shown", in: "chat", synced: false, at: now.addingTimeInterval(ConnectionNotices.staleAfter + 1))
+        #expect(stale2)
         // Dropped once: nothing is left to drop.
-        #expect(!notices.isStale("shown", in: "chat", synced: true, at: now))
+        let stale3 = notices.isStale("shown", in: "chat", synced: true, at: now)
+        #expect(!stale3)
     }
 
     @Test func aSyncedConnectionDropsTheNotice() {
         var notices = ConnectionNotices()
         let now = Date(timeIntervalSince1970: 1_000)
         notices.noted(sent, shown: "shown", in: "chat", at: now)
-        #expect(notices.isStale("shown", in: "chat", synced: true, at: now))
+        let stale4 = notices.isStale("shown", in: "chat", synced: true, at: now)
+        #expect(stale4)
     }
 
     @Test func otherNoticesAndReplacedOnesAreLeftAlone() {
@@ -45,9 +49,12 @@ struct ConnectionHealthTests {
         let now = Date(timeIntervalSince1970: 1_000)
         let later = now.addingTimeInterval(600)
         notices.noted("A message could not be read: x", shown: "other", in: "a", at: now)
-        #expect(!notices.isStale("other", in: "a", synced: true, at: later))
+        let stale5 = notices.isStale("other", in: "a", synced: true, at: later)
+        #expect(!stale5)
         notices.noted(sent, shown: "shown", in: "b", at: now)
-        #expect(!notices.isStale("Could not send.", in: "b", synced: true, at: later))
-        #expect(!notices.isStale("shown", in: "b", synced: true, at: later))
+        let stale6 = notices.isStale("Could not send.", in: "b", synced: true, at: later)
+        #expect(!stale6)
+        let stale7 = notices.isStale("shown", in: "b", synced: true, at: later)
+        #expect(!stale7)
     }
 }

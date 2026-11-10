@@ -7,6 +7,8 @@ import Foundation
 public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
         case error, memorySample, memoryPressure, launch, previousRun, strutExit
+        // Why the PIN is asked so often (docs/diagnostics.md, "Tracing the PIN prompts").
+        case scenePhase, memoryBackground, lock, network, pushFetch, appExits, metricDiagnostic
     }
 
     /// The kinds of failure Peel shows a notice for, as `PeelError.readable`
@@ -34,6 +36,31 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         case clean, crashed, killedForeground, killedBackground, unknown
     }
 
+    public enum ScenePhase: String, Codable, Sendable, CaseIterable {
+        case active, inactive, background
+    }
+
+    public enum LockReason: String, Codable, Sendable, CaseIterable {
+        case coldLaunch, idleTimeout
+    }
+
+    public enum NetworkStatus: String, Codable, Sendable, CaseIterable {
+        case satisfied, unsatisfied, requiresConnection
+    }
+
+    public enum NetworkInterface: String, Codable, Sendable, CaseIterable {
+        case wifi, cellular, wiredEthernet, other, none
+    }
+
+    public enum PushFetchStage: String, Codable, Sendable, CaseIterable {
+        case begin, end, expired
+    }
+
+    /// What MetricKit's diagnostic payload reported (its numbers only, never its call stacks or strings).
+    public enum MetricDiagnosticKind: String, Codable, Sendable, CaseIterable {
+        case crash, hang, cpuException, diskWriteException
+    }
+
     public var kind: Kind
     public var timestamp: Date
     public var count: Int
@@ -45,6 +72,35 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var previousRun: PreviousRunKind?
     public var exitReason: ExitReason?
     public var exitStatus: Int32?
+    // Every field below is optional: ring files written before them still decode.
+    /// `launch`: started in front (not by the system in the background), and the device's uptime then.
+    public var launchedInFront: Bool?
+    public var uptimeSeconds: Int?
+    /// `scenePhase`: the phase entered and the seconds since the last change.
+    public var scenePhase: ScenePhase?
+    public var sinceSeconds: Int?
+    /// `lock`: why the lock screen was shown, the idle seconds and the timeout in hours.
+    public var lockReason: LockReason?
+    public var idleSeconds: Int?
+    public var timeoutHours: Int?
+    /// `network`: the path as the system reported it.
+    public var networkStatus: NetworkStatus?
+    public var networkInterface: NetworkInterface?
+    public var isExpensive: Bool?
+    public var isConstrained: Bool?
+    /// `pushFetch`: the stage, the background time the system allows (begin, whole seconds) and
+    /// the seconds since begin (end, expired).
+    public var pushStage: PushFetchStage?
+    public var backgroundSecondsLeft: Int?
+    public var elapsedSeconds: Double?
+    /// `appExits`: MetricKit's exit counts, keyed by `AppExit` names (enum names only).
+    public var exitCounts: [String: Int]?
+    /// `metricDiagnostic`: the kind and its numbers.
+    public var metricKind: MetricDiagnosticKind?
+    public var signal: Int?
+    public var exceptionType: Int?
+    public var exceptionCode: Int?
+    public var hangSeconds: Double?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

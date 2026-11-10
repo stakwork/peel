@@ -117,10 +117,14 @@ final class PushCoordinator {
         guard let model = fetchModel ?? model else { return false }
         var taskID = UIBackgroundTaskIdentifier.invalid
         let work = Task { await model.fetchInBackground() }
+        let began = Date()
         taskID = UIApplication.shared.beginBackgroundTask(withName: "peel.push.fetch") {
+            Diagnostics.recordPushFetch(.expired, elapsed: Date().timeIntervalSince(began))
             work.cancel()
         }
+        Diagnostics.recordPushFetch(.begin, secondsLeft: UIApplication.shared.backgroundTimeRemaining)
         let fetched = await work.value
+        Diagnostics.recordPushFetch(.end, elapsed: Date().timeIntervalSince(began))
         if taskID != .invalid {
             UIApplication.shared.endBackgroundTask(taskID)
             taskID = .invalid

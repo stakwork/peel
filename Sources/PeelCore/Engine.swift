@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import PeelDiagnostics
 import Sphinxrs
 
 /// Drives one account against the Sphinx core.
@@ -662,6 +663,7 @@ public actor Engine {
             var last: (NWPath.Status, [String])?
             var settling: Task<Void, Never>?
             for await path in NWPathMonitor() {
+                Self.noteNetwork(path)
                 let now = (path.status, path.availableInterfaces.map(\.name))
                 let changed = last.map { $0 != now } ?? false
                 last = now
@@ -676,6 +678,22 @@ public actor Engine {
             }
             settling?.cancel()
         }
+    }
+
+    /// Observation only: the raw path as an enum record (docs/diagnostics.md); never an interface name.
+    private static func noteNetwork(_ path: NWPath) {
+        let status: DiagnosticEvent.NetworkStatus = switch path.status {
+        case .satisfied: .satisfied
+        case .requiresConnection: .requiresConnection
+        default: .unsatisfied
+        }
+        let interface: DiagnosticEvent.NetworkInterface =
+            path.usesInterfaceType(.wifi) ? .wifi
+            : path.usesInterfaceType(.cellular) ? .cellular
+            : path.usesInterfaceType(.wiredEthernet) ? .wiredEthernet
+            : path.availableInterfaces.isEmpty ? .none : .other
+        Diagnostics.recordNetwork(status: status, interface: interface, isExpensive: path.isExpensive,
+                                  isConstrained: path.isConstrained)
     }
 
     static let networkSettle: Duration = .seconds(1)

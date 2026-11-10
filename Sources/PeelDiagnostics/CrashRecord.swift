@@ -193,6 +193,26 @@ extension DiagnosticEvent {
         if let value = previousRun { parts.append("previous=\(value.rawValue)") }
         if let value = exitReason { parts.append("exit=\(value.rawValue)") }
         if let value = exitStatus { parts.append("status=\(value)") }
+        if let value = launchedInFront { parts.append(value ? "front" : "background-launch") }
+        if let value = uptimeSeconds { parts.append("uptime=\(value)s") }
+        if let value = scenePhase { parts.append("phase=\(value.rawValue)") }
+        if let value = sinceSeconds { parts.append("since=\(value)s") }
+        if let value = lockReason { parts.append("lock=\(value.rawValue)") }
+        if let value = idleSeconds { parts.append("idle=\(value)s") }
+        if let value = timeoutHours { parts.append("timeout=\(value)h") }
+        if let value = networkStatus { parts.append("net=\(value.rawValue)") }
+        if let value = networkInterface { parts.append("via=\(value.rawValue)") }
+        if let value = isExpensive { parts.append("expensive=\(value)") }
+        if let value = isConstrained { parts.append("constrained=\(value)") }
+        if let value = pushStage { parts.append("push=\(value.rawValue)") }
+        if let value = backgroundSecondsLeft { parts.append("left=\(value)s") }
+        if let value = elapsedSeconds { parts.append("elapsed=\(String(format: "%.1f", value))s") }
+        if let value = exitCounts { parts.append(value.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")) }
+        if let value = metricKind { parts.append("metric=\(value.rawValue)") }
+        if let value = signal { parts.append("signal=\(value)") }
+        if let value = exceptionType { parts.append("exceptionType=\(value)") }
+        if let value = exceptionCode { parts.append("exceptionCode=\(value)") }
+        if let value = hangSeconds { parts.append("hang=\(String(format: "%.1f", value))s") }
         if count > 1 { parts.append("x\(count)") }
         return parts.joined(separator: " ")
     }

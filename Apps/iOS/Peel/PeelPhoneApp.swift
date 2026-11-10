@@ -16,6 +16,7 @@ struct PeelPhoneApp: App {
         // First: crash recording starts before anything that could crash, and
         // before the model, which reads how the last run ended.
         CrashRecorder.install()
+        MetricKitRecorder.shared.start()
         // Everything this process creates (database, journal) is private to the user.
         umask(0o077)
         let model = AppModel(platform: .phone())
@@ -47,6 +48,12 @@ struct PeelPhoneApp: App {
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .active: Diagnostics.recordScenePhase(.active)
+                    case .inactive: Diagnostics.recordScenePhase(.inactive)
+                    case .background: Diagnostics.recordScenePhase(.background)
+                    @unknown default: break
+                    }
                     if phase == .active {
                         model.becameActive()
                         PushCoordinator.shared.refreshNames()

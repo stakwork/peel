@@ -24,7 +24,8 @@ struct ConnectionBolt: View {
     var body: some View {
         let health = model.connectionHealth
         let synced = health == .synced
-        let syncing = health == .syncing
+        // A catch-up that keeps failing (`failing`) is orange and pulsing too, and says Reconnecting.
+        let syncing = health == .syncing || health == .failing
         let breathing: Animation? = reduceMotion ? nil
             : syncing ? Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true) : Animation.easeOut(duration: 0.3)
         Button { shown = true } label: {
@@ -68,7 +69,12 @@ struct ConnectionPanel: View {
                     .foregroundStyle(Theme.text)
                     .accessibilityAddTraits(.isHeader)
             }
-            if health == .syncing {
+            if health == .failing {
+                Text("Peel is having trouble loading new messages and is retrying")
+                    .phoneFont(.row)
+                    .foregroundStyle(Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if health == .syncing {
                 Text("Connected. Peel is fetching what came while it was away; your messages are here.")
                     .phoneFont(.row)
                     .foregroundStyle(Theme.text)

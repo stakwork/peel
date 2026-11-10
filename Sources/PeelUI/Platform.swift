@@ -34,12 +34,15 @@ public struct Platform {
     /// (the iPhone's `PeelAppID`); Forget takes the token off the server
     /// with it. nil where nothing is registered.
     public var pushAppID: @MainActor () -> String?
+    /// Time to finish work as the app leaves the front (the iPhone's background task); none elsewhere.
+    public var backgroundWork: any BackgroundWork
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
         opensFirstChat: Bool = true, syncsBiometrics: Bool = false, sendsActiveLease: Bool = false,
-        pushAppID: @escaping @MainActor () -> String? = { nil }
+        pushAppID: @escaping @MainActor () -> String? = { nil },
+        backgroundWork: any BackgroundWork = NoBackgroundWork()
     ) {
         self.presence = presence
         self.files = files
@@ -52,7 +55,25 @@ public struct Platform {
         self.syncsBiometrics = syncsBiometrics
         self.sendsActiveLease = sendsActiveLease
         self.pushAppID = pushAppID
+        self.backgroundWork = backgroundWork
     }
+}
+
+/// Asks the system for time to finish what is in flight as the app leaves the front. A token names
+/// one request; `end` is called once for it, whether or not `onExpire` came first.
+@MainActor
+public protocol BackgroundWork {
+    /// Starts a background task called `name`; `onExpire` runs if the system is about to suspend the
+    /// app before `end`.
+    func begin(name: String, onExpire: @escaping @Sendable () -> Void) -> Int
+    func end(_ token: Int)
+}
+
+/// Where there is nothing to ask for (the Mac, which is not suspended, and tests).
+public struct NoBackgroundWork: BackgroundWork {
+    public init() {}
+    public func begin(name: String, onExpire: @escaping @Sendable () -> Void) -> Int { 0 }
+    public func end(_ token: Int) {}
 }
 
 /// Peel among the other apps: whether it is in front, bringing it there,

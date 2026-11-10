@@ -218,6 +218,17 @@ public actor Engine {
     /// History fetches and where history stands (`HistoryCursor`).
     var history = HistoryCursor()
     var historyWatchdog: Task<Void, Never>?
+    typealias CoreRecoveryReason = DiagnosticEvent.CoreRecoveryReason
+    /// The core's failures in a row, across connections: reset by a history page handled and by `caughtUp`.
+    var consecutiveCoreFailures = 0
+    /// Catch-ups asked for again by `checkSync` on this connection, since it came up or was last caught up.
+    var catchUpRetries = 0
+    /// What the last `.syncFailing` event said.
+    private(set) var syncFailing = false
+    /// `needsFullRestart` was emitted: once per engine.
+    var fullRestartRequested = false
+    /// The app left the front with a catch-up in flight and it was kept running (`appLeftForeground(keepingCatchUp:)`).
+    var keepingCatchUpInBackground = false
     /// When history last moved on this connection (an ask, a page, a run
     /// starting); nil with none in flight. A run flagged in flight with no
     /// activity for `historyStall` is stuck (`catchUpIfIdle`).
@@ -254,6 +265,21 @@ public actor Engine {
     static let foregroundVerifyTimeout: Duration = .seconds(6)
     static let syncCheckInterval: Duration = .seconds(10)
     static let syncBound: Duration = .seconds(60)
+    /// While a connection in front is not caught up and nothing is in flight, catch-up is asked for again
+    /// after each of these (the last repeats), counted from the one before: independent of the stall watchdog.
+    static let catchUpRetryDelays: [Duration] = [.seconds(2), .seconds(5), .seconds(15), .seconds(30)]
+    static func catchUpRetryDelay(afterRetries retries: Int) -> Duration {
+        catchUpRetryDelays[min(max(retries, 0), catchUpRetryDelays.count - 1)]
+    }
+    /// How long a catch-up in flight as the app leaves the front may go on under a background task.
+    static let backgroundCatchUpBound: Duration = .seconds(25)
+    /// Failures of the core in a row (a history page it refuses even after `recoverCore`, a coming online
+    /// that fails twice) before the state is reloaded and the connection rebuilt, and before everything is
+    /// initialised again (`needsFullRestart`).
+    static let coreFailureReloadThreshold = 3
+    static let coreFailureReinitThreshold = 6
+    /// Failed catch-up attempts on one connection (`catchUpRetries`) from which it is shown as failing.
+    static let failingThreshold = 3
     /// The first self-check comes this long after a connection is caught up, the rest every `selfCheckInterval`.
     static let selfCheckFirstDelay: Duration = .seconds(20)
     static let selfCheckInterval: Duration = .seconds(60)
@@ -273,34 +299,67 @@ public actor Engine {
         seed = try Self.seed(of: mnemonic)
         self.storage = storage
         network = try storage.value(for: .network) ?? "bitcoin"
-        state = try storage.loadCoreState()
+        let persisted = try Self.loadPersistedState(storage)
+        state = persisted.state
         if let stored = try storage.value(for: .deviceID) {
             deviceID = stored
         } else {
             deviceID = UUID().uuidString
             try storage.set(deviceID, for: .deviceID)
         }
-        alias = try storage.value(for: .alias) ?? ""
-        photoURL = try storage.value(for: .photoURL) ?? ""
-        server = try storage.value(for: .server).flatMap(ServerAddress.init)
-        clock = UniqueClock(last: try storage.value(for: .clock).flatMap { UInt64($0) } ?? 0)
+        alias = persisted.alias
+        photoURL = persisted.photoURL
+        server = persisted.server
+        clock = UniqueClock(last: persisted.clock)
         accountKey = try Sphinxrs.pubkeyFromSeed(seed: seed, idx: 0, time: clock.next(), network: network)
         let (stream, continuation) = AsyncStream<Event>.makeStream()
         events = stream
         emit = continuation
-        let contacts = try Self.contacts(in: state)
+        let contacts = persisted.contacts
         contactsByChildIndex = Self.index(contacts)
-        tribes = Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 })
-        restoring = try storage.value(for: .needsRestore) == "1"
-        echoedAliases = try storage.echoedOwnAliases()
+        tribes = persisted.tribes
+        restoring = persisted.restoring
+        echoedAliases = persisted.echoedAliases
         media = MediaStore(profile: storage.directory)
         // The profile lock means no other process is uploading; anything
         // still uploading was cut off, and can be retried.
         try storage.failInterruptedUploads()
         let stored = try storage.highestMessageID() ?? 0
         money.judgedThrough = stored
-        history.from = try Self.historyFrom(storage)
+        history.from = persisted.historyFrom
         _ = try storage.apply(Storage.Commit(contacts: contacts.map { ($0.pubkey, $0.contactKey != nil) }))
+    }
+
+    /// Everything the engine keeps in memory that storage holds the truth of: read by `init`, which
+    /// is what a relaunch runs, and again by `recoverCore`.
+    struct PersistedState {
+        var state: [String: Data]
+        var alias: String
+        var photoURL: String
+        var server: ServerAddress?
+        /// `Setting.clock`: the last unique time a call used.
+        var clock: UInt64
+        var contacts: [Contact]
+        var tribes: [String: Tribe]
+        var restoring: Bool
+        var echoedAliases: [String: Set<String>]
+        var historyFrom: UInt64
+    }
+
+    static func loadPersistedState(_ storage: Storage) throws -> PersistedState {
+        let state = try storage.loadCoreState()
+        return PersistedState(
+            state: state,
+            alias: try storage.value(for: .alias) ?? "",
+            photoURL: try storage.value(for: .photoURL) ?? "",
+            server: try storage.value(for: .server).flatMap(ServerAddress.init),
+            clock: try storage.value(for: .clock).flatMap { UInt64($0) } ?? 0,
+            contacts: try Self.contacts(in: state),
+            tribes: Dictionary(try storage.tribes().map { ($0.pubkey, $0) }, uniquingKeysWith: { $1 }),
+            restoring: try storage.value(for: .needsRestore) == "1",
+            echoedAliases: try storage.echoedOwnAliases(),
+            historyFrom: try Self.historyFrom(storage)
+        )
     }
 
     /// Where history stands (`HistoryCursor.from`), read before any
@@ -374,6 +433,9 @@ public actor Engine {
             // `resumeHistory` has recorded): a connection that cannot take
             // it is dead, so drop it and connect again.
             guard !Task.isCancelled, !(error is CancellationError), transport === attempt else { return }
+            Diagnostics.recordCoreFailure(site: .catchUp, kind: reason.rawValue, detail: PeelError.readable(error))
+            // The core's state may be what is wrong, and a new connection would meet it again.
+            await recoverCore(reason: .catchUp)
             await dropOnPurpose(attempt, reason: .catchUpError)
         }
     }
@@ -391,23 +453,74 @@ public actor Engine {
     /// up (a reply may never come to a suspended app) and the connection is
     /// marked unverified, so the next foreground pings it and catches up.
     /// A restore keeps its run.
-    public func appLeftForeground() {
+    ///
+    /// With `keepingCatchUp` (the app holds a background task for it) a catch-up in flight is left
+    /// running instead, and true is returned: `finishBackgroundCatchUp` then bounds it. Whatever is
+    /// abandoned starts again from the unchanged cursor (`history.from`) at the next foreground.
+    @discardableResult
+    public func appLeftForeground(keepingCatchUp: Bool = false) -> Bool {
         // The clock is the continuous one: it keeps counting while the app is suspended.
         if leftForegroundAt == nil { leftForegroundAt = .now }
         let inFlight = history.isSyncing
         Diagnostics.recordBackground(inFlightCatchUp: inFlight)
-        guard inFlight, !restoring else { return }
+        guard inFlight, !restoring else { return false }
+        if keepingCatchUp, transport != nil {
+            keepingCatchUpInBackground = true
+            return true
+        }
         abandonHistory(reason: .appLeftForeground)
         unverified = true
+        return false
     }
 
-    /// Runs every `syncCheckInterval` while a connection is not caught up.
+    /// Waits for the catch-up `appLeftForeground(keepingCatchUp:)` kept, at most `bound`: it ends when
+    /// history is no longer in flight (caught up, failed or the connection gone) or the app is back in
+    /// front; past the bound it is abandoned as `appLeftForeground` does.
+    public func finishBackgroundCatchUp(bound: Duration = Engine.backgroundCatchUpBound) async {
+        guard keepingCatchUpInBackground else { return }
+        defer { keepingCatchUpInBackground = false }
+        do {
+            try await poll(timeout: bound, every: .seconds(1), failure: .registrationTimedOut) {
+                !history.isSyncing || transport == nil || leftForegroundAt == nil ? () : nil
+            }
+        } catch {
+            expireBackgroundCatchUp()
+        }
+    }
+
+    /// The system is about to suspend the app (or the bound passed): gives up what was kept.
+    public func expireBackgroundCatchUp() {
+        guard keepingCatchUpInBackground, leftForegroundAt != nil, !restoring else { return }
+        keepingCatchUpInBackground = false
+        abandonHistory(reason: .appLeftForeground)
+        unverified = true
+        wakeWaiters()
+    }
+
+    /// Looks at a connection that is not caught up, at first every `catchUpRetryDelays[0]`, then at the
+    /// pace of `catchUpRetryDelay(afterRetries:)`, for as long as it is not caught up: a catch-up that
+    /// failed is asked for again whatever the stall watchdog does.
     private func watchSync(_ connection: Transport) async {
         while !Task.isCancelled {
-            try? await Task.sleep(for: Self.syncCheckInterval)
+            try? await Task.sleep(for: Self.catchUpRetryDelay(afterRetries: catchUpRetries))
             guard !Task.isCancelled, transport === connection, !catchUp.isCaughtUp else { return }
             await checkSync(connection)
         }
+    }
+
+    /// Tells listeners when the connection starts or stops being shown as failing
+    /// (`consecutiveCoreFailures`, `catchUpRetries`).
+    func updateFailing() {
+        let failing = consecutiveCoreFailures >= Self.coreFailureReloadThreshold || catchUpRetries >= Self.failingThreshold
+        guard failing != syncFailing else { return }
+        syncFailing = failing
+        emit.yield(.syncFailing(failing))
+    }
+
+    /// The core handled something history needed: nothing is failing any more.
+    func noteCoreSuccess() {
+        consecutiveCoreFailures = 0
+        updateFailing()
     }
 
     /// Runs the self-check on a connection that is caught up, in front and idle: first `selfCheckFirstDelay`
@@ -473,9 +586,16 @@ public actor Engine {
     /// so it connects afresh rather than showing Syncing for ever.
     func checkSync(_ connection: Transport) async {
         guard transport === connection, !catchUp.isCaughtUp else { return }
-        if cameOnlineHere, !history.isSyncing {
-            await catchUpIfIdle(reason: .watchdog)
-            guard transport === connection, !catchUp.isCaughtUp else { return }
+        if cameOnlineHere {
+            // Moving within the stall time is left alone (`catchUpIfIdle` says the same); anything else
+            // is a catch-up that did not finish, asked for again.
+            let moving = history.isSyncing && (lastHistoryActivity.map { ContinuousClock.now - $0 < Self.historyStall } ?? false)
+            if !moving {
+                catchUpRetries += 1
+                updateFailing()
+                await catchUpIfIdle(reason: .watchdog)
+                guard transport === connection, !catchUp.isCaughtUp else { return }
+            }
         }
         // A restore takes as long as it takes; an account not yet registered has nothing to catch up.
         guard !restoring, isRegistered, let since = [connectedAt, lastHistoryActivity].compactMap({ $0 }).max() else { return }
@@ -483,6 +603,8 @@ public actor Engine {
         guard waited > Self.syncBound else { return }
         Diagnostics.recordCatchUp(.abandon, reason: .syncBound, milliseconds: Self.milliseconds(of: waited))
         history.abandon()
+        // The core's state may be what the catch-up cannot get past: reload it before the new connection.
+        await recoverCore(reason: .syncBound)
         // This is the watchdog: dropping the connection must not cancel the task doing it.
         syncWatchdog = nil
         await dropOnPurpose(connection, reason: .syncBound)
@@ -1116,6 +1238,85 @@ public actor Engine {
         resendTask?.cancel()
         resendTask = nil
         stopHistoryWatchdog()
+        keepingCatchUpInBackground = false
+        catchUpRetries = 0
+        updateFailing()
+    }
+
+    // MARK: - Recovery
+
+    /// Reads again from storage everything `init` read (`loadPersistedState`), and forgets what only
+    /// the old connection knew, so the next core call starts from what a relaunch would: the core is
+    /// stateless, and this is the only state of the engine that can fall out of step with storage.
+    /// `.reinit` also drops the session's other caches. The seed and the transport are not touched.
+    ///
+    /// `keepingHistory` leaves the run in flight and its watchdog alone: for retrying the very page
+    /// that failed, which needs its run to advance. Otherwise the run is abandoned (not a restore's),
+    /// and the next catch-up asks again from `history.from`.
+    func recoverCore(reason: CoreRecoveryReason, keepingHistory: Bool = false) async {
+        let stage: DiagnosticEvent.CoreRecoveryStage = reason == .reinit ? .reinit : .reloadState
+        do {
+            // All of it read before any is assigned: a failure leaves the engine as it was.
+            let persisted = try Self.loadPersistedState(storage)
+            resendTask?.cancel()
+            resendTask = nil
+            if !keepingHistory {
+                stopHistoryWatchdog()
+                if !restoring { abandonHistory(reason: .error) }
+            }
+            state = persisted.state
+            contactsByChildIndex = Self.index(persisted.contacts)
+            tribes = persisted.tribes
+            alias = persisted.alias
+            photoURL = persisted.photoURL
+            server = persisted.server
+            echoedAliases = persisted.echoedAliases
+            restoring = persisted.restoring
+            history.from = persisted.historyFrom
+            // Never back: a later call must not reuse a time an earlier one used.
+            clock = UniqueClock(last: max(clock.last, persisted.clock))
+            pingsByHash = [:]
+            pingsByTag = [:]
+            unrecordedPayments = []
+            ownStatusCheckedAt = [:]
+            ownStatusAsked = []
+            ownStatusHeard = []
+            unknownTags = []
+            resendGate = nil
+            historyPages = 0
+            if stage == .reinit {
+                memesToken = nil
+                templateList = nil
+                profileRecoveryDone = false
+                readsSentSinceGetReads = []
+                mutesSetSinceGetMutes = []
+                readsAskedAt = nil
+                if !keepingHistory, !restoring { history = HistoryCursor(); history.from = persisted.historyFrom }
+            }
+            _ = try Sphinxrs.setNetwork(network: network)
+            Diagnostics.recordCoreRecovery(reason: reason, stage: stage)
+            emit.yield(.coreRecovered(reason: reason, stage: stage))
+        } catch {
+            Diagnostics.recordCoreFailure(site: .catchUp, kind: "recover", detail: "recovery \(reason.rawValue): \(PeelError.readable(error))")
+            emit.yield(.coreError("recovering the core: \(PeelError.readable(error))"))
+        }
+    }
+
+    /// The core failed again after `recoverCore`: counted, and past the thresholds the state is
+    /// reloaded and the connection rebuilt (it subscribes and catches up from the cursor again), and
+    /// at the last one everything is initialised again (`.needsFullRestart`, which the app answers by
+    /// opening the account afresh; the engine does the deepest recovery it can meanwhile).
+    func noteCoreFailure() async {
+        consecutiveCoreFailures += 1
+        updateFailing()
+        guard consecutiveCoreFailures >= Self.coreFailureReloadThreshold else { return }
+        let reinit = consecutiveCoreFailures >= Self.coreFailureReinitThreshold
+        await recoverCore(reason: reinit ? .reinit : .repeated)
+        if reinit, !fullRestartRequested {
+            fullRestartRequested = true
+            emit.yield(.needsFullRestart)
+        }
+        if let current = transport { await dropOnPurpose(current, reason: .coreFailure) }
     }
 
     /// A page asked for on a connection that has gone never comes; the run
@@ -1129,6 +1330,35 @@ public actor Engine {
     /// Tests only: a transport that never connected stands for one whose
     /// connection has just gone (its publishes throw `notConnected`).
     func useTransportForTesting(_ transport: Transport?) { self.transport = transport }
+
+    /// Tests only: the in-memory state a failure left behind, to be reloaded by `recoverCore`.
+    func corruptStateForTesting() {
+        state = [:]
+        contactsByChildIndex = [:]
+        tribes = [:]
+        alias = "corrupted"
+        history.from = 0
+    }
+
+    /// Tests only: where history stands in memory.
+    func setHistoryFromForTesting(_ from: UInt64) { history.from = from }
+
+    /// Tests only: the contacts index as the engine holds it.
+    var contactsByChildIndexForTesting: [UInt64: String] { contactsByChildIndex }
+
+    /// Tests only: the clock's last unique time, and a clock moved on.
+    var clockLastForTesting: UInt64 { clock.last }
+    func setClockForTesting(last: UInt64) { clock = UniqueClock(last: last) }
+
+    /// Tests only: the failures counted so far.
+    func setConsecutiveCoreFailuresForTesting(_ count: Int) {
+        consecutiveCoreFailures = count
+        updateFailing()
+    }
+
+    /// Tests only: the next `count` inbound messages fail in the core before it is called (see `receive`).
+    var failingHandlesForTesting = 0
+    func setFailingHandlesForTesting(_ count: Int) { failingHandlesForTesting = count }
 
     /// Tests only: `cameOnline` has run on the transport set.
     func cameOnlineForTesting() { cameOnlineHere = true }
@@ -1632,6 +1862,7 @@ public actor Engine {
             }
             // A refused send carries its tag; a live message names its sender.
             let chat = try sent?.tag.flatMap { try storage.chat(forTag: $0) } ?? expectedSender
+            Diagnostics.recordCoreFailure(site: .commit, kind: nil, detail: error)
             if let chat {
                 emit.yield(.conversationError(chat: chat, message: error))
             } else {
@@ -1978,32 +2209,66 @@ public actor Engine {
             expectedSender = contactsByChildIndex[index]
         }
         do {
-            let page = kind == "batch" ? StateCodec.onions(inBatch: inbound.payload) : nil
-            let arrived = Self.arrived(kind: kind, topic: parts, page: page)
-            try await run(expectedSender: expectedSender, arrived: arrived.msat, indices: arrived.indices, live: live) { time, state in
-                let handle = { (payload: Data) in
-                    try Sphinxrs.handle(
-                        topic: inbound.topic, payload: payload, seed: self.seed, uniqueTime: time,
-                        state: state, myAlias: self.alias, myImg: self.photoURL
-                    )
-                }
-                do {
-                    return try handle(inbound.payload)
-                } catch let refusal {
-                    guard let page else { throw refusal }
-                    return try Self.readablePart(of: page, refusal: refusal, handle: handle)
-                }
-            }
-            if kind == "getreads" {
-                readsAskedAt = nil
-                try await publishPendingReads()
-            }
+            try await process(inbound, kind: kind, topic: parts, live: live, expectedSender: expectedSender)
+            if kind == "batch" { noteCoreSuccess() }
         } catch {
-            if let expectedSender {
-                emit.yield(.conversationError(chat: expectedSender, message: "A message could not be read: \(PeelError.readable(error))"))
-            } else {
-                emit.yield(.coreError("\(kind): \(PeelError.readable(error))"))
+            Diagnostics.recordCoreFailure(site: .receive, kind: kind, detail: PeelError.readable(error))
+            // A page of history the core refuses is retried once after the engine read its state again
+            // from storage, as a relaunch would: the page is still in hand, and its run still set.
+            if kind == "batch", !Task.isCancelled, !(error is CancellationError) {
+                await recoverCore(reason: .pageFailed, keepingHistory: true)
+                do {
+                    try await process(inbound, kind: kind, topic: parts, live: live, expectedSender: expectedSender)
+                    noteCoreSuccess()
+                    return
+                } catch {
+                    Diagnostics.recordCoreFailure(site: .receive, kind: kind, detail: "after recovery: \(PeelError.readable(error))")
+                    report(error, kind: kind, expectedSender: expectedSender)
+                    await noteCoreFailure()
+                    return
+                }
             }
+            report(error, kind: kind, expectedSender: expectedSender)
+        }
+    }
+
+    /// One inbound message through the core: the call, committed and followed up (`run`).
+    private func process(
+        _ inbound: Inbound, kind: String, topic parts: [Substring], live: Bool, expectedSender: String?
+    ) async throws {
+        #if DEBUG
+        if failingHandlesForTesting > 0 {
+            failingHandlesForTesting -= 1
+            throw Failure.notConnected
+        }
+        #endif
+        let page = kind == "batch" ? StateCodec.onions(inBatch: inbound.payload) : nil
+        let arrived = Self.arrived(kind: kind, topic: parts, page: page)
+        try await run(expectedSender: expectedSender, arrived: arrived.msat, indices: arrived.indices, live: live) { time, state in
+            let handle = { (payload: Data) in
+                try Sphinxrs.handle(
+                    topic: inbound.topic, payload: payload, seed: self.seed, uniqueTime: time,
+                    state: state, myAlias: self.alias, myImg: self.photoURL
+                )
+            }
+            do {
+                return try handle(inbound.payload)
+            } catch let refusal {
+                guard let page else { throw refusal }
+                return try Self.readablePart(of: page, refusal: refusal, handle: handle)
+            }
+        }
+        if kind == "getreads" {
+            readsAskedAt = nil
+            try await publishPendingReads()
+        }
+    }
+
+    private func report(_ error: any Error, kind: String, expectedSender: String?) {
+        if let expectedSender {
+            emit.yield(.conversationError(chat: expectedSender, message: "A message could not be read: \(PeelError.readable(error))"))
+        } else {
+            emit.yield(.coreError("\(kind): \(PeelError.readable(error))"))
         }
     }
 
@@ -2061,21 +2326,23 @@ public actor Engine {
         // as it is online, and anything changed here offline goes up.
         schedulePreferencesSync(after: .zero)
         do {
-            try await retrying(on: connection) {
-                _ = try await run { time, state in
-                    try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
-                }
-            }
-            try await retrying(on: connection) { try await fetchReadsAndMutes() }
-            // Best effort: catching up must not wait on it.
-            do {
-                try await checkPendingSends()
-            } catch {
-                emit.yield(.coreError("checking pending sends: \(PeelError.readable(error))"))
-            }
-            try await retrying(on: connection) { try await resumeHistory(reason: .cameOnline) }
+            try await cameOnlineSteps(on: connection)
         } catch {
             emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
+            Diagnostics.recordCoreFailure(site: .cameOnline, kind: nil, detail: PeelError.readable(error))
+            // The fetches failed past their retries: the engine's state may be what they trip on.
+            // Read it again, as a relaunch would, and go through the steps once more.
+            if !Task.isCancelled, !(error is CancellationError), let connection, transport === connection {
+                await recoverCore(reason: .cameOnline)
+                do {
+                    try await cameOnlineSteps(on: connection)
+                } catch {
+                    emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
+                    Diagnostics.recordCoreFailure(
+                        site: .cameOnline, kind: nil, detail: "after recovery: \(PeelError.readable(error))")
+                    if !Task.isCancelled, !(error is CancellationError) { await noteCoreFailure() }
+                }
+            }
         }
         addInviterIfPending()
         // Only on the connection this ran for: one that went meanwhile has
@@ -2093,6 +2360,24 @@ public actor Engine {
             await self?.answerOwedPurchases(on: connection)
             await self?.answerOwedDeviceRequests(on: connection)
         }
+    }
+
+    /// What coming online asks of the server, each step retried after `cameOnlineRetryDelays`.
+    private func cameOnlineSteps(on connection: Transport?) async throws {
+        try await retrying(on: connection) {
+            _ = try await run { time, state in
+                try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
+            }
+        }
+        try await retrying(on: connection) { try await fetchReadsAndMutes() }
+        // Best effort: catching up must not wait on it.
+        do {
+            try await checkPendingSends()
+        } catch {
+            Diagnostics.recordCoreFailure(site: .checkPending, kind: nil, detail: PeelError.readable(error))
+            emit.yield(.coreError("checking pending sends: \(PeelError.readable(error))"))
+        }
+        try await retrying(on: connection) { try await resumeHistory(reason: .cameOnline) }
     }
 
     /// Read markers by chat, as the core reports them. The core leaves them out
@@ -2283,7 +2568,7 @@ private struct SettledStatus: Decodable {
 /// Milliseconds plus a little jitter, as the official apps send, forced to be
 /// strictly increasing and persisted with each commit.
 struct UniqueClock {
-    private var last: UInt64
+    private(set) var last: UInt64
 
     init(last: UInt64) {
         self.last = last

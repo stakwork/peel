@@ -23,8 +23,24 @@ extension Platform {
             // Never `setActive`: the phone gets badge-only pushes while the Mac is in use.
             sendsActiveLease: false,
             // Forget takes the token off the server under the ID it registered with.
-            pushAppID: { PushConfig.current?.appID }
+            pushAppID: { PushConfig.current?.appID },
+            // A catch-up in flight as Peel leaves the front gets a few seconds to finish.
+            backgroundWork: PhoneBackgroundWork()
         )
+    }
+}
+
+/// Time to finish a catch-up after the app left the front, as the push fetch asks for it
+/// (`PushRegistration.fetchOnReceive`): `UIApplication`'s background task.
+struct PhoneBackgroundWork: BackgroundWork {
+    func begin(name: String, onExpire: @escaping @Sendable () -> Void) -> Int {
+        UIApplication.shared.beginBackgroundTask(withName: name) { onExpire() }.rawValue
+    }
+
+    func end(_ token: Int) {
+        let task = UIBackgroundTaskIdentifier(rawValue: token)
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
     }
 }
 

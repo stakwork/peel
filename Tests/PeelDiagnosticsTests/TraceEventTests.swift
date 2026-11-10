@@ -134,6 +134,73 @@ struct TraceEventTests {
         #expect(text.contains("lock=coldLaunch"))
     }
 
+    // MARK: The failure's text, redacted
+
+    @Test func linesNameTheCoreFailuresAndRecoveries() {
+        var failure = DiagnosticEvent(kind: .coreFailure, timestamp: Date(timeIntervalSince1970: 0))
+        failure.failureSite = .receive
+        failure.messageKind = "batch"
+        failure.errorDetail = "core refused the page"
+        #expect(failure.line.contains("coreFailure site=receive msg=batch detail=\"core refused the page\""))
+        var recovery = DiagnosticEvent(kind: .coreRecovery, timestamp: Date(timeIntervalSince1970: 0))
+        recovery.recoveryReason = .pageFailed
+        recovery.recoveryStage = .reloadState
+        #expect(recovery.line.contains("coreRecovery recovery=pageFailed stage=reloadState"))
+        let error = DiagnosticEvent(kind: .error, errorKind: .core, errorDetail: "x")
+        #expect(error.line.contains("error=core"))
+        #expect(error.line.contains("detail=\"x\""))
+        #expect(!DiagnosticEvent(kind: .error, errorKind: .core).line.contains("detail="))
+    }
+
+    @Test func theDetailRoundTripsThroughTheRingAndOldLinesDecodeWithout() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "peel-diag-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        var failure = DiagnosticEvent(kind: .coreFailure, timestamp: Date(timeIntervalSince1970: 5))
+        failure.failureSite = .cameOnline
+        failure.errorDetail = "boom"
+        let ring = DiagnosticsRing(file: file)
+        ring.append(failure)
+        #expect(DiagnosticsRing(file: file).read() == [failure])
+        let old = Data(#"{"kind":"error","timestamp":100,"count":1,"errorKind":"core"}"#.utf8 + [0x0A])
+        let events = DiagnosticsRing.decode(old)
+        #expect(events.count == 1)
+        #expect(events[0].errorDetail == nil)
+    }
+
+    @Test func redactingRemovesKeysInvoicesUrlsAndEmails() {
+        let key = String(repeating: "ab", count: 33)
+        let hash = String(repeating: "0f", count: 32)
+        let invoice = "lnbc" + String(repeating: "q", count: 40)
+        let url = "https://" + "example.com/path/to?token=1"
+        let email = "someone" + "@" + "example.org"
+        let text = "bad key \(key) hash \(hash) pay \(invoice) at \(url) mail \(email)"
+        let redacted = Diagnostics.redact(text)
+        #expect(!redacted.contains(key))
+        #expect(!redacted.contains(hash))
+        #expect(!redacted.contains(invoice))
+        #expect(!redacted.contains("path/to"))
+        #expect(!redacted.contains("token=1"))
+        #expect(!redacted.contains(email))
+        #expect(redacted.contains("https://example.com"))
+        #expect(redacted.contains("<redacted>"))
+        #expect(redacted.hasPrefix("bad key"))
+    }
+
+    @Test func redactingRemovesLongTokensAndKeepsShortWords() {
+        let token = String(repeating: "Zx9", count: 12)
+        let redacted = Diagnostics.redact("batch: could not read \(token) (server index 7)")
+        #expect(!redacted.contains(token))
+        #expect(redacted.contains("could not read"))
+        #expect(redacted.contains("server index 7"))
+    }
+
+    @Test func redactingCollapsesWhitespaceAndCapsTheLength() {
+        #expect(Diagnostics.redact("a \n\n  b\t c") == "a b c")
+        let long = String(repeating: "word ", count: 200)
+        #expect(Diagnostics.redact(long).count == Diagnostics.detailLimit)
+        #expect(Diagnostics.detailLimit == 200)
+    }
+
     @Test func everyKindIsUnique() {
         #expect(Set(DiagnosticEvent.Kind.allCases.map(\.rawValue)).count == DiagnosticEvent.Kind.allCases.count)
     }

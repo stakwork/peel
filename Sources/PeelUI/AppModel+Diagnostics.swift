@@ -16,8 +16,16 @@ extension AppModel {
         Diagnostics.setForeground(false)
         activeLease.isForeground = false
         updateActiveLease()
-        // A catch-up in flight is not kept across the background: the next foreground asks again.
-        if let engine { Task { await engine.appLeftForeground() } }
+        // A catch-up in flight goes on under a background task for at most `backgroundCatchUpBound`, and
+        // is abandoned at the end of it (or at expiry): the next foreground asks again from the cursor.
+        if let engine {
+            let work = platform.backgroundWork
+            let token = work.begin(name: "peel.catchup") { Task { await engine.expireBackgroundCatchUp() } }
+            Task {
+                if await engine.appLeftForeground(keepingCatchUp: true) { await engine.finishBackgroundCatchUp() }
+                work.end(token)
+            }
+        }
         // Only an account whose reads have loaded: an empty count would clear it.
         if phase == .ready, !readStates.isEmpty { notifier.leftForeground(unread: unreadCount) }
     }

@@ -240,6 +240,11 @@ extension DiagnosticEvent {
         if let value = selfCheckOutcome { parts.append("outcome=\(value.rawValue)") }
         if let value = selfCheckMissed { parts.append("missed=\(value)") }
         if let value = highestIndex { parts.append("highest=\(value)") }
+        if let value = failureSite { parts.append("site=\(value.rawValue)") }
+        if let value = messageKind { parts.append("msg=\(value)") }
+        if let value = recoveryReason { parts.append("recovery=\(value.rawValue)") }
+        if let value = recoveryStage { parts.append("stage=\(value.rawValue)") }
+        if let value = errorDetail { parts.append("detail=\"\(value)\"") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }
         return parts.joined(separator: " ")

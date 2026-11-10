@@ -1,9 +1,10 @@
 import Foundation
 
-/// One entry in the event ring. Only enums and numbers: there is no String
-/// field, so nothing a person wrote, no error message, path, name or key can
-/// be stored here, however a caller is written. That is the privacy
-/// guarantee for the ring (docs/diagnostics.md); keep it when adding a field.
+/// One entry in the event ring. Enums and numbers, with ONE string field:
+/// `errorDetail`/`messageKind`, which only `Diagnostics.redact` output may
+/// fill (hex and base64-like runs, invoices, URL paths and emails replaced,
+/// whitespace collapsed, 200 characters at most). Keep every other field an
+/// enum or a number (docs/diagnostics.md).
 public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
         case error, memorySample, memoryPressure, launch, previousRun, strutExit
@@ -21,6 +22,23 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         // each page of history and each live message as numbers, the clients alive, the subscriptions made,
         // and the self-check that asks the server whether anything came that was never delivered live.
         case catchUpCursor, historyPage, liveMessage, transportLifecycle, subscribed, selfCheck
+        // The core refusing a call (where, which message kind, redacted text) and the engine reloading its state from storage.
+        case coreFailure, coreRecovery
+    }
+
+    /// Where the engine saw the core fail.
+    public enum CoreFailureSite: String, Codable, Sendable, CaseIterable {
+        case receive, commit, cameOnline, checkPending, resumeHistory, catchUp
+    }
+
+    /// Why the engine reloaded its core state (`Engine.recoverCore`).
+    public enum CoreRecoveryReason: String, Codable, Sendable, CaseIterable {
+        case pageFailed, repeated, reinit, cameOnline, syncBound, catchUp
+    }
+
+    /// How deep a recovery went: the state read again from storage, or everything the engine initialises.
+    public enum CoreRecoveryStage: String, Codable, Sendable, CaseIterable {
+        case reloadState, reinit
     }
 
     /// A transport's life: made, closed, left behind after `Transport.closeTimeout`, and (`establish`) the
@@ -52,7 +70,7 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     /// Why a connection was dropped on purpose to connect again.
     public enum ReconnectReason: String, Codable, Sendable, CaseIterable {
         case pingFailed, pingTimeout, stall, syncBound, readFailure, pathChange, catchUpError
-        case foregroundRebuild, cameOnlineTimeout, selfCheckMissed
+        case foregroundRebuild, cameOnlineTimeout, selfCheckMissed, coreFailure
     }
 
     /// Where a catch-up is: asked for, ended at the last page, cut short by a cancel, or given up on.
@@ -199,12 +217,20 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var selfCheckTrigger: SelfCheckTrigger?
     public var selfCheckMissed: Int?
     public var highestIndex: Int?
+    /// `error`, `coreFailure`: the failure's text after `Diagnostics.redact`, never raw.
+    public var errorDetail: String?
+    /// `coreFailure`: where, and the kind of message being handled (a word such as `batch`, redacted).
+    public var failureSite: CoreFailureSite?
+    public var messageKind: String?
+    /// `coreRecovery`: why and how deep.
+    public var recoveryReason: CoreRecoveryReason?
+    public var recoveryStage: CoreRecoveryStage?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,
         lastAction: Action? = nil, footprintBytes: UInt64? = nil, availableBytes: UInt64? = nil,
         pressureLevel: PressureLevel? = nil, previousRun: PreviousRunKind? = nil,
-        exitReason: ExitReason? = nil, exitStatus: Int32? = nil
+        exitReason: ExitReason? = nil, exitStatus: Int32? = nil, errorDetail: String? = nil
     ) {
         self.kind = kind
         self.timestamp = timestamp
@@ -217,6 +243,7 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         self.previousRun = previousRun
         self.exitReason = exitReason
         self.exitStatus = exitStatus
+        self.errorDetail = errorDetail
     }
 
     /// Whether `other` is the same event again (everything but when, and

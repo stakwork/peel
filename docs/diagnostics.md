@@ -30,12 +30,16 @@ card.
 
 Two things, and only these:
 
-1. **The event ring holds no free text.** `DiagnosticEvent` has no `String`
-   field: only enums and numbers (kind, error kind, last action, footprint,
-   available memory, pressure level, previous run, exit reason and status,
-   time, count). No error message, name, path, amount or key can be stored,
-   however a caller is written. The live `os.Logger` mirror (subsystem
-   `com.sphinx.peel`, category `diagnostics`) logs enum names and numbers only.
+1. **The event ring holds no free text, except one redacted detail.**
+   `DiagnosticEvent` is enums and numbers (kind, error kind, last action,
+   footprint, available memory, pressure level, previous run, exit reason and
+   status, time, count) plus `errorDetail`/`messageKind`: the text of a
+   failure of the core, which only `Diagnostics.redact` output may fill. It
+   replaces hex runs of 16+ characters (keys, hashes, tags), base64/base58/
+   bech32-like tokens of 24+, invoices (`lnbc…`), URL paths and queries and
+   emails with `<redacted>`, collapses whitespace and keeps 200 characters at
+   most. It is a best-effort rule, not a proof. The live `os.Logger` mirror
+   (subsystem `com.sphinx.peel`, category `diagnostics`) logs the same.
 2. **A crash record is redacted on a best-effort basis before it is shown,
    copied or handed on.** The raw report stays in a private folder and no
    public function returns it. Redaction keeps structure (stacks, image

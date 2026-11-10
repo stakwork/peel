@@ -1,4 +1,5 @@
 import Foundation
+import PeelDiagnostics
 
 extension Engine {
     /// Why the app asks whether its connection can be trusted (`Engine.appBecameActive`).
@@ -30,6 +31,13 @@ extension Engine {
         case connectionError(String)
         /// An error that belongs to no conversation in particular.
         case coreError(String)
+        /// The engine read its state again from storage (`Engine.recoverCore`).
+        case coreRecovered(reason: DiagnosticEvent.CoreRecoveryReason, stage: DiagnosticEvent.CoreRecoveryStage)
+        /// The core keeps failing and loading new messages is being retried (true), or is working again (false).
+        case syncFailing(Bool)
+        /// Reloading the state did not help: everything the engine initialises must be initialised
+        /// again, as a launch does. The app answers by opening the account afresh.
+        case needsFullRestart
         /// A background check with the server failed: shown as `coreError`
         /// is, and gone once connected again.
         case serverCheckError(String)

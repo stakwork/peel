@@ -5,12 +5,17 @@ import PeelCore
 /// connection that is up (`connected`) has not yet fetched what came while
 /// the app was away, and until it has (`synced`) it is `syncing`. Derived
 /// from the engine's `.connection` and `.caughtUp` events; reset when the
-/// connection goes.
+/// connection goes. A connection that is up but whose catch-up keeps failing
+/// (`Engine.Event.syncFailing`) is `failing`: neither synced nor merely syncing.
 public enum ConnectionHealth: Sendable, Equatable {
-    case offline, syncing, synced
+    case offline, syncing, synced, failing
 
-    public init(connection: Engine.ConnectionState, caughtUp: Bool) {
-        self = connection == .connected ? (caughtUp ? .synced : .syncing) : .offline
+    public init(connection: Engine.ConnectionState, caughtUp: Bool, failing: Bool = false) {
+        guard connection == .connected else {
+            self = .offline
+            return
+        }
+        self = caughtUp ? .synced : failing ? .failing : .syncing
     }
 
     public var label: String {
@@ -18,6 +23,7 @@ public enum ConnectionHealth: Sendable, Equatable {
         case .offline: "Offline"
         case .syncing: "Syncing…"
         case .synced: "Connected"
+        case .failing: "Reconnecting…"
         }
     }
 }

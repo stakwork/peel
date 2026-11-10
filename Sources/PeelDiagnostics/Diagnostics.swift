@@ -41,10 +41,11 @@ final class DiagnosticsRuntime: Sendable {
 
     func setAction(_ value: DiagnosticEvent.Action) { action.withLock { $0 = value } }
 
-    func note(_ kind: DiagnosticEvent.ErrorKind) {
+    func note(_ kind: DiagnosticEvent.ErrorKind, detail: String? = nil) {
         let current = action.withLock { $0 }
-        ring.append(.init(kind: .error, errorKind: kind, lastAction: current))
-        Diagnostics.mirror("error \(kind.rawValue) during \(current.rawValue)")
+        let event = DiagnosticEvent(kind: .error, errorKind: kind, lastAction: current, errorDetail: detail)
+        ring.append(event)
+        Diagnostics.mirror("error \(kind.rawValue) during \(current.rawValue)" + (detail.map { " detail=\"\($0)\"" } ?? ""))
     }
 
     func sample(pressure: DiagnosticEvent.PressureLevel? = nil) {
@@ -329,6 +330,51 @@ public enum Diagnostics {
 
     /// An error the person was told about, as its kind only.
     public static func note(errorKind: DiagnosticEvent.ErrorKind) { current?.note(errorKind) }
+
+    /// The same with the failure's text, redacted here (`redact`) whatever the caller passes.
+    public static func note(errorKind: DiagnosticEvent.ErrorKind, detail: String?) {
+        current?.note(errorKind, detail: detail.map(redact))
+    }
+
+    /// The core refused a call: where, the kind of message being handled, and the redacted text.
+    public static func recordCoreFailure(site: DiagnosticEvent.CoreFailureSite, kind: String?, detail: String) {
+        var event = DiagnosticEvent(kind: .coreFailure)
+        event.failureSite = site
+        event.messageKind = kind.map { String(redact($0).prefix(40)) }
+        event.errorDetail = redact(detail)
+        current?.record(event)
+    }
+
+    /// The engine reloaded its state from storage (`Engine.recoverCore`).
+    public static func recordCoreRecovery(reason: DiagnosticEvent.CoreRecoveryReason, stage: DiagnosticEvent.CoreRecoveryStage) {
+        var event = DiagnosticEvent(kind: .coreRecovery)
+        event.recoveryReason = reason
+        event.recoveryStage = stage
+        current?.record(event)
+    }
+
+    /// Longest text a detail keeps.
+    public static let detailLimit = 200
+
+    /// Makes a failure's text safe to keep: emails, URL paths and queries, invoices, hex runs of 16+
+    /// (keys, hashes, tags), base64/base58/bech32-like tokens of 24+ characters are replaced by
+    /// `<redacted>`, whitespace is collapsed and the text capped at `detailLimit` characters.
+    public static func redact(_ text: String) -> String {
+        let rules: [(pattern: String, template: String)] = [
+            (#"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#, "<redacted>"),
+            (#"([A-Za-z][A-Za-z0-9+.\-]*://[^\s/?#]+)[/?#]\S*"#, "$1<redacted>"),
+            (#"\b(?:lnbcrt|lntbs|lnbc|lntb)[0-9a-z]{10,}"#, "<redacted>"),
+            (#"\b[0-9a-fA-F]{16,}\b"#, "<redacted>"),
+            (#"[A-Za-z0-9+/=_\-]{24,}"#, "<redacted>"),
+        ]
+        var out = text
+        for rule in rules {
+            let options: String.CompareOptions = rule.pattern.contains("lnbc") ? [.regularExpression, .caseInsensitive] : .regularExpression
+            out = out.replacingOccurrences(of: rule.pattern, with: rule.template, options: options)
+        }
+        out = out.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        return String(out.prefix(detailLimit))
+    }
 
     /// What the person just asked for, attached to the events that follow.
     public static func setAction(_ action: DiagnosticEvent.Action) { current?.setAction(action) }

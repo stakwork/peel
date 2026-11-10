@@ -23,6 +23,14 @@ struct ConnectionHealthTests {
         #expect(ConnectionHealth(connection: connection, caughtUp: false) != .synced)
     }
 
+    @Test func aConnectedCatchUpThatKeepsFailingIsFailingUntilCaughtUp() {
+        #expect(ConnectionHealth(connection: .connected, caughtUp: false, failing: true) == .failing)
+        #expect(ConnectionHealth(connection: .connected, caughtUp: true, failing: true) == .synced)
+        #expect(ConnectionHealth(connection: .connecting, caughtUp: false, failing: true) == .offline)
+        #expect(ConnectionHealth.failing != .synced)
+        #expect(ConnectionHealth.failing.label == "Reconnecting…")
+    }
+
     @Test func syncingSaysSo() {
         #expect(ConnectionHealth.syncing.label == "Syncing…")
         #expect(ConnectionHealth.synced.label == "Connected")

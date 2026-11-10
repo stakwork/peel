@@ -49,6 +49,7 @@ extension Engine {
                 stopHistoryWatchdog()
             }
             history.awaitingCounts = false
+            if !cancelled { Diagnostics.recordCoreFailure(site: .resumeHistory, kind: reason.rawValue, detail: PeelError.readable(error)) }
             noteCatchUpEnd(cancelled ? .cancel : .abandon, reason: cancelled ? .cancelled : .error)
             emit.yield(.historyFailed(PeelError.readable(error)))
             throw error
@@ -208,6 +209,9 @@ extension Engine {
         checkMentionsIfNeeded()
         emit.yield(.historyDone)
         catchUp.finish()
+        // Caught up: whatever failed is past.
+        catchUpRetries = 0
+        noteCoreSuccess()
         // Caught up: nothing is left for the syncing watchdog to bound.
         syncWatchdog?.cancel()
         syncWatchdog = nil

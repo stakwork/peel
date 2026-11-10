@@ -43,3 +43,36 @@ public struct ReadAllGate: Sendable {
         return true
     }
 }
+
+/// Whether this session has caught up with the server's history, and what
+/// it knew when the catch-up began: `readAll` marks undelivered messages as
+/// read, so it may only follow a catch-up that finished without error or
+/// stall, and only if no message came in meanwhile. Pure; `Engine` drives it.
+public struct CatchUpTracker: Sendable, Equatable {
+    /// History is fully fetched on this connection.
+    public private(set) var isCaughtUp = false
+    /// The highest server index stored when this catch-up began.
+    public private(set) var startIndex: Int64?
+
+    public init() {}
+
+    /// A catch-up begins (or resumes: the first start is kept, so a stall
+    /// and a Resume still count from where it began).
+    public mutating func begin(highestIndex: Int64?) {
+        if isCaughtUp || startIndex == nil { startIndex = highestIndex ?? -1 }
+        isCaughtUp = false
+    }
+
+    /// The last page was committed without error.
+    public mutating func finish() { isCaughtUp = true }
+
+    /// The connection ended: the next one starts over.
+    public mutating func reset() { self = CatchUpTracker() }
+
+    /// Whether `readAll` may be sent now: caught up, not fetching, nothing
+    /// stored beyond what the catch-up began with, and nothing unread.
+    public func allowsReadAll(syncing: Bool, highestIndex: Int64?, unread: Int) -> Bool {
+        guard isCaughtUp, !syncing, unread == 0, let startIndex else { return false }
+        return (highestIndex ?? -1) <= startIndex
+    }
+}

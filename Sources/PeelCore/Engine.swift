@@ -43,6 +43,8 @@ public actor Engine {
     private(set) var closed = false
     /// `cameOnline` has run on this connection; see `waitUntilRegistered`.
     private var cameOnlineHere = false
+    /// History caught up on this connection (`CatchUpTracker`).
+    var catchUp = CatchUpTracker()
     /// A register naming an invite may have reached the server: the account
     /// may exist and hold the invite's sats (`Account.signup`).
     private(set) var inviteMayBeRedeemed = false
@@ -720,6 +722,7 @@ public actor Engine {
     /// What belongs to one connection and ends with it.
     private func endConnectionWork() {
         cameOnlineHere = false
+        catchUp.reset()
         // A reply to this connection's status query can only come on it.
         unrecordedPayments = []
         ownStatusCheckedAt = [:]

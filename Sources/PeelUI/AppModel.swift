@@ -1658,10 +1658,7 @@ public final class AppModel {
                     if notice != nil, notice == serverCheckNotice { notice = nil }
                     // The tribes an older Peel linked: their lists need the connection.
                     markLinkedJamies()
-                    Task {
-                        await engine.refreshReadsAndMutes()
-                        markEverythingReadIfClear()
-                    }
+                    Task { await engine.refreshReadsAndMutes() }
                 }
                 if case .offline(let seconds?) = state {
                     reconnectAt = .now.addingTimeInterval(TimeInterval(seconds))
@@ -1696,6 +1693,8 @@ public final class AppModel {
             case .historyResumed(let restart):
                 if restoreProgress.paused != nil { restoreProgress.outcome = nil }
                 if restart { (restoreProgress.contacts, restoreProgress.messages) = (nil, nil) }
+            case .caughtUp:
+                markEverythingReadIfClear()
             case .historyDone:
                 restoreProgress.restoring = false
                 restoreProgress.outcome = .finished

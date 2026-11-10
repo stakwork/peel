@@ -227,6 +227,14 @@ public actor Engine {
     var catchUpReason: DiagnosticEvent.CatchUpReason = .cameOnline
     /// Bounds the time a connection spends Syncing (`checkSync`).
     var syncWatchdog: Task<Void, Never>?
+    /// Asks the server now and then whether anything came that was never delivered live (`selfCheck`).
+    var selfCheckTask: Task<Void, Never>?
+    /// How many messages catch-ups (pages of history, not a restore) stored that this device did not have:
+    /// what the live subscription never delivered (`selfCheck`).
+    var newFromCatchUp = 0
+    /// The old transport's disconnect and shutdown, started by `connectionClosed` in the background and
+    /// awaited before the next connect makes a client (`teardown`): never two clients of one client ID at once.
+    var closing: Task<Void, Never>?
     /// The app left the front with history in flight, which was abandoned:
     /// nothing is known of the connection until the next ping answers.
     public private(set) var unverified = false
@@ -246,6 +254,13 @@ public actor Engine {
     static let foregroundVerifyTimeout: Duration = .seconds(6)
     static let syncCheckInterval: Duration = .seconds(10)
     static let syncBound: Duration = .seconds(60)
+    /// The first self-check comes this long after a connection is caught up, the rest every `selfCheckInterval`.
+    static let selfCheckFirstDelay: Duration = .seconds(20)
+    static let selfCheckInterval: Duration = .seconds(60)
+    /// How often `watchSelfCheck` looks at whether one is due.
+    static let selfCheckTick: Duration = .seconds(5)
+    /// How long a self-check waits for its catch-up to end (the history stall watchdog has its say after).
+    static let selfCheckBound: Duration = .seconds(35)
     /// Each `poll` waiting to check again.
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     static let historyStall: Duration = .seconds(30)
@@ -393,6 +408,63 @@ public actor Engine {
             guard !Task.isCancelled, transport === connection, !catchUp.isCaughtUp else { return }
             await checkSync(connection)
         }
+    }
+
+    /// Runs the self-check on a connection that is caught up, in front and idle: first `selfCheckFirstDelay`
+    /// after it was caught up, then every `selfCheckInterval`. (Not `watchSync`'s loop: caught up ends that.)
+    private func watchSelfCheck(_ connection: Transport) async {
+        var due: ContinuousClock.Instant?
+        var ran = false
+        while !Task.isCancelled {
+            try? await Task.sleep(for: Self.selfCheckTick)
+            guard !Task.isCancelled, transport === connection else { return }
+            guard catchUp.isCaughtUp, !history.isSyncing, cameOnlineHere, !restoring, leftForegroundAt == nil else {
+                due = nil
+                continue
+            }
+            let deadline = due ?? ContinuousClock.now + (ran ? Self.selfCheckInterval : Self.selfCheckFirstDelay)
+            due = deadline
+            guard ContinuousClock.now >= deadline else { continue }
+            due = nil
+            let trigger: DiagnosticEvent.SelfCheckTrigger = ran ? .periodic : .afterCaughtUp
+            ran = true
+            await selfCheck(reason: trigger)
+        }
+    }
+
+    /// Asks the server for history from the cursor, as a catch-up does, and counts the messages that were new
+    /// to this device (`newFromCatchUp`): a message the server holds that never came live means the live
+    /// path is dead while pings still answer (`judgeSelfCheck`).
+    func selfCheck(reason: DiagnosticEvent.SelfCheckTrigger) async {
+        guard let connection = transport, cameOnlineHere, !restoring, !history.isSyncing else { return }
+        let from = history.from
+        let before = newFromCatchUp
+        do {
+            try await resumeHistory(reason: .selfCheck)
+        } catch {
+            guard !Task.isCancelled, !(error is CancellationError), transport === connection else { return }
+            await dropOnPurpose(connection, reason: .catchUpError)
+            return
+        }
+        // A catch-up that does not end is the stall watchdog's and `syncBound`'s to deal with.
+        do {
+            try await poll(timeout: Self.selfCheckBound, failure: .registrationTimedOut) {
+                transport !== connection || !history.isSyncing ? () : nil
+            }
+        } catch {
+            return
+        }
+        guard transport === connection else { return }
+        await judgeSelfCheck(on: connection, trigger: reason, from: from, missed: newFromCatchUp - before)
+    }
+
+    /// Records what a self-check found; messages that came from history and never live drop the connection,
+    /// so a clean one (a new login, subscriptions and catch-up) takes its place.
+    func judgeSelfCheck(on connection: Transport, trigger: DiagnosticEvent.SelfCheckTrigger, from: UInt64, missed: Int) async {
+        let highest = (try? storage.highestServerIndex()).map { Int($0) }
+        Diagnostics.recordSelfCheck(trigger: trigger, from: from, missed: missed, highest: highest)
+        guard missed > 0 else { return }
+        await dropOnPurpose(connection, reason: .selfCheckMissed)
     }
 
     /// One look at a connection that is up and not caught up: catch-up is
@@ -550,25 +622,75 @@ public actor Engine {
 
     /// How long the fallback route is kept first before the named one is tried again.
     static let primaryProbeInterval: Duration = .seconds(300)
-    /// How long a route has to connect before the next one is tried beside
-    /// it. A network that drops the MQTT port lets a connect hang for the
-    /// client's whole timeout (10 s); this caps that wait. A working route
-    /// connects well within it.
+    /// How long a route has to connect before it is closed and the next one
+    /// is tried (never beside it: both would hold one client ID). A network
+    /// that drops the MQTT port lets a connect hang for the client's whole
+    /// timeout; this caps that wait. A working route connects well within it.
     static let nextRouteAfter: Duration = .milliseconds(1500)
 
-    /// What happens while the routes race (`connectFirstRoute`).
-    private enum RouteEvent: Sendable {
-        case finished(Int, Result<Void, Error>)
-        case startNext
+    /// The routes tried one at a time: a route's client is made only when none is alive, so the routes'
+    /// shared client ID is never held by two clients at once (the broker takes a session over from the
+    /// older one when a second connects with the ID, and a client left connecting reads on).
+    struct RouteTurns: Equatable {
+        let count: Int
+        private(set) var next = 0
+        /// The route whose client is alive, until `ended`.
+        private(set) var live: Int?
+
+        init(count: Int) { self.count = count }
+
+        /// The next route to try, none while one is alive or when they are all tried.
+        mutating func begin() -> Int? {
+            guard live == nil, next < count else { return nil }
+            live = next
+            next += 1
+            return live
+        }
+
+        /// The live route's client is closed.
+        mutating func ended() { live = nil }
+
+        /// How long `route` has to connect before it is closed for the next: the last has the client's own
+        /// timeout.
+        func window(of route: Int) -> Duration? { route + 1 < count ? Engine.nextRouteAfter : nil }
+    }
+
+    /// Connects `transport`: the connect's result, or nil when it did not end within `limit` (nil: the
+    /// client's own timeout bounds it) or the caller was cancelled.
+    private static func connectRoute(_ transport: Transport, within limit: Duration?) async -> Result<Void, Error>? {
+        let (events, sink) = AsyncStream.makeStream(of: Result<Void, Error>?.self)
+        Task {
+            let result: Result<Void, Error>
+            do {
+                try await transport.connect()
+                result = .success(())
+            } catch {
+                result = .failure(error)
+            }
+            sink.yield(result)
+        }
+        let timer = limit.map { limit in
+            Task {
+                try? await Task.sleep(for: limit)
+                sink.yield(nil)
+            }
+        }
+        defer {
+            timer?.cancel()
+            sink.finish()
+        }
+        for await event in events { return event }
+        return nil
     }
 
     /// Connects by the first of the server's routes that answers (see
     /// `ServerAddress.routes`), signing a fresh login for each, with full
-    /// certificate verification on every one. Each route has
-    /// `nextRouteAfter` to connect before the next starts beside it, and the
-    /// next starts at once when one fails; the first to connect is kept and
-    /// the others are closed once their connects end. Throws the last
-    /// route's error when none connects; the caller's backoff applies then.
+    /// certificate verification on every one. The routes are tried one at a
+    /// time (`RouteTurns`): each but the last has `nextRouteAfter` to connect,
+    /// and a route that fails or is too slow is closed, awaited (bounded by
+    /// `Transport.closeTimeout`), before the next one's client is made. The
+    /// first to connect is kept. Throws the last route's error when none
+    /// connects; the caller's backoff applies then.
     private func connectFirstRoute(of server: ServerAddress, xpub: String) async throws -> Transport {
         if !lastRouteRead {
             lastRouteRead = true
@@ -607,84 +729,30 @@ public actor Engine {
             logins.append((loginTime, try Sphinxrs.rootSignMs(seed: seed, time: loginTime, network: network)))
         }
 
-        let (events, sink) = AsyncStream.makeStream(of: RouteEvent.self)
-        var transports: [Transport] = []
-        var attempts: [Task<Result<Void, Error>, Never>] = []
-        var timer: Task<Void, Never>?
-        func start(_ index: Int) {
+        var turns = RouteTurns(count: routes.count)
+        var failure: Error = Failure.noServer
+        while let index = turns.begin() {
+            if closed || Task.isCancelled { throw CancellationError() }
             let transport = Transport(
                 server: routes[index], clientID: xpub, username: logins[index].time, password: logins[index].signature,
                 allowUntrustedCertificate: allowUntrustedCertificate
             )
-            transports.append(transport)
-            attempts.append(Task {
-                let result: Result<Void, Error>
-                do {
-                    try await transport.connect()
-                    result = .success(())
-                } catch {
-                    result = .failure(error)
-                }
-                sink.yield(.finished(index, result))
-                return result
-            })
-            timer?.cancel()
-            if index + 1 < routes.count {
-                timer = Task {
-                    try? await Task.sleep(for: Self.nextRouteAfter)
-                    if !Task.isCancelled { sink.yield(.startNext) }
-                }
-            }
-        }
-
-        var winner: Int?
-        var failure: Error = Failure.noServer
-        var pending = 0
-        start(0)
-        pending += 1
-        for await event in events {
-            switch event {
-            case .startNext:
-                if attempts.count < routes.count {
-                    start(attempts.count)
-                    pending += 1
-                }
-            case .finished(let index, .success):
-                winner = index
-            case .finished(_, .failure(let error)):
-                pending -= 1
-                failure = error
-                if attempts.count < routes.count {
-                    start(attempts.count)
-                    pending += 1
-                }
-            }
-            if winner != nil || (pending == 0 && attempts.count == routes.count) { break }
-            if Task.isCancelled || closed { break }
-        }
-        timer?.cancel()
-        sink.finish()
-
-        // Every connect that is not kept is closed once it ends, connected or not.
-        for (index, attempt) in attempts.enumerated() where index != winner {
-            let transport = transports[index]
-            Task {
-                _ = await attempt.value
+            let outcome = await Self.connectRoute(transport, within: turns.window(of: index))
+            // Closed or disconnected while connecting.
+            if closed || Task.isCancelled {
                 await transport.close()
+                throw CancellationError()
             }
-        }
-        guard let winner else {
-            if closed || Task.isCancelled { throw CancellationError() }
-            throw failure
-        }
-        let transport = transports[winner]
-        // Closed or disconnected while connecting.
-        if closed || Task.isCancelled {
+            if case .success? = outcome {
+                rememberRoute(routes[index], of: server)
+                return transport
+            }
+            if case .failure(let error)? = outcome { failure = error }
+            // Failed or too slow: closed, and awaited, before the next route's client exists.
             await transport.close()
-            throw CancellationError()
+            turns.ended()
         }
-        rememberRoute(routes[winner], of: server)
-        return transport
+        throw failure
     }
 
     /// Keeps the route that connected, in memory and in the profile, so the
@@ -713,6 +781,9 @@ public actor Engine {
         // first register landed, and needs the invite if it did not.
         let inviteCode = try isRegistered ? nil : storedInvite()?.code
         await teardown()
+        // Every client made before this has been shut down (or abandoned): one alive now is a leak.
+        let alive = Transport.liveCount
+        Diagnostics.recordTransportLifecycle(stage: alive == 0 ? .establish : .leak, live: alive)
         // A new connection is bound to the path as it is now and has been heard from: what was
         // noted of the old one (a path change, an abandoned catch-up) does not apply to it.
         pathChangedSinceBackground = false
@@ -744,12 +815,24 @@ public actor Engine {
             let tribeTopic = try Sphinxrs.getTribeManagementTopic(
                 seed: seed, uniqueTime: clock.next(), state: StateCodec.encode(state)
             )
-            try await transport.subscribe([tribeTopic])
+            // This transport's own subscriptions, asserted again whatever the setup subscribed (a repeat is
+            // harmless): one the broker refuses is a connection that cannot be trusted, dropped and rebuilt.
+            var topics: [String] = []
+            for topic in setup.subscriptionTopics + [tribeTopic] where !topics.contains(topic) { topics.append(topic) }
+            do {
+                try await transport.subscribe(topics)
+                Diagnostics.recordSubscribed(topics: topics.count, ok: true)
+            } catch {
+                Diagnostics.recordSubscribed(topics: topics.count, ok: false)
+                throw error
+            }
             setConnection(.connected)
             connectedAt = .now
             keepAliveTask = Task { [weak self] in await self?.keepAlive(transport) }
             syncWatchdog?.cancel()
             syncWatchdog = Task { [weak self] in await self?.watchSync(transport) }
+            selfCheckTask?.cancel()
+            selfCheckTask = Task { [weak self] in await self?.watchSelfCheck(transport) }
             // A returning account is already registered; a new one comes online
             // when the server's registration reply lands (see `complete`).
             if isRegistered {
@@ -854,9 +937,16 @@ public actor Engine {
         setConnection(.offline(retryIn: nil))
         // Closed in the background, after the reconnect starts: closing a
         // socket gone bad must never delay or block the way back.
-        let closing = Task { await closed.close() }
+        // The next connect waits for it (`teardown`), so two clients of one ID are never alive together;
+        // after an earlier close still in flight.
+        let earlier = closing
+        let closingNow = Task {
+            await earlier?.value
+            await closed.close()
+        }
+        closing = closingNow
         guard keepConnected else {
-            await closing.value
+            await closingNow.value
             return
         }
         // A loop still in `establish` leaves the reconnect to itself
@@ -994,6 +1084,12 @@ public actor Engine {
             self.transport = nil
             await transport.close()
         }
+        // The old client's disconnect and shutdown, started by `connectionClosed`, must end (each is bounded
+        // by `Transport.closeTimeout`) before another client is made.
+        if let pending = closing {
+            await pending.value
+            if closing == pending { closing = nil }
+        }
     }
 
     /// What belongs to one connection and ends with it.
@@ -1013,6 +1109,8 @@ public actor Engine {
         keepAliveTask = nil
         syncWatchdog?.cancel()
         syncWatchdog = nil
+        selfCheckTask?.cancel()
+        selfCheckTask = nil
         lastHistoryActivity = nil
         catchUpStarted = nil
         resendTask?.cancel()
@@ -1052,6 +1150,9 @@ public actor Engine {
 
     /// Tests only: a page of history came.
     func historyPageArrivedForTesting() { historyPages += 1 }
+
+    /// Tests only: an old transport's close still in flight, as `connectionClosed` leaves it.
+    func setClosingForTesting(_ task: Task<Void, Never>?) { closing = task }
 
     /// Tests only: how long `appBecameActive` gives a connection to answer.
     func setVerifyTimeoutForTesting(_ timeout: Duration) { verifyTimeout = timeout }
@@ -1411,8 +1512,10 @@ public actor Engine {
         // What the server sent moves where history stands, written with it:
         // a page of history by every index on it, a live message by its own.
         var cursor = history
+        var pageIndices: [UInt64]?
         if arrival != .live {
             let indices = indices ?? result.msgs.compactMap { $0.index.flatMap { UInt64($0) } }
+            pageIndices = indices
             followUps.historyPage = cursor.advance(indices: indices, total: result.msgsTotal)
         } else {
             for index in indices ?? [] { cursor.cameLive(index) }
@@ -1423,6 +1526,16 @@ public actor Engine {
 
         let settling = try storage.openInvoices(among: commit.settled.map(\.0))
         let applied = try storage.apply(commit)
+        // What the server sent, as numbers only: a page of history, or a message that came live.
+        if let pageIndices {
+            Diagnostics.recordHistoryPage(
+                count: pageIndices.count, maxIndex: pageIndices.max().map { Int(clamping: $0) }, new: applied.inserted)
+            if arrival == .history { newFromCatchUp += applied.inserted }
+        } else if let index = indices?.first {
+            let row = applied.stored.first { $0.serverIndex == Int64(clamping: index) } ?? applied.stored.first
+            Diagnostics.recordLiveMessage(
+                index: Int(clamping: index), fromMe: row?.fromMe, type: row?.type, new: applied.inserted > 0)
+        }
         removeFiles(of: applied.purged)
         state = newState
         history = cursor

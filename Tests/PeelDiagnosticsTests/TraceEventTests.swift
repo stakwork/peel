@@ -88,6 +88,42 @@ struct TraceEventTests {
         #expect(path.line.contains("pathChangeFlagged away=12s"))
     }
 
+    @Test func linesNameTheDeliveryRecords() {
+        var cursor = DiagnosticEvent(kind: .catchUpCursor)
+        cursor.cursorFrom = 7
+        cursor.cursorNext = 7
+        cursor.catchUpReason = .selfCheck
+        #expect(cursor.line.contains("catchUpCursor reason=selfCheck from=7 next=7"))
+        var page = DiagnosticEvent(kind: .historyPage)
+        page.pageCount = 3
+        page.pageMaxIndex = 9
+        page.pageNew = 1
+        page.pageDup = 2
+        #expect(page.line.contains("historyPage count=3 maxIndex=9 new=1 dup=2"))
+        var live = DiagnosticEvent(kind: .liveMessage)
+        live.liveIndex = 12
+        live.liveFromMe = false
+        live.liveType = 0
+        live.liveNew = true
+        #expect(live.line.contains("liveMessage index=12 fromMe=false type=0 new=true"))
+        var lifecycle = DiagnosticEvent(kind: .transportLifecycle)
+        lifecycle.lifecycleStage = .abandoned
+        lifecycle.liveTransports = 1
+        #expect(lifecycle.line.contains("transportLifecycle stage=abandoned live=1"))
+        var subscribed = DiagnosticEvent(kind: .subscribed)
+        subscribed.subscribedTopics = 4
+        subscribed.subscribedOk = true
+        #expect(subscribed.line.contains("subscribed topics=4 subscribed=ok"))
+        var missed = DiagnosticEvent(kind: .selfCheck)
+        missed.selfCheckTrigger = .periodic
+        missed.selfCheckOutcome = .missed
+        missed.cursorFrom = 7
+        missed.selfCheckMissed = 2
+        missed.highestIndex = 9
+        #expect(missed.line.contains("selfCheck from=7 trigger=periodic outcome=missed missed=2 highest=9"))
+        #expect(DiagnosticEvent(kind: .selfCheck).line.contains("selfCheck"))
+    }
+
     @Test func reportRendersNewEventsAndThePreviousRun() {
         var lock = DiagnosticEvent(kind: .lock)
         lock.lockReason = .coldLaunch

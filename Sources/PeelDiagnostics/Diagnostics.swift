@@ -247,6 +247,62 @@ public enum Diagnostics {
         current?.record(event)
     }
 
+    /// A catch-up asks the server for history from `from`; `next` is the index its run will ask for.
+    public static func recordCatchUpCursor(from: UInt64, next: UInt64, reason: DiagnosticEvent.CatchUpReason) {
+        var event = DiagnosticEvent(kind: .catchUpCursor)
+        event.cursorFrom = Int(clamping: from)
+        event.cursorNext = Int(clamping: next)
+        event.catchUpReason = reason
+        current?.record(event)
+    }
+
+    /// A page of history was handled: its indices, the highest, and how many stored a new row.
+    public static func recordHistoryPage(count: Int, maxIndex: Int?, new: Int) {
+        var event = DiagnosticEvent(kind: .historyPage)
+        event.pageCount = count
+        event.pageMaxIndex = maxIndex.map { max($0, 0) }
+        event.pageNew = new
+        event.pageDup = max(count - new, 0)
+        current?.record(event)
+    }
+
+    /// A message came live, as numbers: never its content.
+    public static func recordLiveMessage(index: Int, fromMe: Bool?, type: Int?, new: Bool) {
+        var event = DiagnosticEvent(kind: .liveMessage)
+        event.liveIndex = max(index, 0)
+        event.liveFromMe = fromMe
+        event.liveType = type
+        event.liveNew = new
+        current?.record(event)
+    }
+
+    /// A transport was made, closed or abandoned, or a connect began: the clients alive then.
+    public static func recordTransportLifecycle(stage: DiagnosticEvent.LifecycleStage, live: Int) {
+        var event = DiagnosticEvent(kind: .transportLifecycle)
+        event.lifecycleStage = stage
+        event.liveTransports = max(live, 0)
+        current?.record(event)
+    }
+
+    /// Topics were subscribed on a new connection, and whether the broker took them.
+    public static func recordSubscribed(topics: Int, ok: Bool) {
+        var event = DiagnosticEvent(kind: .subscribed)
+        event.subscribedTopics = topics
+        event.subscribedOk = ok
+        current?.record(event)
+    }
+
+    /// The self-check's finding: `missed` messages came from history that were never delivered live (zero is ok).
+    public static func recordSelfCheck(trigger: DiagnosticEvent.SelfCheckTrigger, from: UInt64, missed: Int, highest: Int?) {
+        var event = DiagnosticEvent(kind: .selfCheck)
+        event.selfCheckTrigger = trigger
+        event.selfCheckOutcome = missed > 0 ? .missed : .ok
+        event.cursorFrom = Int(clamping: from)
+        event.selfCheckMissed = max(missed, 0)
+        event.highestIndex = highest.map { max($0, 0) }
+        current?.record(event)
+    }
+
     /// A read failed on the connection's socket (no error text kept); the connection is dropped.
     public static func recordReadFailure() { current?.record(DiagnosticEvent(kind: .readFailure)) }
 

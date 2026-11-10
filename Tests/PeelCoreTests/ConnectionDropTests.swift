@@ -25,6 +25,11 @@ private func cutTransport(accepting accepted: Int, then error: any Error & Senda
     return (transport, writes)
 }
 
+/// Whether a slow close has ended.
+private final class ClosedFlag: Sendable {
+    let closed = Mutex(false)
+}
+
 /// A write the closing connection cut short: it may have left.
 private let cutShort = PeelError("the write was cut short")
 
@@ -821,6 +826,130 @@ struct ConnectionDropTests {
             var failures = 0
             for await case .historyFailed in engine.events { failures += 1 }
             #expect(failures == 1)
+        }
+    }
+
+    // MARK: One live client at a time
+
+    /// A closed transport stops counting as alive, once.
+    @Test func aClosedTransportStopsCountingAsAlive() async {
+        let registry = LiveClients()
+        let transport = Transport(publishing: { _, _ in }, registry: registry)
+        #expect(registry.count == 1)
+        await transport.close()
+        #expect(registry.count == 0)
+        #expect(transport.isReleased)
+        #expect(!transport.isAbandoned)
+        await transport.close()
+        #expect(registry.count == 0)
+    }
+
+    /// A close that runs out of time abandons the client: it stops counting, and is marked so its
+    /// listeners deliver nothing.
+    @Test func aCloseThatRunsOutOfTimeAbandonsTheClient() async {
+        let registry = LiveClients()
+        let transport = Transport(publishing: { _, _ in }, registry: registry)
+        transport.setCloseForTesting(limit: .milliseconds(100), delay: .seconds(2))
+        #expect(registry.count == 1)
+        await transport.close()
+        #expect(registry.count == 0)
+        #expect(transport.isAbandoned)
+        #expect(transport.isReleased)
+    }
+
+    /// The count is made by the clients, so a registry of its own counts only its own.
+    @Test func theLiveCountFollowsEveryClientMade() async {
+        let registry = LiveClients()
+        let first = Transport(publishing: { _, _ in }, registry: registry)
+        let second = Transport(publishing: { _, _ in }, registry: registry)
+        #expect(registry.count == 2)
+        await first.close()
+        #expect(registry.count == 1)
+        await second.close()
+        #expect(registry.count == 0)
+    }
+
+    /// A connect waits for the old transport's close, started in the background by `connectionClosed`,
+    /// before it makes a client; nothing is left pending after.
+    @Test func aConnectWaitsForTheOldClientToClose() async throws {
+        let flags = ClosedFlag()
+        let fresh = Transport(publishing: { _, _ in })
+        try await withEngine { engine, _ throws in
+            await engine.setClosingForTesting(Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                flags.closed.withLock { $0 = true }
+            })
+            try await Engine.$connectingForTesting.withValue(fresh) {
+                try await engine.connect()
+            }
+            #expect(flags.closed.withLock { $0 })
+            #expect(await engine.closing == nil)
+        }
+    }
+
+    /// Routes are tried one at a time: none begins while one is alive, and the last has the client's own timeout.
+    @Test func routesAreTriedOneAtATime() {
+        var turns = Engine.RouteTurns(count: 2)
+        #expect(turns.window(of: 0) == Engine.nextRouteAfter)
+        #expect(turns.window(of: 1) == nil)
+        let first = turns.begin()
+        #expect(first == 0)
+        #expect(turns.live == 0)
+        // The first is still alive.
+        let blocked = turns.begin()
+        #expect(blocked == nil)
+        turns.ended()
+        #expect(turns.live == nil)
+        let second = turns.begin()
+        #expect(second == 1)
+        turns.ended()
+        let none = turns.begin()
+        #expect(none == nil)
+    }
+
+    /// A single route has the client's own timeout.
+    @Test func aSingleRouteHasNoWindow() {
+        let turns = Engine.RouteTurns(count: 1)
+        #expect(turns.window(of: 0) == nil)
+    }
+
+    // MARK: The inbound self-check
+
+    /// Messages that came from history and never live drop the connection, so a clean one takes its place.
+    @Test func aSelfCheckThatFindsMissedMessagesRebuildsTheConnection() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.judgeSelfCheck(on: transport, trigger: .periodic, from: 5, missed: 2)
+            #expect(await engine.transport == nil)
+            #expect(await engine.connection == .offline(retryIn: nil))
+        }
+    }
+
+    /// Nothing new from history: the connection stays.
+    @Test func aSelfCheckThatFindsNothingKeepsTheConnection() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.judgeSelfCheck(on: transport, trigger: .afterCaughtUp, from: 5, missed: 0)
+            #expect(await engine.transport != nil)
+            #expect(await engine.connection == .connected)
+        }
+    }
+
+    /// A self-check asks for history from the cursor, and only on a connection that came online and is idle.
+    @Test func aSelfCheckAsksFromTheCursor() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await engine.selfCheck(reason: .periodic)
+            #expect(writes.count == 0)
+            await engine.cameOnlineForTesting()
+            let task = Task { await engine.selfCheck(reason: .periodic) }
+            for _ in 0..<200 where writes.count == 0 { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(writes.count == 1)
+            #expect(await engine.history.active?.next == engine.history.from)
+            task.cancel()
         }
     }
 

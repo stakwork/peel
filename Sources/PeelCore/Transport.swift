@@ -119,6 +119,23 @@ struct Inbound: Sendable {
     let payload: Data
 }
 
+/// The clients alive: each `Transport` counts when it is made and stops counting once, when it is closed
+/// or left behind after `Transport.closeTimeout`. The login is bound to one client ID, so more than one
+/// alive at once means the broker takes the session over from the one before and a reader may be left
+/// running on a socket that was closed (`Engine.establish` expects none).
+final class LiveClients: Sendable {
+    static let shared = LiveClients()
+    private let alive = Mutex(0)
+
+    var count: Int { alive.withLock { $0 } }
+
+    /// One more client alive; the count after.
+    func opened() -> Int { alive.withLock { $0 += 1; return $0 } }
+
+    /// One client less; the count after.
+    func released() -> Int { alive.withLock { $0 = max($0 - 1, 0); return $0 } }
+}
+
 /// One MQTT connection. The login is a signed timestamp, so a connection is never
 /// reused: reconnecting means signing a fresh timestamp and making a new Transport.
 final class Transport: Sendable {
@@ -130,6 +147,29 @@ final class Transport: Sendable {
     private let lastHeard: LastHeard
     /// Whether a read failed on this connection (`answersPing` then says no).
     private let readFailed: ReadFailed
+    /// Set once the connection is left behind (`close` ran out of time): its listeners deliver nothing more.
+    private let abandoned: Flag
+    /// Set once the client stops counting as alive (`LiveClients`).
+    private let released = Flag()
+    private let registry: LiveClients
+    /// The one `close`, which every caller awaits.
+    private let closeTask = Mutex<Task<Void, Never>?>(nil)
+    /// Whether the client was left behind un-shut-down after `closeTimeout`.
+    var isAbandoned: Bool { abandoned.isSet }
+    /// Whether the client no longer counts as alive: closed, or abandoned.
+    var isReleased: Bool { released.isSet }
+    /// The clients alive now, of every transport.
+    static var liveCount: Int { LiveClients.shared.count }
+    /// How long this transport's `close` waits; tests shorten it.
+    private let closeLimit = Mutex(Transport.closeTimeout)
+    /// Tests only: how long the client's disconnect takes before it starts.
+    private let testCloseDelay = Mutex<Duration?>(nil)
+    #if DEBUG
+    func setCloseForTesting(limit: Duration? = nil, delay: Duration? = nil) {
+        if let limit { closeLimit.withLock { $0 = limit } }
+        testCloseDelay.withLock { $0 = delay }
+    }
+    #endif
     /// Whether a read failed on this connection: it is dead whatever its socket says.
     var hasReadFailure: Bool { readFailed.isSet }
     /// Tests only (`init(publishing:)`): whether pings are answered.
@@ -147,7 +187,7 @@ final class Transport: Sendable {
     convenience init(server: ServerAddress, clientID: String, username: String, password: String, allowUntrustedCertificate: Bool) {
         self.init(
             server: server, clientID: clientID, username: username, password: password,
-            allowUntrustedCertificate: allowUntrustedCertificate, testWrite: nil
+            allowUntrustedCertificate: allowUntrustedCertificate, testWrite: nil, registry: .shared
         )
     }
 
@@ -156,19 +196,20 @@ final class Transport: Sendable {
     /// takes every connect and subscribe, with publishes going to `write`
     /// in place of it and throwing what it throws, mapped as a real
     /// write's are, so a test can cut a send short.
-    convenience init(publishing write: @escaping @Sendable (String, Data) async throws -> Void) {
+    convenience init(publishing write: @escaping @Sendable (String, Data) async throws -> Void, registry: LiveClients = .shared) {
         self.init(
             server: ServerAddress("mqtt://127.0.0.1:1")!, clientID: "test", username: "test", password: "test",
-            allowUntrustedCertificate: false, testWrite: write
+            allowUntrustedCertificate: false, testWrite: write, registry: registry
         )
     }
     #endif
 
     private init(
         server: ServerAddress, clientID: String, username: String, password: String, allowUntrustedCertificate: Bool,
-        testWrite: (@Sendable (String, Data) async throws -> Void)?
+        testWrite: (@Sendable (String, Data) async throws -> Void)?, registry: LiveClients
     ) {
         self.testWrite = testWrite
+        self.registry = registry
         let tls: MQTTClient.TLSConfigurationType? = server.tls
             ? .ts(TSTLSConfiguration(certificateVerification: allowUntrustedCertificate ? .none : .fullVerification))
             : nil
@@ -204,8 +245,12 @@ final class Transport: Sendable {
         self.lastHeard = lastHeard
         let readFailed = ReadFailed()
         self.readFailed = readFailed
+        let abandoned = Flag()
+        self.abandoned = abandoned
         inbound = AsyncStream { continuation in
             client.addPublishListener(named: "peel") { result in
+                // A client left behind (`close` ran out of time) is harmless: it delivers nothing.
+                if abandoned.isSet { return }
                 switch result {
                 case .success(let info):
                     lastHeard.now()
@@ -221,9 +266,11 @@ final class Transport: Sendable {
                 }
             }
             client.addCloseListener(named: "peel") { _ in
+                if abandoned.isSet { return }
                 continuation.finish()
             }
         }
+        Diagnostics.recordTransportLifecycle(stage: .opened, live: registry.opened())
     }
 
     func connect() async throws {
@@ -283,23 +330,58 @@ final class Transport: Sendable {
 
     /// Disconnects and shuts the client down, but waits no longer than
     /// `closeTimeout`: on a socket gone bad they can hang, and the caller
-    /// must not hang with them. The client's work, if it hangs, is left behind.
+    /// must not hang with them. A client that did not finish in time is
+    /// abandoned: it stops counting as alive and its listeners go quiet, so
+    /// it can neither deliver messages nor end `inbound`. The close runs
+    /// once; every caller waits for it.
     func close() async {
+        let task = closeTask.withLock { state -> Task<Void, Never> in
+            if let state { return state }
+            let created = Task { await self.performClose() }
+            state = created
+            return created
+        }
+        await task.value
+    }
+
+    private func performClose() async {
         let client = client
-        let (done, finished) = AsyncStream.makeStream(of: Void.self)
+        let delay = testCloseDelay.withLock { $0 }
+        let limit = closeLimit.withLock { $0 }
+        let (done, finished) = AsyncStream.makeStream(of: Bool.self)
         Task {
+            if let delay { try? await Task.sleep(for: delay) }
             try? await client.disconnect()
             try? await client.shutdown()
-            finished.yield()
+            finished.yield(true)
         }
         let timer = Task {
-            try? await Task.sleep(for: Self.closeTimeout)
-            finished.yield()
+            try? await Task.sleep(for: limit)
+            finished.yield(false)
         }
-        for await _ in done { break }
+        var shutDown = false
+        for await result in done {
+            shutDown = result
+            break
+        }
         timer.cancel()
         finished.finish()
+        if !shutDown { abandoned.set() }
+        if released.set() {
+            Diagnostics.recordTransportLifecycle(stage: shutDown ? .closed : .abandoned, live: registry.released())
+        }
     }
+}
+
+/// A flag that is set once.
+private final class Flag: Sendable {
+    private let flag = Mutex(false)
+
+    var isSet: Bool { flag.withLock { $0 } }
+
+    /// Sets it; true only the first time.
+    @discardableResult
+    func set() -> Bool { flag.withLock { let first = !$0; $0 = true; return first } }
 }
 
 /// When a connection last heard from the broker.

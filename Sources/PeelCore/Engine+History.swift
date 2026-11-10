@@ -25,6 +25,7 @@ extension Engine {
         catchUpStarted = .now
         catchUpReason = reason
         Diagnostics.recordCatchUp(.start, reason: reason)
+        Diagnostics.recordCatchUpCursor(from: history.from, next: history.active?.next ?? history.from, reason: reason)
         catchUp.begin(highestIndex: try? storage.highestServerIndex())
         emit.yield(.historyResumed(restart: history.active == nil && restoring))
         do {

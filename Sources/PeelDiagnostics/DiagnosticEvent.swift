@@ -17,6 +17,26 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         // What the engine decided on coming to the front and why, each connection it dropped on purpose,
         // every ping's result, leaving the front, and a path change noted while away.
         case foregroundDecision, forcedReconnect, pingResult, background, pathChangeFlagged
+        // Why messages may not arrive on a connection that answers pings: the cursor each catch-up asks from,
+        // each page of history and each live message as numbers, the clients alive, the subscriptions made,
+        // and the self-check that asks the server whether anything came that was never delivered live.
+        case catchUpCursor, historyPage, liveMessage, transportLifecycle, subscribed, selfCheck
+    }
+
+    /// A transport's life: made, closed, left behind after `Transport.closeTimeout`, and (`establish`) the
+    /// clients alive as a connect begins (`leak` when any is).
+    public enum LifecycleStage: String, Codable, Sendable, CaseIterable {
+        case opened, closed, abandoned, establish, leak
+    }
+
+    /// What a self-check found: nothing new from the server's history, or messages never delivered live.
+    public enum SelfCheckOutcome: String, Codable, Sendable, CaseIterable {
+        case ok, missed
+    }
+
+    /// What ran a self-check: the first after a catch-up, or the periodic one.
+    public enum SelfCheckTrigger: String, Codable, Sendable, CaseIterable {
+        case afterCaughtUp, periodic
     }
 
     /// What the engine did with its connection on coming to the front.
@@ -32,7 +52,7 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     /// Why a connection was dropped on purpose to connect again.
     public enum ReconnectReason: String, Codable, Sendable, CaseIterable {
         case pingFailed, pingTimeout, stall, syncBound, readFailure, pathChange, catchUpError
-        case foregroundRebuild, cameOnlineTimeout
+        case foregroundRebuild, cameOnlineTimeout, selfCheckMissed
     }
 
     /// Where a catch-up is: asked for, ended at the last page, cut short by a cancel, or given up on.
@@ -42,7 +62,7 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
 
     /// Why a catch-up was asked for, or given up on.
     public enum CatchUpReason: String, Codable, Sendable, CaseIterable {
-        case foreground, push, watchdog, cameOnline, stuckFlag, readFailure, syncBound, appLeftForeground, error, cancelled
+        case foreground, push, watchdog, cameOnline, stuckFlag, readFailure, syncBound, appLeftForeground, error, cancelled, selfCheck
     }
 
     /// The kinds of failure Peel shows a notice for, as `PeelError.readable`
@@ -151,6 +171,34 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var pingTimedOut: Bool?
     /// `background`: a catch-up was in flight as the app left the front.
     public var inFlightCatchUp: Bool?
+    /// `catchUpCursor`: the index the catch-up asks from and the next it will ask for (`catchUpReason` says why).
+    /// `selfCheck`: the cursor the check asked from.
+    public var cursorFrom: Int?
+    public var cursorNext: Int?
+    /// `historyPage`: the indices on the page, the highest, how many stored a new row and how many did not
+    /// (already stored, or records that keep no row).
+    public var pageCount: Int?
+    public var pageMaxIndex: Int?
+    public var pageNew: Int?
+    public var pageDup: Int?
+    /// `liveMessage`: the server index, whether it is ours, its type number and whether it stored a new row;
+    /// the type and `liveFromMe` are nil when it stored no row. Never its content.
+    public var liveIndex: Int?
+    public var liveFromMe: Bool?
+    public var liveType: Int?
+    public var liveNew: Bool?
+    /// `transportLifecycle`: the stage and the clients alive after it.
+    public var lifecycleStage: LifecycleStage?
+    public var liveTransports: Int?
+    /// `subscribed`: how many topics were subscribed on the connection, and whether the broker took them.
+    public var subscribedTopics: Int?
+    public var subscribedOk: Bool?
+    /// `selfCheck`: what it found, what ran it, how many messages came that were never delivered live, and
+    /// the highest server index stored here.
+    public var selfCheckOutcome: SelfCheckOutcome?
+    public var selfCheckTrigger: SelfCheckTrigger?
+    public var selfCheckMissed: Int?
+    public var highestIndex: Int?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

@@ -222,6 +222,24 @@ extension DiagnosticEvent {
         if let value = reconnectReason { parts.append("reason=\(value.rawValue)") }
         if let value = pingTimedOut { parts.append(value ? "timedOut" : "inTime") }
         if let value = inFlightCatchUp { parts.append("inFlight=\(value)") }
+        if let value = cursorFrom { parts.append("from=\(value)") }
+        if let value = cursorNext { parts.append("next=\(value)") }
+        if let value = pageCount { parts.append("count=\(value)") }
+        if let value = pageMaxIndex { parts.append("maxIndex=\(value)") }
+        if let value = pageNew { parts.append("new=\(value)") }
+        if let value = pageDup { parts.append("dup=\(value)") }
+        if let value = liveIndex { parts.append("index=\(value)") }
+        if let value = liveFromMe { parts.append("fromMe=\(value)") }
+        if let value = liveType { parts.append("type=\(value)") }
+        if let value = liveNew { parts.append("new=\(value)") }
+        if let value = lifecycleStage { parts.append("stage=\(value.rawValue)") }
+        if let value = liveTransports { parts.append("live=\(value)") }
+        if let value = subscribedTopics { parts.append("topics=\(value)") }
+        if let value = subscribedOk { parts.append(value ? "subscribed=ok" : "subscribed=failed") }
+        if let value = selfCheckTrigger { parts.append("trigger=\(value.rawValue)") }
+        if let value = selfCheckOutcome { parts.append("outcome=\(value.rawValue)") }
+        if let value = selfCheckMissed { parts.append("missed=\(value)") }
+        if let value = highestIndex { parts.append("highest=\(value)") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }
         return parts.joined(separator: " ")

@@ -34,6 +34,9 @@ final class CallSession {
         let isScreen: Bool
         var speaking: Bool
         var muted: Bool
+        /// A screen whose sharer paused it: the share is still there, its
+        /// picture is not coming.
+        var paused = false
         /// Their camera while it is on and arriving, or the screen they share.
         var video: VideoTrack?
         /// Jamie, the call's voice agent (`CallChatWire.isJamie`), not its screen.
@@ -42,7 +45,7 @@ final class CallSession {
 
         static func == (a: Tile, b: Tile) -> Bool {
             a.person == b.person && a.isYou == b.isYou && a.isScreen == b.isScreen && a.speaking == b.speaking
-                && a.muted == b.muted && a.video === b.video && a.isJamie == b.isJamie
+                && a.muted == b.muted && a.paused == b.paused && a.video === b.video && a.isJamie == b.isJamie
         }
     }
 
@@ -97,6 +100,10 @@ final class CallSession {
     private(set) var deviceNotice: String?
     /// What you share, while you share it (and while it is being published).
     var sharing: ScreenShare.Content? { share?.content }
+    /// Whether your running share is paused: its track is muted, the
+    /// publication stays, so viewers see "Sharing paused" and nothing is
+    /// renegotiated. False whenever nothing is shared.
+    private(set) var sharePaused = false
     /// Whether the next share includes Peel's own windows, which are left out
     /// by default. Applies when a share starts, not to one already running.
     var includePeelWindows = false
@@ -420,6 +427,33 @@ final class CallSession {
         Task { await stopSharing() }
     }
 
+    /// Mutes the share's track, keeping it published. No-op unless sharing.
+    func pauseScreenShare() {
+        Task { await setSharePaused(true) }
+    }
+
+    func resumeScreenShare() {
+        Task { await setSharePaused(false) }
+    }
+
+    func toggleScreenSharePause() {
+        if sharePaused { resumeScreenShare() } else { pauseScreenShare() }
+    }
+
+    private func setSharePaused(_ paused: Bool) async {
+        guard let started = share, let publication = sharePublication, !leaving, paused != sharePaused else { return }
+        do {
+            if paused { try await publication.mute() } else { try await publication.unmute() }
+        } catch {
+            deviceNotice = paused ? "Could not pause sharing" : "Could not resume sharing"
+            return
+        }
+        // The share may have stopped or been replaced meanwhile.
+        guard share === started, sharePublication === publication else { return }
+        sharePaused = paused
+        refresh()
+    }
+
     private func startSharing(_ kind: ScreenShare.Content) async {
         guard !switchingShare, !leaving, share == nil, state == .connected else { return }
         switchingShare = true
@@ -436,6 +470,7 @@ final class CallSession {
         }
         // Stop shows at once: the screen is being captured from here.
         share = started
+        sharePaused = false
         if leaving || started.ended { return await stopSharing() }
         do {
             let publication = try await room.localParticipant.publish(videoTrack: started.track, options: ScreenShare.publishOptions)
@@ -462,9 +497,11 @@ final class CallSession {
     private func stopSharing() async {
         guard let share else { return }
         self.share = nil
+        sharePaused = false
         await share.stop()
         if let publication = sharePublication {
             sharePublication = nil
+            try? await publication.unmute()
             try? await room.localParticipant.unpublish(publication: publication)
         }
         refresh()
@@ -698,7 +735,8 @@ final class CallSession {
     /// Their tile, or the tile of the screen they share (nil when they share none).
     private func tile(_ participant: Participant, isYou: Bool, screen: Bool) -> Tile? {
         let video = Self.video(of: participant, screen: screen)
-        guard !screen || video != nil, let id = isYou ? identity : participant.identity?.stringValue,
+        let paused = screen && video == nil && Self.screenPaused(participant)
+        guard !screen || video != nil || paused, let id = isYou ? identity : participant.identity?.stringValue,
               let person = person(id, name: participant.name, metadata: participant.metadata)
         else { return nil }
         // Jamie keeps its track published with its voice off: muted is what it says.
@@ -707,7 +745,7 @@ final class CallSession {
             ? !CallChatWire.jamieSpeaks(participant.attributes) : !participant.isMicrophoneEnabled()
         return Tile(
             person: person, isYou: isYou, isScreen: screen, speaking: !screen && participant.isSpeaking,
-            muted: !screen && quiet, video: video, isJamie: !screen && jamie
+            muted: !screen && quiet, paused: paused, video: video, isJamie: !screen && jamie
         )
     }
 
@@ -717,6 +755,11 @@ final class CallSession {
         participant.videoTracks
             .first { ($0.source == .screenShareVideo) == screen && !$0.isMuted && $0.isSubscribed }
             .flatMap { $0.track as? VideoTrack }
+    }
+
+    /// Whether they publish a screen share whose track is muted (paused).
+    private static func screenPaused(_ participant: Participant) -> Bool {
+        participant.videoTracks.contains { $0.source == .screenShareVideo && $0.isMuted }
     }
 
     private func person(_ id: String, name: String?, metadata: String?) -> CallParticipant? {

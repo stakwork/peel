@@ -1866,3 +1866,22 @@ open; for 6, Tom checks PR 2's token and presence on production himself.
 8. **Hive and second-brain tribes.** Join their links (passing `callKey`
    and `hiveToken` on) but never create the Hive form (Hive is out of scope)? That is the
    plan.
+
+## Pause and resume a screen share (2026-11-09)
+
+- Built: `CallSession.sharePaused`, `pauseScreenShare()`, `resumeScreenShare()`
+  and `toggleScreenSharePause()`. Pausing mutes the share's
+  `LocalTrackPublication` and keeps it published, so there is no
+  renegotiation; resuming unmutes it. Pause and resume do nothing unless a
+  share is running. `sharePaused` is reset by stop, a system-ended capture,
+  leaving, a lost connection (all go through `stopSharing`) and a new share.
+  The publication is unmuted before it is unpublished.
+- UI: a Pause/Resume pill beside Stop sharing in the call window's bar, a
+  pause/play icon button in the floating bar, and the note under the bar
+  reads "Sharing paused: no one sees your screen" with a Resume action.
+  Viewers (and your own tile) get a "Sharing paused" placeholder in the
+  screen tile (`Tile.paused`: a screen publication that is muted) rather
+  than the tile vanishing.
+- Not checked: no macOS toolchain in this session, so it is not built and
+  not tried on a live call. No unit test: the logic sits on `CallSession`
+  and LiveKit's room, and the repo has no Mac test target.

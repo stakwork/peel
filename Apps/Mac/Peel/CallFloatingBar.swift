@@ -256,6 +256,10 @@ private struct CallFloatingBarView: View {
     /// Share the entire screen, or stop sharing.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
+            IconButton(call.sharePaused ? "play.fill" : "pause.fill", help: call.sharePaused ? "Resume sharing" : "Pause sharing", variant: .outline, lit: call.sharePaused) {
+                call.toggleScreenSharePause()
+            }
+            .accessibilityLabel(call.sharePaused ? "Resume sharing" : "Pause sharing")
             IconButton("rectangle.inset.filled.and.person.filled", help: "Stop sharing", variant: .outline, lit: true) {
                 call.stopScreenShare()
             }

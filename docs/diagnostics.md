@@ -20,7 +20,7 @@ Frames are named on the device at crash time in Debug builds only
 (PLCrashReporter's symbol table and Objective-C strategies, `.all`), which
 keep their symbols (`scripts/run-app.sh` makes one); release builds do not
 symbolicate, so their frames are addresses.
-Not built: any other way to send, share or export a record; a Swift runtime
+Not built: any other way to send, share or export a crash record (the iPhone's Diagnostics screen below can Copy and Share the event ring, by the person's own tap); a Swift runtime
 error's message ("Index out of range") is not captured, only its signal.
 Checked on a Mac: a real crash, the record shown after relaunch (#381); a
 Force Test Crash read by the agent and sent to a workspace's assistant on the
@@ -113,6 +113,14 @@ that are identifiers by nature (versions, model, signal) are kept only in
 that alphabet.
 
 ## Reading it
+
+iPhone: You › Diagnostics, always available (not only after a crash). It
+shows how the last run ended and the newest 500 ring events with ISO times,
+under the current time, refreshed on open and by Refresh. Copy and Share
+(the system share sheet) are the person's own act; nothing is sent
+automatically. Clear empties the event ring only (after a confirmation):
+crash records and the run marker stay, so the next view still names how the
+last run ended. Deleting crash records is the problem sheet's Delete.
 
 Live: Console.app, filter `subsystem:com.sphinx.peel` (every ring event is
 mirrored there as one line; this replaced the old `dev.peel.mac`

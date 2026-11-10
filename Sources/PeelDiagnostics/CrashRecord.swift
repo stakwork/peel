@@ -220,12 +220,12 @@ extension DiagnosticEvent {
 
 extension DiagnosticsReport {
     /// What the ring holds, as text: for a run that was killed and left no crash report.
-    public func rendered() -> String {
+    public func rendered(limit: Int = 60) -> String {
         var out = ["Previous run: \(previousRun.rawValue)"]
         if let appVersion { out.append("Version: \(appVersion)") }
         out.append("")
         out.append("Recent events (newest last):")
-        out += events.suffix(60).map(\.line)
+        out += events.suffix(max(limit, 0)).map(\.line)
         return out.joined(separator: "\n") + "\n"
     }
 }

@@ -250,6 +250,9 @@ public enum Diagnostics {
     }
     #endif
 
+    /// Empties the event ring only: crash records and the run marker stay.
+    public static func clearEvents() { current?.ring.clear() }
+
     /// Removes every record, raw and redacted.
     public static func deleteRecords() { current?.store.deleteAll() }
 }

@@ -218,6 +218,21 @@ struct HistoryCursorTests {
         #expect(cursor.isSyncing)
     }
 
+    /// Abandoning clears what is in flight and waiting, and keeps where history stands.
+    @Test func abandonClearsTheRunTheQueueAndTheCountsAndKeepsFrom() {
+        var cursor = HistoryCursor()
+        cursor.from = 7
+        _ = cursor.start([Run(phase: .messages, next: 7, end: 20), Run(phase: .messages, next: 21, end: 30)])
+        cursor.awaitingCounts = true
+        #expect(cursor.isSyncing)
+        cursor.abandon()
+        #expect(cursor.active == nil)
+        #expect(cursor.queued.isEmpty)
+        #expect(!cursor.awaitingCounts)
+        #expect(!cursor.isSyncing)
+        #expect(cursor.from == 7)
+    }
+
     /// A stall drops the run and its queue only when it is for the page
     /// still awaited; a watchdog left from a page that came is ignored.
     @Test func aStallAppliesOnlyToThePageStillAwaited() throws {
@@ -309,7 +324,7 @@ struct HistorySyncTests {
         let (transport, asked) = recordingTransport()
         try await withTestEngine(storage, on: transport) { engine in
             try await engine.syncMessages()
-            try await engine.take(coreResult(msgs: (0...2).map { theirText($0, from: them) }, msgsTotal: 20))
+            try await engine.take { coreResult(msgs: (0...2).map { theirText($0, from: them) }, msgsTotal: 20) }
             let message = try messageFromThem(type: MessageType.text, #"{"content":"live"}"#)
             await engine.receive(Inbound(topic: "root/pk/1/res/_/stream/\(live)/1000", payload: message))
             #expect(try storage.highestServerIndex() == Int64(live))
@@ -381,8 +396,9 @@ struct HistorySyncTests {
 }
 
 private extension Engine {
-    /// A core reply as `receive` takes one: committed, then followed up.
-    func take(_ result: RunReturn) async throws {
-        try await run { _, _ in result }
+    /// A core reply as `receive` takes one: committed, then followed up. Built on the actor
+    /// (`RunReturn` is not `Sendable`), as `runLive` does.
+    func take(_ result: () -> RunReturn) async throws {
+        try await run { _, _ in result() }
     }
 }

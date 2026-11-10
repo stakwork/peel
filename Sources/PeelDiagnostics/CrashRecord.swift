@@ -213,6 +213,44 @@ extension DiagnosticEvent {
         if let value = exceptionType { parts.append("exceptionType=\(value)") }
         if let value = exceptionCode { parts.append("exceptionCode=\(value)") }
         if let value = hangSeconds { parts.append("hang=\(String(format: "%.1f", value))s") }
+        if let value = pingAnswered { parts.append(value ? "ping=ok" : "ping=failed") }
+        if let value = catchUpStage { parts.append("stage=\(value.rawValue)") }
+        if let value = catchUpReason { parts.append("reason=\(value.rawValue)") }
+        if let value = foregroundAction { parts.append("decision=\(value.rawValue)") }
+        if let value = foregroundCause { parts.append("cause=\(value.rawValue)") }
+        if let value = awaySeconds { parts.append("away=\(value)s") }
+        if let value = reconnectReason { parts.append("reason=\(value.rawValue)") }
+        if let value = pingTimedOut { parts.append(value ? "timedOut" : "inTime") }
+        if let value = inFlightCatchUp { parts.append("inFlight=\(value)") }
+        if let value = cursorFrom { parts.append("from=\(value)") }
+        if let value = cursorNext { parts.append("next=\(value)") }
+        if let value = pageCount { parts.append("count=\(value)") }
+        if let value = pageMaxIndex { parts.append("maxIndex=\(value)") }
+        if let value = pageNew { parts.append("new=\(value)") }
+        if let value = pageDup { parts.append("dup=\(value)") }
+        if let value = liveIndex { parts.append("index=\(value)") }
+        if let value = liveFromMe { parts.append("fromMe=\(value)") }
+        if let value = liveType { parts.append("type=\(value)") }
+        if let value = liveNew { parts.append("new=\(value)") }
+        if let value = lifecycleStage { parts.append("stage=\(value.rawValue)") }
+        if let value = liveTransports { parts.append("live=\(value)") }
+        if let value = subscribedTopics { parts.append("topics=\(value)") }
+        if let value = subscribedOk { parts.append(value ? "subscribed=ok" : "subscribed=failed") }
+        if let value = selfCheckTrigger { parts.append("trigger=\(value.rawValue)") }
+        if let value = selfCheckOutcome { parts.append("outcome=\(value.rawValue)") }
+        if let value = selfCheckMissed { parts.append("missed=\(value)") }
+        if let value = highestIndex { parts.append("highest=\(value)") }
+        if let value = failureSite { parts.append("site=\(value.rawValue)") }
+        if let value = messageKind { parts.append("msg=\(value)") }
+        if let value = recoveryReason { parts.append("recovery=\(value.rawValue)") }
+        if let value = recoveryStage { parts.append("stage=\(value.rawValue)") }
+        if let value = exitCause { parts.append("cause=\(value.rawValue)") }
+        if let value = aliveInBackgroundSeconds { parts.append("aliveInBackground=\(value)s") }
+        if let value = sinceAliveSeconds { parts.append("sinceAlive=\(value)s") }
+        if let value = memoryWarnings { parts.append("memoryWarnings=\(value)") }
+        if let value = backgroundTaskExpired { parts.append("backgroundTaskExpired=\(value)") }
+        if let value = errorDetail { parts.append("detail=\"\(value)\"") }
+        if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }
         return parts.joined(separator: " ")
     }

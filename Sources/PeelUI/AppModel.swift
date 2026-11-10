@@ -107,8 +107,26 @@ public final class AppModel {
     /// The Mac's dictation drops what it holds of the account when it locks or closes.
     @ObservationIgnored public var phaseChanged: @MainActor (Phase) -> Void = { _ in }
     public var connection: Engine.ConnectionState = .offline(retryIn: nil) {
-        didSet { if connection != oldValue { updateActiveLease() } }
+        didSet {
+            guard connection != oldValue else { return }
+            // Caught up is of one connection: the next starts over.
+            if connection != .connected { caughtUpHere = false }
+            updateActiveLease()
+        }
     }
+    /// History was fetched to the end on this connection (`.caughtUp`); false
+    /// from a new run (`.historyResumed`), a failure and any disconnect.
+    public private(set) var caughtUpHere = false
+    /// What the bolt shows: green only once synced, not merely connected.
+    public var connectionHealth: ConnectionHealth {
+        ConnectionHealth(connection: connection, caughtUp: caughtUpHere, failing: syncFailing)
+    }
+    /// The engine's catch-up keeps failing and is being retried (`.syncFailing`); false once caught up.
+    public private(set) var syncFailing = false
+    /// How many times the engine reloaded its state after the core failed (`.coreRecovered`), this launch.
+    public private(set) var coreRecoveries = 0
+    /// The conversation notices that tell of a connection failing, to drop once stale.
+    @ObservationIgnored var connectionNotices = ConnectionNotices()
     /// The Mac's "in use here" lease (`ActiveLease`); idle on the iPhone.
     @ObservationIgnored let activeLease = ActiveLease()
     /// When a `readAll` may next be sent (`ReadAllGate`).
@@ -127,6 +145,7 @@ public final class AppModel {
             // The agent chat is its DM while it has one (`agentChat`).
             followAgentChat()
             if selectedChat != oldValue?.chat {
+                dropStaleConnectionNotice()
                 calls.chatChanged(to: selectedChat)
                 heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
                 newMessages = nil
@@ -589,6 +608,8 @@ public final class AppModel {
     /// The connection was closed after a background fetch; it comes back when
     /// the app does.
     @ObservationIgnored private var needsReconnect = false
+    /// The ping and catch-up made as the app comes to the front, while one runs.
+    @ObservationIgnored private var verifyTask: Task<Void, Never>?
 
     /// Joins a start in flight, so a background start and the one at launch
     /// or tap never open the account twice.
@@ -649,14 +670,17 @@ public final class AppModel {
             await start()
         }
         guard phase == .ready, let engine else { return false }
-        let wasOffline = connection != .connected
-        var reached = connection == .connected
+        // A connection that looks up may be dead, and one the app was away from is not trusted:
+        // the engine verifies it or rebuilds it (`appBecameActive`); it counts as reached once connected.
+        var wasOffline = connection != .connected
+        await engine.appBecameActive(reason: .push)
+        if await engine.connection != .connected { wasOffline = true }
+        var reached = !wasOffline
         if wasOffline {
-            await engine.reconnectNow()
-            while connection != .connected, ContinuousClock.now < deadline, !Task.isCancelled {
+            while await engine.connection != .connected, ContinuousClock.now < deadline, !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
             }
-            reached = connection == .connected
+            reached = await engine.connection == .connected
         }
         if reached {
             // Catch-up starts as the connection comes up; give it a moment to begin.
@@ -863,6 +887,18 @@ public final class AppModel {
         if phase == .ready {
             stadeum.cameToFront()
             proposals.cameToFront()
+            // A connection that looks alive after the app was away may be
+            // dead (the bolt would be green and nothing would arrive): ping
+            // it, then fetch what came, or connect again.
+            // Rapid flips of the scene phase come as several foregrounds: one
+            // verification at a time, the next skipped while it runs.
+            // The iPhone only: the Mac is never suspended, and its keep-alive and path monitor watch it.
+            if let engine, platform.suspendsInBackground, verifyTask == nil {
+                verifyTask = Task { [weak self] in
+                    await self?.verifyConnection(engine)
+                    self?.verifyTask = nil
+                }
+            }
         }
         // Asked first, so the open chat's `read` goes after the ask and its
         // answer is not applied over it.
@@ -874,6 +910,22 @@ public final class AppModel {
         Task { await engine?.refreshPreferences() }
         Task { await notifier.refreshPermission() }
         checkOwnMessageStatus()
+    }
+
+    /// Has the engine decide whether its connection can be trusted as the app comes to the
+    /// front (`Engine.appBecameActive`): verified by a real round trip when it was away briefly,
+    /// rebuilt when it was away long or the network changed, connected now when it is offline.
+    private func verifyConnection(_ engine: Engine) async {
+        await engine.appBecameActive(reason: .foreground)
+    }
+
+    /// Drops the open chat's notice if it is a stale one of the connection
+    /// failing (`ConnectionNotices`).
+    func dropStaleConnectionNotice(at now: Date = .now) {
+        guard let chat = selectedChat else { return }
+        if connectionNotices.isStale(conversationNotices[chat], in: chat, synced: connectionHealth == .synced, at: now) {
+            conversationNotices[chat] = nil
+        }
     }
 
     /// Asks the server, in the background, what became of the open chat's own
@@ -1551,7 +1603,10 @@ public final class AppModel {
         threadRows = []
         readStates = [:]
         conversationNotices = [:]
+        connectionNotices = ConnectionNotices()
         notice = nil
+        caughtUpHere = false
+        syncFailing = false
         connection = .offline(retryIn: nil)
         connectionError = nil
         reconnectAt = nil
@@ -1654,6 +1709,7 @@ public final class AppModel {
             case .connection(let state):
                 connection = state
                 if state == .connected {
+                    caughtUpHere = false
                     connectionError = nil
                     if notice != nil, notice == serverCheckNotice { notice = nil }
                     // The tribes an older Peel linked: their lists need the connection.
@@ -1666,10 +1722,12 @@ public final class AppModel {
                     reconnectAt = nil
                 }
             case .conversationError(let chat, let message):
-                Diagnostics.note(errorKind: .engine)
-                conversationNotices[chat] = PeelError.problem(message)
+                Diagnostics.note(errorKind: .engine, detail: message)
+                let shown = PeelError.problem(message)
+                conversationNotices[chat] = shown
+                connectionNotices.noted(message, shown: shown, in: chat)
             case .connectionError(let message):
-                Diagnostics.note(errorKind: .connection)
+                Diagnostics.note(errorKind: .connection, detail: message)
                 connectionError = PeelError.problem(message)
             case .registered(let contactInfo):
                 myContactInfo = contactInfo
@@ -1678,10 +1736,14 @@ public final class AppModel {
             case .balance(let msat):
                 balanceMsat = msat
             case .coreError(let message):
-                Diagnostics.note(errorKind: .core)
+                Diagnostics.note(errorKind: .core, detail: message)
                 notice = PeelError.problem(message)
+            case .coreRecovered:
+                coreRecoveries += 1
+            case .syncFailing(let failing):
+                syncFailing = failing
             case .serverCheckError(let message):
-                Diagnostics.note(errorKind: .server)
+                Diagnostics.note(errorKind: .server, detail: message)
                 notice = PeelError.problem(message)
                 serverCheckNotice = notice
             case .history(let phase, let reached, let end):
@@ -1693,7 +1755,10 @@ public final class AppModel {
             case .historyResumed(let restart):
                 if restoreProgress.paused != nil { restoreProgress.outcome = nil }
                 if restart { (restoreProgress.contacts, restoreProgress.messages) = (nil, nil) }
+                caughtUpHere = false
             case .caughtUp:
+                caughtUpHere = true
+                syncFailing = false
                 markEverythingReadIfClear()
             case .historyDone:
                 restoreProgress.restoring = false
@@ -1713,8 +1778,10 @@ public final class AppModel {
                 echoedAliases = echoed
                 refreshMentionAliases()
             case .historyFailed(let reason):
+                Diagnostics.note(errorKind: .engine, detail: "history failed: \(reason)")
                 // Not the end of the first sync: what Resume brings in is not notified.
                 restoreProgress.outcome = .failed(PeelError.problem(reason))
+                caughtUpHere = false
             case .transfer(let id, _, let bytes, let total):
                 attachment(id).transfer(bytes: bytes, total: total)
             case .message(let row, _) where row.deleted:

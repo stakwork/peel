@@ -80,6 +80,8 @@ extension Storage {
     struct Applied {
         /// The rows stored; messages the upsert rejected are left out.
         var stored: [Message] = []
+        /// How many of those were rows this device did not have (their uuid was not stored before).
+        var inserted = 0
         /// The bodies of attachments a delete emptied, so their decrypted
         /// copies can be removed from the cache.
         var purged: [String] = []
@@ -136,12 +138,14 @@ extension Storage {
                 let money = !message.fromMe && MessageType.payments.contains(message.type)
                 let addsUs = commit.marksNewContacts && trustSender && !message.fromMe
                     && message.type == MessageType.contactKey
-                let isNew = try (money || addsUs) && !(Bool.fetchOne(
+                let existed = try Bool.fetchOne(
                     db.cachedStatement(sql: "SELECT EXISTS (SELECT 1 FROM message WHERE uuid = ?)"),
                     arguments: [message.uuid]
-                ) ?? false)
+                ) ?? false
+                let isNew = (money || addsUs) && !existed
                 guard let row = try Self.store(message, replacing: replaces, in: db) else { continue }
                 applied.stored.append(row)
+                if !existed { applied.inserted += 1 }
                 if isNew, money, (row.msat ?? 0) > 0 { fresh.append(row) }
                 if isNew, addsUs {
                     applied.addedUs.append(row)

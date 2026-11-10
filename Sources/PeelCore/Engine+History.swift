@@ -1,4 +1,5 @@
 import Foundation
+import PeelDiagnostics
 import Sphinxrs
 
 extension Engine {
@@ -19,7 +20,12 @@ extension Engine {
     /// Picks history up where it stands; coming online does this, and so
     /// does Resume after a stall. An ask that does not leave pauses history
     /// again (`historyFailed`), so Resume is offered for it.
-    public func resumeHistory() async throws {
+    public func resumeHistory(reason: DiagnosticEvent.CatchUpReason = .cameOnline) async throws {
+        lastHistoryActivity = .now
+        catchUpStarted = .now
+        catchUpReason = reason
+        Diagnostics.recordCatchUp(.start, reason: reason)
+        Diagnostics.recordCatchUpCursor(from: history.from, next: history.active?.next ?? history.from, reason: reason)
         catchUp.begin(highestIndex: try? storage.highestServerIndex())
         emit.yield(.historyResumed(restart: history.active == nil && restoring))
         do {
@@ -34,10 +40,40 @@ extension Engine {
                 try await syncMessages()
             }
         } catch {
+            let cancelled = Task.isCancelled || error is CancellationError
+            // A failed ask must never leave a run set that nothing will answer
+            // (no watchdog exists for it): the next resume plans again from
+            // `history.from`. A restore keeps its run so it resumes.
+            if cancelled || !restoring {
+                history.abandon()
+                stopHistoryWatchdog()
+            }
             history.awaitingCounts = false
+            if !cancelled { Diagnostics.recordCoreFailure(site: .resumeHistory, kind: reason.rawValue, detail: PeelError.readable(error)) }
+            noteCatchUpEnd(cancelled ? .cancel : .abandon, reason: cancelled ? .cancelled : .error)
             emit.yield(.historyFailed(PeelError.readable(error)))
             throw error
         }
+    }
+
+    /// Records the end of the catch-up begun by `resumeHistory` (not finished), with its duration.
+    func noteCatchUpEnd(_ stage: DiagnosticEvent.CatchUpStage, reason: DiagnosticEvent.CatchUpReason) {
+        let took = catchUpStarted.map { ContinuousClock.now - $0 }
+        catchUpStarted = nil
+        Diagnostics.recordCatchUp(stage, reason: reason, milliseconds: took.map(Self.milliseconds(of:)))
+    }
+
+    static func milliseconds(of duration: Duration) -> Int {
+        Int(duration.components.seconds * 1_000 + duration.components.attoseconds / 1_000_000_000_000_000)
+    }
+
+    /// Gives up the history in flight (nothing will answer it, or the app
+    /// left the front), so a later catch-up asks again from where history stands.
+    func abandonHistory(reason: DiagnosticEvent.CatchUpReason) {
+        guard history.isSyncing else { return }
+        history.abandon()
+        stopHistoryWatchdog()
+        noteCatchUpEnd(.abandon, reason: reason)
     }
 
     /// Asks the server for every message from where history stands
@@ -64,19 +100,28 @@ extension Engine {
 
     func request(_ run: HistoryCursor.Run) async throws {
         let asked = transport
-        try await self.run { time, state in
-            switch run.phase {
-            case .contacts:
-                try Sphinxrs.fetchFirstMsgsPerKey(
-                    seed: seed, uniqueTime: time, state: state,
-                    lastMsgIdx: run.next, limit: Self.historyPageSize, reverse: false
-                )
-            case .messages:
-                try Sphinxrs.fetchMsgsBatch(
-                    seed: seed, uniqueTime: time, state: state,
-                    lastMsgIdx: run.next, limit: Self.historyPageSize, reverse: false
-                )
+        lastHistoryActivity = .now
+        do {
+            try await self.run { time, state in
+                switch run.phase {
+                case .contacts:
+                    try Sphinxrs.fetchFirstMsgsPerKey(
+                        seed: seed, uniqueTime: time, state: state,
+                        lastMsgIdx: run.next, limit: Self.historyPageSize, reverse: false
+                    )
+                case .messages:
+                    try Sphinxrs.fetchMsgsBatch(
+                        seed: seed, uniqueTime: time, state: state,
+                        lastMsgIdx: run.next, limit: Self.historyPageSize, reverse: false
+                    )
+                }
             }
+        } catch {
+            // The run was set before this ask and no watchdog is armed for
+            // it: left set, it would look in flight for ever. A restore
+            // keeps its run, so it resumes.
+            if !restoring { history.abandon() }
+            throw error
         }
         // Gone while asking: the next connection asks again (`cameOnline`).
         guard let asked, transport === asked else { return }
@@ -95,6 +140,8 @@ extension Engine {
     /// it ignored never gets here, and leaves the watchdog waiting for the
     /// one asked for.
     func advanceHistory(_ page: HistoryCursor.Page) async throws {
+        lastHistoryActivity = .now
+        historyPages += 1
         if let progress = page.progress {
             emit.yield(.history(phase: progress.phase, reached: progress.reached, end: progress.end))
         }
@@ -162,6 +209,21 @@ extension Engine {
         checkMentionsIfNeeded()
         emit.yield(.historyDone)
         catchUp.finish()
+        // Caught up: whatever failed is past.
+        catchUpRetries = 0
+        noteCoreSuccess()
+        // Caught up: nothing is left for the syncing watchdog to bound.
+        syncWatchdog?.cancel()
+        syncWatchdog = nil
+        if let started = catchUpStarted {
+            catchUpStarted = nil
+            Diagnostics.recordCatchUp(.finish, reason: catchUpReason, milliseconds: Self.milliseconds(of: ContinuousClock.now - started))
+        }
+        if let connectedAt, !caughtUpNoted {
+            caughtUpNoted = true
+            let took = ContinuousClock.now - connectedAt
+            Diagnostics.recordCaughtUp(milliseconds: Self.milliseconds(of: took))
+        }
         emit.yield(.caughtUp)
     }
 
@@ -188,8 +250,17 @@ extension Engine {
         if settled { profileRecoveryDone = true }
     }
 
-    private func historyStalled(at expected: UInt64) {
+    /// A page that never came: history pauses and says so (`historyFailed`,
+    /// Resume), and the connection is dropped the way a failed ping drops
+    /// it, so it connects again and `cameOnline` asks again by itself: a
+    /// silent page usually means a connection that looks alive and is not.
+    func historyStalled(at expected: UInt64) async {
         guard let run = history.stalled(at: expected) else { return }
         emit.yield(.historyFailed("no answer from the server for \(Self.historyStall.components.seconds) seconds while fetching \(run.phase)"))
+        guard let stalled = transport else { return }
+        // This is the watchdog: dropping the connection must not cancel the task doing it.
+        historyWatchdog = nil
+        Diagnostics.recordStallReconnect()
+        await dropOnPurpose(stalled, reason: .stall)
     }
 }

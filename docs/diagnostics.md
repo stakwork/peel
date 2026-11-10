@@ -30,12 +30,16 @@ card.
 
 Two things, and only these:
 
-1. **The event ring holds no free text.** `DiagnosticEvent` has no `String`
-   field: only enums and numbers (kind, error kind, last action, footprint,
-   available memory, pressure level, previous run, exit reason and status,
-   time, count). No error message, name, path, amount or key can be stored,
-   however a caller is written. The live `os.Logger` mirror (subsystem
-   `com.sphinx.peel`, category `diagnostics`) logs enum names and numbers only.
+1. **The event ring holds no free text, except one redacted detail.**
+   `DiagnosticEvent` is enums and numbers (kind, error kind, last action,
+   footprint, available memory, pressure level, previous run, exit reason and
+   status, time, count) plus `errorDetail`/`messageKind`: the text of a
+   failure of the core, which only `Diagnostics.redact` output may fill. It
+   replaces hex runs of 16+ characters (keys, hashes, tags), base64/base58/
+   bech32-like tokens of 24+, invoices (`lnbc…`), URL paths and queries and
+   emails with `<redacted>`, collapses whitespace and keeps 200 characters at
+   most. It is a best-effort rule, not a proof. The live `os.Logger` mirror
+   (subsystem `com.sphinx.peel`, category `diagnostics`) logs the same.
 2. **A crash record is redacted on a best-effort basis before it is shown,
    copied or handed on.** The raw report stays in a private folder and no
    public function returns it. Redaction keeps structure (stacks, image
@@ -90,6 +94,17 @@ Two things, and only these:
   are read at each start, so one still held repeats its lines. The ring
   counts identical consecutive events; the 256 KiB / 2000 cap rotates.
   "Show record" lists them with times, with how the previous run ended.
+  Since 2026-11-10 the run marker also keeps what the run was on and did
+  out of the front (boot time, OS version, the executable's date; when it
+  left the front and its footprint then; when it was last known alive out
+  of the front, from any event recorded there; memory warnings; whether its
+  background task expired, also a `backgroundExpired` event), and a run
+  that never quit gets a `previousRunDetail` line at the next launch:
+  `cause=` `restarted` (a new boot), `osUpdated`, `reinstalled` (a new
+  executable: an update or Xcode) or `system` (none of those: for a
+  suspended app, almost always jetsam reclaiming memory), with
+  `aliveInBackground=`, `sinceAlive=` (the kill came within it),
+  `memoryWarnings=`, `backgroundTaskExpired=` and the footprint.
 - **The strut's exit** (Mac): reason and status in the ring, its last 2 KiB
   of stderr, redacted, in `Diagnostics/strut-stderr-tail.txt`. Its argv and
   environment are never logged.

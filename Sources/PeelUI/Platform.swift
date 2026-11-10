@@ -34,12 +34,19 @@ public struct Platform {
     /// (the iPhone's `PeelAppID`); Forget takes the token off the server
     /// with it. nil where nothing is registered.
     public var pushAppID: @MainActor () -> String?
+    /// Time to finish work as the app leaves the front (the iPhone's background task); none elsewhere.
+    public var backgroundWork: any BackgroundWork
+    /// The system suspends the app out of the front (the iPhone), so a connection it comes back to
+    /// is not trusted (`Engine.appBecameActive`). Not the Mac: leaving the front there is a Cmd-Tab,
+    /// and its connection kept running all along.
+    public var suspendsInBackground: Bool
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
         opensFirstChat: Bool = true, syncsBiometrics: Bool = false, sendsActiveLease: Bool = false,
-        pushAppID: @escaping @MainActor () -> String? = { nil }
+        pushAppID: @escaping @MainActor () -> String? = { nil },
+        backgroundWork: any BackgroundWork = NoBackgroundWork(), suspendsInBackground: Bool = false
     ) {
         self.presence = presence
         self.files = files
@@ -52,7 +59,26 @@ public struct Platform {
         self.syncsBiometrics = syncsBiometrics
         self.sendsActiveLease = sendsActiveLease
         self.pushAppID = pushAppID
+        self.backgroundWork = backgroundWork
+        self.suspendsInBackground = suspendsInBackground
     }
+}
+
+/// Asks the system for time to finish what is in flight as the app leaves the front. A token names
+/// one request; `end` is called once for it, whether or not `onExpire` came first.
+@MainActor
+public protocol BackgroundWork {
+    /// Starts a background task called `name`; `onExpire` runs if the system is about to suspend the
+    /// app before `end`.
+    func begin(name: String, onExpire: @escaping @Sendable () -> Void) -> Int
+    func end(_ token: Int)
+}
+
+/// Where there is nothing to ask for (the Mac, which is not suspended, and tests).
+public struct NoBackgroundWork: BackgroundWork {
+    public init() {}
+    public func begin(name: String, onExpire: @escaping @Sendable () -> Void) -> Int { 0 }
+    public func end(_ token: Int) {}
 }
 
 /// Peel among the other apps: whether it is in front, bringing it there,

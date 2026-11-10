@@ -23,8 +23,44 @@ extension Platform {
             // Never `setActive`: the phone gets badge-only pushes while the Mac is in use.
             sendsActiveLease: false,
             // Forget takes the token off the server under the ID it registered with.
-            pushAppID: { PushConfig.current?.appID }
+            pushAppID: { PushConfig.current?.appID },
+            // A catch-up in flight as Peel leaves the front gets a few seconds to finish.
+            backgroundWork: PhoneBackgroundWork(),
+            suspendsInBackground: true
         )
+    }
+}
+
+/// Time to finish a catch-up after the app left the front, as the push fetch asks for it
+/// (`PushRegistration.fetchOnReceive`): `UIApplication`'s background task.
+/// The expiry handler ends the task itself, as UIKit requires (an app that holds one past it is
+/// killed); the `end` that comes after, once the work has wound down, then does nothing.
+struct PhoneBackgroundWork: BackgroundWork {
+    /// Tasks begun and not yet ended.
+    @MainActor private static var open: Set<Int> = []
+
+    func begin(name: String, onExpire: @escaping @Sendable () -> Void) -> Int {
+        // The handler needs the task's identifier, which `beginBackgroundTask` returns.
+        let named = Named()
+        let task = UIApplication.shared.beginBackgroundTask(withName: name) {
+            onExpire()
+            // UIKit calls it on the main thread.
+            MainActor.assumeIsolated { Self.finish(named.token) }
+        }
+        named.token = task.rawValue
+        if task != .invalid { Self.open.insert(task.rawValue) }
+        return task.rawValue
+    }
+
+    private final class Named: @unchecked Sendable {
+        var token = UIBackgroundTaskIdentifier.invalid.rawValue
+    }
+
+    func end(_ token: Int) { Self.finish(token) }
+
+    private static func finish(_ token: Int) {
+        guard open.remove(token) != nil else { return }
+        UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: token))
     }
 }
 

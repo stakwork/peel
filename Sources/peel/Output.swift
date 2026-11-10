@@ -74,6 +74,10 @@ struct Session {
             "core error: \(message)"
         case .serverCheckError(let message):
             "server check: \(message)"
+        case .coreRecovered(let reason, let stage):
+            "core state reloaded (\(reason.rawValue), \(stage.rawValue))"
+        case .syncFailing(let failing):
+            failing ? "loading new messages is failing, retrying" : "loading new messages works again"
         case .profile(let alias, let photoURL):
             "profile: \(alias), photo \(photoURL ?? "none")"
         case .echoedAliases(let echoed):

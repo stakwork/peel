@@ -1,6 +1,12 @@
 import Foundation
+import PeelDiagnostics
 
 extension Engine {
+    /// Why the app asks whether its connection can be trusted (`Engine.appBecameActive`).
+    public enum ForegroundReason: Sendable {
+        case foreground, push
+    }
+
     public enum Event: Sendable {
         case connection(ConnectionState)
         /// The server knows this account and has given it a route hint.
@@ -25,6 +31,10 @@ extension Engine {
         case connectionError(String)
         /// An error that belongs to no conversation in particular.
         case coreError(String)
+        /// The engine read its state again from storage (`Engine.recoverCore`).
+        case coreRecovered(reason: DiagnosticEvent.CoreRecoveryReason, stage: DiagnosticEvent.CoreRecoveryStage)
+        /// The core keeps failing and loading new messages is being retried (true), or is working again (false).
+        case syncFailing(Bool)
         /// A background check with the server failed: shown as `coreError`
         /// is, and gone once connected again.
         case serverCheckError(String)

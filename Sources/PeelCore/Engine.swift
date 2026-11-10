@@ -476,7 +476,8 @@ public actor Engine {
     /// Waits for the catch-up `appLeftForeground(keepingCatchUp:)` kept, at most `bound`: it ends when
     /// history is no longer in flight (caught up, failed or the connection gone) or the app is back in
     /// front; past the bound it is abandoned as `appLeftForeground` does.
-    public func finishBackgroundCatchUp(bound: Duration = Engine.backgroundCatchUpBound) async {
+    public func finishBackgroundCatchUp(bound: Duration? = nil) async {
+        let bound = bound ?? Engine.backgroundCatchUpBound
         guard keepingCatchUpInBackground else { return }
         defer { keepingCatchUpInBackground = false }
         do {

@@ -52,6 +52,7 @@ struct YouTab: View {
                         LabeledContent("Connected apps", value: model.walletConnections.isEmpty ? "None" : "\(model.walletConnections.count)")
                     }
                     AutoDownloadMediaRow()
+                    NavigationLink("Diagnostics", value: YouRoute.diagnostics)
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(model.myServer ?? "None")
@@ -99,6 +100,7 @@ struct YouTab: View {
                 case .changePIN: ChangePIN()
                 case .boostAmount: BoostAmountScreen()
                 case .connectedApps: ConnectedAppsScreen()
+                case .diagnostics: DiagnosticsScreen()
                 case .agent, .server: EmptyView()
                 }
             }

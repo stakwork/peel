@@ -21,6 +21,7 @@ final class DiagnosticsRuntime: Sendable {
     let previous: PreviousRun
     private let action = Locked(DiagnosticEvent.Action.launch)
     private let last = Locked<UInt64?>(nil)
+    private let lastPhaseChange = Locked<Date?>(nil)
     private let sampling = Locked<Task<Void, Never>?>(nil)
 
     /// `crash` is the id of the report found at launch, if any (the record is already in the store).
@@ -30,7 +31,11 @@ final class DiagnosticsRuntime: Sendable {
         ring = DiagnosticsRing(file: store.ringFile)
         marker = RunMarkerStore(file: store.markerFile)
         previous = marker.begin(appVersion: appVersion, crashReportID: crash, state: state)
-        ring.append(.init(kind: .launch, lastAction: .launch))
+        var launch = DiagnosticEvent(kind: .launch, lastAction: .launch)
+        launch.launchedInFront = state == .foreground
+        launch.uptimeSeconds = Int(ProcessInfo.processInfo.systemUptime)
+        ring.append(launch)
+        Diagnostics.mirror("launch front=\(state == .foreground) uptime=\(Int(ProcessInfo.processInfo.systemUptime))s previous=\(previous.kind.rawValue)")
         ring.append(.init(kind: .previousRun, previousRun: previous.kind))
     }
 
@@ -56,8 +61,33 @@ final class DiagnosticsRuntime: Sendable {
         if let pressure { Diagnostics.mirror("memory pressure \(pressure.rawValue)") }
     }
 
+    /// Appends `event` (with the current action if it has none) and mirrors it, enum names and numbers only.
+    func record(_ event: DiagnosticEvent) {
+        ring.append(event)
+        Diagnostics.mirror(event.line)
+    }
+
+    func recordScenePhase(_ phase: DiagnosticEvent.ScenePhase) {
+        let now = Date()
+        let since = lastPhaseChange.withLock { last -> Int? in
+            defer { last = now }
+            return last.map { Int(now.timeIntervalSince($0).rounded()) }
+        }
+        var event = DiagnosticEvent(kind: .scenePhase, timestamp: now)
+        event.scenePhase = phase
+        event.sinceSeconds = since
+        record(event)
+    }
+
+    /// The footprint at the moment of leaving the front, however close it is to the last sample.
+    func recordBackgroundMemory() {
+        guard let footprint = MemoryProbe.footprint() else { return }
+        record(.init(kind: .memoryBackground, footprintBytes: footprint, availableBytes: MemoryProbe.available()))
+    }
+
     /// Foreground samples every 60 seconds; the background none.
     func setForeground(_ foreground: Bool) {
+        if !foreground { recordBackgroundMemory() }
         marker.setState(foreground ? .foreground : .background)
         sampling.withLock { task in
             task?.cancel()
@@ -93,6 +123,13 @@ final class DiagnosticsRuntime: Sendable {
     }
 }
 
+/// MetricKit's app exit categories (`MXAppExitMetric`), foreground (`fg`) and background (`bg`).
+public enum AppExit: String, Sendable, CaseIterable {
+    case fgNormal, fgAbnormal, fgMemoryResourceLimit, fgWatchdog, fgBadAccess, fgIllegalInstruction
+    case bgNormal, bgAbnormal, bgMemoryResourceLimit, bgMemoryPressure, bgWatchdog, bgCPUResourceLimit
+    case bgBadAccess, bgIllegalInstruction, bgSuspendedWithLockedFile, bgBackgroundTaskAssertionTimeout
+}
+
 /// On-device crash and memory diagnostics (docs/diagnostics.md). Nothing is
 /// uploaded; the redacted record is read by the person, or by their agent
 /// when they ask it. Every function is safe to call before
@@ -106,8 +143,62 @@ public enum Diagnostics {
     /// The live mirror: enum names only, never a message.
     static func mirror(_ line: String) {
         #if canImport(os)
-        Logger(subsystem: "dev.peel.mac", category: "diagnostics").info("\(line, privacy: .public)")
+        Logger(subsystem: "com.sphinx.peel", category: "diagnostics").info("\(line, privacy: .public)")
         #endif
+    }
+
+    /// The scene phase the phone entered (the app's `onChange(of: scenePhase)` calls this).
+    public static func recordScenePhase(_ phase: DiagnosticEvent.ScenePhase) { current?.recordScenePhase(phase) }
+
+    /// The lock screen was shown: at a cold launch, or by the idle timeout (`idleSeconds`, `timeoutHours`).
+    public static func recordLock(_ reason: DiagnosticEvent.LockReason, idleSeconds: Int? = nil, timeoutHours: Int? = nil) {
+        var event = DiagnosticEvent(kind: .lock)
+        event.lockReason = reason
+        event.idleSeconds = idleSeconds
+        event.timeoutHours = timeoutHours
+        current?.record(event)
+    }
+
+    /// A raw change of the system's network path.
+    public static func recordNetwork(status: DiagnosticEvent.NetworkStatus, interface: DiagnosticEvent.NetworkInterface,
+                                     isExpensive: Bool, isConstrained: Bool) {
+        var event = DiagnosticEvent(kind: .network)
+        event.networkStatus = status
+        event.networkInterface = interface
+        event.isExpensive = isExpensive
+        event.isConstrained = isConstrained
+        current?.record(event)
+    }
+
+    /// The push fetch's background task: `begin` with the time the system allows (infinity or
+    /// unknown is none), `end` and `expired` with the seconds since `begin`.
+    public static func recordPushFetch(_ stage: DiagnosticEvent.PushFetchStage, secondsLeft: Double? = nil, elapsed: Double? = nil) {
+        var event = DiagnosticEvent(kind: .pushFetch)
+        event.pushStage = stage
+        if let secondsLeft, secondsLeft.isFinite { event.backgroundSecondsLeft = Int(min(secondsLeft, 86_400)) }
+        event.elapsedSeconds = elapsed.map { ($0 * 10).rounded() / 10 }
+        current?.record(event)
+    }
+
+    /// MetricKit's exit counts, by `AppExit` (zero counts left out).
+    public static func recordAppExits(_ counts: [AppExit: Int]) {
+        let named = counts.filter { $0.value > 0 }
+        guard !named.isEmpty else { return }
+        var event = DiagnosticEvent(kind: .appExits)
+        event.exitCounts = Dictionary(uniqueKeysWithValues: named.map { ($0.key.rawValue, $0.value) })
+        current?.record(event)
+    }
+
+    /// One MetricKit diagnostic, as its kind and numbers.
+    public static func recordMetricDiagnostic(_ kind: DiagnosticEvent.MetricDiagnosticKind, signal: Int? = nil,
+                                              exceptionType: Int? = nil, exceptionCode: Int? = nil, hangSeconds: Double? = nil) {
+        var event = DiagnosticEvent(kind: .metricDiagnostic)
+        event.metricKind = kind
+        event.signal = signal
+        event.exceptionType = exceptionType
+        event.exceptionCode = exceptionCode
+        event.hangSeconds = hangSeconds.map { ($0 * 10).rounded() / 10 }
+        current?.record(event)
     }
 
     /// An error the person was told about, as its kind only.
@@ -158,6 +249,9 @@ public enum Diagnostics {
         fatalError("test crash")
     }
     #endif
+
+    /// Empties the event ring only: crash records and the run marker stay.
+    public static func clearEvents() { current?.ring.clear() }
 
     /// Removes every record, raw and redacted.
     public static func deleteRecords() { current?.store.deleteAll() }

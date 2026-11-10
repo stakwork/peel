@@ -20,7 +20,7 @@ Frames are named on the device at crash time in Debug builds only
 (PLCrashReporter's symbol table and Objective-C strategies, `.all`), which
 keep their symbols (`scripts/run-app.sh` makes one); release builds do not
 symbolicate, so their frames are addresses.
-Not built: any other way to send, share or export a record; a Swift runtime
+Not built: any other way to send, share or export a crash record (the iPhone's Diagnostics screen below can Copy and Share the event ring, by the person's own tap); a Swift runtime
 error's message ("Index out of range") is not captured, only its signal.
 Checked on a Mac: a real crash, the record shown after relaunch (#381); a
 Force Test Crash read by the agent and sent to a workspace's assistant on the
@@ -35,7 +35,7 @@ Two things, and only these:
    available memory, pressure level, previous run, exit reason and status,
    time, count). No error message, name, path, amount or key can be stored,
    however a caller is written. The live `os.Logger` mirror (subsystem
-   `dev.peel.mac`) logs enum names only.
+   `com.sphinx.peel`, category `diagnostics`) logs enum names and numbers only.
 2. **A crash record is redacted on a best-effort basis before it is shown,
    copied or handed on.** The raw report stays in a private folder and no
    public function returns it. Redaction keeps structure (stacks, image
@@ -71,6 +71,25 @@ Two things, and only these:
   `os_proc_available_memory` on iOS); memory pressure (the Mac's dispatch
   source; the phone's warning notification); launches; the previous run;
   the strut's exits.
+- **Tracing the PIN prompts** (2026-11-10; the PIN is asked on each cold
+  launch and by the idle lock, so frequent prompts mean the process is being
+  ended). Events, all enums and numbers: `launch` with in-front or
+  background launch and the device's uptime (reboot or relaunch);
+  `scenePhase` (active, inactive, background, seconds since the last
+  change); `memoryBackground` (footprint and available memory on leaving the
+  front, though the 60 s sampler skips the background); `lock` (`coldLaunch`
+  or `idleTimeout`, with idle seconds and the timeout in hours); `network`
+  (every raw path change: status, wifi, cellular, wiredEthernet, other or
+  none, expensive, constrained; observation only); `pushFetch` (begin with
+  the background time left, end and expired with seconds since begin); and,
+  on the iPhone, MetricKit's (`MetricKitRecorder`): `appExits` (foreground
+  and background exit counts by category: normal, abnormal, memory limit,
+  memory pressure, watchdog, and so on) and `metricDiagnostic` (crash,
+  hang, CPU or disk-write exception: signal, exception type and code,
+  hang seconds; never call stacks or strings). MetricKit's past payloads
+  are read at each start, so one still held repeats its lines. The ring
+  counts identical consecutive events; the 256 KiB / 2000 cap rotates.
+  "Show record" lists them with times, with how the previous run ended.
 - **The strut's exit** (Mac): reason and status in the ring, its last 2 KiB
   of stderr, redacted, in `Diagnostics/strut-stderr-tail.txt`. Its argv and
   environment are never logged.
@@ -94,6 +113,18 @@ that are identifiers by nature (versions, model, signal) are kept only in
 that alphabet.
 
 ## Reading it
+
+iPhone: You › Diagnostics, always available (not only after a crash). It
+shows how the last run ended and the newest 500 ring events with ISO times,
+under the current time, refreshed on open and by Refresh. Copy and Share
+(the system share sheet) are the person's own act; nothing is sent
+automatically. Clear empties the event ring only (after a confirmation):
+crash records and the run marker stay, so the next view still names how the
+last run ended. Deleting crash records is the problem sheet's Delete.
+
+Live: Console.app, filter `subsystem:com.sphinx.peel` (every ring event is
+mirrored there as one line; this replaced the old `dev.peel.mac`
+diagnostics category).
 
 `Diagnostics.previousRun()`, `latestRedactedReport(allow:knownNames:)`,
 `recentEvents(limit:)`, `snapshot()`. The next launch after a crash or a kill

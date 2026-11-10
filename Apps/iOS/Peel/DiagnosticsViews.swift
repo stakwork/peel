@@ -28,7 +28,7 @@ struct DiagnosticsNotice: View {
 }
 
 /// The redacted record in a scrolling monospaced view, with Copy and
-/// Delete. No send, share or export.
+/// Delete. No send, share or export from this sheet.
 struct DiagnosticRecordSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -73,5 +73,68 @@ struct DiagnosticRecordSheet: View {
                 }
             }
         }
+    }
+}
+
+/// You › Diagnostics, always there: the event ring as text (how the last run
+/// ended, then the recent events with their times), to read after a PIN
+/// prompt. Copy and Share are the person's own act; nothing is sent
+/// automatically. Clear empties the ring only, never a crash record.
+struct DiagnosticsScreen: View {
+    private static let eventLimit = 500
+    @State private var text = ""
+    @State private var copied = false
+    @State private var confirmingClear = false
+
+    var body: some View {
+        ScrollView([.vertical, .horizontal]) {
+            Text(text)
+                .font(.system(size: 11, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(Theme.phoneGutter)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 10) {
+                Text("Enums and numbers only: no names, messages, amounts or keys. The record stays on this iPhone; Copy and Share are yours to use, nothing is sent automatically.")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+                HStack(spacing: 12) {
+                    Button { load() } label: { ActionLabel("Refresh") }
+                        .secondaryAction()
+                    Button {
+                        Clipboard.copy(text)
+                        copied = true
+                    } label: { ActionLabel(copied ? "Copied" : "Copy") }
+                        .secondaryAction()
+                    ShareLink(item: text) { ActionLabel("Share") }
+                        .secondaryAction()
+                    Button { confirmingClear = true } label: { ActionLabel("Clear") }
+                        .secondaryAction()
+                }
+            }
+            .padding(.horizontal, Theme.phoneGutter)
+            .padding(.vertical, Theme.Space.md)
+            .background(Theme.background)
+        }
+        .background(Theme.background.ignoresSafeArea())
+        .foregroundStyle(Theme.text)
+        .navigationTitle("Diagnostics")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { load() }
+        .confirmationDialog("Clear the event record?", isPresented: $confirmingClear, titleVisibility: .visible) {
+            Button("Clear", role: .destructive) {
+                Diagnostics.clearEvents()
+                load()
+            }
+        } message: {
+            Text("Crash records are kept.")
+        }
+    }
+
+    private func load() {
+        copied = false
+        let now = ISO8601DateFormatter().string(from: Date())
+        text = "Now: \(now)\n" + Diagnostics.snapshot().rendered(limit: Self.eventLimit)
     }
 }

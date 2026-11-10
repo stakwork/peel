@@ -614,6 +614,7 @@ public final class AppModel {
         guard !profile.requiresPIN else {
             // Left from a session that ended without locking.
             notifier.removeAllDelivered()
+            Diagnostics.recordLock(.coldLaunch)
             phase = .locked
             return
         }
@@ -886,6 +887,8 @@ public final class AppModel {
         guard isLockDue else { return }
         platform.pasteboard.clearSecret()
         notifier.removeAllDelivered()
+        Diagnostics.recordLock(.idleTimeout, idleSeconds: lastActiveAt.map { Int(Date.now.timeIntervalSince($0).rounded()) },
+                               timeoutHours: pinTimeoutHours)
         phase = .locked
     }
 

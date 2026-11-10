@@ -341,10 +341,9 @@ struct HistorySyncTests {
         let (transport, _) = recordingTransport()
         try await withTestEngine(storage, on: transport) { engine in
             try await engine.syncMessages()
-            let messages = (0...2).map { theirText($0, from: them) }
-            try await engine.take { coreResult(msgs: messages, msgsTotal: 20) }
+            try await engine.take { coreResult(msgs: (0...2).map { theirText($0, from: them) }, msgsTotal: 20) }
             #expect(await engine.newFromCatchUp == 3)
-            try await engine.take { coreResult(msgs: messages, msgsTotal: 20) }
+            try await engine.take { coreResult(msgs: (0...2).map { theirText($0, from: them) }, msgsTotal: 20) }
             #expect(await engine.newFromCatchUp == 3)
         }
     }

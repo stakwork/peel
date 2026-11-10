@@ -180,6 +180,24 @@ public enum Diagnostics {
         current?.record(event)
     }
 
+    /// The ping made when the app came to the front: whether the connection answered, and how long it took.
+    public static func recordForegroundPing(answered: Bool, milliseconds: Int) {
+        var event = DiagnosticEvent(kind: .foregroundPing)
+        event.pingAnswered = answered
+        event.milliseconds = max(milliseconds, 0)
+        current?.record(event)
+    }
+
+    /// History was caught up on a connection: the milliseconds since it came up.
+    public static func recordCaughtUp(milliseconds: Int) {
+        var event = DiagnosticEvent(kind: .caughtUp)
+        event.milliseconds = max(milliseconds, 0)
+        current?.record(event)
+    }
+
+    /// A history fetch stalled and the connection was dropped so it reconnects.
+    public static func recordStallReconnect() { current?.record(DiagnosticEvent(kind: .stallReconnect)) }
+
     /// MetricKit's exit counts, by `AppExit` (zero counts left out).
     public static func recordAppExits(_ counts: [AppExit: Int]) {
         let named = counts.filter { $0.value > 0 }

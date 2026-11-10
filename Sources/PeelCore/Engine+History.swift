@@ -1,4 +1,5 @@
 import Foundation
+import PeelDiagnostics
 import Sphinxrs
 
 extension Engine {
@@ -162,6 +163,11 @@ extension Engine {
         checkMentionsIfNeeded()
         emit.yield(.historyDone)
         catchUp.finish()
+        if let connectedAt, !caughtUpNoted {
+            caughtUpNoted = true
+            let took = ContinuousClock.now - connectedAt
+            Diagnostics.recordCaughtUp(milliseconds: Int(took.components.seconds * 1_000 + took.components.attoseconds / 1_000_000_000_000_000))
+        }
         emit.yield(.caughtUp)
     }
 
@@ -188,8 +194,17 @@ extension Engine {
         if settled { profileRecoveryDone = true }
     }
 
-    private func historyStalled(at expected: UInt64) {
+    /// A page that never came: history pauses and says so (`historyFailed`,
+    /// Resume), and the connection is dropped the way a failed ping drops
+    /// it, so it connects again and `cameOnline` asks again by itself: a
+    /// silent page usually means a connection that looks alive and is not.
+    func historyStalled(at expected: UInt64) async {
         guard let run = history.stalled(at: expected) else { return }
         emit.yield(.historyFailed("no answer from the server for \(Self.historyStall.components.seconds) seconds while fetching \(run.phase)"))
+        guard let stalled = transport else { return }
+        // This is the watchdog: dropping the connection must not cancel the task doing it.
+        historyWatchdog = nil
+        Diagnostics.recordStallReconnect()
+        await connectionClosed(stalled, retryAt: 0)
     }
 }

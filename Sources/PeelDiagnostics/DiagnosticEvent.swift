@@ -9,6 +9,9 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         case error, memorySample, memoryPressure, launch, previousRun, strutExit
         // Why the PIN is asked so often (docs/diagnostics.md, "Tracing the PIN prompts").
         case scenePhase, memoryBackground, lock, network, pushFetch, appExits, metricDiagnostic
+        // Why messages may not arrive on a connected bolt: the ping on coming to the front, how long
+        // coming online took to catch up, and a stalled history that forced a reconnect.
+        case foregroundPing, caughtUp, stallReconnect
     }
 
     /// The kinds of failure Peel shows a notice for, as `PeelError.readable`
@@ -101,6 +104,9 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var exceptionType: Int?
     public var exceptionCode: Int?
     public var hangSeconds: Double?
+    /// `foregroundPing`: whether the connection answered. `foregroundPing` and `caughtUp`: the milliseconds it took.
+    public var pingAnswered: Bool?
+    public var milliseconds: Int?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

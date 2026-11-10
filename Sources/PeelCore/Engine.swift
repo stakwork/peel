@@ -63,9 +63,21 @@ public actor Engine {
     /// When this connection came up, and how many in a row went within
     /// `shortLived` of coming up: such a drop backs off rather than
     /// reconnecting at once (`connectionAnswers`).
-    private var connectedAt: ContinuousClock.Instant?
+    private(set) var connectedAt: ContinuousClock.Instant?
+    /// The first catch-up on this connection has been noted in the diagnostics.
+    var caughtUpNoted = false
     private var shortLivedDrops = 0
     static let shortLived: Duration = .seconds(60)
+    /// When the connect in progress began (`establish`), nil between connects;
+    /// and how long one may take before its reconnect loop counts as stuck
+    /// and a drop replaces it (`connectionClosed`).
+    private var establishingSince: ContinuousClock.Instant?
+    static let stuckEstablish: Duration = .seconds(90)
+    /// How long `cameOnline` may take before the connection is dropped to
+    /// connect again (`cameOnlineWithinTimeout`), and how long it waits
+    /// before each new try of a fetch that failed (`retrying`).
+    static let cameOnlineTimeout: Duration = .seconds(45)
+    static let cameOnlineRetryDelays: [Duration] = [.seconds(2), .seconds(5), .seconds(15)]
 
     /// Payments waiting for us while we were offline: payment hash and tag → the
     /// ping time to acknowledge once the payment lands.
@@ -295,6 +307,16 @@ public actor Engine {
         return await connectionAnswers()
     }
 
+    /// Picks history up where it stands when nothing is asking for it: for
+    /// a connection that answered a ping after the app was away, whose
+    /// live messages (QoS 0, a clean session) may have been lost on the
+    /// way. Does nothing before `cameOnline` has run on this connection
+    /// (it fetches by itself) or while history is already being asked for.
+    public func catchUpIfIdle() async {
+        guard transport != nil, cameOnlineHere, !history.isSyncing else { return }
+        try? await resumeHistory()
+    }
+
     /// Skips the wait before the next reconnect attempt.
     public func reconnectNow() {
         guard keepConnected, connection != .connected, connection != .connecting else { return }
@@ -492,6 +514,8 @@ public actor Engine {
         let inviteCode = try isRegistered ? nil : storedInvite()?.code
         await teardown()
         setConnection(.connecting)
+        establishingSince = .now
+        defer { establishingSince = nil }
         do {
             try await run { _, _ in try Sphinxrs.setNetwork(network: network) }
             let xpub = try Sphinxrs.xpubFromSeed(seed: seed, time: clock.next(), network: network)
@@ -523,7 +547,7 @@ public actor Engine {
             // A returning account is already registered; a new one comes online
             // when the server's registration reply lands (see `complete`).
             if isRegistered {
-                await cameOnline()
+                await cameOnlineWithinTimeout()
             }
         } catch {
             await teardown()
@@ -612,13 +636,20 @@ public actor Engine {
 
     /// The connection went: the broker closed it, or (`retryAt: 0`, at once)
     /// it stopped answering pings.
-    private func connectionClosed(_ closed: Transport, retryAt attempt: Int = 1) async {
+    func connectionClosed(_ closed: Transport, retryAt attempt: Int = 1) async {
         guard transport === closed else { return }
         transport = nil
         endConnectionWork()
         await closed.close()
         setConnection(.offline(retryIn: nil))
-        if keepConnected, reconnectTask == nil {
+        guard keepConnected else { return }
+        // A loop still in `establish` leaves the reconnect to itself
+        // (see `reconnectLoop`); one that has been there longer than
+        // `stuckEstablish` is not progressing, and is replaced, so a hung
+        // loop is never the reason a drop is not reconnected.
+        let stuck = establishingSince.map { ContinuousClock.now - $0 > Self.stuckEstablish } ?? false
+        if reconnectTask == nil || stuck {
+            reconnectTask?.cancel()
             reconnectTask = Task { [weak self] in await self?.reconnectLoop(attempt: attempt) }
         }
     }
@@ -731,6 +762,7 @@ public actor Engine {
         unknownTags = []
         resendGate = nil
         connectedAt = nil
+        caughtUpNoted = false
         keepAliveTask?.cancel()
         keepAliveTask = nil
         resendTask?.cancel()
@@ -749,6 +781,9 @@ public actor Engine {
     /// Tests only: a transport that never connected stands for one whose
     /// connection has just gone (its publishes throw `notConnected`).
     func useTransportForTesting(_ transport: Transport?) { self.transport = transport }
+
+    /// Tests only: `cameOnline` has run on the transport set.
+    func cameOnlineForTesting() { cameOnlineHere = true }
 
     /// Tests only: the connection every connect in this task makes, such
     /// as `Transport(publishing:)`, in place of one to the server.
@@ -1370,10 +1405,14 @@ public actor Engine {
         }
     }
 
+    /// How `mayHaveGone` begins: a notice about the connection at that moment,
+    /// which the app drops once it is stale (`ConnectionNotices`).
+    public static let connectionFailedNotice = "The connection failed while sending"
+
     /// What a money send whose publish ended `.unknown` reports: `what`
     /// went, a payment, or a message that paid a tribe's price.
     static func mayHaveGone(_ error: any Error, what: String = "payment") -> String {
-        "The connection failed while sending; the \(what) may have gone. "
+        "\(connectionFailedNotice); the \(what) may have gone. "
             + "It stays unconfirmed until the server says (\(PeelError.readable(error)))"
     }
 
@@ -1581,6 +1620,42 @@ public actor Engine {
         }
     }
 
+    /// `cameOnline`, given `cameOnlineTimeout`: one that hangs (a fetch the
+    /// connection swallowed) must not leave `establish`, and with it the
+    /// reconnect loop, waiting for ever. One that does not finish in time is
+    /// cancelled and its connection dropped, so the loop connects again and
+    /// the next `cameOnline` catches up.
+    private func cameOnlineWithinTimeout() async {
+        let connection = transport
+        let online = Task { [weak self] in await self?.cameOnline() }
+        do {
+            try await poll(timeout: Self.cameOnlineTimeout, failure: .registrationTimedOut) {
+                cameOnlineHere || transport !== connection ? () : nil
+            }
+        } catch {
+            online.cancel()
+            if let connection, transport === connection { await connectionClosed(connection, retryAt: 1) }
+        }
+    }
+
+    /// Runs `step` and, when it fails, again after each of
+    /// `cameOnlineRetryDelays`, until it works; the last failure is thrown.
+    /// Stops at once when the task is cancelled or the connection it was
+    /// for has gone (the next one comes online by itself).
+    private func retrying(on connection: Transport?, _ step: () async throws -> Void) async throws {
+        var delays = Self.cameOnlineRetryDelays[...]
+        while true {
+            do {
+                try await step()
+                return
+            } catch {
+                guard let delay = delays.popFirst(), !Task.isCancelled, transport === connection else { throw error }
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled, transport === connection else { throw error }
+            }
+        }
+    }
+
     /// Runs once per connection, as soon as the account is registered. Decides
     /// what history to fetch: resume a run a dropped connection interrupted, do
     /// the full restore an account brought back from its words still needs, or
@@ -1599,26 +1674,32 @@ public actor Engine {
         // as it is online, and anything changed here offline goes up.
         schedulePreferencesSync(after: .zero)
         do {
-            try await run { time, state in
-                try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
+            try await retrying(on: connection) {
+                _ = try await run { time, state in
+                    try Sphinxrs.fetchPings(seed: seed, uniqueTime: time, state: state)
+                }
             }
-            try await fetchReadsAndMutes()
+            try await retrying(on: connection) { try await fetchReadsAndMutes() }
             // Best effort: catching up must not wait on it.
             do {
                 try await checkPendingSends()
             } catch {
                 emit.yield(.coreError("checking pending sends: \(PeelError.readable(error))"))
             }
-            try await resumeHistory()
+            try await retrying(on: connection) { try await resumeHistory() }
         } catch {
             emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
         }
         addInviterIfPending()
+        // Only on the connection this ran for: one that went meanwhile has
+        // its own `cameOnline` to come (and one that was given up on, by
+        // `cameOnlineWithinTimeout`, must not mark the next one online).
+        guard let connection, transport === connection else {
+            wakeWaiters()
+            return
+        }
         cameOnlineHere = true
         wakeWaiters()
-        // Only on the connection this ran for: one that went meanwhile has
-        // its own `cameOnline` to come.
-        guard let connection, transport === connection else { return }
         resendTask?.cancel()
         resendTask = Self.background { [weak self] in
             await self?.resendRecent(on: connection)

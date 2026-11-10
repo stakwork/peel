@@ -564,6 +564,71 @@ struct ConnectionDropTests {
             #expect(failures == 1)
         }
     }
+    // MARK: Catching up after the app was away, and a stalled history
+
+    /// Before `cameOnline` has run on a connection it fetches by itself: a
+    /// catch-up asked for then would only repeat it.
+    @Test func catchUpIfIdleWaitsForTheConnectionToComeOnline() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.catchUpIfIdle()
+            #expect(writes.count == 0)
+            #expect(await !engine.isSyncingHistory)
+        }
+    }
+
+    /// Online and idle, it asks for what history lacks, once: asking again
+    /// while that runs would only repeat it.
+    @Test func catchUpIfIdleAsksOnceWhileHistoryIsIdle() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await engine.cameOnlineForTesting()
+            await engine.catchUpIfIdle()
+            #expect(writes.count == 1)
+            #expect(await engine.isSyncingHistory)
+            await engine.catchUpIfIdle()
+            #expect(writes.count == 1)
+        }
+    }
+
+    @Test func catchUpIfIdleLeavesARunInFlightAlone() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.cameOnlineForTesting()
+            _ = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
+            await engine.catchUpIfIdle()
+            #expect(writes.count == 0)
+        }
+    }
+
+    /// A page that never comes pauses history (Resume) and drops the
+    /// connection, as a failed ping does, so it connects again and asks again.
+    @Test func aStalledHistoryDropsTheConnection() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            _ = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
+            await engine.historyStalled(at: 5)
+            #expect(await engine.transport == nil)
+            #expect(await engine.connection == .offline(retryIn: nil))
+            #expect(await !engine.isSyncingHistory)
+            await engine.close()
+            var failures = 0
+            for await case .historyFailed in engine.events { failures += 1 }
+            #expect(failures == 1)
+        }
+    }
+
+    /// A stall report for a page history has moved past is not a stall.
+    @Test func aStallOfAnOldPageLeavesTheConnectionAlone() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            _ = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
+            await engine.historyStalled(at: 99)
+            #expect(await engine.transport != nil)
+            #expect(await engine.isSyncingHistory)
+        }
+    }
 }
 
 private extension Engine {

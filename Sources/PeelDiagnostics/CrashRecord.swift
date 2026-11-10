@@ -213,6 +213,8 @@ extension DiagnosticEvent {
         if let value = exceptionType { parts.append("exceptionType=\(value)") }
         if let value = exceptionCode { parts.append("exceptionCode=\(value)") }
         if let value = hangSeconds { parts.append("hang=\(String(format: "%.1f", value))s") }
+        if let value = pingAnswered { parts.append(value ? "ping=ok" : "ping=failed") }
+        if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }
         return parts.joined(separator: " ")
     }

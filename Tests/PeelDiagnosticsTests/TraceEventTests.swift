@@ -55,6 +55,17 @@ struct TraceEventTests {
         #expect(crash.line.contains("metric=crash signal=9"))
     }
 
+    @Test func linesNameTheConnectionRecords() {
+        var ping = DiagnosticEvent(kind: .foregroundPing)
+        ping.pingAnswered = false
+        ping.milliseconds = 5000
+        #expect(ping.line.contains("foregroundPing ping=failed took=5000ms"))
+        var caught = DiagnosticEvent(kind: .caughtUp)
+        caught.milliseconds = 1200
+        #expect(caught.line.contains("took=1200ms"))
+        #expect(DiagnosticEvent(kind: .stallReconnect).line.contains("stallReconnect"))
+    }
+
     @Test func reportRendersNewEventsAndThePreviousRun() {
         var lock = DiagnosticEvent(kind: .lock)
         lock.lockReason = .coldLaunch

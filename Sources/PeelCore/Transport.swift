@@ -3,6 +3,7 @@ import MQTTNIO
 import NIOCore
 import NIOFoundationCompat
 import NIOTransportServices
+import PeelDiagnostics
 import Synchronization
 
 /// Where the account's broker lives.
@@ -127,6 +128,10 @@ final class Transport: Sendable {
     private let client: MQTTClient
     /// When the broker last sent anything; see `answersPing`.
     private let lastHeard: LastHeard
+    /// Whether a read failed on this connection (`answersPing` then says no).
+    private let readFailed: ReadFailed
+    /// How long `close` waits for the client to disconnect and shut down.
+    static let closeTimeout: Duration = .seconds(3)
 
     /// Messages from the broker, listened for from the moment the transport
     /// exists. The stream ends when the connection closes.
@@ -192,11 +197,22 @@ final class Transport: Sendable {
         self.client = client
         let lastHeard = LastHeard()
         self.lastHeard = lastHeard
+        let readFailed = ReadFailed()
+        self.readFailed = readFailed
         inbound = AsyncStream { continuation in
             client.addPublishListener(named: "peel") { result in
-                if case .success(let info) = result {
+                switch result {
+                case .success(let info):
                     lastHeard.now()
                     continuation.yield(Inbound(topic: info.topicName, payload: Data(buffer: info.payload)))
+                case .failure:
+                    // A read that fails (a bad file descriptor, say) leaves a
+                    // connection that is not closed and hears nothing: it is
+                    // dead. Ending the stream has the engine close it and
+                    // connect afresh (`Engine.connectionClosed`). No error
+                    // text is kept.
+                    if readFailed.set() { Diagnostics.recordReadFailure() }
+                    continuation.finish()
                 }
             }
             client.addCloseListener(named: "peel") { _ in
@@ -232,7 +248,8 @@ final class Transport: Sendable {
     func answersPing(within timeout: Duration) async -> Bool {
         if testWrite != nil { return true }
         let (answers, answered) = AsyncStream.makeStream(of: Bool.self)
-        let (client, lastHeard, asked) = (client, lastHeard, ContinuousClock.now)
+        if readFailed.isSet { return false }
+        let (client, lastHeard, readFailed, asked) = (client, lastHeard, readFailed, ContinuousClock.now)
         // The client's ping ignores cancellation; it ends at the client's
         // ACK timeout, or when the connection is closed.
         Task { answered.yield((try? await client.ping()) != nil) }
@@ -244,7 +261,7 @@ final class Transport: Sendable {
             timer.cancel()
             answered.finish()
         }
-        for await alive in answers { return alive }
+        for await alive in answers { return alive && !readFailed.isSet }
         return false
     }
 
@@ -259,9 +276,24 @@ final class Transport: Sendable {
         }
     }
 
+    /// Disconnects and shuts the client down, but waits no longer than
+    /// `closeTimeout`: on a socket gone bad they can hang, and the caller
+    /// must not hang with them. The client's work, if it hangs, is left behind.
     func close() async {
-        try? await client.disconnect()
-        try? await client.shutdown()
+        let client = client
+        let (done, finished) = AsyncStream.makeStream(of: Void.self)
+        Task {
+            try? await client.disconnect()
+            try? await client.shutdown()
+            finished.yield()
+        }
+        let timer = Task {
+            try? await Task.sleep(for: Self.closeTimeout)
+            finished.yield()
+        }
+        for await _ in done { break }
+        timer.cancel()
+        finished.finish()
     }
 }
 
@@ -272,4 +304,14 @@ private final class LastHeard: Sendable {
     func now() { instant.withLock { $0 = .now } }
 
     func since(_ start: ContinuousClock.Instant) -> Bool { instant.withLock { $0 > start } }
+}
+
+/// Whether a read failed on a connection.
+private final class ReadFailed: Sendable {
+    private let flag = Mutex(false)
+
+    var isSet: Bool { flag.withLock { $0 } }
+
+    /// Sets it; true only the first time.
+    func set() -> Bool { flag.withLock { let first = !$0; $0 = true; return first } }
 }

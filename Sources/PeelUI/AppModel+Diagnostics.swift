@@ -16,6 +16,8 @@ extension AppModel {
         Diagnostics.setForeground(false)
         activeLease.isForeground = false
         updateActiveLease()
+        // A catch-up in flight is not kept across the background: the next foreground asks again.
+        if let engine { Task { await engine.appLeftForeground() } }
         // Only an account whose reads have loaded: an empty count would clear it.
         if phase == .ready, !readStates.isEmpty { notifier.leftForeground(unread: unreadCount) }
     }

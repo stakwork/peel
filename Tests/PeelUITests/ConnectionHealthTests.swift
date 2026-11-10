@@ -16,6 +16,13 @@ struct ConnectionHealthTests {
         #expect(ConnectionHealth(connection: .connected, caughtUp: true) == .synced)
     }
 
+    @Test(arguments: [
+        Engine.ConnectionState.connected, .connecting, .offline(retryIn: nil), .offline(retryIn: 8),
+    ])
+    func neverSyncedUnlessCaughtUp(connection: Engine.ConnectionState) {
+        #expect(ConnectionHealth(connection: connection, caughtUp: false) != .synced)
+    }
+
     @Test func syncingSaysSo() {
         #expect(ConnectionHealth.syncing.label == "Syncing…")
         #expect(ConnectionHealth.synced.label == "Connected")

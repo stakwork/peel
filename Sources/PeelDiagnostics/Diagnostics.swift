@@ -198,6 +198,18 @@ public enum Diagnostics {
     /// A history fetch stalled and the connection was dropped so it reconnects.
     public static func recordStallReconnect() { current?.record(DiagnosticEvent(kind: .stallReconnect)) }
 
+    /// A step of a catch-up: its stage, why, and the milliseconds since it started when known.
+    public static func recordCatchUp(_ stage: DiagnosticEvent.CatchUpStage, reason: DiagnosticEvent.CatchUpReason, milliseconds: Int? = nil) {
+        var event = DiagnosticEvent(kind: .catchUp)
+        event.catchUpStage = stage
+        event.catchUpReason = reason
+        event.milliseconds = milliseconds.map { max($0, 0) }
+        current?.record(event)
+    }
+
+    /// A read failed on the connection's socket (no error text kept); the connection is dropped.
+    public static func recordReadFailure() { current?.record(DiagnosticEvent(kind: .readFailure)) }
+
     /// MetricKit's exit counts, by `AppExit` (zero counts left out).
     public static func recordAppExits(_ counts: [AppExit: Int]) {
         let named = counts.filter { $0.value > 0 }

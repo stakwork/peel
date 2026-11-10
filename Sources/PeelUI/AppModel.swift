@@ -602,6 +602,8 @@ public final class AppModel {
     /// The connection was closed after a background fetch; it comes back when
     /// the app does.
     @ObservationIgnored private var needsReconnect = false
+    /// The ping and catch-up made as the app comes to the front, while one runs.
+    @ObservationIgnored private var verifyTask: Task<Void, Never>?
 
     /// Joins a start in flight, so a background start and the one at launch
     /// or tap never open the account twice.
@@ -674,7 +676,7 @@ public final class AppModel {
             reached = await engine.connection == .connected
         } else {
             // It answered, but the push says something came that it did not hear.
-            await engine.catchUpIfIdle()
+            await engine.catchUpIfIdle(reason: .push)
         }
         if reached {
             // Catch-up starts as the connection comes up; give it a moment to begin.
@@ -884,7 +886,14 @@ public final class AppModel {
             // A connection that looks alive after the app was away may be
             // dead (the bolt would be green and nothing would arrive): ping
             // it, then fetch what came, or connect again.
-            if let engine { Task { await verifyConnection(engine) } }
+            // Rapid flips of the scene phase come as several foregrounds: one
+            // verification at a time, the next skipped while it runs.
+            if let engine, verifyTask == nil {
+                verifyTask = Task { [weak self] in
+                    await self?.verifyConnection(engine)
+                    self?.verifyTask = nil
+                }
+            }
         }
         // Asked first, so the open chat's `read` goes after the ask and its
         // answer is not applied over it.
@@ -908,8 +917,10 @@ public final class AppModel {
         if wasConnected {
             Diagnostics.recordForegroundPing(answered: answered, milliseconds: Int((ContinuousClock.now - started) / .milliseconds(1)))
         }
+        // Cancelled: a ping cut short proves nothing, and neither fetches nor reconnects.
+        guard !Task.isCancelled else { return }
         if answered {
-            await engine.catchUpIfIdle()
+            await engine.catchUpIfIdle(reason: .foreground)
         } else {
             await engine.reconnectNow()
         }

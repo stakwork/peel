@@ -214,6 +214,8 @@ extension DiagnosticEvent {
         if let value = exceptionCode { parts.append("exceptionCode=\(value)") }
         if let value = hangSeconds { parts.append("hang=\(String(format: "%.1f", value))s") }
         if let value = pingAnswered { parts.append(value ? "ping=ok" : "ping=failed") }
+        if let value = catchUpStage { parts.append("stage=\(value.rawValue)") }
+        if let value = catchUpReason { parts.append("reason=\(value.rawValue)") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }
         return parts.joined(separator: " ")

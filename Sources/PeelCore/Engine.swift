@@ -218,6 +218,20 @@ public actor Engine {
     /// History fetches and where history stands (`HistoryCursor`).
     var history = HistoryCursor()
     var historyWatchdog: Task<Void, Never>?
+    /// When history last moved on this connection (an ask, a page, a run
+    /// starting); nil with none in flight. A run flagged in flight with no
+    /// activity for `historyStall` is stuck (`catchUpIfIdle`).
+    var lastHistoryActivity: ContinuousClock.Instant?
+    /// When the catch-up now running began, and why (for the diagnostics).
+    var catchUpStarted: ContinuousClock.Instant?
+    var catchUpReason: DiagnosticEvent.CatchUpReason = .cameOnline
+    /// Bounds the time a connection spends Syncing (`checkSync`).
+    var syncWatchdog: Task<Void, Never>?
+    /// The app left the front with history in flight, which was abandoned:
+    /// nothing is known of the connection until the next ping answers.
+    public private(set) var unverified = false
+    static let syncCheckInterval: Duration = .seconds(10)
+    static let syncBound: Duration = .seconds(60)
     /// Each `poll` waiting to check again.
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     static let historyStall: Duration = .seconds(30)
@@ -312,9 +326,67 @@ public actor Engine {
     /// live messages (QoS 0, a clean session) may have been lost on the
     /// way. Does nothing before `cameOnline` has run on this connection
     /// (it fetches by itself) or while history is already being asked for.
-    public func catchUpIfIdle() async {
-        guard transport != nil, cameOnlineHere, !history.isSyncing else { return }
-        try? await resumeHistory()
+    public func catchUpIfIdle(reason: DiagnosticEvent.CatchUpReason = .foreground) async {
+        guard let attempt = transport, cameOnlineHere else { return }
+        var reason = reason
+        if history.isSyncing {
+            // Really in flight: something moved within the stall time.
+            if let last = lastHistoryActivity, ContinuousClock.now - last < Self.historyStall { return }
+            // The flag outlived whatever set it (an ask that never left, a
+            // run nothing answers): treat it as stuck and ask again.
+            abandonHistory(reason: .stuckFlag)
+            reason = .stuckFlag
+        }
+        unverified = false
+        do {
+            try await resumeHistory(reason: reason)
+        } catch {
+            // The ask could not be made (or was cancelled, which
+            // `resumeHistory` has recorded): a connection that cannot take
+            // it is dead, so drop it and connect again.
+            guard !Task.isCancelled, !(error is CancellationError), transport === attempt else { return }
+            await connectionClosed(attempt, retryAt: 0)
+        }
+    }
+
+    /// The app left the front. A catch-up or history ask in flight is given
+    /// up (a reply may never come to a suspended app) and the connection is
+    /// marked unverified, so the next foreground pings it and catches up.
+    /// A restore keeps its run.
+    public func appLeftForeground() {
+        guard history.isSyncing, !restoring else { return }
+        abandonHistory(reason: .appLeftForeground)
+        unverified = true
+    }
+
+    /// Runs every `syncCheckInterval` while a connection is not caught up.
+    private func watchSync(_ connection: Transport) async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: Self.syncCheckInterval)
+            guard !Task.isCancelled, transport === connection, !catchUp.isCaughtUp else { return }
+            await checkSync(connection)
+        }
+    }
+
+    /// One look at a connection that is up and not caught up: catch-up is
+    /// asked for when it came online and nothing asks; and one that has
+    /// neither been caught up nor moved history for `syncBound` is dropped,
+    /// so it connects afresh rather than showing Syncing for ever.
+    func checkSync(_ connection: Transport) async {
+        guard transport === connection, !catchUp.isCaughtUp else { return }
+        if cameOnlineHere, !history.isSyncing {
+            await catchUpIfIdle(reason: .watchdog)
+            guard transport === connection, !catchUp.isCaughtUp else { return }
+        }
+        // A restore takes as long as it takes; an account not yet registered has nothing to catch up.
+        guard !restoring, isRegistered, let since = [connectedAt, lastHistoryActivity].compactMap({ $0 }).max() else { return }
+        let waited = ContinuousClock.now - since
+        guard waited > Self.syncBound else { return }
+        Diagnostics.recordCatchUp(.abandon, reason: .syncBound, milliseconds: Self.milliseconds(of: waited))
+        history.abandon()
+        // This is the watchdog: dropping the connection must not cancel the task doing it.
+        syncWatchdog = nil
+        await connectionClosed(connection, retryAt: 0)
     }
 
     /// Skips the wait before the next reconnect attempt.
@@ -544,6 +616,8 @@ public actor Engine {
             setConnection(.connected)
             connectedAt = .now
             keepAliveTask = Task { [weak self] in await self?.keepAlive(transport) }
+            syncWatchdog?.cancel()
+            syncWatchdog = Task { [weak self] in await self?.watchSync(transport) }
             // A returning account is already registered; a new one comes online
             // when the server's registration reply lands (see `complete`).
             if isRegistered {
@@ -640,9 +714,14 @@ public actor Engine {
         guard transport === closed else { return }
         transport = nil
         endConnectionWork()
-        await closed.close()
         setConnection(.offline(retryIn: nil))
-        guard keepConnected else { return }
+        // Closed in the background, after the reconnect starts: closing a
+        // socket gone bad must never delay or block the way back.
+        let closing = Task { await closed.close() }
+        guard keepConnected else {
+            await closing.value
+            return
+        }
         // A loop still in `establish` leaves the reconnect to itself
         // (see `reconnectLoop`); one that has been there longer than
         // `stuckEstablish` is not progressing, and is replaced, so a hung
@@ -666,7 +745,12 @@ public actor Engine {
     /// for longer than that.
     func connectionAnswers() async -> Bool {
         guard let transport else { return false }
-        if await transport.answersPing(within: Self.pingTimeout) { return true }
+        if await transport.answersPing(within: Self.pingTimeout) {
+            unverified = false
+            return true
+        }
+        // A cancelled caller's ping ends early and proves nothing: not a dead connection.
+        if Task.isCancelled { return false }
         // A link that keeps dying soon after it comes up backs off as a
         // failed connect would; one that lived a while reconnects at once.
         let lived = connectedAt.map { ContinuousClock.now - $0 } ?? .zero
@@ -765,6 +849,10 @@ public actor Engine {
         caughtUpNoted = false
         keepAliveTask?.cancel()
         keepAliveTask = nil
+        syncWatchdog?.cancel()
+        syncWatchdog = nil
+        lastHistoryActivity = nil
+        catchUpStarted = nil
         resendTask?.cancel()
         resendTask = nil
         stopHistoryWatchdog()
@@ -784,6 +872,12 @@ public actor Engine {
 
     /// Tests only: `cameOnline` has run on the transport set.
     func cameOnlineForTesting() { cameOnlineHere = true }
+
+    /// Tests only: history last moved `age` ago.
+    func backdateHistoryActivityForTesting(by age: Duration) { lastHistoryActivity = .now - age }
+
+    /// Tests only: this connection came up `age` ago.
+    func backdateConnectionForTesting(by age: Duration) { connectedAt = .now - age }
 
     /// Tests only: the connection every connect in this task makes, such
     /// as `Transport(publishing:)`, in place of one to the server.
@@ -1686,7 +1780,7 @@ public actor Engine {
             } catch {
                 emit.yield(.coreError("checking pending sends: \(PeelError.readable(error))"))
             }
-            try await retrying(on: connection) { try await resumeHistory() }
+            try await retrying(on: connection) { try await resumeHistory(reason: .cameOnline) }
         } catch {
             emit.yield(.coreError("coming online: \(PeelError.readable(error))"))
         }

@@ -218,6 +218,21 @@ struct HistoryCursorTests {
         #expect(cursor.isSyncing)
     }
 
+    /// Abandoning clears what is in flight and waiting, and keeps where history stands.
+    @Test func abandonClearsTheRunTheQueueAndTheCountsAndKeepsFrom() {
+        var cursor = HistoryCursor()
+        cursor.from = 7
+        _ = cursor.start([Run(phase: .messages, next: 7, end: 20), Run(phase: .messages, next: 21, end: 30)])
+        cursor.awaitingCounts = true
+        #expect(cursor.isSyncing)
+        cursor.abandon()
+        #expect(cursor.active == nil)
+        #expect(cursor.queued.isEmpty)
+        #expect(!cursor.awaitingCounts)
+        #expect(!cursor.isSyncing)
+        #expect(cursor.from == 7)
+    }
+
     /// A stall drops the run and its queue only when it is for the page
     /// still awaited; a watchdog left from a page that came is ignored.
     @Test func aStallAppliesOnlyToThePageStillAwaited() throws {

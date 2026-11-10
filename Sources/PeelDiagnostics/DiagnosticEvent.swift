@@ -12,6 +12,18 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         // Why messages may not arrive on a connected bolt: the ping on coming to the front, how long
         // coming online took to catch up, and a stalled history that forced a reconnect.
         case foregroundPing, caughtUp, stallReconnect
+        // The catch-up's lifecycle (start, finish, cancel, abandon, and why) and a read that failed on the socket.
+        case catchUp, readFailure
+    }
+
+    /// Where a catch-up is: asked for, ended at the last page, cut short by a cancel, or given up on.
+    public enum CatchUpStage: String, Codable, Sendable, CaseIterable {
+        case start, finish, cancel, abandon
+    }
+
+    /// Why a catch-up was asked for, or given up on.
+    public enum CatchUpReason: String, Codable, Sendable, CaseIterable {
+        case foreground, push, watchdog, cameOnline, stuckFlag, readFailure, syncBound, appLeftForeground, error, cancelled
     }
 
     /// The kinds of failure Peel shows a notice for, as `PeelError.readable`
@@ -107,6 +119,9 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     /// `foregroundPing`: whether the connection answered. `foregroundPing` and `caughtUp`: the milliseconds it took.
     public var pingAnswered: Bool?
     public var milliseconds: Int?
+    /// `catchUp`: the stage and why; `milliseconds` is the time since it started, when known.
+    public var catchUpStage: CatchUpStage?
+    public var catchUpReason: CatchUpReason?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

@@ -124,6 +124,15 @@ struct HistoryCursor: Equatable {
         takeLive()
     }
 
+    /// Gives up what is in flight or waiting (the run, the queue, a restore's
+    /// counts), so nothing is left that never answers; `from` stays, and the
+    /// next `start` plans again from it.
+    mutating func abandon() {
+        active = nil
+        queued = []
+        awaitingCounts = false
+    }
+
     /// No page came for the run whose next index was `expected`: drops it
     /// and the queue, and returns it. Nil when that run has since moved on
     /// or ended.

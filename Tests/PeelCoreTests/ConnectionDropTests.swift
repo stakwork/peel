@@ -602,6 +602,75 @@ struct ConnectionDropTests {
         }
     }
 
+    /// An ask that does not leave must not leave the run set: nothing would
+    /// answer it and no watchdog is armed, so history would look busy for
+    /// ever and a later catch-up would never ask.
+    @Test func aFailedAskLeavesHistoryIdleSoCatchUpAsksAgain() async throws {
+        let (transport, writes) = cutTransport(accepting: 0, then: cutShort)
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await #expect(throws: (any Error).self) { try await engine.resumeHistory() }
+            #expect(await !engine.isSyncingHistory)
+            await engine.useTransportForTesting(transport)
+            await engine.cameOnlineForTesting()
+            let before = writes.count
+            await engine.catchUpIfIdle()
+            #expect(writes.count == before + 1)
+        }
+    }
+
+    /// A run flagged in flight with no activity for the stall time is stuck:
+    /// it is abandoned and asked for again.
+    @Test func aStuckRunOlderThanTheStallIsAbandonedAndAskedAgain() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await engine.cameOnlineForTesting()
+            _ = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
+            await engine.backdateHistoryActivityForTesting(by: Engine.historyStall + .seconds(1))
+            await engine.catchUpIfIdle()
+            #expect(writes.count == 1)
+            // Asked afresh from where history stands, not the stuck run's page.
+            #expect(await engine.history.active?.next == engine.history.from)
+        }
+    }
+
+    /// Connected, not caught up, and no history moving for the sync bound: the
+    /// connection is dropped so it connects afresh.
+    @Test func aConnectionSyncingPastTheBoundIsDropped() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await engine.backdateConnectionForTesting(by: Engine.syncBound + .seconds(5))
+            await engine.checkSync(transport)
+            #expect(await engine.transport == nil)
+            #expect(await engine.connection == .offline(retryIn: nil))
+        }
+    }
+
+    /// A connection still inside the bound is left alone.
+    @Test func aConnectionSyncingWithinTheBoundIsKept() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await engine.backdateConnectionForTesting(by: .seconds(1))
+            await engine.checkSync(transport)
+            #expect(await engine.transport != nil)
+        }
+    }
+
+    /// Leaving the front gives up a run in flight and marks the connection unverified.
+    @Test func leavingTheFrontAbandonsARunInFlight() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            _ = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
+            await engine.appLeftForeground()
+            #expect(await !engine.isSyncingHistory)
+            #expect(await engine.unverified)
+        }
+    }
+
     /// A page that never comes pauses history (Resume) and drops the
     /// connection, as a failed ping does, so it connects again and asks again.
     @Test func aStalledHistoryDropsTheConnection() async throws {
@@ -644,6 +713,7 @@ private extension Engine {
     /// As `request` leaves it: a run in flight and its watchdog waiting.
     func awaitPage(of run: HistoryCursor.Run) -> Task<Void, Never> {
         _ = history.start([run])
+        lastHistoryActivity = .now
         let watchdog = Task { _ = try? await Task.sleep(for: .seconds(60)) }
         historyWatchdog = watchdog
         return watchdog

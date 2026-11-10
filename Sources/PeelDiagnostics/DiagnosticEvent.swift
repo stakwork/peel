@@ -34,11 +34,15 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     /// Why the engine reloaded its core state (`Engine.recoverCore`).
     public enum CoreRecoveryReason: String, Codable, Sendable, CaseIterable {
         case pageFailed, repeated, reinit, cameOnline, syncBound, catchUp
+        /// stdout or stderr could not be written, which fails every core call (`StandardStreams`).
+        case brokenStreams
     }
 
     /// How deep a recovery went: the state read again from storage, or everything the engine initialises.
     public enum CoreRecoveryStage: String, Codable, Sendable, CaseIterable {
         case reloadState, reinit
+        /// stdout and stderr pointed at /dev/null.
+        case streams
     }
 
     /// A transport's life: made, closed, left behind after `Transport.closeTimeout`, and (`establish`) the

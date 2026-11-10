@@ -78,8 +78,6 @@ struct Session {
             "core state reloaded (\(reason.rawValue), \(stage.rawValue))"
         case .syncFailing(let failing):
             failing ? "loading new messages is failing, retrying" : "loading new messages works again"
-        case .needsFullRestart:
-            "the core keeps failing: restart peel"
         case .profile(let alias, let photoURL):
             "profile: \(alias), photo \(photoURL ?? "none")"
         case .echoedAliases(let echoed):

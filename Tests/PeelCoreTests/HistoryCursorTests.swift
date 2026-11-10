@@ -333,21 +333,6 @@ struct HistorySyncTests {
         #expect(asked.since.withLock { $0 } == [0, 3, nextStart])
     }
 
-    /// What a catch-up stores that this device did not have is counted (the self-check's evidence of a
-    /// live path that missed it); the same page again adds nothing.
-    @Test func aPageCountsOnlyTheMessagesNewToThisDevice() async throws {
-        let storage = try setUp()
-        let them = try theirKey()
-        let (transport, _) = recordingTransport()
-        try await withTestEngine(storage, on: transport) { engine in
-            try await engine.syncMessages()
-            try await engine.take { coreResult(msgs: (0...2).map { theirText($0, from: them) }, msgsTotal: 20) }
-            #expect(await engine.newFromCatchUp == 3)
-            try await engine.take { coreResult(msgs: (0...2).map { theirText($0, from: them) }, msgsTotal: 20) }
-            #expect(await engine.newFromCatchUp == 3)
-        }
-    }
-
     /// A profile from before the index was kept starts from its newest
     /// message stored (or dropped from a left tribe), as it did then:
     /// read before it connects, so a live message stored while it comes

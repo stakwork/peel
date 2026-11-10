@@ -125,8 +125,6 @@ public final class AppModel {
     public private(set) var syncFailing = false
     /// How many times the engine reloaded its state after the core failed (`.coreRecovered`), this launch.
     public private(set) var coreRecoveries = 0
-    /// Set when the engine asked to be initialised afresh (`.needsFullRestart`) and this model did it.
-    public private(set) var fullRestarts = 0
     /// The conversation notices that tell of a connection failing, to drop once stale.
     @ObservationIgnored var connectionNotices = ConnectionNotices()
     /// The Mac's "in use here" lease (`ActiveLease`); idle on the iPhone.
@@ -1705,33 +1703,6 @@ public final class AppModel {
         await engine.start()
     }
 
-    @ObservationIgnored private var restartTask: Task<Void, Never>?
-
-    /// The engine's core keeps failing and reloading its state did not help (`.needsFullRestart`): the
-    /// last resort, equal to a force-quit and relaunch. The engine is closed and the account opened
-    /// again exactly as launch does (`performStart`), which needs no PIN while the account has none
-    /// (`requiresPIN`). A PIN-protected account is not opened again from here (the PIN is not held):
-    /// its engine stays, and has already done the deepest recovery it can in place (`recoverCore(.reinit)`
-    /// and a fresh transport). Run apart from the event loop, which the restart ends.
-    private func restartAccountAfterCoreFailure(_ failing: Engine) {
-        guard restartTask == nil, engine === failing, phase == .ready, let profile, !profile.requiresPIN else { return }
-        restartTask = Task { [weak self] in
-            guard let self else { return }
-            await self.performFullRestart(failing)
-            self.restartTask = nil
-        }
-    }
-
-    private func performFullRestart(_ failing: Engine) async {
-        guard engine === failing else { return }
-        fullRestarts += 1
-        await failing.close()
-        engine = nil
-        resetAccountState()
-        phase = .loading
-        await start()
-    }
-
     private func consumeEvents(_ engine: Engine) async {
         for await event in engine.events where !Task.isCancelled {
             switch event {
@@ -1771,8 +1742,6 @@ public final class AppModel {
                 coreRecoveries += 1
             case .syncFailing(let failing):
                 syncFailing = failing
-            case .needsFullRestart:
-                restartAccountAfterCoreFailure(engine)
             case .serverCheckError(let message):
                 Diagnostics.note(errorKind: .server, detail: message)
                 notice = PeelError.problem(message)

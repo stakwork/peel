@@ -913,46 +913,6 @@ struct ConnectionDropTests {
         #expect(turns.window(of: 0) == nil)
     }
 
-    // MARK: The inbound self-check
-
-    /// Messages that came from history and never live drop the connection, so a clean one takes its place.
-    @Test func aSelfCheckThatFindsMissedMessagesRebuildsTheConnection() async throws {
-        let (transport, _) = recordingTransport()
-        try await withEngine(transport: transport) { engine, _ throws in
-            await engine.setConnectedForTesting(caughtUp: true)
-            await engine.judgeSelfCheck(on: transport, trigger: .periodic, from: 5, missed: 2)
-            #expect(await engine.transport == nil)
-            #expect(await engine.connection == .offline(retryIn: nil))
-        }
-    }
-
-    /// Nothing new from history: the connection stays.
-    @Test func aSelfCheckThatFindsNothingKeepsTheConnection() async throws {
-        let (transport, _) = recordingTransport()
-        try await withEngine(transport: transport) { engine, _ throws in
-            await engine.setConnectedForTesting(caughtUp: true)
-            await engine.judgeSelfCheck(on: transport, trigger: .afterCaughtUp, from: 5, missed: 0)
-            #expect(await engine.transport != nil)
-            #expect(await engine.connection == .connected)
-        }
-    }
-
-    /// A self-check asks for history from the cursor, and only on a connection that came online and is idle.
-    @Test func aSelfCheckAsksFromTheCursor() async throws {
-        let (transport, writes) = recordingTransport()
-        try await withEngine(transport: transport) { engine, _ throws in
-            await engine.setRestoring(false)
-            await engine.selfCheck(reason: .periodic)
-            #expect(writes.count == 0)
-            await engine.cameOnlineForTesting()
-            let task = Task { await engine.selfCheck(reason: .periodic) }
-            for _ in 0..<200 where writes.count == 0 { try await Task.sleep(for: .milliseconds(10)) }
-            #expect(writes.count == 1)
-            #expect(await engine.history.active?.next == engine.history.from)
-            task.cancel()
-        }
-    }
-
     /// A stall report for a page history has moved past is not a stall.
     @Test func aStallOfAnOldPageLeavesTheConnectionAlone() async throws {
         let (transport, _) = recordingTransport()

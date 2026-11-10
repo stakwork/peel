@@ -225,8 +225,6 @@ public actor Engine {
     var catchUpRetries = 0
     /// What the last `.syncFailing` event said.
     private(set) var syncFailing = false
-    /// `needsFullRestart` was emitted: once per engine.
-    var fullRestartRequested = false
     /// The app left the front with a catch-up in flight and it was kept running (`appLeftForeground(keepingCatchUp:)`).
     var keepingCatchUpInBackground = false
     /// When history last moved on this connection (an ask, a page, a run
@@ -238,30 +236,6 @@ public actor Engine {
     var catchUpReason: DiagnosticEvent.CatchUpReason = .cameOnline
     /// Bounds the time a connection spends Syncing (`checkSync`).
     var syncWatchdog: Task<Void, Never>?
-    /// Asks the server now and then whether anything came that was never delivered live (`selfCheck`).
-    var selfCheckTask: Task<Void, Never>?
-    /// How many messages catch-ups (pages of history, not a restore) stored that this device did not have:
-    /// what the live subscription never delivered (`selfCheck`).
-    var newFromCatchUp = 0
-    /// While a self-check runs: what its catch-up stored above where the device stood, and what came live
-    /// meanwhile, so a message that only raced its live copy is not taken for one the live path lost.
-    var selfCheckWatch: SelfCheckWatch?
-    struct SelfCheckWatch {
-        /// The highest server index stored as the check began.
-        let ceiling: UInt64
-        /// Rows the catch-up stored that the device did not have (`Storage.Applied.inserted`).
-        var inserted = 0
-        /// The indices its pages brought above `ceiling`, whose live copy has not come yet.
-        var fromHistory: Set<UInt64> = []
-        /// Of those, how many then came live: they only raced it.
-        var raced = 0
-        /// What history brought that never came live: the live path's losses.
-        var missed: Int { max(inserted - raced, 0) }
-
-        mutating func cameLive(_ index: UInt64) {
-            if fromHistory.remove(index) != nil { raced += 1 }
-        }
-    }
     /// The old transport's disconnect and shutdown, started by `connectionClosed` in the background and
     /// awaited before the next connect makes a client (`teardown`): never two clients of one client ID at once.
     var closing: Task<Void, Never>?
@@ -293,22 +267,10 @@ public actor Engine {
     /// How long a catch-up in flight as the app leaves the front may go on under a background task.
     static let backgroundCatchUpBound: Duration = .seconds(25)
     /// Failures of the core in a row (a history page it refuses even after `recoverCore`, a coming online
-    /// that fails twice) before the state is reloaded and the connection rebuilt, and before everything is
-    /// initialised again (`needsFullRestart`).
+    /// that fails twice) before the state is reloaded and the connection rebuilt, backing off more each time.
     static let coreFailureReloadThreshold = 3
-    static let coreFailureReinitThreshold = 6
     /// Failed catch-up attempts on one connection (`catchUpRetries`) from which it is shown as failing.
     static let failingThreshold = 3
-    /// The first self-check comes this long after a connection is caught up, the rest every `selfCheckInterval`.
-    static let selfCheckFirstDelay: Duration = .seconds(20)
-    static let selfCheckInterval: Duration = .seconds(60)
-    /// How often `watchSelfCheck` looks at whether one is due.
-    static let selfCheckTick: Duration = .seconds(5)
-    /// How long a self-check waits for its catch-up to end (the history stall watchdog has its say after).
-    static let selfCheckBound: Duration = .seconds(35)
-    /// How long after its catch-up a self-check waits for the live copies of what history brought: a
-    /// message sent while the ask was out can come in the page before it comes live.
-    static let selfCheckGrace: Duration = .seconds(5)
     /// Each `poll` waiting to check again.
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     static let historyStall: Duration = .seconds(30)
@@ -544,70 +506,6 @@ public actor Engine {
     func noteCoreSuccess() {
         consecutiveCoreFailures = 0
         updateFailing()
-    }
-
-    /// Runs the self-check on a connection that is caught up, in front and idle: first `selfCheckFirstDelay`
-    /// after it was caught up, then every `selfCheckInterval`. (Not `watchSync`'s loop: caught up ends that.)
-    private func watchSelfCheck(_ connection: Transport) async {
-        var due: ContinuousClock.Instant?
-        var ran = false
-        while !Task.isCancelled {
-            try? await Task.sleep(for: Self.selfCheckTick)
-            guard !Task.isCancelled, transport === connection else { return }
-            guard catchUp.isCaughtUp, !history.isSyncing, cameOnlineHere, !restoring, leftForegroundAt == nil else {
-                due = nil
-                continue
-            }
-            let deadline = due ?? ContinuousClock.now + (ran ? Self.selfCheckInterval : Self.selfCheckFirstDelay)
-            due = deadline
-            guard ContinuousClock.now >= deadline else { continue }
-            due = nil
-            let trigger: DiagnosticEvent.SelfCheckTrigger = ran ? .periodic : .afterCaughtUp
-            ran = true
-            await selfCheck(reason: trigger)
-        }
-    }
-
-    /// Asks the server for history from the cursor, as a catch-up does, and counts the messages that were new
-    /// to this device (`newFromCatchUp`): a message the server holds that never came live means the live
-    /// path is dead while pings still answer (`judgeSelfCheck`).
-    func selfCheck(reason: DiagnosticEvent.SelfCheckTrigger) async {
-        guard let connection = transport, cameOnlineHere, !restoring, !history.isSyncing else { return }
-        let from = history.from
-        let ceiling = (try? storage.highestServerIndex()).flatMap { $0 }.map { UInt64(max($0, 0)) } ?? 0
-        selfCheckWatch = SelfCheckWatch(ceiling: ceiling)
-        defer { selfCheckWatch = nil }
-        do {
-            try await resumeHistory(reason: .selfCheck)
-        } catch {
-            guard !Task.isCancelled, !(error is CancellationError), transport === connection else { return }
-            await dropOnPurpose(connection, reason: .catchUpError)
-            return
-        }
-        // A catch-up that does not end is the stall watchdog's and `syncBound`'s to deal with.
-        do {
-            try await poll(timeout: Self.selfCheckBound, failure: .registrationTimedOut) {
-                transport !== connection || !history.isSyncing ? () : nil
-            }
-        } catch {
-            return
-        }
-        guard transport === connection else { return }
-        // Something new came from history: its live copies get a moment to come before it counts as lost.
-        if selfCheckWatch?.missed ?? 0 > 0 {
-            try? await Task.sleep(for: Self.selfCheckGrace)
-            guard !Task.isCancelled, transport === connection else { return }
-        }
-        await judgeSelfCheck(on: connection, trigger: reason, from: from, missed: selfCheckWatch?.missed ?? 0)
-    }
-
-    /// Records what a self-check found; messages that came from history and never live drop the connection,
-    /// so a clean one (a new login, subscriptions and catch-up) takes its place.
-    func judgeSelfCheck(on connection: Transport, trigger: DiagnosticEvent.SelfCheckTrigger, from: UInt64, missed: Int) async {
-        let highest = (try? storage.highestServerIndex()).map { Int($0) }
-        Diagnostics.recordSelfCheck(trigger: trigger, from: from, missed: missed, highest: highest)
-        guard missed > 0 else { return }
-        await dropOnPurpose(connection, reason: .selfCheckMissed)
     }
 
     /// One look at a connection that is up and not caught up: catch-up is
@@ -989,14 +887,14 @@ public actor Engine {
             keepAliveTask = Task { [weak self] in await self?.keepAlive(transport) }
             syncWatchdog?.cancel()
             syncWatchdog = Task { [weak self] in await self?.watchSync(transport) }
-            selfCheckTask?.cancel()
-            selfCheckTask = Task { [weak self] in await self?.watchSelfCheck(transport) }
             // A returning account is already registered; a new one comes online
             // when the server's registration reply lands (see `complete`).
             if isRegistered {
                 await cameOnlineWithinTimeout()
             }
         } catch {
+            // A core call here failed on its log write: the next attempt finds streams it can write.
+            if StandardStreams.isBroken(error) { StandardStreams.repair() }
             await teardown()
             setConnection(.offline(retryIn: nil))
             throw error
@@ -1267,8 +1165,6 @@ public actor Engine {
         keepAliveTask = nil
         syncWatchdog?.cancel()
         syncWatchdog = nil
-        selfCheckTask?.cancel()
-        selfCheckTask = nil
         lastHistoryActivity = nil
         catchUpStarted = nil
         resendTask?.cancel()
@@ -1284,13 +1180,13 @@ public actor Engine {
     /// Reads again from storage everything `init` read (`loadPersistedState`), and forgets what only
     /// the old connection knew, so the next core call starts from what a relaunch would: the core is
     /// stateless, and this is the only state of the engine that can fall out of step with storage.
-    /// `.reinit` also drops the session's other caches. The seed and the transport are not touched.
+    /// The seed and the transport are not touched.
     ///
     /// `keepingHistory` leaves the run in flight and its watchdog alone: for retrying the very page
     /// that failed, which needs its run to advance. Otherwise the run is abandoned (not a restore's),
     /// and the next catch-up asks again from `history.from`.
     func recoverCore(reason: CoreRecoveryReason, keepingHistory: Bool = false) async {
-        let stage: DiagnosticEvent.CoreRecoveryStage = reason == .reinit ? .reinit : .reloadState
+        let stage = DiagnosticEvent.CoreRecoveryStage.reloadState
         do {
             // All of it read before any is assigned: a failure leaves the engine as it was.
             let persisted = try Self.loadPersistedState(storage)
@@ -1320,15 +1216,6 @@ public actor Engine {
             unknownTags = []
             resendGate = nil
             historyPages = 0
-            if stage == .reinit {
-                memesToken = nil
-                templateList = nil
-                profileRecoveryDone = false
-                readsSentSinceGetReads = []
-                mutesSetSinceGetMutes = []
-                readsAskedAt = nil
-                if !keepingHistory, !restoring { history = HistoryCursor(); history.from = persisted.historyFrom }
-            }
             _ = try Sphinxrs.setNetwork(network: network)
             Diagnostics.recordCoreRecovery(reason: reason, stage: stage)
             emit.yield(.coreRecovered(reason: reason, stage: stage))
@@ -1338,21 +1225,17 @@ public actor Engine {
         }
     }
 
-    /// The core failed again after `recoverCore`: counted, and past the thresholds the state is
-    /// reloaded and the connection rebuilt (it subscribes and catches up from the cursor again), and
-    /// at the last one everything is initialised again (`.needsFullRestart`, which the app answers by
-    /// opening the account afresh; the engine does the deepest recovery it can meanwhile).
+    /// The core failed again after `recoverCore`: counted, and from the threshold the state is
+    /// reloaded and the connection rebuilt (it subscribes and catches up from the cursor again),
+    /// backing off as a failed connect does (2 s, 4 s, … 30 s): a core that fails at every call must
+    /// not have the broker logged into every second.
     func noteCoreFailure() async {
         consecutiveCoreFailures += 1
         updateFailing()
         guard consecutiveCoreFailures >= Self.coreFailureReloadThreshold else { return }
-        let reinit = consecutiveCoreFailures >= Self.coreFailureReinitThreshold
-        await recoverCore(reason: reinit ? .reinit : .repeated)
-        if reinit, !fullRestartRequested {
-            fullRestartRequested = true
-            emit.yield(.needsFullRestart)
-        }
-        if let current = transport { await dropOnPurpose(current, reason: .coreFailure) }
+        await recoverCore(reason: .repeated)
+        let backoff = consecutiveCoreFailures - Self.coreFailureReloadThreshold + 1
+        if let current = transport { await dropOnPurpose(current, reason: .coreFailure, retryAt: backoff) }
     }
 
     /// A page asked for on a connection that has gone never comes; the run
@@ -1455,8 +1338,16 @@ public actor Engine {
         live: Bool = false,
         _ call: (_ time: String, _ state: Data) throws -> RunReturn
     ) async throws -> RunReturn {
-        let time = clock.next()
-        var result = try call(time, StateCodec.encode(state))
+        var time = clock.next()
+        var result: RunReturn
+        do {
+            result = try call(time, StateCodec.encode(state))
+        } catch where StandardStreams.isBroken(error) {
+            // The core's log write failed, not the call's work: streams that can be written, and again.
+            StandardStreams.repair()
+            time = clock.next()
+            result = try call(time, StateCodec.encode(state))
+        }
         if let arrived { result.msgs = Self.cappedToArrived(result.msgs, arrived) }
         // Nothing of it is committed or published, not even the message, and
         // sats it carries are not settled.
@@ -1796,15 +1687,7 @@ public actor Engine {
         if let pageIndices {
             Diagnostics.recordHistoryPage(
                 count: pageIndices.count, maxIndex: pageIndices.max().map { Int(clamping: $0) }, new: applied.inserted)
-            if arrival == .history {
-                newFromCatchUp += applied.inserted
-                if applied.inserted > 0, let ceiling = selfCheckWatch?.ceiling {
-                    selfCheckWatch?.inserted += applied.inserted
-                    selfCheckWatch?.fromHistory.formUnion(pageIndices.filter { $0 > ceiling })
-                }
-            }
         } else if let index = indices?.first {
-            for index in indices ?? [] { selfCheckWatch?.cameLive(index) }
             let row = applied.stored.first { $0.serverIndex == Int64(clamping: index) } ?? applied.stored.first
             Diagnostics.recordLiveMessage(
                 index: Int(clamping: index), fromMe: row?.fromMe, type: row?.type, new: applied.inserted > 0)

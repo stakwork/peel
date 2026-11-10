@@ -90,7 +90,7 @@ struct CoreRecoveryTests {
         try await withTestEngine(storage, on: transport) { engine in
             let ahead: UInt64 = 9_000_000_000_000_000
             await engine.setClockForTesting(last: ahead)
-            await engine.recoverCore(reason: .reinit)
+            await engine.recoverCore(reason: .repeated)
             let last = await engine.clockLastForTesting
             #expect(last >= ahead)
         }
@@ -136,21 +136,6 @@ struct CoreRecoveryTests {
         }
     }
 
-    @Test func atTheReinitThresholdAFullRestartIsRequested() async throws {
-        let storage = try setUp()
-        let (transport, _) = recordingTransport()
-        let onion = try textFromThem("never")
-        var restarts = 0
-        try await withTestEngine(storage, on: transport) { engine in
-            try await engine.syncMessages()
-            await engine.setFailingHandlesForTesting(100)
-            await engine.setConsecutiveCoreFailuresForTesting(Engine.coreFailureReinitThreshold - 1)
-            await engine.receive(page(onion))
-            for case .needsFullRestart in await events(of: engine) { restarts += 1 }
-        }
-        #expect(restarts == 1)
-    }
-
     @Test func theCounterResetsWhenAPageIsHandled() async throws {
         let storage = try setUp()
         let (transport, _) = recordingTransport()
@@ -175,7 +160,6 @@ struct CoreRecoveryTests {
         #expect(Engine.catchUpRetryDelay(afterRetries: 40) == .seconds(30))
         #expect(Engine.backgroundCatchUpBound == .seconds(25))
         #expect(Engine.coreFailureReloadThreshold == 3)
-        #expect(Engine.coreFailureReinitThreshold == 6)
     }
 
     /// A catch-up in flight as the app leaves is kept, abandoned only at the bound, and the next

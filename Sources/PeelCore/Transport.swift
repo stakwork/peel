@@ -348,6 +348,16 @@ final class Transport: Sendable {
         let client = client
         let delay = testCloseDelay.withLock { $0 }
         let limit = closeLimit.withLock { $0 }
+        if testWrite != nil, delay == nil {
+            // A test transport's client never connected: waiting on it would
+            // take its connect timeout. Close cleanly now, and still shut the
+            // client down (mqtt-nio requires it before deinit).
+            Task { try? await client.shutdown() }
+            if released.set() {
+                Diagnostics.recordTransportLifecycle(stage: .closed, live: registry.released())
+            }
+            return
+        }
         let (done, finished) = AsyncStream.makeStream(of: Bool.self)
         Task {
             if let delay { try? await Task.sleep(for: delay) }

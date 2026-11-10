@@ -894,7 +894,8 @@ public final class AppModel {
             // it, then fetch what came, or connect again.
             // Rapid flips of the scene phase come as several foregrounds: one
             // verification at a time, the next skipped while it runs.
-            if let engine, verifyTask == nil {
+            // The iPhone only: the Mac is never suspended, and its keep-alive and path monitor watch it.
+            if let engine, platform.suspendsInBackground, verifyTask == nil {
                 verifyTask = Task { [weak self] in
                     await self?.verifyConnection(engine)
                     self?.verifyTask = nil

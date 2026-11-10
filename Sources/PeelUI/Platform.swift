@@ -36,13 +36,17 @@ public struct Platform {
     public var pushAppID: @MainActor () -> String?
     /// Time to finish work as the app leaves the front (the iPhone's background task); none elsewhere.
     public var backgroundWork: any BackgroundWork
+    /// The system suspends the app out of the front (the iPhone), so a connection it comes back to
+    /// is not trusted (`Engine.appBecameActive`). Not the Mac: leaving the front there is a Cmd-Tab,
+    /// and its connection kept running all along.
+    public var suspendsInBackground: Bool
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
         opensFirstChat: Bool = true, syncsBiometrics: Bool = false, sendsActiveLease: Bool = false,
         pushAppID: @escaping @MainActor () -> String? = { nil },
-        backgroundWork: any BackgroundWork = NoBackgroundWork()
+        backgroundWork: any BackgroundWork = NoBackgroundWork(), suspendsInBackground: Bool = false
     ) {
         self.presence = presence
         self.files = files
@@ -56,6 +60,7 @@ public struct Platform {
         self.sendsActiveLease = sendsActiveLease
         self.pushAppID = pushAppID
         self.backgroundWork = backgroundWork
+        self.suspendsInBackground = suspendsInBackground
     }
 }
 

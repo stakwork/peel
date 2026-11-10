@@ -243,6 +243,25 @@ public actor Engine {
     /// How many messages catch-ups (pages of history, not a restore) stored that this device did not have:
     /// what the live subscription never delivered (`selfCheck`).
     var newFromCatchUp = 0
+    /// While a self-check runs: what its catch-up stored above where the device stood, and what came live
+    /// meanwhile, so a message that only raced its live copy is not taken for one the live path lost.
+    var selfCheckWatch: SelfCheckWatch?
+    struct SelfCheckWatch {
+        /// The highest server index stored as the check began.
+        let ceiling: UInt64
+        /// Rows the catch-up stored that the device did not have (`Storage.Applied.inserted`).
+        var inserted = 0
+        /// The indices its pages brought above `ceiling`, whose live copy has not come yet.
+        var fromHistory: Set<UInt64> = []
+        /// Of those, how many then came live: they only raced it.
+        var raced = 0
+        /// What history brought that never came live: the live path's losses.
+        var missed: Int { max(inserted - raced, 0) }
+
+        mutating func cameLive(_ index: UInt64) {
+            if fromHistory.remove(index) != nil { raced += 1 }
+        }
+    }
     /// The old transport's disconnect and shutdown, started by `connectionClosed` in the background and
     /// awaited before the next connect makes a client (`teardown`): never two clients of one client ID at once.
     var closing: Task<Void, Never>?
@@ -287,6 +306,9 @@ public actor Engine {
     static let selfCheckTick: Duration = .seconds(5)
     /// How long a self-check waits for its catch-up to end (the history stall watchdog has its say after).
     static let selfCheckBound: Duration = .seconds(35)
+    /// How long after its catch-up a self-check waits for the live copies of what history brought: a
+    /// message sent while the ask was out can come in the page before it comes live.
+    static let selfCheckGrace: Duration = .seconds(5)
     /// Each `poll` waiting to check again.
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     static let historyStall: Duration = .seconds(30)
@@ -552,7 +574,9 @@ public actor Engine {
     func selfCheck(reason: DiagnosticEvent.SelfCheckTrigger) async {
         guard let connection = transport, cameOnlineHere, !restoring, !history.isSyncing else { return }
         let from = history.from
-        let before = newFromCatchUp
+        let ceiling = (try? storage.highestServerIndex()).flatMap { $0 }.map { UInt64(max($0, 0)) } ?? 0
+        selfCheckWatch = SelfCheckWatch(ceiling: ceiling)
+        defer { selfCheckWatch = nil }
         do {
             try await resumeHistory(reason: .selfCheck)
         } catch {
@@ -569,7 +593,12 @@ public actor Engine {
             return
         }
         guard transport === connection else { return }
-        await judgeSelfCheck(on: connection, trigger: reason, from: from, missed: newFromCatchUp - before)
+        // Something new came from history: its live copies get a moment to come before it counts as lost.
+        if selfCheckWatch?.missed ?? 0 > 0 {
+            try? await Task.sleep(for: Self.selfCheckGrace)
+            guard !Task.isCancelled, transport === connection else { return }
+        }
+        await judgeSelfCheck(on: connection, trigger: reason, from: from, missed: selfCheckWatch?.missed ?? 0)
     }
 
     /// Records what a self-check found; messages that came from history and never live drop the connection,
@@ -623,6 +652,8 @@ public actor Engine {
     ///   history from `history.from`) take its place (`rebuild`).
     /// - connected, away briefly, nothing changed: a real round trip under `foregroundVerifyTimeout`,
     ///   a ping and a catch-up ask that is answered; either failing rebuilds, else `trust`.
+    /// - a push (the app still in the background): the round trip, unless a read failed
+    ///   (`untrustedCause`).
     ///
     /// The path monitor and this hard timeout stand in for handling the NWConnection's own
     /// `.failed`, `.cancelled` and `.waiting` states: MQTTNIO and NIOTS do not expose the
@@ -637,7 +668,7 @@ public actor Engine {
             reconnectNow()
             return
         }
-        if let cause = untrustedCause(of: current, away: away) {
+        if let cause = untrustedCause(of: current, away: away, reason: reason) {
             Diagnostics.recordForegroundDecision(action: .rebuild, reason: cause, awaySeconds: away)
             await dropOnPurpose(current, reason: .foregroundRebuild)
             return
@@ -668,8 +699,12 @@ public actor Engine {
     }
 
     /// Why the transport can no longer be trusted, most telling first; nil when nothing says so.
-    private func untrustedCause(of connection: Transport, away: Int) -> DiagnosticEvent.ForegroundCause? {
+    /// A push is answered within the push's own short time, and comes after nearly every stay in the
+    /// background: only a read that failed rebuilds it straight away; anything else is put to the
+    /// round trip first, whose failure rebuilds (a zombie answers nothing, so it fails in time).
+    private func untrustedCause(of connection: Transport, away: Int, reason: ForegroundReason) -> DiagnosticEvent.ForegroundCause? {
         if connection.hasReadFailure { return .readFailure }
+        if reason == .push { return nil }
         if pathChangedSinceBackground { return .pathChange }
         if Duration.seconds(away) > Self.awayRebuildThreshold { return .away }
         if unverified { return .unverified }
@@ -1761,8 +1796,15 @@ public actor Engine {
         if let pageIndices {
             Diagnostics.recordHistoryPage(
                 count: pageIndices.count, maxIndex: pageIndices.max().map { Int(clamping: $0) }, new: applied.inserted)
-            if arrival == .history { newFromCatchUp += applied.inserted }
+            if arrival == .history {
+                newFromCatchUp += applied.inserted
+                if applied.inserted > 0, let ceiling = selfCheckWatch?.ceiling {
+                    selfCheckWatch?.inserted += applied.inserted
+                    selfCheckWatch?.fromHistory.formUnion(pageIndices.filter { $0 > ceiling })
+                }
+            }
         } else if let index = indices?.first {
+            for index in indices ?? [] { selfCheckWatch?.cameLive(index) }
             let row = applied.stored.first { $0.serverIndex == Int64(clamping: index) } ?? applied.stored.first
             Diagnostics.recordLiveMessage(
                 index: Int(clamping: index), fromMe: row?.fromMe, type: row?.type, new: applied.inserted > 0)

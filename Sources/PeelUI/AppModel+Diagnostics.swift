@@ -18,7 +18,8 @@ extension AppModel {
         updateActiveLease()
         // A catch-up in flight goes on under a background task for at most `backgroundCatchUpBound`, and
         // is abandoned at the end of it (or at expiry): the next foreground asks again from the cursor.
-        if let engine {
+        // Only where the app is suspended: the Mac leaves the front at every Cmd-Tab, its connection unharmed.
+        if let engine, platform.suspendsInBackground {
             let work = platform.backgroundWork
             let token = work.begin(name: "peel.catchup") { Task { await engine.expireBackgroundCatchUp() } }
             Task {

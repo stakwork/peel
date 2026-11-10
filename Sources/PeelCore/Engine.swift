@@ -230,6 +230,20 @@ public actor Engine {
     /// The app left the front with history in flight, which was abandoned:
     /// nothing is known of the connection until the next ping answers.
     public private(set) var unverified = false
+    /// When the app left the front (the first time, if it left twice), nil in front or before it did.
+    var leftForegroundAt: ContinuousClock.Instant?
+    /// The network path changed (status or interfaces) since the connection was begun, in the
+    /// background or not: the connection is bound to the old path and may be a zombie
+    /// (`appBecameActive`, `networkChanged`). Cleared when a new connection is begun.
+    public private(set) var pathChangedSinceBackground = false
+    /// Pages of history that came, so a catch-up's first answer can be told from its ask.
+    var historyPages = 0
+    /// How long `appBecameActive` gives a connection to answer; tests shorten it.
+    var verifyTimeout = Engine.foregroundVerifyTimeout
+    /// A connection of a app away for longer than this is not trusted but rebuilt (`appBecameActive`).
+    static let awayRebuildThreshold: Duration = .seconds(20)
+    /// The hard bound on the ping and the catch-up ask a short-away foreground makes.
+    static let foregroundVerifyTimeout: Duration = .seconds(6)
     static let syncCheckInterval: Duration = .seconds(10)
     static let syncBound: Duration = .seconds(60)
     /// Each `poll` waiting to check again.
@@ -345,8 +359,17 @@ public actor Engine {
             // `resumeHistory` has recorded): a connection that cannot take
             // it is dead, so drop it and connect again.
             guard !Task.isCancelled, !(error is CancellationError), transport === attempt else { return }
-            await connectionClosed(attempt, retryAt: 0)
+            await dropOnPurpose(attempt, reason: .catchUpError)
         }
+    }
+
+    /// Drops a connection that is still the engine's, on purpose, so it connects again: the
+    /// reason is recorded (`DiagnosticEvent.ReconnectReason`) and the reconnect starts at once
+    /// (`retryAt: 0`) unless `retryAt` says to back off.
+    func dropOnPurpose(_ connection: Transport, reason: DiagnosticEvent.ReconnectReason, retryAt: Int = 0) async {
+        guard transport === connection else { return }
+        Diagnostics.recordForcedReconnect(reason: reason)
+        await connectionClosed(connection, retryAt: retryAt)
     }
 
     /// The app left the front. A catch-up or history ask in flight is given
@@ -354,7 +377,11 @@ public actor Engine {
     /// marked unverified, so the next foreground pings it and catches up.
     /// A restore keeps its run.
     public func appLeftForeground() {
-        guard history.isSyncing, !restoring else { return }
+        // The clock is the continuous one: it keeps counting while the app is suspended.
+        if leftForegroundAt == nil { leftForegroundAt = .now }
+        let inFlight = history.isSyncing
+        Diagnostics.recordBackground(inFlightCatchUp: inFlight)
+        guard inFlight, !restoring else { return }
         abandonHistory(reason: .appLeftForeground)
         unverified = true
     }
@@ -386,7 +413,108 @@ public actor Engine {
         history.abandon()
         // This is the watchdog: dropping the connection must not cancel the task doing it.
         syncWatchdog = nil
-        await connectionClosed(connection, retryAt: 0)
+        await dropOnPurpose(connection, reason: .syncBound)
+    }
+
+    /// The app came to the front (or a push woke it): decides whether the connection can be
+    /// trusted. An app that was suspended gets no word of a socket the system closed under it
+    /// (`nw_connection ... unconnected`, EBADF reads are logged by Network.framework, not raised),
+    /// so a connection that looks up proves nothing after the app was away.
+    ///
+    /// - offline or connecting: connect now (`reconnect`).
+    /// - connected, and away longer than `awayRebuildThreshold`, or the path changed, or
+    ///   `unverified`, or a read failed, or not caught up: the old transport is not trusted; it is
+    ///   dropped and a fresh login, transport, subscription and `cameOnline` (which resumes
+    ///   history from `history.from`) take its place (`rebuild`).
+    /// - connected, away briefly, nothing changed: a real round trip under `foregroundVerifyTimeout`,
+    ///   a ping and a catch-up ask that is answered; either failing rebuilds, else `trust`.
+    ///
+    /// The path monitor and this hard timeout stand in for handling the NWConnection's own
+    /// `.failed`, `.cancelled` and `.waiting` states: MQTTNIO and NIOTS do not expose the
+    /// NWConnection, so what it would say is learned by asking the broker.
+    public func appBecameActive(reason: ForegroundReason) async {
+        let away = awaySeconds()
+        // A push wakes the app in the background: it has not come to the front.
+        if reason == .foreground { leftForegroundAt = nil }
+        guard connection == .connected, let current = transport else {
+            Diagnostics.recordForegroundDecision(action: .reconnect, reason: .offline, awaySeconds: away)
+            Diagnostics.recordForegroundPing(answered: false, milliseconds: 0)
+            reconnectNow()
+            return
+        }
+        if let cause = untrustedCause(of: current, away: away) {
+            Diagnostics.recordForegroundDecision(action: .rebuild, reason: cause, awaySeconds: away)
+            await dropOnPurpose(current, reason: .foregroundRebuild)
+            return
+        }
+        Diagnostics.recordForegroundDecision(action: .verify, reason: .none, awaySeconds: away)
+        let timeout = verifyTimeout
+        let outcome = await Self.within(timeout) { [self] in await self.verifyRoundTrip(on: current, reason: reason) } ?? .timedOut
+        // Cancelled: a check cut short proves nothing.
+        guard !Task.isCancelled else { return }
+        switch outcome {
+        case .ok:
+            Diagnostics.recordForegroundDecision(action: .trust, reason: .none, awaySeconds: away)
+        case .pingFailed, .timedOut:
+            let cause: DiagnosticEvent.ForegroundCause = outcome == .pingFailed ? .pingFailed : .verifyTimeout
+            Diagnostics.recordForegroundDecision(action: .rebuild, reason: cause, awaySeconds: away)
+            await dropOnPurpose(current, reason: .foregroundRebuild)
+        }
+    }
+
+    private enum VerifyOutcome: Sendable { case ok, pingFailed, timedOut }
+
+    /// Whole seconds the app has been away: from leaving the front, or from the connection coming
+    /// up when that was later (a connection made since is not an old one).
+    private func awaySeconds() -> Int {
+        guard let left = leftForegroundAt else { return 0 }
+        let since = max(left, connectedAt ?? left)
+        return Int(Self.milliseconds(of: ContinuousClock.now - since) / 1_000)
+    }
+
+    /// Why the transport can no longer be trusted, most telling first; nil when nothing says so.
+    private func untrustedCause(of connection: Transport, away: Int) -> DiagnosticEvent.ForegroundCause? {
+        if connection.hasReadFailure { return .readFailure }
+        if pathChangedSinceBackground { return .pathChange }
+        if Duration.seconds(away) > Self.awayRebuildThreshold { return .away }
+        if unverified { return .unverified }
+        // History moving right now (begun in front) is a catch-up under way, not a stuck one.
+        let moving = history.isSyncing && lastHistoryActivity.map { ContinuousClock.now - $0 < Self.historyStall } == true
+        if isRegistered, !restoring, !catchUp.isCaughtUp, !moving { return .notCaughtUp }
+        return nil
+    }
+
+    /// A ping, then a catch-up ask, and waits for its first answer: a page, or caught up.
+    private func verifyRoundTrip(on connection: Transport, reason: ForegroundReason) async -> VerifyOutcome {
+        let started = ContinuousClock.now
+        let answered = await connectionAnswers()
+        Diagnostics.recordForegroundPing(answered: answered, milliseconds: Self.milliseconds(of: ContinuousClock.now - started))
+        guard answered else { return .pingFailed }
+        let pages = historyPages
+        await catchUpIfIdle(reason: reason == .push ? .push : .foreground)
+        while !Task.isCancelled, transport === connection {
+            if catchUp.isCaughtUp || historyPages > pages { return .ok }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return .timedOut
+    }
+
+    /// `work`'s result, or nil when it has not finished within `timeout`. The work is cancelled
+    /// then and not waited for, so a hung one never holds the caller.
+    private static func within<T: Sendable>(_ timeout: Duration, _ work: @escaping @Sendable () async -> T) async -> T? {
+        let (results, report) = AsyncStream.makeStream(of: T?.self)
+        let job = Task { report.yield(await work()) }
+        let timer = Task {
+            try? await Task.sleep(for: timeout)
+            report.yield(nil)
+        }
+        defer {
+            job.cancel()
+            timer.cancel()
+            report.finish()
+        }
+        for await result in results { return result }
+        return nil
     }
 
     /// Skips the wait before the next reconnect attempt.
@@ -585,6 +713,10 @@ public actor Engine {
         // first register landed, and needs the invite if it did not.
         let inviteCode = try isRegistered ? nil : storedInvite()?.code
         await teardown()
+        // A new connection is bound to the path as it is now and has been heard from: what was
+        // noted of the old one (a path change, an abandoned catch-up) does not apply to it.
+        pathChangedSinceBackground = false
+        unverified = false
         setConnection(.connecting)
         establishingSince = .now
         defer { establishingSince = nil }
@@ -597,7 +729,7 @@ public actor Engine {
                 for await message in transport.inbound {
                     await Engine.$handlingInbound.withValue(true) { await self?.receive(message) }
                 }
-                await self?.connectionClosed(transport)
+                await self?.listenerEnded(transport)
             }
             // How far the register got, as for a money send: only `.none`
             // says it never left.
@@ -628,6 +760,11 @@ public actor Engine {
             setConnection(.offline(retryIn: nil))
             throw error
         }
+    }
+
+    /// The broker's messages ended: the broker closed the connection, or a read failed on it.
+    private func listenerEnded(_ ended: Transport) async {
+        if ended.hasReadFailure { await dropOnPurpose(ended, reason: .readFailure, retryAt: 1) } else { await connectionClosed(ended) }
     }
 
     /// Registered, and `cameOnline` has asked for what it needs (history
@@ -745,17 +882,25 @@ public actor Engine {
     /// for longer than that.
     func connectionAnswers() async -> Bool {
         guard let transport else { return false }
-        if await transport.answersPing(within: Self.pingTimeout) {
+        let started = ContinuousClock.now
+        let answered = await transport.answersPing(within: Self.pingTimeout)
+        let took = ContinuousClock.now - started
+        let readFailed = transport.hasReadFailure
+        let timedOut = !answered && !readFailed && took >= Self.pingTimeout
+        // A cancelled caller's ping ends early and proves nothing: not a dead connection.
+        if answered || !Task.isCancelled {
+            Diagnostics.recordPingResult(ok: answered, milliseconds: Self.milliseconds(of: took), timedOut: timedOut)
+        }
+        if answered {
             unverified = false
             return true
         }
-        // A cancelled caller's ping ends early and proves nothing: not a dead connection.
         if Task.isCancelled { return false }
         // A link that keeps dying soon after it comes up backs off as a
         // failed connect would; one that lived a while reconnects at once.
         let lived = connectedAt.map { ContinuousClock.now - $0 } ?? .zero
         shortLivedDrops = lived < Self.shortLived ? shortLivedDrops + 1 : 0
-        await connectionClosed(transport, retryAt: shortLivedDrops)
+        await dropOnPurpose(transport, reason: readFailed ? .readFailure : timedOut ? .pingTimeout : .pingFailed, retryAt: shortLivedDrops)
         return false
     }
 
@@ -785,6 +930,9 @@ public actor Engine {
                 let changed = last.map { $0 != now } ?? false
                 last = now
                 guard changed else { continue }
+                // Noted at once, not after the settle: a connection made before this change is
+                // bound to the old path, and the app may come to the front before it settles.
+                await self?.notePathChanged()
                 settling?.cancel()
                 let online = path.status == .satisfied
                 settling = Task { [weak self] in
@@ -815,10 +963,24 @@ public actor Engine {
 
     static let networkSettle: Duration = .seconds(1)
 
+    private func notePathChanged() {
+        pathChangedSinceBackground = true
+        Diagnostics.recordPathChangeFlagged(awaySeconds: leftForegroundAt.map { Int(Self.milliseconds(of: ContinuousClock.now - $0) / 1_000) })
+    }
+
+    /// The path settled. A connection is bound to the path it was made on, and may be a zombie
+    /// that answers nothing after a switch, so coming online on a new path rebuilds it rather
+    /// than pinging it; going offline pings, which has the keep-alive's say. A rebuild already
+    /// made (by the foreground, say) has cleared the flag, and is not made twice.
     private func networkChanged(online: Bool) async {
         guard keepConnected else { return }
         if connection == .connected {
-            _ = await connectionAnswers()
+            if online {
+                guard pathChangedSinceBackground, let current = transport else { return }
+                await dropOnPurpose(current, reason: .pathChange)
+            } else {
+                _ = await connectionAnswers()
+            }
         } else if online {
             reconnectNow()
         }
@@ -875,6 +1037,24 @@ public actor Engine {
 
     /// Tests only: history last moved `age` ago.
     func backdateHistoryActivityForTesting(by age: Duration) { lastHistoryActivity = .now - age }
+
+    /// Tests only: the app left the front `age` ago.
+    func backdateLeftForegroundForTesting(by age: Duration) { leftForegroundAt = .now - age }
+
+    /// Tests only: the path changed (as the monitor notes it).
+    func markPathChangedForTesting() { notePathChanged() }
+
+    /// Tests only: the engine says connected, and caught up or not.
+    func setConnectedForTesting(caughtUp: Bool) {
+        setConnection(.connected)
+        if caughtUp { catchUp.finish() }
+    }
+
+    /// Tests only: a page of history came.
+    func historyPageArrivedForTesting() { historyPages += 1 }
+
+    /// Tests only: how long `appBecameActive` gives a connection to answer.
+    func setVerifyTimeoutForTesting(_ timeout: Duration) { verifyTimeout = timeout }
 
     /// Tests only: this connection came up `age` ago.
     func backdateConnectionForTesting(by age: Duration) { connectedAt = .now - age }
@@ -1728,7 +1908,7 @@ public actor Engine {
             }
         } catch {
             online.cancel()
-            if let connection, transport === connection { await connectionClosed(connection, retryAt: 1) }
+            if let connection { await dropOnPurpose(connection, reason: .cameOnlineTimeout, retryAt: 1) }
         }
     }
 

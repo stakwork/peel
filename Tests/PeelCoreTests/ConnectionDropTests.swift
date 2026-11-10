@@ -671,6 +671,142 @@ struct ConnectionDropTests {
         }
     }
 
+    // MARK: Coming to the front after the app was away
+
+    /// Away longer than the threshold: the old transport is not trusted, it is dropped and rebuilt.
+    @Test func awayLongerThanTheThresholdRebuildsTheConnection() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.backdateLeftForegroundForTesting(by: Engine.awayRebuildThreshold + .seconds(5))
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.transport == nil)
+            #expect(await engine.connection == .offline(retryIn: nil))
+        }
+    }
+
+    /// A path change noted while away rebuilds the connection however briefly the app was away.
+    @Test func aPathChangeSinceTheBackgroundRebuildsTheConnection() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.backdateLeftForegroundForTesting(by: .seconds(2))
+            await engine.markPathChangedForTesting()
+            #expect(await engine.pathChangedSinceBackground)
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.transport == nil)
+        }
+    }
+
+    /// An unverified connection or one not caught up is not trusted either.
+    @Test func anUnverifiedOrUncaughtUpConnectionIsRebuilt() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: false)
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.transport == nil)
+        }
+        let (second, _) = recordingTransport()
+        try await withEngine(transport: second) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.setRestoring(false)
+            _ = await engine.awaitPage(of: HistoryCursor.Run(phase: .messages, next: 5, end: 10))
+            await engine.appLeftForeground()
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.transport == nil)
+        }
+    }
+
+    /// Away briefly with nothing changed: a ping and a catch-up ask that is answered keep the transport.
+    @Test func aShortAwayKeepsTheConnectionWhenTheRoundTripWorks() async throws {
+        let (transport, writes) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await engine.cameOnlineForTesting()
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.setVerifyTimeoutForTesting(.seconds(3))
+            await engine.backdateLeftForegroundForTesting(by: .seconds(2))
+            // The server's answer to the ask.
+            let answer = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                await engine.historyPageArrivedForTesting()
+            }
+            await engine.appBecameActive(reason: .foreground)
+            await answer.value
+            #expect(await engine.transport != nil)
+            #expect(writes.count == 1)
+        }
+    }
+
+    /// A catch-up ask nothing answers within the timeout rebuilds the connection.
+    @Test func aRoundTripThatTimesOutRebuildsTheConnection() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setRestoring(false)
+            await engine.cameOnlineForTesting()
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.setVerifyTimeoutForTesting(.milliseconds(300))
+            await engine.backdateLeftForegroundForTesting(by: .seconds(2))
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.transport == nil)
+        }
+    }
+
+    /// A ping nothing answers rebuilds the connection.
+    @Test func aPingThatIsNotAnsweredRebuildsTheConnection() async throws {
+        let (transport, _) = recordingTransport()
+        transport.setAnswersPingForTesting(false)
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.backdateLeftForegroundForTesting(by: .seconds(2))
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.transport == nil)
+        }
+    }
+
+    /// Offline, the decision is to connect now: the transport is left alone (nothing is dropped).
+    @Test func comingToTheFrontOfflineReconnectsAndDropsNothing() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.backdateLeftForegroundForTesting(by: .seconds(60))
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.connection == .offline(retryIn: nil))
+            #expect(await engine.transport != nil)
+        }
+    }
+
+    /// After a forced rebuild the connection that follows asks for history from where it stands.
+    @Test func afterARebuildTheFirstAskStartsAtTheCursor() async throws {
+        let (transport, _) = recordingTransport()
+        try await withEngine(transport: transport) { engine, _ throws in
+            await engine.setConnectedForTesting(caughtUp: true)
+            await engine.backdateLeftForegroundForTesting(by: Engine.awayRebuildThreshold + .seconds(5))
+            await engine.appBecameActive(reason: .foreground)
+            #expect(await engine.transport == nil)
+            let (fresh, writes) = recordingTransport()
+            await engine.useTransportForTesting(fresh)
+            await engine.setRestoring(false)
+            await engine.cameOnlineForTesting()
+            await engine.catchUpIfIdle(reason: .cameOnline)
+            #expect(writes.count == 1)
+            #expect(await engine.history.active?.next == engine.history.from)
+        }
+    }
+
+    /// A new connection starts clean: a path change or an abandoned catch-up noted before it does not apply to it.
+    @Test func aNewConnectionClearsThePathFlagAndUnverified() async throws {
+        let fresh = Transport(publishing: { _, _ in })
+        try await withEngine { engine, _ throws in
+            await engine.markPathChangedForTesting()
+            #expect(await engine.pathChangedSinceBackground)
+            try await Engine.$connectingForTesting.withValue(fresh) {
+                try await engine.connect()
+            }
+            #expect(await !engine.pathChangedSinceBackground)
+            #expect(await !engine.unverified)
+        }
+    }
+
     /// A page that never comes pauses history (Resume) and drops the
     /// connection, as a failed ping does, so it connects again and asks again.
     @Test func aStalledHistoryDropsTheConnection() async throws {

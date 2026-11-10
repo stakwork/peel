@@ -664,19 +664,17 @@ public final class AppModel {
             await start()
         }
         guard phase == .ready, let engine else { return false }
-        // A connection that looks up may be dead: it counts as reached only if it answers a ping.
+        // A connection that looks up may be dead, and one the app was away from is not trusted:
+        // the engine verifies it or rebuilds it (`appBecameActive`); it counts as reached once connected.
         var wasOffline = connection != .connected
-        if !wasOffline, !(await engine.checkConnection()) { wasOffline = true }
+        await engine.appBecameActive(reason: .push)
+        if await engine.connection != .connected { wasOffline = true }
         var reached = !wasOffline
         if wasOffline {
-            await engine.reconnectNow()
             while await engine.connection != .connected, ContinuousClock.now < deadline, !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
             }
             reached = await engine.connection == .connected
-        } else {
-            // It answered, but the push says something came that it did not hear.
-            await engine.catchUpIfIdle(reason: .push)
         }
         if reached {
             // Catch-up starts as the connection comes up; give it a moment to begin.
@@ -907,23 +905,11 @@ public final class AppModel {
         checkOwnMessageStatus()
     }
 
-    /// Pings the engine's connection as the app comes to the front. One that
-    /// answers catches up (live messages are not kept for a connection that
-    /// was away); one that does not, or that is offline, connects now.
+    /// Has the engine decide whether its connection can be trusted as the app comes to the
+    /// front (`Engine.appBecameActive`): verified by a real round trip when it was away briefly,
+    /// rebuilt when it was away long or the network changed, connected now when it is offline.
     private func verifyConnection(_ engine: Engine) async {
-        let wasConnected = await engine.connection == .connected
-        let started = ContinuousClock.now
-        let answered = await engine.checkConnection()
-        if wasConnected {
-            Diagnostics.recordForegroundPing(answered: answered, milliseconds: Int((ContinuousClock.now - started) / .milliseconds(1)))
-        }
-        // Cancelled: a ping cut short proves nothing, and neither fetches nor reconnects.
-        guard !Task.isCancelled else { return }
-        if answered {
-            await engine.catchUpIfIdle(reason: .foreground)
-        } else {
-            await engine.reconnectNow()
-        }
+        await engine.appBecameActive(reason: .foreground)
     }
 
     /// Drops the open chat's notice if it is a stale one of the connection

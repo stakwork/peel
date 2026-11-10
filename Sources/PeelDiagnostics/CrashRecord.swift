@@ -216,6 +216,12 @@ extension DiagnosticEvent {
         if let value = pingAnswered { parts.append(value ? "ping=ok" : "ping=failed") }
         if let value = catchUpStage { parts.append("stage=\(value.rawValue)") }
         if let value = catchUpReason { parts.append("reason=\(value.rawValue)") }
+        if let value = foregroundAction { parts.append("decision=\(value.rawValue)") }
+        if let value = foregroundCause { parts.append("cause=\(value.rawValue)") }
+        if let value = awaySeconds { parts.append("away=\(value)s") }
+        if let value = reconnectReason { parts.append("reason=\(value.rawValue)") }
+        if let value = pingTimedOut { parts.append(value ? "timedOut" : "inTime") }
+        if let value = inFlightCatchUp { parts.append("inFlight=\(value)") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }
         return parts.joined(separator: " ")

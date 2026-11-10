@@ -66,6 +66,28 @@ struct TraceEventTests {
         #expect(DiagnosticEvent(kind: .stallReconnect).line.contains("stallReconnect"))
     }
 
+    @Test func linesNameTheForegroundDecisionsAndDrops() {
+        var decision = DiagnosticEvent(kind: .foregroundDecision)
+        decision.foregroundAction = .rebuild
+        decision.foregroundCause = .away
+        decision.awaySeconds = 95
+        #expect(decision.line.contains("foregroundDecision decision=rebuild cause=away away=95s"))
+        var forced = DiagnosticEvent(kind: .forcedReconnect)
+        forced.reconnectReason = .pingTimeout
+        #expect(forced.line.contains("forcedReconnect reason=pingTimeout"))
+        var ping = DiagnosticEvent(kind: .pingResult)
+        ping.pingAnswered = false
+        ping.milliseconds = 5000
+        ping.pingTimedOut = true
+        #expect(ping.line.contains("pingResult ping=failed timedOut took=5000ms"))
+        var background = DiagnosticEvent(kind: .background)
+        background.inFlightCatchUp = true
+        #expect(background.line.contains("background inFlight=true"))
+        var path = DiagnosticEvent(kind: .pathChangeFlagged)
+        path.awaySeconds = 12
+        #expect(path.line.contains("pathChangeFlagged away=12s"))
+    }
+
     @Test func reportRendersNewEventsAndThePreviousRun() {
         var lock = DiagnosticEvent(kind: .lock)
         lock.lockReason = .coldLaunch

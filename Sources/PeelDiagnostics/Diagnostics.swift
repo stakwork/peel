@@ -188,6 +188,46 @@ public enum Diagnostics {
         current?.record(event)
     }
 
+    /// What the engine decided on coming to the front, and why.
+    public static func recordForegroundDecision(action: DiagnosticEvent.ForegroundAction, reason: DiagnosticEvent.ForegroundCause,
+                                                awaySeconds: Int) {
+        var event = DiagnosticEvent(kind: .foregroundDecision)
+        event.foregroundAction = action
+        event.foregroundCause = reason
+        event.awaySeconds = max(awaySeconds, 0)
+        current?.record(event)
+    }
+
+    /// A connection dropped on purpose, so it connects again.
+    public static func recordForcedReconnect(reason: DiagnosticEvent.ReconnectReason) {
+        var event = DiagnosticEvent(kind: .forcedReconnect)
+        event.reconnectReason = reason
+        current?.record(event)
+    }
+
+    /// One ping of the connection: whether it answered, how long it took, and whether it ran out of time.
+    public static func recordPingResult(ok: Bool, milliseconds: Int, timedOut: Bool) {
+        var event = DiagnosticEvent(kind: .pingResult)
+        event.pingAnswered = ok
+        event.milliseconds = max(milliseconds, 0)
+        event.pingTimedOut = timedOut
+        current?.record(event)
+    }
+
+    /// The app left the front, with a catch-up in flight or not.
+    public static func recordBackground(inFlightCatchUp: Bool) {
+        var event = DiagnosticEvent(kind: .background)
+        event.inFlightCatchUp = inFlightCatchUp
+        current?.record(event)
+    }
+
+    /// The network path changed (status or interfaces) since the app left the front; `awaySeconds` is nil in front.
+    public static func recordPathChangeFlagged(awaySeconds: Int?) {
+        var event = DiagnosticEvent(kind: .pathChangeFlagged)
+        event.awaySeconds = awaySeconds.map { max($0, 0) }
+        current?.record(event)
+    }
+
     /// History was caught up on a connection: the milliseconds since it came up.
     public static func recordCaughtUp(milliseconds: Int) {
         var event = DiagnosticEvent(kind: .caughtUp)

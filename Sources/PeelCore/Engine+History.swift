@@ -139,6 +139,7 @@ extension Engine {
     /// one asked for.
     func advanceHistory(_ page: HistoryCursor.Page) async throws {
         lastHistoryActivity = .now
+        historyPages += 1
         if let progress = page.progress {
             emit.yield(.history(phase: progress.phase, reached: progress.reached, end: progress.end))
         }
@@ -255,6 +256,6 @@ extension Engine {
         // This is the watchdog: dropping the connection must not cancel the task doing it.
         historyWatchdog = nil
         Diagnostics.recordStallReconnect()
-        await connectionClosed(stalled, retryAt: 0)
+        await dropOnPurpose(stalled, reason: .stall)
     }
 }

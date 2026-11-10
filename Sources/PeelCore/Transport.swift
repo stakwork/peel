@@ -130,6 +130,11 @@ final class Transport: Sendable {
     private let lastHeard: LastHeard
     /// Whether a read failed on this connection (`answersPing` then says no).
     private let readFailed: ReadFailed
+    /// Whether a read failed on this connection: it is dead whatever its socket says.
+    var hasReadFailure: Bool { readFailed.isSet }
+    /// Tests only (`init(publishing:)`): whether pings are answered.
+    private let testAnswersPing = Mutex(true)
+    func setAnswersPingForTesting(_ answers: Bool) { testAnswersPing.withLock { $0 = answers } }
     /// How long `close` waits for the client to disconnect and shut down.
     static let closeTimeout: Duration = .seconds(3)
 
@@ -246,7 +251,7 @@ final class Transport: Sendable {
     /// says (a network that went, a path that changed), and is the caller's
     /// to close.
     func answersPing(within timeout: Duration) async -> Bool {
-        if testWrite != nil { return true }
+        if testWrite != nil { return testAnswersPing.withLock { $0 } }
         let (answers, answered) = AsyncStream.makeStream(of: Bool.self)
         if readFailed.isSet { return false }
         let (client, lastHeard, readFailed, asked) = (client, lastHeard, readFailed, ContinuousClock.now)

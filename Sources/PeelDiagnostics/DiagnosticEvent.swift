@@ -14,6 +14,25 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         case foregroundPing, caughtUp, stallReconnect
         // The catch-up's lifecycle (start, finish, cancel, abandon, and why) and a read that failed on the socket.
         case catchUp, readFailure
+        // What the engine decided on coming to the front and why, each connection it dropped on purpose,
+        // every ping's result, leaving the front, and a path change noted while away.
+        case foregroundDecision, forcedReconnect, pingResult, background, pathChangeFlagged
+    }
+
+    /// What the engine did with its connection on coming to the front.
+    public enum ForegroundAction: String, Codable, Sendable, CaseIterable {
+        case trust, verify, rebuild, reconnect
+    }
+
+    /// Why (`ForegroundAction`): what made the old connection untrustworthy, or none.
+    public enum ForegroundCause: String, Codable, Sendable, CaseIterable {
+        case away, pathChange, unverified, readFailure, notCaughtUp, offline, verifyTimeout, pingFailed, none
+    }
+
+    /// Why a connection was dropped on purpose to connect again.
+    public enum ReconnectReason: String, Codable, Sendable, CaseIterable {
+        case pingFailed, pingTimeout, stall, syncBound, readFailure, pathChange, catchUpError
+        case foregroundRebuild, cameOnlineTimeout
     }
 
     /// Where a catch-up is: asked for, ended at the last page, cut short by a cancel, or given up on.
@@ -122,6 +141,16 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     /// `catchUp`: the stage and why; `milliseconds` is the time since it started, when known.
     public var catchUpStage: CatchUpStage?
     public var catchUpReason: CatchUpReason?
+    /// `foregroundDecision`: the action, its cause and the seconds away. `pathChangeFlagged`: the seconds away, when known.
+    public var foregroundAction: ForegroundAction?
+    public var foregroundCause: ForegroundCause?
+    public var awaySeconds: Int?
+    /// `forcedReconnect`: why the connection was dropped.
+    public var reconnectReason: ReconnectReason?
+    /// `pingResult`: the ping got no answer in time (`pingAnswered` and `milliseconds` say the rest).
+    public var pingTimedOut: Bool?
+    /// `background`: a catch-up was in flight as the app left the front.
+    public var inFlightCatchUp: Bool?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

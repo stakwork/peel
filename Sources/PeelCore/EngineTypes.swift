@@ -1,6 +1,11 @@
 import Foundation
 
 extension Engine {
+    /// Why the app asks whether its connection can be trusted (`Engine.appBecameActive`).
+    public enum ForegroundReason: Sendable {
+        case foreground, push
+    }
+
     public enum Event: Sendable {
         case connection(ConnectionState)
         /// The server knows this account and has given it a route hint.

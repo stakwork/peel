@@ -14,7 +14,9 @@ extension Platform {
             playback: MediaPlayback.shared, web: { WebPane(profile: $0) }, calls: LiveKitCalls(),
             agent: MacAgent(),
             // The Mac says it is in use; it registers no push token.
-            sendsActiveLease: true
+            sendsActiveLease: true,
+            // The PIN at launch, then not again while Peel runs.
+            locksOnlyAtLaunch: true
         )
     }
 }

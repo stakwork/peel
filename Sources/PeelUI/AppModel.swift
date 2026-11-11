@@ -451,14 +451,23 @@ public final class AppModel {
     private var accountTasks: [Task<Void, Never>] = []
     /// When the person last used Peel: the PIN entered, then each key press,
     /// click or scroll in its windows (`noteActivity`). The PIN timeout
-    /// counts from here. The PIN itself is never kept.
+    /// counts from here; on the iPhone the PIN is kept until it runs out
+    /// (`RememberedPIN`).
     @ObservationIgnored private var lastActiveAt: Date?
+    /// When Peel last went to the background (not merely inactive), until it is back.
+    @ObservationIgnored var leftForegroundAt: Date?
+    /// The lock screen is Face ID's check (`BiometricUnlock`), not the PIN's: within
+    /// the timeout, a face opens Peel with the kept PIN; typing the PIN still does.
+    public internal(set) var lockOffersBiometrics = false
+    /// Away this long, Peel asks for a face again when Face ID is on.
+    static let biometricCheckAfter: TimeInterval = 60
 
-    /// Hours without use after which the app asks for the PIN again, in
-    /// front or not; 0 means only at launch. A preference of this device
-    /// (the PIN is this device's); one never set here takes the
-    /// `pinTimeoutHours` default earlier builds read, which is left in place.
-    public private(set) var pinTimeoutHours = 0
+    /// When the iPhone asks for the PIN (`PINTimeout`): 0 every time Peel
+    /// opens (at launch and back from the background), hours without use, or
+    /// `never`. The Mac asks at launch only (`Platform.locksOnlyAtLaunch`).
+    /// A preference of the account; one never set takes the `pinTimeoutHours`
+    /// default earlier builds read, else `PINTimeout.unsetDefault`.
+    public private(set) var pinTimeoutHours = PINTimeout.unsetDefault
 
     public init(platform: Platform) {
         self.platform = platform
@@ -633,9 +642,11 @@ public final class AppModel {
             return
         }
         guard !profile.requiresPIN else {
+            if await openWithRememberedPIN() { return }
             // Left from a session that ended without locking.
             notifier.removeAllDelivered()
             Diagnostics.recordLock(.coldLaunch)
+            lockOffersBiometrics = false
             phase = .locked
             return
         }
@@ -712,7 +723,47 @@ public final class AppModel {
             // Checking the PIN means deriving its key, which is slow on purpose.
             try await Task.detached { try profile.verifyPIN(pin) }.value
         }
+        rememberPIN(pin)
         enterApp()
+    }
+
+    /// The PIN kept while its timeout has not run out (the iPhone): Peel opens
+    /// with it, or, when Face ID is on, the lock screen asks for a face. False
+    /// when none is kept or it cannot be read (the phone was locked: a launch in
+    /// the background for a push, tried again as Peel comes to the front).
+    private func openWithRememberedPIN() async -> Bool {
+        guard let profile, !platform.locksOnlyAtLaunch, let pin = profile.rememberedPIN?.pin() else { return false }
+        if biometricCheckIsOn {
+            Diagnostics.recordLock(.biometricCheck)
+            lockOffersBiometrics = true
+            phase = .locked
+            return true
+        }
+        // Loading while it opens (slow on purpose), so the keypad cannot open the account a second time.
+        phase = .loading
+        do {
+            try await open(profile, pin: pin)
+        } catch {
+            if (error as? SecretStoreFailure) == .wrongPIN { profile.rememberedPIN?.forget() }
+            phase = .locked
+            return false
+        }
+        Diagnostics.recordLock(.rememberedPIN)
+        enterApp()
+        return true
+    }
+
+    /// Keeps a PIN just entered for the next launch, while the timeout allows
+    /// (the iPhone; "When Peel opens" keeps none). After `open`, which reads
+    /// the timeout from the account.
+    func rememberPIN(_ pin: String) {
+        guard !platform.locksOnlyAtLaunch, profile?.requiresPIN == true else { return }
+        profile?.rememberedPIN?.keep(pin, activeAt: .now, timeoutHours: pinTimeoutHours)
+    }
+
+    /// Face ID is on here, and the device can still ask for a face.
+    var biometricCheckIsOn: Bool {
+        biometryName != nil && profile?.biometrics?.isOn == true
     }
 
     /// Removes the account's words and data from this Mac, for when the PIN is
@@ -866,6 +917,7 @@ public final class AppModel {
     public func setPINTimeout(hours: Int) async throws {
         try await signedIn().setPINTimeout(hours: hours)
         pinTimeoutHours = hours
+        profile?.rememberedPIN?.timeoutChanged(to: hours)
     }
 
     /// Asks for the PIN again if the timeout has passed. Called when the app
@@ -876,6 +928,12 @@ public final class AppModel {
         Diagnostics.setForeground(true)
         activeLease.isForeground = true
         lockIfDue()
+        lockOnReturn()
+        leftForegroundAt = nil
+        // Locked at a launch that could not read the kept PIN (the phone was locked then).
+        if phase == .locked, engine == nil, !lockOffersBiometrics, !platform.locksOnlyAtLaunch {
+            Task { _ = await openWithRememberedPIN() }
+        }
         updateActiveLease()
         if needsReconnect {
             needsReconnect = false
@@ -937,19 +995,40 @@ public final class AppModel {
 
     public func lockIfDue() {
         guard isLockDue else { return }
+        lockForPIN(.idleTimeout)
+    }
+
+    /// Asks for the typed PIN: what notifications and the pasteboard say goes, and so
+    /// does the kept PIN, so a launch before it is typed asks for it too.
+    private func lockForPIN(_ reason: DiagnosticEvent.LockReason) {
         platform.pasteboard.clearSecret()
         notifier.removeAllDelivered()
-        Diagnostics.recordLock(.idleTimeout, idleSeconds: lastActiveAt.map { Int(Date.now.timeIntervalSince($0).rounded()) },
+        profile?.rememberedPIN?.forget()
+        Diagnostics.recordLock(reason, idleSeconds: lastActiveAt.map { Int(Date.now.timeIntervalSince($0).rounded()) },
                                timeoutHours: pinTimeoutHours)
+        lockOffersBiometrics = false
+        phase = .locked
+    }
+
+    /// Back from the background (the iPhone): "When Peel opens" asks for the PIN
+    /// every time; within the timeout, Face ID asks for a face when it is on and
+    /// Peel was away `biometricCheckAfter` or more.
+    private func lockOnReturn() {
+        guard let left = leftForegroundAt, phase == .ready, profile?.requiresPIN == true,
+              !platform.locksOnlyAtLaunch else { return }
+        if pinTimeoutHours == 0 { return lockForPIN(.everyOpen) }
+        guard Date.now.timeIntervalSince(left) >= Self.biometricCheckAfter, biometricCheckIsOn else { return }
+        Diagnostics.recordLock(.biometricCheck)
+        lockOffersBiometrics = true
         phase = .locked
     }
 
     /// Peel has gone unused for the PIN timeout, though it may not have
-    /// locked yet; notifications already say nothing.
-    /// Never skips only this idle lock: launch (`start`) still needs the PIN to
-    /// decrypt the account secret, and the PIN is not stored.
+    /// locked yet; notifications already say nothing. Never on the Mac, which
+    /// asks at launch only.
     public var isLockDue: Bool {
-        guard phase == .ready, profile?.requiresPIN == true, pinTimeoutHours != PINTimeout.never, pinTimeoutHours > 0, let lastActiveAt else { return false }
+        guard phase == .ready, profile?.requiresPIN == true, !platform.locksOnlyAtLaunch,
+              pinTimeoutHours != PINTimeout.never, pinTimeoutHours > 0, let lastActiveAt else { return false }
         return Date.now.timeIntervalSince(lastActiveAt) > Double(pinTimeoutHours) * 3600
     }
 
@@ -986,10 +1065,12 @@ public final class AppModel {
         guard let invite = try? Engine.parseInvite(input) else {
             throw PeelError("That doesn't look like a Sphinx invite.")
         }
-        // Face ID left by an account forgotten part-way would hold its PIN.
+        // Face ID and a kept PIN left by an account forgotten part-way.
         try? profile.biometrics?.turnOff()
+        profile.rememberedPIN?.forget()
         let created = try await Account.signup(profile, invite: invite, alias: name, pin: pin)
         await attach(created.engine)
+        rememberPIN(pin)
         return Engine.words(in: created.mnemonic)
     }
 
@@ -1000,10 +1081,12 @@ public final class AppModel {
         try PIN.validate(pin)
         let mnemonic = words.joined(separator: " ")
         try? profile.biometrics?.turnOff()
+        profile.rememberedPIN?.forget()
         let engine = try await Account.restore(profile, mnemonic: mnemonic, pin: pin)
         // Reset before the engine starts, so its first progress events are kept.
         restoreProgress = RestoreProgress()
         await attach(engine)
+        rememberPIN(pin)
         // A pairing kept from before the account was removed stays only if it was this account's.
         stadeum.accountRestored()
     }
@@ -1017,6 +1100,7 @@ public final class AppModel {
     /// Opens the main window, from onboarding or the lock screen.
     public func enterApp() {
         lastActiveAt = .now
+        lockOffersBiometrics = false
         phase = .ready
         Task { await notifier.refreshPermission() }
     }
@@ -1470,7 +1554,7 @@ public final class AppModel {
     /// `#rrggbb` (`Engine.syncedColours`).
     public private(set) var syncedColours: [String: String] = [:]
     /// The file says Face ID is on on another device and it is off here:
-    /// You offers to turn it on, through the PIN (`turnOnBiometrics`).
+    /// You offers to turn it on, with a face (`turnOnBiometrics`).
     public internal(set) var biometricsOffered = false
     /// The file holds an agent key that differs from the one connected
     /// here; the connect panel offers it (`adoptSyncedAgentKey`).
@@ -1517,7 +1601,7 @@ public final class AppModel {
         let on = await Task.detached { biometrics.isOn }.value
         guard self.engine === engine else { return }
         if wish {
-            // Never turned on from the file: Face ID needs the PIN typed.
+            // Never turned on from the file: Face ID needs a face here.
             biometricsOffered = !on && BiometricUnlock.available != nil
         } else {
             biometricsOffered = false
@@ -1556,7 +1640,7 @@ public final class AppModel {
         return engine
     }
 
-    private func open(_ profile: Profile, pin: String) async throws {
+    func open(_ profile: Profile, pin: String) async throws {
         // Loading derives keys and opens the database; keep it off the main thread.
         let engine = try await Task.detached { try await Account.load(profile, pin: pin) }.value
         await attach(engine)
@@ -1636,6 +1720,8 @@ public final class AppModel {
         biometricsOffered = false
         agentKeyAvailable = false
         lastActiveAt = nil
+        leftForegroundAt = nil
+        lockOffersBiometrics = false
         notifier.reset()
     }
 
@@ -1656,7 +1742,8 @@ public final class AppModel {
         refreshMentionAliases()
         myServer = settings.server
         calls.attach(engine, server: settings.callServer, jamiePicks: settings.callJamie ?? [:])
-        pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.integer(forKey: "pinTimeoutHours")
+        pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.object(forKey: "pinTimeoutHours") as? Int
+            ?? PINTimeout.unsetDefault
         balanceMsat = settings.balanceMsat
         wordsConfirmed = settings.wordsConfirmed ?? false
         paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
@@ -1804,7 +1891,10 @@ public final class AppModel {
                 paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
                 boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
                 autoDownloadsMedia = settings.autoDownloadsMedia ?? true
-                if let hours = settings.pinTimeoutHours { pinTimeoutHours = hours }
+                if let hours = settings.pinTimeoutHours, hours != pinTimeoutHours {
+                    pinTimeoutHours = hours
+                    profile?.rememberedPIN?.timeoutChanged(to: hours)
+                }
                 await refreshSyncedPreferences(engine)
             case .sendStatus:
                 break

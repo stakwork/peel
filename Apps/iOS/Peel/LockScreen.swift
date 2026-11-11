@@ -2,11 +2,12 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// Asks for the PIN at launch and after the PIN timeout (the Mac's
-/// `LockView`; docs/design/iphone.md, screen 8): the Peel icon, "Enter your
-/// PIN", the keypad with Face ID when it is on, and "Forgot your PIN?",
-/// which confirms Forget in place. Face ID is asked for once as the screen
-/// appears, and again from its key.
+/// Asks for the PIN (the Mac's `LockView`; docs/design/iphone.md, screen 8):
+/// the Peel icon, "Enter your PIN", the keypad, and "Forgot your PIN?",
+/// which confirms Forget in place. When the lock is Face ID's check within
+/// the PIN timeout (`AppModel.lockOffersBiometrics`), a face is asked for once
+/// as the screen appears, and again from its key; past the timeout only the
+/// PIN opens Peel.
 struct LockScreen: View {
     @Environment(AppModel.self) private var model
     @State private var pin = ""
@@ -59,7 +60,7 @@ struct LockScreen: View {
             holdsSats = await (model.balanceBeforeForget() ?? 0) > 0
         }
         .task {
-            guard let name = model.biometryName, await model.biometricsOn() else { return }
+            guard model.lockOffersBiometrics, let name = model.biometryName else { return }
             biometry = name
             await useBiometrics()
         }
@@ -82,17 +83,16 @@ struct LockScreen: View {
         }
     }
 
-    /// Face ID, which hands over the PIN; cancelled or not matched, the
-    /// keypad stays. Turned off by the attempt (the faces or the PIN
-    /// changed), its key goes and the PIN is asked for.
+    /// Face ID's check; cancelled or not matched, the keypad stays. When the
+    /// kept PIN is gone (or wrong), its key goes and the PIN is asked for.
     private func useBiometrics() async {
         guard !working else { return }
         working = true
         defer { working = false }
         do {
-            if try await !model.unlockWithBiometrics(), await !model.biometricsOn(), let name = biometry {
+            if try await !model.unlockWithBiometrics(), !model.lockOffersBiometrics {
                 biometry = nil
-                problem = "Enter your PIN. Turn \(name) on again in You."
+                problem = "Enter your PIN."
             }
         } catch {
             problem = PIN.problem(error)

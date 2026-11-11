@@ -40,13 +40,17 @@ public struct Platform {
     /// is not trusted (`Engine.appBecameActive`). Not the Mac: leaving the front there is a Cmd-Tab,
     /// and its connection kept running all along.
     public var suspendsInBackground: Bool
+    /// The PIN is asked for at launch only, never again while Peel runs, and never kept (the Mac). Elsewhere
+    /// the PIN timeout applies, and the PIN is kept while it has not run out (`RememberedPIN`).
+    public var locksOnlyAtLaunch: Bool
 
     public init(
         presence: any AppPresence, files: any FilePicking, pasteboard: any Pasteboard, playback: any Playback,
         web: @escaping (Profile?) -> any WebPresenting, calls: any CallProvider, agent: (any AgentHost)?,
         opensFirstChat: Bool = true, syncsBiometrics: Bool = false, sendsActiveLease: Bool = false,
         pushAppID: @escaping @MainActor () -> String? = { nil },
-        backgroundWork: any BackgroundWork = NoBackgroundWork(), suspendsInBackground: Bool = false
+        backgroundWork: any BackgroundWork = NoBackgroundWork(), suspendsInBackground: Bool = false,
+        locksOnlyAtLaunch: Bool = false
     ) {
         self.presence = presence
         self.files = files
@@ -61,6 +65,7 @@ public struct Platform {
         self.pushAppID = pushAppID
         self.backgroundWork = backgroundWork
         self.suspendsInBackground = suspendsInBackground
+        self.locksOnlyAtLaunch = locksOnlyAtLaunch
     }
 }
 

@@ -229,7 +229,7 @@ public enum PINTimeout {
     public static let never = -1
 
     /// An account that never chose one.
-    public static let unsetDefault = 4
+    public static let unsetDefault = 24
 
     /// The official scale's ends: 0 asks every time, 25 never.
     static let officialAlways = 0

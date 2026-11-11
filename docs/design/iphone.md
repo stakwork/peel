@@ -318,7 +318,7 @@ with Dynamic Type.
   Face ID, when on, is a check within the timeout, not where the PIN is
   kept: a face at launch and after a minute away, the keypad still taking
   the PIN. The twelve words and Change PIN always take the typed PIN. An
-  account that never chose one gets 4 hours. The Mac asks at launch only,
+  account that never chose one gets 24 hours. The Mac asks at launch only,
   never again while it runs, and has no setting.
 
 ### 9. Chats, not connected

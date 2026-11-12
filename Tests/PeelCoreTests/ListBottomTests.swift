@@ -16,6 +16,12 @@ struct ListBottomTests {
         indexes.reversed().map { [numbered($0)] }
     }
 
+    @Test func blankOnlyWithRowsAndNoneMade() {
+        #expect(ListBottom.needsRescue(rowsCount: 5, realisedCount: 0))
+        #expect(!ListBottom.needsRescue(rowsCount: 5, realisedCount: 2))
+        #expect(!ListBottom.needsRescue(rowsCount: 0, realisedCount: 0))
+    }
+
     @Test func atTheBottomNothingCounts() {
         var bottom = ListBottom()
         bottom.report(atBottom: true, settled: true, newest: 10)

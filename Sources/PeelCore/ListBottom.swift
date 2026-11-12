@@ -18,6 +18,12 @@ public struct ListBottom: Equatable, Sendable {
 
     public init() {}
 
+    /// A list with rows but none made in its viewport is blank: the
+    /// rows are there, nothing shows. Whatever it was following.
+    public static func needsRescue(rowsCount: Int, realisedCount: Int) -> Bool {
+        rowsCount > 0 && realisedCount == 0
+    }
+
     /// A report of where the list is. At the bottom nothing below counts as
     /// new; `settled` (not opening, not scrolling) there, everything down
     /// to `newest` has been in view. Read whatever the crossing.

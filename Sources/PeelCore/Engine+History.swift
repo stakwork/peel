@@ -186,6 +186,8 @@ extension Engine {
         if restoring {
             try storage.set("0", for: .needsRestore)
             restoring = false
+            // Which tribes the restore left joined, and which left (a tribe missing after a restore).
+            traceTribes()
             // The first ask came before the restore rebuilt the contacts, and
             // the core drops markers for contacts it does not know. Best
             // effort: the restore is done, and the next connection asks again.

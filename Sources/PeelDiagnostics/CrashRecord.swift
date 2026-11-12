@@ -249,6 +249,14 @@ extension DiagnosticEvent {
         if let value = sinceAliveSeconds { parts.append("sinceAlive=\(value)s") }
         if let value = memoryWarnings { parts.append("memoryWarnings=\(value)") }
         if let value = backgroundTaskExpired { parts.append("backgroundTaskExpired=\(value)") }
+        if let value = tribeTag { parts.append("tribe=\(String(format: "%06x", value))") }
+        if let value = tribeStage { parts.append("stage=\(value.rawValue)") }
+        if let value = tribeMiss { parts.append("miss=\(value.rawValue)") }
+        if let value = tribeLeft { parts.append("left=\(value)") }
+        if let value = tribeStatus { parts.append("status=\(value)") }
+        if let value = tribeMessageType { parts.append("type=\(value)") }
+        if let value = tribeRestoring { parts.append("restoring=\(value)") }
+        if let value = tribeFromMe { parts.append("fromMe=\(value)") }
         if let value = errorDetail { parts.append("detail=\"\(value)\"") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }

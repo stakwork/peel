@@ -1,4 +1,5 @@
 import Foundation
+import PeelDiagnostics
 import Sphinxrs
 
 extension Engine {
@@ -560,14 +561,42 @@ extension Engine {
     func discoveredTribe(
         _ message: Message, trustSender: Bool, state: [String: Data], notTribes: inout Set<String>
     ) throws -> Tribe? {
-        guard trustSender || message.fromMe, let host = message.senderInfo?.host?.nilIfEmpty,
-              let isPerson = Self.isPerson(message.chat, in: state) else { return nil }
-        guard !isPerson else {
+        // A person's chat first, and quietly: most messages are theirs.
+        let isPerson = Self.isPerson(message.chat, in: state)
+        if isPerson == true {
             notTribes.insert(message.chat)
             return nil
         }
+        guard trustSender || message.fromMe else { return missed(.untrusted, message) }
+        guard let host = message.senderInfo?.host?.nilIfEmpty else { return missed(.noHost, message) }
+        guard isPerson != nil else { return missed(.unknownToCore, message) }
         let tribeHost = try storage.value(for: .tribeHost)
         return Tribe(pubkey: message.chat, host: host == tribeHost ? host : nil)
+    }
+
+    /// A chat not taken for a tribe, noted in the diagnostics (`tribeTrace`).
+    private func missed(_ why: DiagnosticEvent.TribeMiss, _ message: Message) -> Tribe? {
+        traceTribe(.notDiscovered, message, miss: why)
+        return nil
+    }
+
+    /// What became of a tribe, or a message from one, in the diagnostics: the tribe by its tag, the
+    /// message by its type, and whether it came while restoring. What every message of a tribe would repeat
+    /// (held, dropped, not taken for one) once per tribe and run, so a restore does not fill the ring.
+    func traceTribe(
+        _ stage: DiagnosticEvent.TribeTraceStage, _ message: Message, miss: DiagnosticEvent.TribeMiss? = nil, status: Int? = nil
+    ) {
+        let repeats: Set<DiagnosticEvent.TribeTraceStage> = [.held, .droppedLeft, .unknownSigner, .notDiscovered]
+        if repeats.contains(stage), !tracedTribes.insert("\(stage.rawValue) \(message.chat)").inserted { return }
+        Diagnostics.recordTribeTrace(stage, tag: Diagnostics.tribeTag(message.chat), miss: miss, status: status,
+                                     messageType: message.type, restoring: restoring, fromMe: message.fromMe)
+    }
+
+    /// Each stored tribe's membership, in the diagnostics (`tribeState`).
+    func traceTribes() {
+        for tribe in tribes.values.sorted(by: { $0.pubkey < $1.pubkey }) {
+            Diagnostics.recordTribeState(tag: Diagnostics.tribeTag(tribe.pubkey), left: tribe.left, status: tribe.status.rawValue)
+        }
     }
 
     /// The host of the tribe an unfiled copy names (`message(from:)`),
@@ -641,10 +670,12 @@ extension Engine {
             do {
                 info = try await fetch(pubkey, host)
             } catch let refused as TribeInfo.NotServed where refused.status == 404 {
+                Diagnostics.recordTribeTrace(.notListed, tag: Diagnostics.tribeTag(pubkey))
                 dropHeld(pubkey, notListed: true)
                 continue
             } catch {
                 // Kept for the next try: another copy with a host, or the next connection.
+                Diagnostics.recordTribeTrace(.confirmFailed, tag: Diagnostics.tribeTag(pubkey))
                 continue
             }
             // Heard meanwhile is held too; known meanwhile is filed as usual.
@@ -654,12 +685,14 @@ extension Engine {
             }
             dropHeld(pubkey)
             guard info.deleted != true else {
+                Diagnostics.recordTribeTrace(.registryDeleted, tag: Diagnostics.tribeTag(pubkey))
                 dropHeld(pubkey, notListed: true)
                 continue
             }
             var tribe = Tribe(pubkey: pubkey, host: host)
             tribe.update(from: info, trustingPrivacy: true)
             tribe.status = .pending
+            Diagnostics.recordTribeTrace(.confirmed, tag: Diagnostics.tribeTag(pubkey))
             do {
                 try record(tribe)
                 tribeWork.readAt[pubkey] = .now
@@ -753,6 +786,12 @@ extension Engine {
     /// A restore (`replaying`) leaves deleted tribes out, as the Mac app does
     /// (it restores only tribes the registry still serves); a deletion heard
     /// otherwise keeps its bar so the user sees what happened.
+    /// The message types that can change a tribe's membership (`membership(after:)`), and a request.
+    static let membershipTypes: Set<Int> = [
+        MessageType.groupJoin, MessageType.groupLeave, MessageType.groupKick, MessageType.memberRequest,
+        MessageType.memberApprove, MessageType.memberReject, MessageType.tribeDelete,
+    ]
+
     static func membership(
         after message: Message, in tribe: Tribe, sent: String, echoed: Set<String>, replaying: Bool
     ) -> Tribe? {
@@ -780,6 +819,13 @@ extension Engine {
             case MessageType.memberApprove:
                 if let alias = message.senderAlias, approvalNamesUs(alias, sent: sent, echoed: echoed),
                    [.pending, .rejected, .removed].contains(tribe.status) {
+                    changed.status = .active
+                }
+                // Left, then asked to join again: the owner's approval is the latest word. It comes
+                // only to the member it lets in (whose alias there may be one set on another device),
+                // and a private tribe's request never comes back, so it is our way back in.
+                if tribe.left, tribe.status != .deleted {
+                    changed.left = false
                     changed.status = .active
                 }
             case MessageType.memberReject: changed.status = .rejected

@@ -108,6 +108,10 @@ struct MacWalletPerson: WalletPerson {
         await sheets.ask { done in WalletPaymentSheetView(sheet: sheet, done: done) } ?? false
     }
 
+    func buyCredit(_ sheet: WalletCreditSheet) async -> Bool {
+        await sheets.ask { done in WalletCreditSheetView(sheet: sheet, done: done) } ?? false
+    }
+
     func signedIn(to host: String, as key: SignInKey) async {
         await toast(WalletWords.signedIn(to: host, as: key))
     }

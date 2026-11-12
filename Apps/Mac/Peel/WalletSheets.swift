@@ -154,7 +154,6 @@ enum WalletSheetSettle {
 struct WalletPaymentSheetView: View {
     let sheet: WalletPaymentSheet
     let done: @MainActor (Bool) -> Void
-    @State private var attempt = PaymentAttempt()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -183,23 +182,36 @@ struct WalletPaymentSheetView: View {
             if let comment = sheet.comment {
                 Callout(.neutral, "The app says", detail: "“\(comment)”")
             }
-            HStack {
-                Spacer()
-                Button("Decline") { done(false) }
-                    .buttonStyle(.peel(.outline))
-                    .keyboardShortcut(.cancelAction)
-                // Pay arms, the second click pays, each only once the sheet
-                // (then the armed button) has settled; never on Return.
-                PayButton(verb: "Pay", totalMsat: settled ? UInt64(max(sheet.amountMsat, 0)) : nil, attempt: attempt,
-                          send: { confirmed in
-                              let amount = UInt64(max(sheet.amountMsat, 0))
-                              return confirmed == amount && armedSettled ? .sent : .needsConfirmation(msat: amount)
-                          }, sent: { done(true) }, isDefault: false, namesAmount: true)
-            }
+            WalletPayFooter(amountMsat: sheet.amountMsat, done: done)
         }
         .font(Theme.font(13))
         .padding(24)
         .frame(width: 440)
+    }
+}
+
+/// A wallet sheet's Decline and Pay: Pay arms, the second click pays, each
+/// only once the sheet (then the armed button) has settled
+/// (`WalletSheetSettle`); never on Return.
+struct WalletPayFooter: View {
+    let amountMsat: Int64
+    let done: @MainActor (Bool) -> Void
+    @State private var attempt = PaymentAttempt()
+    @State private var settled = false
+    /// Pay has been armed long enough that the click that armed it, doubled, cannot pay.
+    @State private var armedSettled = false
+
+    var body: some View {
+        let amount = UInt64(max(amountMsat, 0))
+        HStack {
+            Spacer()
+            Button("Decline") { done(false) }
+                .buttonStyle(.peel(.outline))
+                .keyboardShortcut(.cancelAction)
+            PayButton(verb: "Pay", totalMsat: settled ? amount : nil, attempt: attempt,
+                      send: { confirmed in confirmed == amount && armedSettled ? .sent : .needsConfirmation(msat: amount) },
+                      sent: { done(true) }, isDefault: false, namesAmount: true)
+        }
         .task { settled = await WalletSheetSettle.wait() }
         .task(id: attempt.armed) {
             armedSettled = false
@@ -207,10 +219,41 @@ struct WalletPaymentSheetView: View {
             armedSettled = await WalletSheetSettle.wait()
         }
     }
+}
 
-    @State private var settled = false
-    /// Pay has been armed long enough that the click that armed it, doubled, cannot pay.
-    @State private var armedSettled = false
+/// The CREDIT sheet (specs/WALLET.md §1.2): credit bought on a stranger's
+/// strut server for a launch in its public app. The server by the host Peel
+/// opened, the price as Peel decoded it, and the rest (the app, the
+/// workflow, the credit it says the payment buys, its description) marked
+/// as the server's. Paid on a second click, as every payment here.
+struct WalletCreditSheetView: View {
+    let sheet: WalletCreditSheet
+    let done: @MainActor (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(WalletWords.creditTitle(sheet))
+                    .font(Theme.font(16, .semibold))
+                Text(WalletWords.creditApp(sheet))
+                    .muted()
+            }
+            BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 30)
+            FactList(labelWidth: 100) {
+                Fact("Runs", text: sheet.workflow)
+                Fact("Buys", text: WalletWords.creditBuys(sheet))
+                Fact("Expires", text: Date(timeIntervalSince1970: TimeInterval(sheet.expiresAt)).formatted(.relative(presentation: .named)))
+                Fact("Fee", text: "Added on top")
+            }
+            Callout(.neutral, "The server says", detail: "“\(sheet.description)”")
+            Text(WalletWords.creditNote(sheet))
+                .muted()
+            WalletPayFooter(amountMsat: sheet.amountMsat, done: done)
+        }
+        .font(Theme.font(13))
+        .padding(24)
+        .frame(width: 440)
+    }
 }
 
 /// Account › Payments › Connected apps: each app (or org) the person

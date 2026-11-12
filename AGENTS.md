@@ -179,16 +179,20 @@ is a short plan. Update the status and the journal when you finish something.
     (`docs/app-wallet.md`): `AppWallet`, `WalletScope` (an app on the Mac,
     an org on the iPhone; a stranger's public app, `remote` by its seller
     on the Mac, `origin` by what Peel loaded on the iPhone, and
-    `signInHost`, the host a challenge must name), `WalletApp` and
-    `WalletRequest` (what a message names), the sheets
-    (`WalletConnectSheet` with its `SignInOffer`, `WalletPaymentSheet`,
-    `WalletPerson`), and `WalletHost`: the params, the connection, the
+    `visitorHost`, the host a challenge must name and a credit sheet
+    names), `WalletApp` and `WalletRequest` (what a message names), the
+    sheets (`WalletConnectSheet` with its `SignInOffer`,
+    `WalletPaymentSheet`, `WalletCreditSheet`, `WalletPerson`), and
+    `WalletHost`: the params, the connection, the
     limit, sheets only after a gesture, one at a time, given up after nine
     minutes, notifications of a connection's own transactions after its
     pay call's answer (`WalletPush`); the host's own ops,
-    `host_capability` and `sign_in` (docs/app-wallet.md, "Signing in": a
+    `host_capability`, `sign_in` (docs/app-wallet.md, "Signing in": a
     strut challenge for that host alone, the grant on the one sheet, a
-    later sign-in with a toast)
+    later sign-in with a toast) and `buy_credit` with its status and
+    cancel ("Buying credit": the invoice decoded to the purchase, its own
+    sheet each time, kept under `creditKey` and never paid twice, the sheet
+    down when the invoice ends or the page withdraws it)
   - `VisitorSignIn.swift` — signing a visitor in: `SignInKey` (as you, or a
     new identity for the app), `VisitorChallenge` (strut's
     `strut-visitor.<claims>.<hmac>`, read, never verified: the only thing
@@ -198,6 +202,10 @@ is a short plan. Update the status and the journal when you finish something.
     the engine's `signVisitor` (Engine+Wallet.swift) signs one with the
     account's key, or with LUD-05's linking key for its host from the
     words' whole BIP39 seed (`Engine.bip39Seed`)
+  - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
+    server for a visitor's page (strut's specs/WALLET.md §1.2) and its
+    `problems` (a port of strut's `creditPurchaseProblems`, held to its
+    `credit_purchases` vectors)
   - `PublicApp.swift` — `PublicAppLink`, a stranger's public app as Peel
     opens it from `peel://open?url=<address>` (https, or http to this
     machine): its seller, the app it names, its origin, and the app a
@@ -608,7 +616,7 @@ is a short plan. Update the status and the journal when you finish something.
   by the seller and app that address names; `MacWalletPerson` with its
   toast and `WalletSheetPresenter`, the sheets over the page's window) and
   `WalletSheets` (the connect sheet with its sign-in choice, the payment
-  sheet with `PayButton`'s second click, Account › Payments › Connected
+  and credit sheets with `PayButton`'s second click, Account › Payments › Connected
   apps; `docs/app-wallet.md`); `AppModel+PublicApps` (`openPublicApp`, a
   `peel://open` link's app in the web pane through Peel's own strut's UI,
   strut's remote mode);
@@ -827,8 +835,8 @@ is a short plan. Update the status and the journal when you finish something.
   full-screen cover; then the workspaces' pinned apps, A–Z, opened in
   `OrgPageSheet`, pulled to read again), `OrgWallet` (the app wallet on the iPhone: `OrgWalletBridge`, keyed by
   the org, or by the origin of a stranger's page, the main frame at its origin only; `PhoneWalletSheets` and the
-  connect sheet with its sign-in choice, the payment sheet with `TouchPayButton`, the toast; You ›
-  Connected apps), `OrgPageSheet` (generic over `SheetPage`: an org's `OrgPageRequest`,
+  connect sheet with its sign-in choice, the payment and credit sheets with `TouchPayButton`, the toast; You ›
+  Connected apps), `OrgPageSheet` (generic over `PhonePage`: an org's `OrgPageRequest`,
   or a stranger's `PublicPage` a `peel://open` link opened, loaded with no credential and kept to its origin;
   a
   deliverable or an app on its org's own strut, strut's UI showing it alone in a
@@ -1158,7 +1166,10 @@ is a short plan. Update the status and the journal when you finish something.
   limit in the payment's own write, the history, the state stream),
   `VisitorSignInTests` (strut's sign-in vectors, signed by the linked core;
   the guard on each device, the sheet, the grant, revoking, one sheet for
-  both) and `PublicAppTests` (the `peel://open` link, the Mac's remote
+  both), `CreditPurchaseTests` (strut's credit vectors, its reader of the
+  host's answer; the guard, the sheet, paid once, status, a decline, the
+  page withdrawing its sheet, the invoice ending it) and `PublicAppTests`
+  (the `peel://open` link, the Mac's remote
   address, which app a served box serves);
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,

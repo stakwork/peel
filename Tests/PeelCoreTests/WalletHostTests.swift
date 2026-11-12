@@ -13,6 +13,9 @@ final class ScriptedWallet: AppWallet, Sendable {
     private struct State {
         var answer: JSONValue? = nil
         var decodedMsat: Int64 = 0
+        /// What the decoder reads besides the amount: the hash and the end.
+        var decodedHash = String(repeating: "f", count: 64)
+        var decodedEnd: Int64?
         var records: [WalletRecord] = []
         var calls: [String] = []
         var problem: WalletError?
@@ -31,6 +34,8 @@ final class ScriptedWallet: AppWallet, Sendable {
     }
 
     var calls: [String] { state.withLock(\.calls) }
+    /// The invoice the decoder reads next: its hash and when it ends.
+    func decodes(hash: String, ends: Int64?) { state.withLock { ($0.decodedHash, $0.decodedEnd) = (hash, ends) } }
     func failNextProblem(_ error: WalletError?) { state.withLock { $0.problem = error } }
 
     /// `msat` already spent through `connection`, settled.
@@ -88,8 +93,8 @@ final class ScriptedWallet: AppWallet, Sendable {
     func decode(invoice: String) async throws -> WalletInvoice {
         state.withLock {
             WalletInvoice(
-                bolt11: invoice, paymentHash: String(repeating: "f", count: 64), amountMsat: $0.decodedMsat, payee: keyG,
-                memo: "", expiresAt: nil
+                bolt11: invoice, paymentHash: $0.decodedHash, amountMsat: $0.decodedMsat, payee: keyG, memo: "",
+                expiresAt: $0.decodedEnd
             )
         }
     }
@@ -149,8 +154,8 @@ final class ScriptedWallet: AppWallet, Sendable {
 /// and what they did on each.
 final class ScriptedPerson: WalletPerson, Sendable {
     private let state = Mutex<(answer: String?, shown: [String], connect: WalletConnectSheet?, payment: WalletPaymentSheet?,
-                               signIn: SignInKey?)>(
-        (nil, [], nil, nil, nil)
+                               signIn: SignInKey?, credit: WalletCreditSheet?)>(
+        (nil, [], nil, nil, nil, nil)
     )
     /// Never answers until cancelled, as a person who walked away.
     let absent: Bool
@@ -163,6 +168,7 @@ final class ScriptedPerson: WalletPerson, Sendable {
     func takeShown() -> [String] { state.withLock { s in defer { s.shown = [] }; return s.shown } }
     var lastConnect: WalletConnectSheet? { state.withLock(\.connect) }
     var lastPayment: WalletPaymentSheet? { state.withLock(\.payment) }
+    var lastCredit: WalletCreditSheet? { state.withLock(\.credit) }
 
     private func waitIfAbsent() async {
         guard absent else { return }
@@ -186,6 +192,16 @@ final class ScriptedPerson: WalletPerson, Sendable {
         let answer = state.withLock { s in
             s.shown.append("payment")
             s.payment = sheet
+            return s.answer
+        }
+        await waitIfAbsent()
+        return answer == "approve" && !absent
+    }
+
+    func buyCredit(_ sheet: WalletCreditSheet) async -> Bool {
+        let answer = state.withLock { s in
+            s.shown.append("credit")
+            s.credit = sheet
             return s.answer
         }
         await waitIfAbsent()

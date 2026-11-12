@@ -187,6 +187,24 @@ public enum WalletWords {
         key == .root ? "Signs you in to \(place) as you" : "Signs you in to \(place) as a new identity"
     }
 
+    /// The credit sheet's title (specs/WALLET.md §1.2).
+    public static func creditTitle(_ sheet: WalletCreditSheet) -> String { "Buy credit on \(sheet.host)?" }
+
+    /// The app the launch is in, as the server names it.
+    public static func creditApp(_ sheet: WalletCreditSheet) -> String {
+        "\(sheet.title) · \(sheet.app)@\(sheet.version), as \(sheet.host) names it"
+    }
+
+    /// What the server says the payment buys: its own figure, never the price.
+    public static func creditBuys(_ sheet: WalletCreditSheet) -> String {
+        "\(sheet.usd.formatted(.currency(code: "USD"))) of credit, by the server's own figure"
+    }
+
+    /// What credit is, under the sheet.
+    public static func creditNote(_ sheet: WalletCreditSheet) -> String {
+        "This buys credit on \(sheet.host). Runs in this app spend it, and what a run does not use stays there."
+    }
+
     /// Who is asking, from Peel's own record: the app on the Mac, the org
     /// on the iPhone (whose page names the app).
     public static func who(title: String, app: String, version: String, place: String, byOrg: Bool) -> String {

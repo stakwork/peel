@@ -137,6 +137,8 @@ struct OrgPageSheet<Page: PhonePage>: View {
                 WalletConnectPhoneSheet(sheet: sheet) { wallet.answer(.init(connect: $0)) }
             case .payment(let sheet):
                 WalletPaymentPhoneSheet(sheet: sheet) { wallet.answer(.init(paid: $0)) }
+            case .credit(let sheet):
+                WalletCreditPhoneSheet(sheet: sheet) { wallet.answer(.init(paid: $0)) }
             }
         }
         .alert("Couldn't save it", isPresented: Binding(

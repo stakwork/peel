@@ -182,6 +182,13 @@ public enum WalletProtocol {
         return (s, match.output.2 != nil)
     }
 
+    /// Whether `text` is BOLT 11's shape exactly as it stands (not trimmed
+    /// or lowered), and if so whether its prefix names an amount; nil when
+    /// it is not.
+    static func invoiceNamesAmount(_ text: String) -> Bool? {
+        text.wholeMatch(of: invoicePattern).map { $0.output.2 != nil }
+    }
+
     // `[0-9]` rather than `\d`: JavaScript's `\d` is ASCII only.
     nonisolated(unsafe) private static let invoicePattern =
         #/ln(bcrt|bc|tbs|tb|sb)([0-9]+[munp]?)?1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{20,}/#

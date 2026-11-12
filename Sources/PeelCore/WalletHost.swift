@@ -97,11 +97,12 @@ public enum WalletScope: Sendable, Hashable {
         }
     }
 
-    /// The host a sign-in challenge must name, from Peel's own record: the
-    /// seller's (the Mac), the origin Peel loaded (the iPhone). Nil where
-    /// Peel signs nobody in: a page of the person's own strut or an org's
-    /// knows who is looking.
-    public var signInHost: String? {
+    /// The host of a stranger's public app, from Peel's own record: the
+    /// seller's (the Mac), the origin Peel loaded (the iPhone). What a
+    /// sign-in challenge must name, and the server a credit sheet names.
+    /// Nil where the person is no visitor: a page of their own strut or an
+    /// org's knows who is looking, and buys nothing from them.
+    public var visitorHost: String? {
         switch self {
         case .app, .org: nil
         case .remote(let seller, _): Seller.host(of: seller)
@@ -281,6 +282,28 @@ public struct WalletPaymentSheet: Sendable, Equatable {
     public var maxAmountMsat: Int64?
 }
 
+/// What the CREDIT sheet shows (specs/WALLET.md §1.2): credit bought on a
+/// strut server for a visitor's page, one tap. The price is the invoice as
+/// Peel decoded it; everything else is the seller's word, shown as its.
+public struct WalletCreditSheet: Sendable, Equatable {
+    /// The server the credit is bought on, by the host Peel knows.
+    public var host: String
+    /// The app's title, name and version, as the seller serves it.
+    public var title: String
+    public var app: String
+    public var version: String
+    /// The workflow the launch is for.
+    public var workflow: String
+    /// msat, decoded by Peel: the price.
+    public var amountMsat: Int64
+    /// The credit the seller says the payment buys, in dollars: its figure, never the price.
+    public var usd: Double
+    /// The seller's words for what it sells.
+    public var description: String
+    /// Unix seconds: when the invoice ends, as decoded.
+    public var expiresAt: Int64
+}
+
 /// The person, for the sheets. An implementation draws a sheet and answers
 /// once the person does; when its task is cancelled (Peel stopped waiting)
 /// it takes the sheet down and returns at once.
@@ -288,6 +311,8 @@ public protocol WalletPerson: Sendable {
     /// The person's yes, or nil for no.
     func connect(_ sheet: WalletConnectSheet) async -> WalletConnectAnswer?
     func pay(_ sheet: WalletPaymentSheet) async -> Bool
+    /// The person's yes to buying credit for a visitor's page.
+    func buyCredit(_ sheet: WalletCreditSheet) async -> Bool
     /// Signed in without a sheet, within a connection: a toast, as for a
     /// payment within its limit.
     func signedIn(to host: String, as key: SignInKey) async
@@ -349,6 +374,12 @@ public actor WalletHost {
     /// Pay calls in flight, by connection: their notifications wait for the answer.
     private var paying: [String: Int] = [:]
     private var held: [WalletRecord] = []
+    /// Credit purchases being paid, by payment hash: a second `buy_credit`
+    /// for one answers as that payment stands.
+    private var crediting: [String: Task<WalletRecord, any Error>] = [:]
+    /// The sheet up that its page may take down (`buy_credit_cancel`), by
+    /// `<scope>|<payment hash>`.
+    private var withdrawable: (key: String, withdraw: AsyncStream<Void>.Continuation)?
     /// The app each scope's page last asked a wallet for (`capability`):
     /// the wallet grant a sign-in's sheet asks for beside it.
     private var asked: [String: WalletApp] = [:]
@@ -414,6 +445,9 @@ public actor WalletHost {
         switch op {
         case "host_capability": return hostCapability(caller)
         case "sign_in": return await answer { try await self.signIn(m, caller) }
+        case "buy_credit": return await answer { try await self.buyCredit(m, caller) }
+        case "buy_credit_status": return await answer { try await self.creditStatus(m, caller) }
+        case "buy_credit_cancel": return withdrawCredit(m, caller)
         default: break
         }
         guard let app = WalletApp(m["app"]) else {
@@ -656,13 +690,15 @@ public actor WalletHost {
 
     // MARK: Sign in
 
-    /// What `host_capability` answers (specs/WALLET.md §1.2): the host's
-    /// own ops this page may send. Signing in only where Peel opened a
-    /// stranger's public app; no `buy_credit` yet.
+    /// The host's own ops (specs/WALLET.md §1.2), which only a stranger's
+    /// public app that Peel opened may send.
+    static let visitorOps = ["buy_credit", "buy_credit_status", "buy_credit_cancel", "sign_in"]
+
+    /// What `host_capability` answers: the host's own ops this page may send.
     private func hostCapability(_ caller: WalletCaller) -> JSONValue {
         .object(["result": .object([
             "version": .int(Int64(WalletProtocol.version)),
-            "ops": .array(caller.scope.signInHost == nil ? [] : [.string("sign_in")]),
+            "ops": .array(caller.scope.visitorHost == nil ? [] : Self.visitorOps.map(JSONValue.string)),
             "wallet": .string("Peel"),
         ])])
     }
@@ -673,7 +709,7 @@ public actor WalletHost {
     /// loaded), only before it ends; with the key the connection holds, or
     /// after the person's yes on the connection sheet, which keeps it.
     private func signIn(_ m: [String: JSONValue], _ caller: WalletCaller) async throws -> JSONValue {
-        guard let host = caller.scope.signInHost else {
+        guard let host = caller.scope.visitorHost else {
             throw WalletError(.restricted, "Peel signs you in only to a public app it opened itself.")
         }
         let problems = SignInRequest.problems(.object(m), nowMs: nowMs(), host: host)
@@ -745,6 +781,97 @@ public actor WalletHost {
         case .org, .origin: true
         case .app, .remote: false
         }
+    }
+
+    // MARK: Credit
+
+    /// The connection a scope's credit purchases are kept under: no app's
+    /// (no budget counts them, no page is notified), but read back by
+    /// payment hash for `buy_credit_status` and a repeated `buy_credit`.
+    static func creditKey(_ scope: WalletScope) -> String { "credit:\(scope.key)" }
+
+    /// Buys credit on a strut server for a visitor's page (`buy_credit`,
+    /// specs/WALLET.md §1.2): only where Peel opened a stranger's public
+    /// app, only an invoice Peel decoded to the purchase's own amount and
+    /// hash, never one payment hash twice, and always on the person's yes to
+    /// its own sheet, which comes down when the invoice ends. Answers once
+    /// the payment is sent, as a pay method does.
+    private func buyCredit(_ m: [String: JSONValue], _ caller: WalletCaller) async throws -> JSONValue {
+        guard let host = caller.scope.visitorHost else {
+            throw WalletError(.restricted, "Peel buys credit only for a public app it opened itself.")
+        }
+        let problems = CreditPurchase.problems(m["purchase"] ?? .null)
+        guard problems.isEmpty, let purchase = CreditPurchase(m["purchase"]) else {
+            throw WalletError(.badRequest, "Peel does not pay that: \(problems.first ?? "it is not a purchase").")
+        }
+        // The Mac: the page is Peel's own strut UI, and names the seller Peel opened.
+        if case .remote(let seller, _) = caller.scope, Seller.base(purchase.seller)?.absoluteString != seller.absoluteString {
+            throw WalletError(.badRequest, "That is not the server this page shows.")
+        }
+        let key = Self.creditKey(caller.scope), hash = purchase.paymentHash
+        // Never one payment hash twice: one paid, or being paid, answers as it stands, with no sheet.
+        if let sent = try await creditPayment(hash, key: key) { return sent.payment }
+        let invoice = try await wallet.decode(invoice: purchase.invoice)
+        guard invoice.amountMsat == purchase.amountMsat, invoice.paymentHash == hash else {
+            throw WalletError(.badRequest, "The invoice is not the one the server describes.")
+        }
+        let ends = min(invoice.expiresAt ?? purchase.expiresAt, purchase.expiresAt)
+        guard ends > now() else { throw WalletError(.badRequest, "The invoice has ended.") }
+        if let problem = await wallet.problem(paying: .invoice(invoice)) { throw problem }
+        guard caller.personActed else {
+            throw WalletError(.restricted, "Peel asks you to pay only right after you click or tap in the app.")
+        }
+        let sheet = WalletCreditSheet(
+            host: host, title: TextLine.clean(purchase.app.title, max: 80), app: TextLine.clean(purchase.app.name, max: 80),
+            version: TextLine.clean(purchase.app.version, max: 20), workflow: TextLine.clean(purchase.workflow, max: 120),
+            amountMsat: invoice.amountMsat, usd: purchase.usd, description: TextLine.block(purchase.description, max: 500),
+            expiresAt: ends
+        )
+        let person = caller.person
+        guard try await askPerson(
+            { await person.buyCredit(sheet) }, timeout: min(.seconds(ends - now()), sheetTimeout),
+            withdrawnBy: "\(caller.scope.key)|\(hash)"
+        ) else {
+            throw WalletError(.userRejected, "You declined to buy the credit.")
+        }
+        guard ends > now() else { throw WalletError(.restricted, "The invoice ended while you were asked.") }
+        let wallet = wallet
+        let paying = Task { try await wallet.pay(.invoice(invoice), for: Engine.WalletTag(connection: key, app: purchase.app.name)) }
+        crediting[hash] = paying
+        defer { crediting[hash] = nil }
+        return try await paying.value.payment
+    }
+
+    /// Where a purchase this page made stands now (`buy_credit_status`):
+    /// pending, settled with its preimage when Peel has it, or failed;
+    /// `NOT_FOUND` for a hash it never paid for this page.
+    private func creditStatus(_ m: [String: JSONValue], _ caller: WalletCaller) async throws -> JSONValue {
+        guard caller.scope.visitorHost != nil else {
+            throw WalletError(.restricted, "Peel buys credit only for a public app it opened itself.")
+        }
+        guard let hash = m["payment_hash"]?.string, WalletProtocol.isHash(hash) else {
+            throw WalletError(.badRequest, "payment_hash must be 64 hex")
+        }
+        guard let sent = try await creditPayment(hash, key: Self.creditKey(caller.scope)) else {
+            throw WalletError(.notFound, "Peel paid no such invoice for this page.")
+        }
+        return sent.payment
+    }
+
+    /// The payment of `hash` under `key`: the one being paid, or the one kept.
+    private func creditPayment(_ hash: String, key: String) async throws -> WalletRecord? {
+        if let paying = crediting[hash] { return try await paying.value }
+        return try await wallet.records(connection: key).first { $0.paymentHash == hash && $0.direction == .outgoing }
+    }
+
+    /// `buy_credit_cancel`: the page stopped waiting, so a credit sheet of
+    /// its still up comes down and its purchase is declined; a payment
+    /// already sent stands.
+    private func withdrawCredit(_ m: [String: JSONValue], _ caller: WalletCaller) -> JSONValue {
+        if let hash = m["payment_hash"]?.string, let sheet = withdrawable, sheet.key == "\(caller.scope.key)|\(hash)" {
+            sheet.withdraw.yield()
+        }
+        return .object(["result": .object([:])])
     }
 
     // MARK: Pay
@@ -884,18 +1011,26 @@ public actor WalletHost {
     private enum Asked<T: Sendable>: Sendable {
         case answered(T)
         case timedOut
+        case withdrawn
     }
 
     /// One sheet at a time (`RATE_LIMITED` beside one open), given up after
-    /// `sheetTimeout` (`RESTRICTED`, the sheet taken down).
+    /// `sheetTimeout` (`RESTRICTED`, the sheet taken down). With
+    /// `withdrawnBy`, its page may take it down (`withdrawable`): a decline.
     private func askPerson<T: Sendable>(
-        _ present: @escaping @Sendable () async -> T, timeout: Duration? = nil
+        _ present: @escaping @Sendable () async -> T, timeout: Duration? = nil, withdrawnBy: String? = nil
     ) async throws -> T {
         guard !sheetOpen else {
             throw WalletError(.rateLimited, "Peel is already asking you something; answer that first.")
         }
         sheetOpen = true
-        defer { sheetOpen = false }
+        let (withdrawals, withdraw) = AsyncStream.makeStream(of: Void.self)
+        if let withdrawnBy { withdrawable = (withdrawnBy, withdraw) }
+        defer {
+            sheetOpen = false
+            withdrawable = nil
+            withdraw.finish()
+        }
         let timeout = timeout ?? sheetTimeout
         let outcome = await withTaskGroup(of: Asked<T>.self) { group in
             group.addTask { .answered(await present()) }
@@ -903,14 +1038,21 @@ public actor WalletHost {
                 try? await Task.sleep(for: timeout)
                 return .timedOut
             }
+            if withdrawnBy != nil {
+                group.addTask {
+                    for await _ in withdrawals { return .withdrawn }
+                    return .timedOut
+                }
+            }
             let first = await group.next() ?? .timedOut
             group.cancelAll()
             return first
         }
-        guard case .answered(let value) = outcome else {
-            throw WalletError(.restricted, "You did not answer in time.")
+        switch outcome {
+        case .answered(let value): return value
+        case .timedOut: throw WalletError(.restricted, "You did not answer in time.")
+        case .withdrawn: throw WalletError(.userRejected, "The page stopped waiting, so Peel took its sheet down.")
         }
-        return value
     }
 
     // MARK: Notifications

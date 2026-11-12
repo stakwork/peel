@@ -89,6 +89,10 @@ struct PhoneWalletPerson: WalletPerson {
         await sheets.ask(.payment(sheet)).paid
     }
 
+    func buyCredit(_ sheet: WalletCreditSheet) async -> Bool {
+        await sheets.ask(.credit(sheet)).paid
+    }
+
     func signedIn(to host: String, as key: SignInKey) async {
         await sheets.show(WalletWords.signedIn(to: host, as: key))
     }
@@ -101,11 +105,13 @@ final class PhoneWalletSheets {
     enum Sheet: Identifiable {
         case connect(WalletConnectSheet)
         case payment(WalletPaymentSheet)
+        case credit(WalletCreditSheet)
 
         var id: String {
             switch self {
             case .connect(let sheet): "connect \(sheet.app) \(sheet.signIn?.host ?? "")"
             case .payment(let sheet): "pay \(sheet.payee) \(sheet.amountMsat)"
+            case .credit(let sheet): "credit \(sheet.host) \(sheet.amountMsat)"
             }
         }
     }
@@ -300,6 +306,45 @@ struct WalletPaymentPhoneSheet: View {
                 .padding(Theme.Space.lg)
             }
             .navigationTitle("\(sheet.title) asks to pay")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Decline") { done(false) } }
+            }
+        }
+        .interactiveDismissDisabled()
+    }
+}
+
+/// The CREDIT sheet on the iPhone (specs/WALLET.md §1.2): credit bought on
+/// the server Peel loaded for a launch in its public app; the price as Peel
+/// decoded it, the rest marked as the server's, and the touch-safe two-step.
+struct WalletCreditPhoneSheet: View {
+    let sheet: WalletCreditSheet
+    let done: (Bool) -> Void
+    @State private var attempt = PaymentAttempt()
+
+    var body: some View {
+        let amount = UInt64(max(sheet.amountMsat, 0))
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                    Text(WalletWords.creditApp(sheet))
+                        .foregroundStyle(Theme.secondaryText)
+                    BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 34)
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text("Runs \(sheet.workflow)")
+                        Text("Buys " + WalletWords.creditBuys(sheet))
+                        Text("Fee added on top").foregroundStyle(Theme.secondaryText)
+                        Text("The server says: “\(sheet.description)”").foregroundStyle(Theme.secondaryText)
+                        Text(WalletWords.creditNote(sheet)).foregroundStyle(Theme.secondaryText)
+                    }
+                    TouchPayButton(verb: "Pay", totalMsat: amount, attempt: attempt, send: { confirmed in
+                        confirmed == amount ? .sent : .needsConfirmation(msat: amount)
+                    }, sent: { done(true) }, armedNote: "Check the amount, then confirm.")
+                }
+                .padding(Theme.Space.lg)
+            }
+            .navigationTitle(WalletWords.creditTitle(sheet))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Decline") { done(false) } }

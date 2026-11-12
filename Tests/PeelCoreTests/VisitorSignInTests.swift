@@ -52,13 +52,15 @@ struct VisitorSignInTests {
             == vector["sig"]?.string, "\(WalletVectors.name(vector))")
     }
 
-    /// What strut's UI reads a native host's capability as: Peel's answer
-    /// names sign_in, and its own name.
-    @Test func hostCapabilityNamesSignInWherePeelSignsAnyoneIn() async throws {
+    /// What strut's UI reads a native host's capability as: on a
+    /// stranger's page, Peel's answer names every op of the host's own
+    /// (buying credit and signing in), and its own name.
+    @Test func hostCapabilityNamesTheHostsOpsWherePeelIsAVisitors() async throws {
         let host = try host(ScriptedWallet())
         let open = await host.handle(.object(["v": .int(1), "op": .string("host_capability")]), from: caller(ScriptedPerson()))
+        let ops = ["buy_credit", "buy_credit_status", "buy_credit_cancel", "sign_in"]
         #expect(open == .object(["result": .object([
-            "version": .int(1), "ops": .array([.string("sign_in")]), "wallet": .string("Peel"),
+            "version": .int(1), "ops": .array(ops.map(JSONValue.string)), "wallet": .string("Peel"),
         ])]))
         // A page of the person's own strut, or an org's, knows who is looking: no sign-in there.
         let own = await host.handle(

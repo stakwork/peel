@@ -367,7 +367,7 @@ struct MessageList: View {
         settled()
         if newestWhileOpening {
             newestWhileOpening = false
-            scrollToNewest()
+            scrollToNewest(animated: false)
         }
         // Rows and none made in view, whatever `following` says and whatever the size did.
         blankCheck?.cancel()
@@ -396,7 +396,8 @@ struct MessageList: View {
 
     /// Never over a list that stands at the newest, however stale the flags.
     private func showsJump(_ newCount: Int) -> Bool {
-        !(bottom.atBottom && reachesNewest) && (newCount > 0 || farFromBottom || !reachesNewest)
+        // Not while it opens (the pin is still landing): the arrow showed at the bottom.
+        !opening && start == nil && !(bottom.atBottom && reachesNewest) && (newCount > 0 || farFromBottom || !reachesNewest)
     }
 
     private func moved(_ edges: Edges) {
@@ -431,6 +432,8 @@ struct MessageList: View {
         // would yank a scrolled-up reader to the bottom at the idle transition.
         if !opening, !rows.isEmpty, layout.tops.isEmpty, following, bottom.atBottom, reachesNewest { keepLastRowInView() }
         rescueBlank("settled")
+        // The end read now, not as it was mid-pin: a list at its bottom hides the arrow.
+        if !opening, reachesNewest, farFromBottom, layout.viewport.end - layout.viewport.offset <= 24 { farFromBottom = false }
         keepPlace()
         guard !opening, bottom.atBottom, phase == .idle else { return }
         var bottom = self.bottom
@@ -510,8 +513,15 @@ struct MessageList: View {
         }
     }
 
-    private func scrollToNewest() {
+    /// Animated for the jump button and for what arrives; not for the opening's own pin.
+    private func scrollToNewest(animated: Bool = true) {
         following = true
+        guard animated else {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { keepLastRowInView() }
+            return settled()
+        }
         withAnimation(.easeOut(duration: 0.25)) { keepLastRowInView() } completion: { settled() }
     }
 

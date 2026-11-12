@@ -15,6 +15,10 @@ public actor Engine {
     let emit: AsyncStream<Event>.Continuation
 
     let seed: String
+    /// The words' whole BIP39 seed (64 bytes, hex): the master LUD-05's
+    /// linking keys come from, a new identity per app that signs a visitor
+    /// in (`signVisitor`). `seed` is its first half, which cannot reach it.
+    let bip39Seed: String
     let network: String
     /// This account's key (child index 0, hex), which signs every message we
     /// send, signs in to the memes server and names our preferences file there.
@@ -283,7 +287,9 @@ public actor Engine {
     static let registerSettle: Duration = .milliseconds(750)
 
     public init(mnemonic: String, storage: Storage) throws {
-        seed = try Self.seed(of: mnemonic)
+        bip39Seed = try Sphinxrs.mnemonicToBip39Seed(mnemonic: Self.normalise(mnemonic: mnemonic))
+        // The Sphinx seed is its first half (`seed(of:)`, CLN's hsm_secret): one PBKDF2, not two.
+        seed = String(bip39Seed.prefix(64))
         self.storage = storage
         network = try storage.value(for: .network) ?? "bitcoin"
         let persisted = try Self.loadPersistedState(storage)

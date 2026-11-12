@@ -13,6 +13,8 @@ struct WalletConnectSheetView: View {
     @State private var limit: String
     @State private var overLimit: WalletConnection.OverBudget = .ask
     @State private var optional: Set<WalletMethod>
+    /// Who the person signs in as, when the sheet asks.
+    @State private var identity: SignInKey?
 
     init(sheet: WalletConnectSheet, done: @escaping @MainActor (WalletConnectAnswer?) -> Void) {
         self.sheet = sheet
@@ -20,6 +22,7 @@ struct WalletConnectSheetView: View {
         _limit = State(initialValue: sheet.maxAmountMsat.map { Sats.number(msat: $0).replacingOccurrences(of: ",", with: "") } ?? "")
         _optional = State(initialValue: Set(sheet.optional))
         _overLimit = State(initialValue: sheet.held?.overBudget ?? .ask)
+        _identity = State(initialValue: sheet.signIn?.keys.first)
     }
 
     /// The limit typed, in msat, never above what was asked; nil for none.
@@ -34,74 +37,96 @@ struct WalletConnectSheetView: View {
     }
 
     var body: some View {
+        let answers = WalletWords.connectAnswers(sheet)
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Connect \(sheet.title) to your wallet?")
+                Text(WalletWords.connectTitle(sheet))
                     .font(Theme.font(16, .semibold))
                 Text(WalletWords.who(title: sheet.title, app: sheet.app, version: sheet.version, place: sheet.place,
                                      byOrg: sheet.byOrg))
                     .muted()
             }
             FactList(labelWidth: 120) {
-                Fact("It may") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(WalletWords.methods(sheet.required), id: \.self) { Text($0) }
-                        ForEach(sheet.optional, id: \.self) { method in
-                            Toggle(WalletWords.method(method), isOn: Binding(
-                                get: { optional.contains(method) },
-                                set: { if $0 { optional.insert(method) } else { optional.remove(method) } }
-                            ))
-                            .toggleStyle(.checkbox)
+                if let offer = sheet.signIn {
+                    Fact("Sign in") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Picker("Sign in", selection: $identity) {
+                                ForEach(offer.keys, id: \.self) { key in
+                                    Text(WalletWords.signIn(key)).tag(Optional(key))
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.radioGroup)
+                            if let identity { Text(WalletWords.signInNote(identity)).muted().fixedSize(horizontal: false, vertical: true) }
                         }
-                        if !sheet.notifications.isEmpty { Text("Hear when its own payments land").muted() }
                     }
                 }
-                Fact("Spending limit") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            TextField("None", text: $limit)
-                                .textFieldStyle(.roundedBorder)
-                                .monospacedDigit()
-                                .frame(width: 110)
-                            Text("sats").muted()
-                        }
-                        Text(raised ? "Up to what the app asked for, \(Sats.format(msat: sheet.maxAmountMsat ?? 0))."
-                                    : WalletWords.limit(limitMsat, renewal: sheet.renewal))
-                            .muted()
-                        Text("Inside it, the app pays without asking you.").muted()
-                    }
-                }
-                Fact("Over the limit") {
-                    Picker("Over the limit", selection: $overLimit) {
-                        Text("Ask me each time").tag(WalletConnection.OverBudget.ask)
-                        Text("Refuse").tag(WalletConnection.OverBudget.refuse)
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.radioGroup)
-                }
-                if let expires = sheet.expiresAt {
-                    Fact("Ends", text: Date(timeIntervalSince1970: TimeInterval(expires)).formatted(date: .abbreviated, time: .shortened))
-                }
+                if sheet.asksWallet { walletFacts }
             }
-            Text("You can lower, raise or take this back in Account › Payments.")
+            Text(sheet.asksWallet ? "You can lower, raise or take this back in Account › Payments."
+                                  : "You can take this back in Account › Payments › Connected apps.")
                 .muted()
             HStack {
                 Spacer()
-                Button("Don't connect") { done(nil) }
+                Button(answers.no) { done(nil) }
                     .buttonStyle(.peel(.outline))
                     .keyboardShortcut(.cancelAction)
-                Button("Connect") {
-                    done(WalletConnectAnswer(optional: Array(optional), maxAmountMsat: limitMsat, overBudget: overLimit))
+                Button(answers.yes) {
+                    done(WalletConnectAnswer(optional: Array(optional), maxAmountMsat: limitMsat, overBudget: overLimit,
+                                             signIn: identity))
                 }
                 .buttonStyle(.peel(.primary))
                 // No Return: a key meant for the page must never say yes.
-                .disabled(!settled)
+                .disabled(!settled || (sheet.signIn != nil && identity == nil))
             }
         }
         .font(Theme.font(13))
         .padding(24)
         .frame(width: 460)
         .task { settled = await WalletSheetSettle.wait() }
+    }
+
+    /// What the app may spend: its methods, the limit, over it, the end.
+    @ViewBuilder private var walletFacts: some View {
+        Fact("It may") {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(WalletWords.methods(sheet.required), id: \.self) { Text($0) }
+                ForEach(sheet.optional, id: \.self) { method in
+                    Toggle(WalletWords.method(method), isOn: Binding(
+                        get: { optional.contains(method) },
+                        set: { if $0 { optional.insert(method) } else { optional.remove(method) } }
+                    ))
+                    .toggleStyle(.checkbox)
+                }
+                if !sheet.notifications.isEmpty { Text("Hear when its own payments land").muted() }
+            }
+        }
+        Fact("Spending limit") {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    TextField("None", text: $limit)
+                        .textFieldStyle(.roundedBorder)
+                        .monospacedDigit()
+                        .frame(width: 110)
+                    Text("sats").muted()
+                }
+                Text(raised ? "Up to what the app asked for, \(Sats.format(msat: sheet.maxAmountMsat ?? 0))."
+                            : WalletWords.limit(limitMsat, renewal: sheet.renewal))
+                    .muted()
+                Text("Inside it, the app pays without asking you.").muted()
+            }
+        }
+        Fact("Over the limit") {
+            Picker("Over the limit", selection: $overLimit) {
+                Text("Ask me each time").tag(WalletConnection.OverBudget.ask)
+                Text("Refuse").tag(WalletConnection.OverBudget.refuse)
+            }
+            .labelsHidden()
+            .pickerStyle(.radioGroup)
+        }
+        if let expires = sheet.expiresAt {
+            Fact("Ends", text: Date(timeIntervalSince1970: TimeInterval(expires)).formatted(date: .abbreviated, time: .shortened))
+        }
     }
 
     /// The sheet has been up long enough that a click meant for the page
@@ -129,7 +154,6 @@ enum WalletSheetSettle {
 struct WalletPaymentSheetView: View {
     let sheet: WalletPaymentSheet
     let done: @MainActor (Bool) -> Void
-    @State private var attempt = PaymentAttempt()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -158,23 +182,36 @@ struct WalletPaymentSheetView: View {
             if let comment = sheet.comment {
                 Callout(.neutral, "The app says", detail: "“\(comment)”")
             }
-            HStack {
-                Spacer()
-                Button("Decline") { done(false) }
-                    .buttonStyle(.peel(.outline))
-                    .keyboardShortcut(.cancelAction)
-                // Pay arms, the second click pays, each only once the sheet
-                // (then the armed button) has settled; never on Return.
-                PayButton(verb: "Pay", totalMsat: settled ? UInt64(max(sheet.amountMsat, 0)) : nil, attempt: attempt,
-                          send: { confirmed in
-                              let amount = UInt64(max(sheet.amountMsat, 0))
-                              return confirmed == amount && armedSettled ? .sent : .needsConfirmation(msat: amount)
-                          }, sent: { done(true) }, isDefault: false, namesAmount: true)
-            }
+            WalletPayFooter(amountMsat: sheet.amountMsat, done: done)
         }
         .font(Theme.font(13))
         .padding(24)
         .frame(width: 440)
+    }
+}
+
+/// A wallet sheet's Decline and Pay: Pay arms, the second click pays, each
+/// only once the sheet (then the armed button) has settled
+/// (`WalletSheetSettle`); never on Return.
+struct WalletPayFooter: View {
+    let amountMsat: Int64
+    let done: @MainActor (Bool) -> Void
+    @State private var attempt = PaymentAttempt()
+    @State private var settled = false
+    /// Pay has been armed long enough that the click that armed it, doubled, cannot pay.
+    @State private var armedSettled = false
+
+    var body: some View {
+        let amount = UInt64(max(amountMsat, 0))
+        HStack {
+            Spacer()
+            Button("Decline") { done(false) }
+                .buttonStyle(.peel(.outline))
+                .keyboardShortcut(.cancelAction)
+            PayButton(verb: "Pay", totalMsat: settled ? amount : nil, attempt: attempt,
+                      send: { confirmed in confirmed == amount && armedSettled ? .sent : .needsConfirmation(msat: amount) },
+                      sent: { done(true) }, isDefault: false, namesAmount: true)
+        }
         .task { settled = await WalletSheetSettle.wait() }
         .task(id: attempt.armed) {
             armedSettled = false
@@ -182,10 +219,41 @@ struct WalletPaymentSheetView: View {
             armedSettled = await WalletSheetSettle.wait()
         }
     }
+}
 
-    @State private var settled = false
-    /// Pay has been armed long enough that the click that armed it, doubled, cannot pay.
-    @State private var armedSettled = false
+/// The CREDIT sheet (specs/WALLET.md §1.2): credit bought on a stranger's
+/// strut server for a launch in its public app. The server by the host Peel
+/// opened, the price as Peel decoded it, and the rest (the app, the
+/// workflow, the credit it says the payment buys, its description) marked
+/// as the server's. Paid on a second click, as every payment here.
+struct WalletCreditSheetView: View {
+    let sheet: WalletCreditSheet
+    let done: @MainActor (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(WalletWords.creditTitle(sheet))
+                    .font(Theme.font(16, .semibold))
+                Text(WalletWords.creditApp(sheet))
+                    .muted()
+            }
+            BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 30)
+            FactList(labelWidth: 100) {
+                Fact("Runs", text: sheet.workflow)
+                Fact("Buys", text: WalletWords.creditBuys(sheet))
+                Fact("Expires", text: Date(timeIntervalSince1970: TimeInterval(sheet.expiresAt)).formatted(.relative(presentation: .named)))
+                Fact("Fee", text: "Added on top")
+            }
+            Callout(.neutral, "The server says", detail: "“\(sheet.description)”")
+            Text(WalletWords.creditNote(sheet))
+                .muted()
+            WalletPayFooter(amountMsat: sheet.amountMsat, done: done)
+        }
+        .font(Theme.font(13))
+        .padding(24)
+        .frame(width: 440)
+    }
 }
 
 /// Account › Payments › Connected apps: each app (or org) the person
@@ -224,39 +292,10 @@ private struct ConnectedAppRow: View {
         Fact(connection.title) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(connection.place).muted()
-                ForEach(WalletWords.methods(connection.methods), id: \.self) { Text($0).muted() }
-                Text(WalletWords.limit(connection.maxAmountMsat, renewal: connection.renewal))
-                if let spent, connection.maxAmountMsat != nil {
-                    Text("\(Sats.format(msat: spent.usedMsat)) spent"
-                         + (spent.renewsAt.map { ", renews \(Date(timeIntervalSince1970: TimeInterval($0)).formatted(.relative(presentation: .named)))" } ?? ""))
-                        .monospacedDigit()
-                        .muted()
-                }
-                Picker("Over the limit", selection: Binding(
-                    get: { connection.overBudget }, set: { model.setOverLimit(connection.key, $0) }
-                )) {
-                    Text("Over the limit, ask me").tag(WalletConnection.OverBudget.ask)
-                    Text("Over the limit, refuse").tag(WalletConnection.OverBudget.refuse)
-                }
-                .labelsHidden()
-                .fixedSize()
-                if editing {
-                    HStack(spacing: 6) {
-                        TextField("None", text: $limit)
-                            .textFieldStyle(.roundedBorder)
-                            .monospacedDigit()
-                            .frame(width: 110)
-                        Text("sats").muted()
-                        Button("Save") {
-                            model.setSpendingLimit(connection.key, msat: Sats.msat(limit).map(Int64.init(clamping:)))
-                            editing = false
-                        }
-                        .buttonStyle(.peel(.primary))
-                        Button("Cancel") { editing = false }.buttonStyle(.peel(.outline))
-                    }
-                }
+                if let signIn = connection.signIn { Text(WalletWords.signsIn(signIn, to: connection.place)) }
+                if !connection.methods.isEmpty { walletRows }
                 HStack(spacing: 8) {
-                    if !editing {
+                    if !editing, !connection.methods.isEmpty {
                         Button("Change limit") {
                             limit = connection.maxAmountMsat.map { String($0 / 1000) } ?? ""
                             editing = true
@@ -274,5 +313,40 @@ private struct ConnectedAppRow: View {
             }
         }
         .task(id: connection) { spent = await model.walletUsage(connection.key) }
+    }
+
+    /// What it may spend: its methods, the limit and what it spent, over it.
+    @ViewBuilder private var walletRows: some View {
+        ForEach(WalletWords.methods(connection.methods), id: \.self) { Text($0).muted() }
+        Text(WalletWords.limit(connection.maxAmountMsat, renewal: connection.renewal))
+        if let spent, connection.maxAmountMsat != nil {
+            Text("\(Sats.format(msat: spent.usedMsat)) spent"
+                 + (spent.renewsAt.map { ", renews \(Date(timeIntervalSince1970: TimeInterval($0)).formatted(.relative(presentation: .named)))" } ?? ""))
+                .monospacedDigit()
+                .muted()
+        }
+        Picker("Over the limit", selection: Binding(
+            get: { connection.overBudget }, set: { model.setOverLimit(connection.key, $0) }
+        )) {
+            Text("Over the limit, ask me").tag(WalletConnection.OverBudget.ask)
+            Text("Over the limit, refuse").tag(WalletConnection.OverBudget.refuse)
+        }
+        .labelsHidden()
+        .fixedSize()
+        if editing {
+            HStack(spacing: 6) {
+                TextField("None", text: $limit)
+                    .textFieldStyle(.roundedBorder)
+                    .monospacedDigit()
+                    .frame(width: 110)
+                Text("sats").muted()
+                Button("Save") {
+                    model.setSpendingLimit(connection.key, msat: Sats.msat(limit).map(Int64.init(clamping:)))
+                    editing = false
+                }
+                .buttonStyle(.peel(.primary))
+                Button("Cancel") { editing = false }.buttonStyle(.peel(.outline))
+            }
+        }
     }
 }

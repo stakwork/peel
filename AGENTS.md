@@ -127,7 +127,8 @@ is a short plan. Update the status and the journal when you finish something.
     `DictationHistoryTests`
   - `Storage+Wallet.swift` — the app wallet's tables (v33):
     `WalletConnection` (what the person granted an app, or on the iPhone an
-    org; its reads, live updates, save and revoke), the tagged keysends and
+    org, and the key it signs the person in with, `signIn`, v34; its reads,
+    live updates, save and revoke), the tagged keysends and
     invoices as `WalletRecord`s (`walletRecords`, `walletRecordUpdates`,
     fees from the history and the ping), `keepPreimage` (only one that
     hashes to the payment's hash)
@@ -176,12 +177,40 @@ is a short plan. Update the status and the journal when you finish something.
     renewal from creation)
   - `WalletHost.swift` — the native wallet host strut's UI relays to
     (`docs/app-wallet.md`): `AppWallet`, `WalletScope` (an app on the Mac,
-    an org on the iPhone), `WalletApp` and `WalletRequest` (what a message
-    names), the sheets (`WalletConnectSheet`, `WalletPaymentSheet`,
-    `WalletPerson`), and `WalletHost`: the params, the connection, the
+    an org on the iPhone; a stranger's public app, `remote` by its seller
+    on the Mac, `origin` by what Peel loaded on the iPhone, and
+    `visitorHost`, the host a challenge must name and a credit sheet
+    names), `WalletApp` and `WalletRequest` (what a message names), the
+    sheets (`WalletConnectSheet` with its `SignInOffer`,
+    `WalletPaymentSheet`, `WalletCreditSheet`, `WalletPerson`), and
+    `WalletHost`: the params, the connection, the
     limit, sheets only after a gesture, one at a time, given up after nine
     minutes, notifications of a connection's own transactions after its
-    pay call's answer (`WalletPush`)
+    pay call's answer (`WalletPush`); the host's own ops,
+    `host_capability`, `sign_in` (docs/app-wallet.md, "Signing in": a
+    strut challenge for that host alone, the grant on the one sheet, a
+    later sign-in with a toast) and `buy_credit` with its status and
+    cancel ("Buying credit": the invoice decoded to the purchase, its own
+    sheet each time, kept under `creditKey` and never paid twice, the sheet
+    down when the invoice ends or the page withdraws it)
+  - `VisitorSignIn.swift` — signing a visitor in: `SignInKey` (as you, or a
+    new identity for the app), `VisitorChallenge` (strut's
+    `strut-visitor.<claims>.<hmac>`, read, never verified: the only thing
+    signed for a page), `Seller` (strut's `isSellerUrl`, a seller's host and
+    base), `SignInRequest` and its `problems` (a port of strut's, held to
+    its `sign_in_requests` vectors), `VisitorSignature` (`{ key, sig }`);
+    the engine's `signVisitor` (Engine+Wallet.swift) signs one with the
+    account's key, or with LUD-05's linking key for its host from the
+    words' whole BIP39 seed (`Engine.bip39Seed`)
+  - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
+    server for a visitor's page (strut's specs/WALLET.md §1.2) and its
+    `problems` (a port of strut's `creditPurchaseProblems`, held to its
+    `credit_purchases` vectors)
+  - `PublicApp.swift` — `PublicAppLink`, a stranger's public app as Peel
+    opens it from `peel://open?url=<address>` (https, or http to this
+    machine): its seller, the app it names, its origin, and the app a
+    served box serves (`appName`: `?app=`, its `strut-serve` meta, its
+    public view's only app)
   - `PaymentHistory.swift` — `PaymentItem`, `PaymentRequest`,
     `PurchaseState` and the Storage reads that join the money tables
   - `Sats.swift` — amounts as people see and type them (display and input
@@ -431,7 +460,10 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+Wallet` (the app wallet's host, open with the account, its
   notifications handed to the pages that listen, Connected apps:
   `walletConnections`, the limit, over the limit, revoke; `WalletWords`, its
-  words for the person, a spending limit never a budget), `AppModel+Contacts`
+  words for the person, a spending limit never a budget, and signing in:
+  "as you", "as a new identity for this app", the toast), `PublicPage` (a
+  stranger's public app the iPhone loads itself, keyed by its origin),
+  `AppModel+Contacts`
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
   matches, stepping through them with `focus(on:inThread:)`);
@@ -580,10 +612,14 @@ is a short plan. Update the status and the journal when you finish something.
   "Built: deep links");
   `StrutWalletBridge` (the app wallet's `strutWallet` handler on an app's
   page of Peel's strut, its main frame at that strut's origin only, the app
-  named by the web view's own address; `MacWalletPerson` and
-  `WalletSheetPresenter`, the sheets over the page's window) and
-  `WalletSheets` (the connect sheet, the payment sheet with `PayButton`'s
-  second click, Account › Payments › Connected apps; `docs/app-wallet.md`);
+  named by the web view's own address, or a stranger's public app it hosts
+  by the seller and app that address names; `MacWalletPerson` with its
+  toast and `WalletSheetPresenter`, the sheets over the page's window) and
+  `WalletSheets` (the connect sheet with its sign-in choice, the payment
+  and credit sheets with `PayButton`'s second click, Account › Payments › Connected
+  apps; `docs/app-wallet.md`); `AppModel+PublicApps` (`openPublicApp`, a
+  `peel://open` link's app in the web pane through Peel's own strut's UI,
+  strut's remote mode);
   `ChatSearch` (⌘F: the search bar under a chat's header and its results
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
@@ -798,9 +834,11 @@ is a short plan. Update the status and the journal when you finish something.
   (Chats' Apps row: Talk to Jamie on each workspace, its screen a
   full-screen cover; then the workspaces' pinned apps, A–Z, opened in
   `OrgPageSheet`, pulled to read again), `OrgWallet` (the app wallet on the iPhone: `OrgWalletBridge`, keyed by
-  the org, the main frame at its origin only; `PhoneWalletSheets` and the
-  connect and payment sheets, the latter with `TouchPayButton`; You ›
-  Connected apps), `OrgPageSheet` (a
+  the org, or by the origin of a stranger's page, the main frame at its origin only; `PhoneWalletSheets` and the
+  connect sheet with its sign-in choice, the payment and credit sheets with `TouchPayButton`, the toast; You ›
+  Connected apps), `OrgPageSheet` (generic over `PhonePage`: an org's `OrgPageRequest`,
+  or a stranger's `PublicPage` a `peel://open` link opened, loaded with no credential and kept to its origin;
+  a
   deliverable or an app on its org's own strut, strut's UI showing it alone in a
   `WKWebView` whose store keeps nothing, over PeelUI's `OrgPageRequest`: the person's token as the first
   request's bearer and handed to the page's storage before its script
@@ -1125,7 +1163,14 @@ is a short plan. Update the status and the journal when you finish something.
   `WalletHostTests` (the ten scenarios against a scripted wallet and
   person, and the gesture, one sheet, timeout, isolation, an org, renewal),
   `WalletEngineTests` (the preimage, a keysend through the real core, the
-  limit in the payment's own write, the history, the state stream);
+  limit in the payment's own write, the history, the state stream),
+  `VisitorSignInTests` (strut's sign-in vectors, signed by the linked core;
+  the guard on each device, the sheet, the grant, revoking, one sheet for
+  both), `CreditPurchaseTests` (strut's credit vectors, its reader of the
+  host's answer; the guard, the sheet, paid once, status, a decline, the
+  page withdrawing its sheet, the invoice ending it) and `PublicAppTests`
+  (the `peel://open` link, the Mac's remote
+  address, which app a served box serves);
   the audits' `AuditInputTests`, `AuditMoneyTests`, `AuditNetworkTests` and
   `AuditSecretsTests`; `TestSupport` (fixtures only these use). No PeelAgent,
   so they also run on iOS

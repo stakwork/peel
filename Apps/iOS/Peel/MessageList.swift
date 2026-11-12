@@ -46,6 +46,8 @@ struct MessageList: View {
     @State private var settledPin: Task<Void, Never>?
     /// The check after a size change that the list is not blank, replaced by each change.
     @State private var blankCheck: Task<Void, Never>?
+    /// Your message, or the newest's follower's, came while the list opened: it goes there once open.
+    @State private var newestWhileOpening = false
 
     /// Where a list opens.
     enum Start: Equatable {
@@ -225,7 +227,12 @@ struct MessageList: View {
         .onChange(of: live) { _, live in if live { resume() } }
         // Yours always take you to the newest; others' only while following.
         .onChange(of: rows.last?.id) { _, _ in
-            guard live, reachesNewest, !opening else { return }
+            guard live, reachesNewest else { return }
+            // Not followed by the opening pass: once it is open (never over "New messages"' anchor).
+            if opening {
+                if rows.last?.shown.last?.fromMe == true || (following && start == .newest) { newestWhileOpening = true }
+                return
+            }
             // Following means still at the bottom: one scrolled up stays put.
             if rows.last?.shown.last?.fromMe == true || (following && bottom.atBottom) { scrollToNewest() }
         }
@@ -358,6 +365,33 @@ struct MessageList: View {
         }
         opening = false
         settled()
+        if newestWhileOpening {
+            newestWhileOpening = false
+            scrollToNewest()
+        }
+        // Rows and none made in view, whatever `following` says and whatever the size did.
+        blankCheck?.cancel()
+        blankCheck = Task {
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else { return }
+            rescueBlank("opened")
+        }
+    }
+
+    /// A list with rows but none made in its viewport is blank, at "New
+    /// messages" (`following` false) as at the newest: back to the unread
+    /// marker while it still marks what is unread, else the end. Not one with
+    /// a row in view (the reader's place), nor while it opens or is dragged.
+    private func rescueBlank(_ path: String) {
+        guard live, !opening, !userScrolling,
+              ListBottom.needsRescue(rowsCount: rows.count, realisedCount: layout.showsRow ? layout.tops.count : 0) else { return }
+        if dividerUnread, !following, let divider {
+            TimelineLog.log("\(TimelineLog.tag(composer)) blank rescue (\(path)): to new messages, rows \(rows.count)")
+            position.scrollTo(id: divider.id, anchor: .top)
+        } else if reachesNewest {
+            TimelineLog.log("\(TimelineLog.tag(composer)) blank rescue (\(path)): to newest, rows \(rows.count)")
+            keepLastRowInView()
+        }
     }
 
     /// Never over a list that stands at the newest, however stale the flags.
@@ -396,6 +430,7 @@ struct MessageList: View {
         // transiently empty while lazy rows recycle mid-scroll, and pinning then
         // would yank a scrolled-up reader to the bottom at the idle transition.
         if !opening, !rows.isEmpty, layout.tops.isEmpty, following, bottom.atBottom, reachesNewest { keepLastRowInView() }
+        rescueBlank("settled")
         keepPlace()
         guard !opening, bottom.atBottom, phase == .idle else { return }
         var bottom = self.bottom

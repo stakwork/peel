@@ -14,10 +14,13 @@ import PeelUI
 struct AgentLink: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
+    /// The agent's DM, for its last message and date.
+    var conversation: Conversation?
 
     var body: some View {
         let unread = model.agentUnread
-        SidebarLink(agent.name, to: model.agentDestination, unread: unread > 0) {
+        SidebarLink(agent.name, to: model.agentDestination, unread: unread > 0,
+                    preview: conversation?.previewLine, previewDate: conversation?.dateLabel()) {
             PeelLogo(size: 18)
         } accessory: {
             if model.agentWaiting {

@@ -64,7 +64,11 @@ struct Sidebar: View {
                         if !sections.unread.isEmpty {
                             SidebarSection("Unread") {
                                 ForEach(sections.unread) { conversation in
-                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                                    if conversation.chat == model.agentChat, let agent = model.agent {
+                                        AgentLink(agent: agent, conversation: conversation)
+                                    } else {
+                                        ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                                    }
                                 }
                             }
                         }
@@ -85,7 +89,7 @@ struct Sidebar: View {
                         SidebarSection("Direct messages",
                                        expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
                             if let agent = shownAgent(sections) {
-                                AgentLink(agent: agent)
+                                AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
                             }
                             ForEach(sections.direct) { conversation in
                                 ConversationLink(conversation: conversation, state: readStates[conversation.chat])
@@ -184,7 +188,7 @@ struct Sidebar: View {
     /// or the chat is, and matching the search.
     private func shownAgent(_ sections: ChatSections) -> AgentSession? {
         // Like a chat: always while open or unread, in a closed section too.
-        guard let agent = model.agent,
+        guard let agent = model.agent, !sections.unread.contains(where: { $0.chat == model.agentChat }),
               sections.directOpen || sections.searching || model.destination == model.agentDestination
                 || model.agentUnread > 0
         else { return nil }

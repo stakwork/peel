@@ -143,7 +143,7 @@ it, and the person is then `secp:<x-only key>` there.
   m/138'/a/b/c/d from its HMAC of the host. It is the key any BIP39
   wallet holding the same twelve words derives for that domain, so an
   LNURL-auth login there is the same visitor. Signed by the core
-  (sphinx-rs v0.8.43, stakwork/sphinx-rs#106: `sign_bytes_lud05`), in
+  (sphinx-rs v0.8.43 and on, stakwork/sphinx-rs#106: `sign_bytes_lud05`), in
   `sign_bytes`' format, so strut's one `ln-message` verifier checks both.
   The owner chose the words over Sphinx's own master on 2026-11-11.
 - **The way in.** A `peel://open?url=<address>` link (`PublicAppLink`),

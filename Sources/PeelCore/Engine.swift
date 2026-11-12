@@ -221,6 +221,9 @@ public actor Engine {
 
     /// History fetches and where history stands (`HistoryCursor`).
     var history = HistoryCursor()
+    /// The tribes and stages already noted once this run (`traceTribe`), for the stages every message of a
+    /// tribe would repeat.
+    var tracedTribes: Set<String> = []
     var historyWatchdog: Task<Void, Never>?
     typealias CoreRecoveryReason = DiagnosticEvent.CoreRecoveryReason
     /// The core's failures in a row, across connections: reset by a history page handled and by `caughtUp`.
@@ -385,6 +388,7 @@ public actor Engine {
         // photo get them on their first start instead.
         guard !closed else { return }
         if !restoring { recoverOwnProfile() }
+        traceTribes()
         self.allowUntrustedCertificate = allowUntrustedCertificate
         keepConnected = true
         watchNetwork()
@@ -1579,6 +1583,7 @@ public actor Engine {
             // tribe is known; our join, or the owner's approval naming us,
             // makes it one to ask our own tribes registry about.
             if decoded.unfiled, knownTribes[message.chat] == nil {
+                traceTribe(.held, message)
                 let host = tribeToConfirm(message, state: newState)
                 if host != nil { followUps.confirmTribes = true }
                 held.append((message.chat, msg, host))
@@ -1589,17 +1594,29 @@ public actor Engine {
                 knownTribes[found.pubkey] = found
                 commit.tribes.append(found)
                 followUps.discoveredTribes = true
+                traceTribe(.discovered, message)
             }
             // Ours signed by the chat itself is a tribe's forward or forged. The
             // core files any signer as a contact at the index it wrote to, so
             // a contact without a contact key is no proof of a tribe.
-            if decoded.signedByChat, knownTribes[message.chat] == nil { continue }
+            if decoded.signedByChat, knownTribes[message.chat] == nil {
+                traceTribe(.unknownSigner, message)
+                continue
+            }
+            // Ours, or the owner's decisions (which may name us): not other members' joins and leaves.
+            if knownTribes[message.chat] != nil, Self.membershipTypes.contains(message.type),
+               message.fromMe || ![MessageType.groupJoin, MessageType.groupLeave, MessageType.memberRequest].contains(message.type) {
+                traceTribe(.membershipMessage, message)
+            }
             if !keepMembership, let tribe = knownTribes[message.chat],
                let changed = Self.membership(
                    after: message, in: tribe, sent: tribe.sentAlias(account: alias), echoed: echoedAliases[message.chat] ?? [],
                    replaying: restoring) {
                 knownTribes[tribe.pubkey] = changed
                 commit.tribes.append(changed)
+                let stage: DiagnosticEvent.TribeTraceStage = changed.left == tribe.left ? .statusChanged
+                    : changed.left ? .markedLeft : .markedJoined
+                traceTribe(stage, message, status: changed.status.rawValue)
             }
             var replaces: String?
             if let tribe = knownTribes[message.chat] {
@@ -1613,6 +1630,7 @@ public actor Engine {
                        [MessageType.groupLeave, MessageType.groupJoin].contains(message.type) {
                         commit.messages.append((message, false, decoded.fields?.originalUuid))
                     }
+                    traceTribe(.droppedLeft, message)
                     continue
                 }
                 // The sender pubkey is the tribe's; the alias and photo are

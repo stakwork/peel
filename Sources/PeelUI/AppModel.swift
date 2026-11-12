@@ -523,8 +523,11 @@ public final class AppModel {
         if let heldUnread, heldUnread.chat == selectedChat, states[heldUnread.chat]?.isUnread != true {
             states[heldUnread.chat] = heldUnread
         }
-        // The agent's DM is the agent's own row.
-        let chats = agentChat.map { agent in conversations.filter { $0.chat != agent } } ?? conversations
+        // The agent's DM is the agent's own row, until it is unread: then
+        // it is in Unread like any chat.
+        let chats = agentChat.map { agent in
+            states[agent]?.isUnread == true ? conversations : conversations.filter { $0.chat != agent }
+        } ?? conversations
         return ChatSections(chats, states: states, layout: sidebarLayout, query: searchQuery, open: selectedChat)
     }
 

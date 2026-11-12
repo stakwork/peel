@@ -143,6 +143,50 @@ public enum WalletWords {
         }
     }
 
+    /// Who the person signs in as (strut's plans/app-payments.md §4.4).
+    public static func signIn(_ key: SignInKey) -> String {
+        switch key {
+        case .root: "As you"
+        case .domain: "As a new identity for this app"
+        }
+    }
+
+    /// What each choice means, under it.
+    public static func signInNote(_ key: SignInKey) -> String {
+        switch key {
+        case .root: "Your Sphinx account: every app you sign in to this way sees the same you."
+        case .domain: "A key for this app alone: no other app can tell it is you. Payments still come from your account."
+        }
+    }
+
+    /// The connection sheet's title: connecting a wallet, signing in, or both.
+    public static func connectTitle(_ sheet: WalletConnectSheet) -> String {
+        switch (sheet.asksWallet, sheet.signIn) {
+        case (false, let offer?): "Sign in to \(offer.host)?"
+        case (true, let offer?): "Sign in to \(offer.host) and connect your wallet?"
+        case (_, nil): "Connect \(sheet.title) to your wallet?"
+        }
+    }
+
+    /// Its yes and its no.
+    public static func connectAnswers(_ sheet: WalletConnectSheet) -> (yes: String, no: String) {
+        switch (sheet.asksWallet, sheet.signIn != nil) {
+        case (false, true): ("Sign in", "Don't sign in")
+        case (true, true): ("Sign in and connect", "Not now")
+        default: ("Connect", "Don't connect")
+        }
+    }
+
+    /// The toast for a sign-in within a connection, with no sheet.
+    public static func signedIn(to host: String, as key: SignInKey) -> String {
+        key == .root ? "Signed in to \(host) as you" : "Signed in to \(host) as its own identity"
+    }
+
+    /// A connection's sign-in in Connected apps.
+    public static func signsIn(_ key: SignInKey, to place: String) -> String {
+        key == .root ? "Signs you in to \(place) as you" : "Signs you in to \(place) as a new identity"
+    }
+
     /// Who is asking, from Peel's own record: the app on the Mac, the org
     /// on the iPhone (whose page names the app).
     public static func who(title: String, app: String, version: String, place: String, byOrg: Bool) -> String {

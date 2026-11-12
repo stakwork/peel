@@ -107,6 +107,26 @@ extension Engine {
             return status == .paid || status == .failed ? true : nil
         }
     }
+
+    /// Signs a strut visitor challenge (strut's plans/app-payments.md
+    /// §4.4): a Lightning signed message over its UTF-8 bytes, with the
+    /// account's own key (`.root`: child index 0, which its payments come
+    /// from; sphinx-rs `sign_bytes`), or with the LUD-05 linking key for the
+    /// challenge's host (`.domain`: a new identity for that app alone, the
+    /// one any BIP39 wallet with these words derives there;
+    /// `sign_bytes_lud05`). Only a challenge the wallet host read and
+    /// checked, so never a message a page chose.
+    func signVisitor(_ challenge: VisitorChallenge, as key: SignInKey) throws -> VisitorSignature {
+        let message = Data(challenge.text.utf8)
+        switch key {
+        case .root:
+            let sig = try Sphinxrs.signBytes(seed: seed, idx: 0, time: clock.next(), network: network, msg: message)
+            return VisitorSignature(key: accountKey, sig: sig)
+        case .domain:
+            let signed = try Sphinxrs.signBytesLud05(bip39Seed: bip39Seed, domain: challenge.host, msg: message)
+            return VisitorSignature(key: signed.pubkey, sig: signed.sig)
+        }
+    }
 }
 
 extension Storage {
@@ -229,6 +249,13 @@ public struct EngineWallet: AppWallet {
     public func payeeName(_ pubkey: String) async -> String? {
         try? engine.storage.contactAlias(pubkey: pubkey)
     }
+
+    public func signVisitor(_ challenge: VisitorChallenge, as key: SignInKey) async throws -> VisitorSignature {
+        try await engine.signVisitor(challenge, as: key)
+    }
+
+    /// A key of one domain alone: LUD-05's linking key from the words.
+    public var signsPerDomain: Bool { true }
 
     /// Each change of an app's transaction to settled or failed (or an
     /// invoice made to settled or expired), whichever way it came: the

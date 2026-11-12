@@ -97,6 +97,76 @@ app frame ◀─notification──── strut's UI ◀── window.strutWallet
   connection's own transactions and the types it asked for, once, and
   never before the pay call's own answer.
 
+## Signing in (strut's item 9)
+
+strut's plans/app-payments.md §4.4, §5.3, R6 and R7; the wire is
+`sign_in` in specs/WALLET.md §1.2, beside #625's `buy_credit`. A public
+app on a box Peel is not paired with signs the person in by having Peel
+sign strut's visitor challenge; the seller's `ln-message` verifier checks
+it, and the person is then `secp:<x-only key>` there.
+
+- **What is signed.** Only a strut visitor challenge,
+  `strut-visitor.<claims>.<hmac>` (`VisitorChallenge`), and only when its
+  `host` is the one Peel's own record names and it has not ended
+  (`SignInRequest.problems`, a port of strut's `signInRequestProblems`).
+  There is no general `sign_message`: the engine's `signVisitor` takes a
+  parsed challenge and nothing else.
+- **Whose host.** On the Mac, the seller the page's own address names:
+  Peel's strut UI hosting the stranger's app in remote mode
+  (`?app=<name>&public=1&from=<seller>`, `StrutUI.remote`,
+  `WalletScope.remote`), and the request's `seller` must be that one. On
+  the iPhone, the origin Peel loaded itself (`PublicPage`,
+  `WalletScope.origin`): the page's `seller` and app are its own claims and
+  are not read.
+- **The grant.** It rides the wallet connection (`WalletConnection.signIn`,
+  v34): `root` (as you: the account's key, child index 0, the one payments
+  come from) or `domain` (a new identity for this app). The first sign-in
+  asks on the connection sheet, only after the person's click or tap; a
+  challenge that takes only the domain's key (`visitorKey: domain`) offers
+  only that. When the page already asked for a wallet (`capability`), the
+  same sheet asks for it too: ONE sheet. Later sign-ins to the same origin
+  sign with no sheet and a toast. Disconnecting ends both. A connection
+  that only signs in holds no wallet: `connected` is false and every
+  method is `RESTRICTED`.
+- **The sheet ends with the challenge.** strut's UI stops waiting when the
+  challenge ends (60 s), so the sheet is taken down then (`RESTRICTED`). A
+  yes given just as it ended is kept, and answered `RESTRICTED`; the next
+  sign-in signs with no sheet.
+- **`host_capability`** answers `{ version: 1, ops: ["sign_in"], wallet:
+  "Peel" }` on a stranger's page, and no ops on a page of the person's own
+  strut or an org's (whose viewer is known). `buy_credit` is not built
+  yet.
+- **A new identity is LUD-05's linking key** for the challenge's host,
+  from the words: the whole 64-byte BIP39 seed (`Engine.bip39Seed`, made
+  at unlock beside the Sphinx seed, which is its first half and cannot
+  reach the standard BIP32 master), m/138'/0 as the hashing key, and
+  m/138'/a/b/c/d from its HMAC of the host. It is the key any BIP39
+  wallet holding the same twelve words derives for that domain, so an
+  LNURL-auth login there is the same visitor. Signed by the core
+  (sphinx-rs v0.8.43, stakwork/sphinx-rs#106: `sign_bytes_lud05`), in
+  `sign_bytes`' format, so strut's one `ln-message` verifier checks both.
+  The owner chose the words over Sphinx's own master on 2026-11-11.
+- **The way in.** A `peel://open?url=<address>` link (`PublicAppLink`),
+  https or http to this machine. The Mac opens it in the web pane through
+  its own strut's UI (`AppModel.openPublicApp`), naming the app from the
+  address's `?app=`, else the box's `strut-serve` meta, else its public
+  view's only app; it needs Peel's strut running, and a strut with #625's
+  remote mode. The iPhone loads the address directly in the page sheet
+  (`OrgPageSheet` over a `PublicPage`), with no credential, kept to its
+  origin; a link that comes while Peel is locked opens once it unlocks.
+
+Review (2026-11-11, `/code-review`): fixed a yes that re-saved a
+connection revoked while its sheet was up (the connection is read again
+after the sheet), a second PBKDF2 at unlock (the Sphinx seed is the BIP39
+seed's first half), and expiry judged to the second. Not applied: the
+silent sign-in's toast shows in the main window even for an app in its own
+window (the Mac has one toast presenter); an https link to an IP address
+passes the link check but cannot be fetched for its app's name (`Web.get`
+keeps to named public hosts, and the Mac names the problem); `Seller`'s
+loopback test is strut's own set, kept apart from `ServerAddress`'s on
+purpose so a seller reads as strut reads it; and `PublicAppLink.origin`
+repeats PeelUI's `OrgPageRequest.origin(of:)`, which PeelCore cannot call.
+
 ## Decided here (not in the contract or the rulings)
 
 - **Where connections live:** a table in the account's database
@@ -148,8 +218,11 @@ app frame ◀─notification──── strut's UI ◀── window.strutWallet
 ## The vectors
 
 `Tests/PeelCoreTests/WalletVectors/vectors.json` is a copy of strut's
-`kit/src/wallet/vectors.json` at stakwork/strut 30d4c8b (the merge of
-#484), byte for byte. When strut changes the contract, copy it again from
+`kit/src/wallet/vectors.json` at stakwork/strut b788159 (#645, signing in
+through Peel), byte for byte: it adds #625's `host_capabilities`,
+`credit_purchases` and `credit_replies` and #645's `sign_in_requests`,
+`sign_in_replies` and `sign_in_signatures` to #484's lists, which are
+unchanged. When strut changes the contract, copy it again from
 the commit `Vendor/strut.lock` pins and say so here. `WalletProtocolTests`
 runs the `params`, `results`, `notifications`, `connection_requests` and
 `preimages` lists; `WalletHostTests.strutsScenario` replays all ten
@@ -172,6 +245,17 @@ storage.
   keysend through the real core; refusals before anything moves; one that
   never left failed and refunded; an app's invoice paid without the
   threshold; the state stream.
+- `VisitorSignInTests`: strut's `sign_in_requests` and
+  `sign_in_signatures` vectors (Peel's linked core signs exactly as
+  Sphinx's signer did for them); `host_capability`; the guard on each
+  device (the iPhone's origin over the page's seller, the Mac's seller
+  over the page's); what is never signed; the sheet, its choices and the
+  grant kept, a later sign-in with a toast, revoking; a decline; the sheet
+  ending with the challenge; one sheet for the wallet and signing in; a
+  sign-in alone is no wallet; the engine signing with the account's key.
+- `PublicAppTests`: the `peel://open` link and what never opens, the Mac's
+  remote address read back and never as an app of the person's own, which
+  app a served box serves.
 - Not tested: the bridges themselves (WebKit) and the sheets, which need
   the app; a payment through a real mixer (the integration journeys could
   take a keysend journey).

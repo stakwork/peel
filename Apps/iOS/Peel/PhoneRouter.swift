@@ -88,6 +88,11 @@ final class PhoneRouter {
     /// An org's page over everything (`OrgPageSheet`): a deliverable from
     /// the agent's DM, or a workspace's app.
     var orgPage: OrgPageRequest?
+    /// A stranger's public app over everything (`OrgPageSheet` on a
+    /// `PublicPage`), opened by a `peel://open?url=` link.
+    var publicPage: PublicPage?
+    /// Such a link that came while Peel was locked: opened once it unlocks.
+    var waitingLink: PublicAppLink?
     /// The call screen is up over everything (`IOSCallScreen`); the call
     /// goes on, with its bar over the tabs, while it is down.
     var callShown = false
@@ -131,8 +136,32 @@ final class PhoneRouter {
         payments = []
         you = []
         orgPage = nil
+        publicPage = nil
+        waitingLink = nil
         holding = false
         publish()
+    }
+
+    /// A `peel://open?url=<address>` link (`PublicAppLink`): the app at that
+    /// address over everything, loaded directly (strut's R7), once Peel is
+    /// unlocked. False for any other link.
+    func open(peelLink url: URL) -> Bool {
+        guard let link = PublicAppLink(peelLink: url) else { return false }
+        if model.phase == .ready {
+            orgPage = nil
+            publicPage = PublicPage(link)
+        } else {
+            waitingLink = link
+        }
+        return true
+    }
+
+    /// Peel unlocked: the link that waited for it opens.
+    func openWaitingLink() {
+        guard model.phase == .ready, let link = waitingLink else { return }
+        waitingLink = nil
+        orgPage = nil
+        publicPage = PublicPage(link)
     }
 
     // MARK: Opening things

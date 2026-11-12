@@ -133,13 +133,24 @@ final class ScriptedWallet: AppWallet, Sendable {
     func payeeName(_ pubkey: String) async -> String? { pubkey == keyG ? "Ada" : nil }
 
     func updates() -> AsyncStream<WalletRecord> { stream.stream }
+
+    /// Signs as `key`: "<key>:<challenge>", so a test sees which key signed what.
+    func signVisitor(_ challenge: VisitorChallenge, as key: SignInKey) async throws -> VisitorSignature {
+        state.withLock { $0.calls.append("sign_in \(key.rawValue)") }
+        return VisitorSignature(key: key == .root ? keyG : key2G, sig: "\(key.rawValue):\(challenge.text)")
+    }
+
+    let signsPerDomain: Bool
+
+    init(signsPerDomain: Bool = true) { self.signsPerDomain = signsPerDomain }
 }
 
 /// The person, as a scenario scripts them: which sheets they were shown,
 /// and what they did on each.
 final class ScriptedPerson: WalletPerson, Sendable {
-    private let state = Mutex<(answer: String?, shown: [String], connect: WalletConnectSheet?, payment: WalletPaymentSheet?)>(
-        (nil, [], nil, nil)
+    private let state = Mutex<(answer: String?, shown: [String], connect: WalletConnectSheet?, payment: WalletPaymentSheet?,
+                               signIn: SignInKey?)>(
+        (nil, [], nil, nil, nil)
     )
     /// Never answers until cancelled, as a person who walked away.
     let absent: Bool
@@ -147,6 +158,8 @@ final class ScriptedPerson: WalletPerson, Sendable {
     init(absent: Bool = false) { self.absent = absent }
 
     func will(_ answer: String?) { state.withLock { $0.answer = answer } }
+    /// On a sheet that asks to sign in, the key picked; nil: the first offered.
+    func pick(_ key: SignInKey?) { state.withLock { $0.signIn = key } }
     func takeShown() -> [String] { state.withLock { s in defer { s.shown = [] }; return s.shown } }
     var lastConnect: WalletConnectSheet? { state.withLock(\.connect) }
     var lastPayment: WalletPaymentSheet? { state.withLock(\.payment) }
@@ -163,7 +176,10 @@ final class ScriptedPerson: WalletPerson, Sendable {
             return s.answer
         }
         await waitIfAbsent()
-        return answer == "approve" && !absent ? .asAsked(sheet) : nil
+        guard answer == "approve", !absent else { return nil }
+        var yes = WalletConnectAnswer.asAsked(sheet)
+        if sheet.signIn != nil, let key = state.withLock(\.signIn) { yes.signIn = key }
+        return yes
     }
 
     func pay(_ sheet: WalletPaymentSheet) async -> Bool {
@@ -174,6 +190,10 @@ final class ScriptedPerson: WalletPerson, Sendable {
         }
         await waitIfAbsent()
         return answer == "approve" && !absent
+    }
+
+    func signedIn(to host: String, as key: SignInKey) async {
+        state.withLock { $0.shown.append("signed in to \(host) as \(key.rawValue)") }
     }
 }
 
@@ -668,4 +688,8 @@ final class SettlingWallet: AppWallet, Sendable {
     func balance() async throws -> Int64 { 0 }
     func payeeName(_ pubkey: String) async -> String? { nil }
     func updates() -> AsyncStream<WalletRecord> { stream.stream }
+    func signVisitor(_ challenge: VisitorChallenge, as key: SignInKey) async throws -> VisitorSignature {
+        throw WalletError(.notImplemented, "no")
+    }
+    var signsPerDomain: Bool { false }
 }

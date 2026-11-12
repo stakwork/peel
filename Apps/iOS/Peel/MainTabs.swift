@@ -39,6 +39,9 @@ struct MainTabs: View {
         .sheet(item: $router.orgPage) { page in
             OrgPageSheet(page: page)
         }
+        .sheet(item: $router.publicPage) { page in
+            OrgPageSheet(page: page)
+        }
         // A tapped Hive link to an app opens it when its workspace is paired
         // here. Otherwise it says to connect that workspace first and still
         // goes to the browser, so Hive shows its own sign-in or not-found;

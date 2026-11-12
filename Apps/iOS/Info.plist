@@ -12,5 +12,16 @@
 	<string>$(PEEL_APS_ENVIRONMENT)</string>
 	<key>PeelPushRegisterWithHub</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Peel link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>peel</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

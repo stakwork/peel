@@ -16,8 +16,9 @@ public struct WalletConnection: Codable, Sendable, Equatable, Identifiable, Fetc
         case refuse
     }
 
-    /// `app:<peer>/<name>` on the Mac (`WalletScope.app`), `org:<peer>` on
-    /// the iPhone (`WalletScope.org`).
+    /// `WalletScope.key`: `app:<peer>/<name>` on the Mac, `org:<peer>` on
+    /// the iPhone; a stranger's public app by its seller and name on the
+    /// Mac, by the origin Peel loaded on the iPhone.
     public var key: String
     /// The app as strut names it (`<peer>/<name>`), when it was granted.
     public var app: String
@@ -35,13 +36,17 @@ public struct WalletConnection: Codable, Sendable, Equatable, Identifiable, Fetc
     public var overBudget: OverBudget
     /// Unix seconds: a renewal is counted from here.
     public var createdAt: Int64
+    /// The key the person let it sign them in with, to a public app on a box
+    /// Peel is not paired with; nil for none. It only signs in: payments
+    /// still come from the account.
+    public var signIn: SignInKey?
 
     public var id: String { key }
 
     public init(
         key: String, app: String, title: String, place: String, methods: [WalletMethod],
         notificationTypes: [WalletNotificationType], maxAmountMsat: Int64?, renewal: WalletRenewal, expiresAt: Int64?,
-        overBudget: OverBudget, createdAt: Int64
+        overBudget: OverBudget, createdAt: Int64, signIn: SignInKey? = nil
     ) {
         self.key = key
         self.app = app
@@ -54,6 +59,7 @@ public struct WalletConnection: Codable, Sendable, Equatable, Identifiable, Fetc
         self.expiresAt = expiresAt
         self.overBudget = overBudget
         self.createdAt = createdAt
+        self.signIn = signIn
     }
 
     public func isExpired(now: Int64) -> Bool { expiresAt.map { $0 <= now } ?? false }
@@ -97,7 +103,8 @@ extension Storage {
         try pool.write { db in try connection.save(db) }
     }
 
-    /// Revoked: the app must `connect` again. Its payments stay in history.
+    /// Revoked: the app must `connect` again, and ask again to sign the
+    /// person in. Its payments stay in history.
     public func deleteWalletConnection(key: String) throws {
         _ = try pool.write { db in try WalletConnection.deleteOne(db, key: key) }
     }

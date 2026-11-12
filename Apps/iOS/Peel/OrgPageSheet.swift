@@ -4,6 +4,59 @@ import SwiftUI
 import UIKit
 import WebKit
 
+/// What an `OrgPageSheet` shows: an org's page, with the person's token
+/// (`OrgPageRequest`), or a stranger's public app Peel loaded itself, with
+/// no credential (`PublicPage`).
+protocol PhonePage: Identifiable, Equatable {
+    /// The address it opens at.
+    var url: URL { get }
+    /// The request that loads it.
+    var request: URLRequest { get }
+    /// The request that loads it again where the page went; nil where it
+    /// is not loaded that way.
+    func request(at current: URL?) -> URLRequest?
+    /// Whether the page may go to `other`.
+    func serves(_ other: URL) -> Bool
+    /// A script run before the page's own, in its main frame; nil for none.
+    var script: String? { get }
+    /// Whether `other` is strut's UI page itself, rather than a file it serves.
+    func isUIPage(_ other: URL) -> Bool
+    /// The app a link names, opened here; nil for none.
+    func appLink(_ other: URL, from current: URL?) -> StrutAppLink?
+    func request(for link: StrutAppLink) -> URLRequest?
+    /// The app the page at `current` shows; nil for none Peel knows of.
+    func shownApp(_ current: URL) -> AgentArtifact.Handle?
+    /// The sheet's title.
+    func title(showingAnotherApp: Bool) -> String
+    /// Who the app wallet's messages are from, from Peel's own record, and
+    /// where that is as the person reads it.
+    var walletScope: WalletScope { get }
+    var walletPlace: String { get }
+}
+
+extension OrgPageRequest: PhonePage {
+    var script: String? { handOver }
+    func isUIPage(_ other: URL) -> Bool { StrutUI.isPage(other, in: folder) }
+    // Another app a link opened here is named by its workspace: its title is not known here.
+    func title(showingAnotherApp: Bool) -> String {
+        showingAnotherApp ? workspace : title.flatMap { $0.isEmpty ? nil : $0 } ?? workspace
+    }
+    var walletScope: WalletScope { .org(peer: peer) }
+    var walletPlace: String { workspace }
+}
+
+/// A stranger's page is no strut UI Peel knows: no app of it is named or
+/// opened by Peel, and the sheet names it by its host.
+extension PublicPage: PhonePage {
+    var script: String? { nil }
+    func isUIPage(_ other: URL) -> Bool { false }
+    func appLink(_ other: URL, from current: URL?) -> StrutAppLink? { nil }
+    func request(for link: StrutAppLink) -> URLRequest? { nil }
+    func shownApp(_ current: URL) -> AgentArtifact.Handle? { nil }
+    func title(showingAnotherApp: Bool) -> String { host }
+    var walletPlace: String { host }
+}
+
 /// A deliverable from the agent's DM on its org's own strut: that strut's
 /// UI showing the file or the app alone (`OrgPage`), with the person's token
 /// for the org handed over twice and never in an address (strut's
@@ -14,12 +67,15 @@ import WebKit
 /// but that strut's UI (its folder on the host: a swarm's `/lab/`, which
 /// shares its host with other services). The Mac's twin is `StrutPage`, on
 /// its own strut. Its one message handler is the app wallet's, keyed by the
-/// org (`OrgWalletBridge`, docs/app-wallet.md).
-struct OrgPageSheet: View {
-    let page: OrgPageRequest
+/// org (`OrgWalletBridge`, docs/app-wallet.md). Or a stranger's public app
+/// (`PublicPage`, strut's R7): its own address, no credential, the origin
+/// alone, and the app wallet keyed by that origin, which signs the person
+/// in only there.
+struct OrgPageSheet<Page: PhonePage>: View {
+    let page: Page
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
-    @State private var controller = OrgPageController()
+    @State private var controller = OrgPageController<Page>()
     /// The app wallet's sheets over this page (`OrgWalletBridge`).
     @State private var wallet = PhoneWalletSheets()
 
@@ -45,9 +101,20 @@ struct OrgPageSheet: View {
                         .background(Theme.background)
                     }
                 }
+                .overlay(alignment: .bottom) {
+                    if let toast = wallet.toast {
+                        Text(toast)
+                            .phoneFont(.secondary)
+                            .padding(.horizontal, Theme.Space.lg)
+                            .padding(.vertical, Theme.Space.sm)
+                            .glassEffect(.regular, in: .capsule)
+                            .padding(.bottom, Theme.Space.xl)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(CopyFeedback.exit, value: wallet.toast)
                 .ignoresSafeArea(edges: .bottom)
-                // Another app a link opened here is named by its workspace: its title is not known here.
-                .navigationTitle(controller.showsAnotherApp ? page.workspace : page.title.flatMap { $0.isEmpty ? nil : $0 } ?? page.workspace)
+                .navigationTitle(page.title(showingAnotherApp: controller.showsAnotherApp))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     if controller.canGoBack {
@@ -99,12 +166,16 @@ private struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
+/// Where a page's downloads wait, each in a folder of its own.
+private let orgDownloadsRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("Peel Org Downloads", isDirectory: true)
+
 /// What the sheet shows of its web view: whether it can go back, is loading
 /// (and how far), why a page did not open, and a download to share. Holds the
 /// web view weakly and sees it by KVO; owns the temporary folders downloads
 /// are saved in and removes them with the sheet.
 @MainActor @Observable
-private final class OrgPageController {
+private final class OrgPageController<Page: PhonePage> {
     var canGoBack = false
     var isLoading = false
     var progress = 0.0
@@ -118,7 +189,7 @@ private final class OrgPageController {
     /// it opened that one here.
     var showsAnotherApp = false
 
-    @ObservationIgnored private var page: OrgPageRequest?
+    @ObservationIgnored private var page: Page?
     /// The address the last failure was at (`failed`), for Try again.
     @ObservationIgnored private var failedURL: URL?
     @ObservationIgnored private weak var webView: WKWebView?
@@ -126,10 +197,9 @@ private final class OrgPageController {
     @ObservationIgnored private var folders: [URL] = []
 
     /// Where downloads wait, each in a folder of its own.
-    static let downloadsRoot = FileManager.default.temporaryDirectory
-        .appendingPathComponent("Peel Org Downloads", isDirectory: true)
+    static var downloadsRoot: URL { orgDownloadsRoot }
 
-    func attach(_ webView: WKWebView, showing page: OrgPageRequest) {
+    func attach(_ webView: WKWebView, showing page: Page) {
         self.webView = webView
         self.page = page
         observations = [
@@ -163,7 +233,7 @@ private final class OrgPageController {
     /// bearer (an app at the view it moved to, or another app a link opened),
     /// a file opened in place as it is, and the page's own request with no
     /// address yet.
-    func reload(_ page: OrgPageRequest) {
+    func reload(_ page: Page) {
         guard let webView else { return }
         problem = nil
         if let again = page.request(at: webView.url) {
@@ -184,7 +254,7 @@ private final class OrgPageController {
     /// Loads again what failed, with the page's bearer, when that was strut's
     /// UI (another app a link opened); else where the page is, or its own
     /// request.
-    func retry(_ page: OrgPageRequest) {
+    func retry(_ page: Page) {
         problem = nil
         webView?.load(page.request(at: failedURL) ?? page.request(at: webView?.url) ?? page.request)
     }
@@ -212,9 +282,9 @@ private final class OrgPageController {
 /// The web view of an `OrgPageSheet`: a store that keeps nothing, the
 /// token's hand-over script, and a navigation policy that keeps it on the
 /// org's strut (`Coordinator`).
-private struct OrgWebView: UIViewRepresentable {
-    let page: OrgPageRequest
-    let controller: OrgPageController
+private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
+    let page: Page
+    let controller: OrgPageController<Page>
     let model: AppModel
     let wallet: PhoneWalletSheets
 
@@ -223,10 +293,14 @@ private struct OrgWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> TouchWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
-        configuration.userContentController.addUserScript(
-            WKUserScript(source: page.handOver, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        // The one message handler: the app wallet's, for the main frame at the org's origin.
-        let bridge = OrgWalletBridge(page: page, model: model, sheets: wallet)
+        if let script = page.script {
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        // The one message handler: the app wallet's, for the main frame at the origin Peel loaded.
+        let bridge = OrgWalletBridge(
+            scope: page.walletScope, place: page.walletPlace, origin: page.url, serves: page.serves, model: model, sheets: wallet
+        )
         bridge.install(in: configuration)
         let webView = TouchWebView(frame: .zero, configuration: configuration)
         bridge.attach(webView) { [weak webView] in webView?.acted(within: StrutWallet.gestureWindow) ?? false }
@@ -258,14 +332,14 @@ private struct OrgWebView: UIViewRepresentable {
     /// frame in it (`OrgPageRules.mayDownload`), saved in a folder of its own
     /// and handed to the share sheet; and no other scheme.
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
-        let page: OrgPageRequest
-        private let controller: OrgPageController
+        let page: Page
+        private let controller: OrgPageController<Page>
         /// The app wallet's handler on this page.
         var wallet: OrgWalletBridge?
         /// Downloads under way and the folder each saves in.
         private var downloads: [ObjectIdentifier: (download: WKDownload, folder: URL, file: URL?)] = [:]
 
-        init(page: OrgPageRequest, controller: OrgPageController) {
+        init(page: Page, controller: OrgPageController<Page>) {
             self.page = page
             self.controller = controller
         }
@@ -391,7 +465,7 @@ private struct OrgWebView: UIViewRepresentable {
             guard let url = action.request.url else { return nil }
             if page.serves(url) {
                 guard action.sourceFrame.isMainFrame else { return nil }
-                if StrutUI.isPage(url, in: page.folder) {
+                if page.isUIPage(url) {
                     if (webView as? TouchWebView)?.personActed == true, let link = page.appLink(url, from: webView.url),
                        let there = page.request(for: link) { webView.load(there) }
                 } else {

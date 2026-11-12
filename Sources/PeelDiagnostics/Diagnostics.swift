@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 #if canImport(os)
 import os
@@ -290,6 +291,36 @@ public enum Diagnostics {
         event.liveType = type
         event.liveNew = new
         current?.record(event)
+    }
+
+    /// What became of a tribe, or a message from one (`tribeTrace`); `tag` is `tribeTag(_:)` of its key.
+    public static func recordTribeTrace(
+        _ stage: DiagnosticEvent.TribeTraceStage, tag: Int, miss: DiagnosticEvent.TribeMiss? = nil,
+        status: Int? = nil, messageType: Int? = nil, restoring: Bool? = nil, fromMe: Bool? = nil
+    ) {
+        var event = DiagnosticEvent(kind: .tribeTrace)
+        event.tribeFromMe = fromMe
+        event.tribeTag = tag
+        event.tribeStage = stage
+        event.tribeMiss = miss
+        event.tribeStatus = status
+        event.tribeMessageType = messageType
+        event.tribeRestoring = restoring
+        current?.record(event)
+    }
+
+    /// A stored tribe's membership (`tribeState`).
+    public static func recordTribeState(tag: Int, left: Bool, status: Int) {
+        var event = DiagnosticEvent(kind: .tribeState)
+        event.tribeTag = tag
+        event.tribeLeft = left
+        event.tribeStatus = status
+        current?.record(event)
+    }
+
+    /// The tag a tribe goes by in the diagnostics: the first 24 bits of the SHA-256 of its key.
+    public static func tribeTag(_ pubkey: String) -> Int {
+        SHA256.hash(data: Data(pubkey.utf8)).prefix(3).reduce(0) { $0 << 8 | Int($1) }
     }
 
     /// A transport was made, closed or abandoned, or a connect began: the clients alive then.

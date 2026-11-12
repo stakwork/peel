@@ -27,6 +27,33 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         // Why the system ended the last run (a restart, a new install, or the system itself) and what it was
         // doing out of the front; and the background task running out of time.
         case previousRunDetail, backgroundExpired
+        // Why a tribe may be missing: what became of a tribe's messages and membership as they came (live or
+        // in history), and each stored tribe's membership as the engine starts and as a restore ends.
+        // The tribe is named by `tribeTag`, never its key.
+        case tribeTrace, tribeState
+    }
+
+    /// What happened to a tribe, or to a message from one (`tribeTrace`).
+    public enum TribeTraceStage: String, Codable, Sendable, CaseIterable {
+        /// First seen in a message and stored as a tribe; or not taken for one (`TribeMiss` says why).
+        case discovered, notDiscovered
+        /// From a tribe the core does not know (joined on another device): held until our tribes registry
+        /// lists it; and what that registry said: listed (stored, pending), not listed, deleted, or unanswered.
+        case held, confirmed, notListed, registryDeleted, confirmFailed
+        /// Dropped: signed by an unknown chat that is no tribe, or from a tribe marked left.
+        case unknownSigner, droppedLeft
+        /// A message changed the membership: left, joined, or another status (`tribeStatus`).
+        case markedLeft, markedJoined, statusChanged
+        /// A join, leave, request, approval, rejection, kick or deletion in a known tribe, whatever it
+        /// changed (`tribeFromMe`: whether the core calls it ours): the whole membership story.
+        case membershipMessage
+    }
+
+    /// Why a message's chat was not taken for a tribe (`TribeTraceStage.notDiscovered`).
+    public enum TribeMiss: String, Codable, Sendable, CaseIterable {
+        /// Its sender cannot be trusted to name it, it names no host, the core has no contact for it, or
+        /// the core holds a contact key for it (a person).
+        case untrusted, noHost, unknownToCore, person
     }
 
     /// Where the engine saw the core fail.
@@ -247,6 +274,18 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var sinceAliveSeconds: Int?
     public var memoryWarnings: Int?
     public var backgroundTaskExpired: Bool?
+    /// `tribeTrace`, `tribeState`: the tribe, as the first 24 bits of the SHA-256 of its key (shown in hex;
+    /// a tribe's key is public, and this is not enough to find it from), what happened, why it was not
+    /// taken for one, whether it is left and its status (`Tribe.Status` raw value), the message type that
+    /// did it, and whether it came in history while restoring.
+    public var tribeTag: Int?
+    public var tribeStage: TribeTraceStage?
+    public var tribeMiss: TribeMiss?
+    public var tribeLeft: Bool?
+    public var tribeStatus: Int?
+    public var tribeMessageType: Int?
+    public var tribeRestoring: Bool?
+    public var tribeFromMe: Bool?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

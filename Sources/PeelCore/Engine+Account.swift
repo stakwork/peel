@@ -223,9 +223,9 @@ extension Engine {
         return memes.publicURL(muid).absoluteString
     }
 
-    /// Hours after which an app asks for the PIN again; 0 means only at
-    /// launch, `PINTimeout.never` never after launch, nil that this account
-    /// has never set it. Kept in the official `pin_timeout`'s form and
+    /// When an app asks for the PIN (`PINTimeout`): 0 every time it opens,
+    /// hours without use, `PINTimeout.never` never; nil that this account has
+    /// never set it. Kept in the official `pin_timeout`'s form and
     /// converted here (`PINTimeout.peelHours(fromOfficial:)`).
     public func pinTimeoutHours() throws -> Int? {
         try storage.preference(.pinTimeout).map(PINTimeout.peelHours(fromOfficial:))

@@ -33,9 +33,12 @@ public struct Profile: Sendable {
     /// device's, kept under an account of its own, so removing the account
     /// and restoring it does not pair again (`AppModel.restoreAccount`).
     let keepsHive: Bool
-    /// Face ID in place of the PIN, opt-in (`BiometricUnlock`); nil for a
+    /// Face ID as a check on entering, opt-in (`BiometricUnlock`); nil for a
     /// development profile, which has no PIN.
     public let biometrics: BiometricUnlock?
+    /// The PIN kept between unlocks while the PIN timeout has not run out
+    /// (`RememberedPIN`); nil for a development profile.
+    public let rememberedPIN: RememberedPIN?
 
     /// Names are path components, so only plain characters are allowed.
     public init(name: String, kind: Kind) throws {
@@ -63,12 +66,16 @@ public struct Profile: Sendable {
             // Renewed while the Mac is locked too, like the agent's key.
             hive = HiveItem(profileName: name)
             keepsHive = true
-            biometrics = BiometricUnlock(secrets: secrets, keeper: KeychainBiometricKeeper(account: name))
+            biometrics = BiometricUnlock(flag: KeychainItem(service: "dev.peel.biometric-check", account: name),
+                                         checker: SystemBiometricChecker(),
+                                         legacy: KeychainBiometricKeeper(account: name))
+            rememberedPIN = RememberedPIN(item: KeychainItem(service: "dev.peel.pin", account: name))
         case .development:
             directory = root.appendingPathComponent("dev/\(name)")
             (secrets, agentCredential, strutKey, brain, hive) = Self.files(in: directory)
             keepsHive = false
             biometrics = nil
+            rememberedPIN = nil
         }
     }
 
@@ -85,6 +92,7 @@ public struct Profile: Sendable {
         self.hive = hive ?? files.4
         self.keepsHive = keepsHive
         biometrics = nil
+        rememberedPIN = nil
     }
 
     /// A development profile's words, agent key, strut's key, where Peel Home
@@ -142,7 +150,7 @@ public struct Profile: Sendable {
     public func changePIN(from oldPIN: String, to newPIN: String) throws {
         guard requiresPIN else { throw PeelError("this profile has no PIN") }
         try secrets.changePIN(from: oldPIN, to: newPIN)
-        biometrics?.pinChanged(to: newPIN)
+        rememberedPIN?.pinChanged(to: newPIN)
     }
 
     /// Removes the words and everything stored with them, the agent's key,
@@ -160,6 +168,7 @@ public struct Profile: Sendable {
         // An app profile's pairing is the device's and stays; a development one's is a file beside the words.
         if !keepsHive { try hive.delete() }
         try biometrics?.turnOff()
+        rememberedPIN?.forget()
         try secrets.deleteMnemonic()
         if FileManager.default.fileExists(atPath: directory.path) {
             try FileManager.default.removeItem(at: directory)

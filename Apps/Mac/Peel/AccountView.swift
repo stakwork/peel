@@ -86,10 +86,8 @@ struct AccountView: View {
             }
         case .security:
             SettingsSection {
-                if model.profile?.requiresPIN == true {
-                    ChangePINRow()
-                    PINTimeoutRow()
-                }
+                // The PIN at launch, never again while Peel runs (`Platform.locksOnlyAtLaunch`): no timeout to set.
+                if model.profile?.requiresPIN == true { ChangePINRow() }
                 WordsRow()
                 WebsiteDataRow()
             }
@@ -416,31 +414,6 @@ private struct ChangePINRow: View {
             reset(to: .old, note: PIN.problem(error))
         } catch {
             reset(to: .new, note: PeelError.problem(error, couldNot: "change the PIN") + " Choose the new PIN again.")
-        }
-    }
-}
-
-private struct PINTimeoutRow: View {
-    @Environment(AppModel.self) private var model
-
-    private static let choices = [0, 1, 4, 12, 24, PINTimeout.never]
-
-    var body: some View {
-        Fact("Ask for the PIN") {
-            SettingDropdown(
-                selection: model.pinTimeoutHours,
-                options: presets(Self.choices, including: model.pinTimeoutHours).map { ($0, Self.label($0)) }
-            ) { try await model.setPINTimeout(hours: $0) }
-        }
-    }
-
-    private static func label(_ hours: Int) -> String {
-        switch hours {
-        case PINTimeout.never: "Never ask for PIN"
-        case 0: "Only when Peel opens"
-        case 1: "After an hour"
-        case 24: "After a day"
-        default: "After \(hours) hours"
         }
     }
 }

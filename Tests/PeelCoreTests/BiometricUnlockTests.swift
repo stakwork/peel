@@ -2,90 +2,69 @@ import Foundation
 import Testing
 @testable import PeelCore
 
-/// Face ID stands in for the PIN and never for less: it keeps only a PIN
-/// that opens the words, follows a PIN change, and gives way to the PIN
-/// once what it holds is wrong or unreadable.
+/// Face ID is a check on entering Peel and holds nothing: on only after a
+/// face matched, off at once, and an earlier build's PIN item turns it on and
+/// is removed unread.
 struct BiometricUnlockTests {
-    /// Words behind a PIN, compared plainly (`PINBox` has its own tests).
-    private final class Words: SecretStore, @unchecked Sendable {
-        var pin = "123456"
-        var hasMnemonic: Bool { true }
-        var requiresPIN: Bool { true }
-        func loadMnemonic(pin: String) throws -> String {
-            guard pin == self.pin else { throw SecretStoreFailure.wrongPIN }
-            return "words"
+    /// A Keychain item in memory.
+    private final class Item: SecretItem, @unchecked Sendable {
+        var data: Data?
+        func read() throws -> Data? { data }
+        func write(_ data: Data) throws { self.data = data }
+        func delete() throws { data = nil }
+    }
+
+    /// The system's face check, scripted.
+    private final class Checker: BiometricChecker, @unchecked Sendable {
+        var matches = true
+        var asked = 0
+        func check(reason: String) async -> Bool {
+            asked += 1
+            return matches
         }
-        func save(mnemonic: String, pin: String) throws {}
-        func changePIN(from oldPIN: String, to newPIN: String) throws {
-            _ = try loadMnemonic(pin: oldPIN)
-            pin = newPIN
-        }
-        func deleteMnemonic() throws {}
     }
 
-    /// The Keychain item, with what a face read gives scripted.
-    private final class Keeper: BiometricKeeper, @unchecked Sendable {
-        var kept: String?
-        var read: BiometricRelease?
-        var failsToKeep = false
-        var isKept: Bool { kept != nil }
-        func keep(_ pin: String) throws {
-            if failsToKeep { throw PeelError("Keychain write failed") }
-            kept = pin
-        }
-        func release(reason: String) async -> BiometricRelease { read ?? kept.map(BiometricRelease.pin) ?? .unreadable }
-        func discard() throws { kept = nil }
+    /// Earlier builds' PIN item.
+    private final class Legacy: BiometricKeeper, @unchecked Sendable {
+        var isKept = false
+        func discard() throws { isKept = false }
     }
 
-    private let words = Words()
-    private let keeper = Keeper()
-    private var unlock: BiometricUnlock { BiometricUnlock(secrets: words, keeper: keeper) }
+    private let flag = Item()
+    private let checker = Checker()
+    private let legacy = Legacy()
+    private var unlock: BiometricUnlock { BiometricUnlock(flag: flag, checker: checker, legacy: legacy) }
 
-    @Test func turnsOnOnlyWithThePINThatOpensTheWords() async throws {
-        #expect(throws: SecretStoreFailure.wrongPIN) { try unlock.turnOn(pin: "654321") }
-        #expect(throws: PeelError.self) { try unlock.turnOn(pin: "12345") }
+    @Test func turnsOnOnlyAfterAFaceMatches() async {
+        checker.matches = false
+        #expect(await !unlock.turnOn(reason: "Turn on"))
         #expect(!unlock.isOn)
-        try unlock.turnOn(pin: "123456")
+        checker.matches = true
+        #expect(await unlock.turnOn(reason: "Turn on"))
         #expect(unlock.isOn)
-        #expect(await unlock.releasePIN(reason: "Unlock") == "123456")
     }
 
-    @Test func aCancelledFaceKeepsItOnAndAnUnreadableItemTurnsItOff() async throws {
-        try unlock.turnOn(pin: "123456")
-        keeper.read = .declined
-        #expect(await unlock.releasePIN(reason: "Unlock") == nil)
-        #expect(unlock.isOn)
-        keeper.read = .unreadable
-        #expect(await unlock.releasePIN(reason: "Unlock") == nil)
+    @Test func turningOffNeedsNoFace() async throws {
+        _ = await unlock.turnOn(reason: "Turn on")
+        let asked = checker.asked
+        try unlock.turnOff()
         #expect(!unlock.isOn)
+        #expect(checker.asked == asked)
     }
 
-    @Test func aReleasedPINTheWordsRefuseTurnsItOff() async throws {
-        try unlock.turnOn(pin: "123456")
-        words.pin = "111111"
-        let released = try #require(await unlock.releasePIN(reason: "Unlock"))
-        #expect(throws: SecretStoreFailure.wrongPIN) { try words.loadMnemonic(pin: released) }
-        #expect(!unlock.refused(PeelError("offline")))
+    @Test func theCheckIsTheFace() async {
+        checker.matches = false
+        #expect(await !unlock.check(reason: "Unlock"))
+        checker.matches = true
+        #expect(await unlock.check(reason: "Unlock"))
+    }
+
+    @Test func anEarlierBuildsPINItemTurnsItOnAndGoes() throws {
+        legacy.isKept = true
         #expect(unlock.isOn)
-        #expect(unlock.refused(SecretStoreFailure.wrongPIN))
-        #expect(!unlock.isOn)
-    }
-
-    @Test func aPINChangeIsFollowedAndNeverLeavesTheOldOne() throws {
-        unlock.pinChanged(to: "222222")
-        #expect(keeper.kept == nil)
-        try unlock.turnOn(pin: "123456")
-        unlock.pinChanged(to: "222222")
-        #expect(keeper.kept == "222222")
-        keeper.failsToKeep = true
-        unlock.pinChanged(to: "333333")
-        #expect(keeper.kept == nil)
-    }
-
-    @Test func somethingNotAPINIsNeverHandedBack() async throws {
-        try unlock.turnOn(pin: "123456")
-        keeper.read = .pin("12345a")
-        #expect(await unlock.releasePIN(reason: "Unlock") == nil)
+        #expect(!legacy.isKept)
+        #expect(unlock.isOn)
+        try unlock.turnOff()
         #expect(!unlock.isOn)
     }
 }

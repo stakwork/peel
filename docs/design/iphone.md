@@ -304,10 +304,26 @@ with Dynamic Type.
 ### 8. Lock
 
 - The Peel icon, "Enter your PIN" (20 bold), six dots (filled as digits
-  go in), a 3 by 4 keypad of 78 pt round keys, Face ID bottom left and
-  Delete bottom right, and "Forgot your PIN?" as a link at the bottom.
+  go in), a 3 by 4 keypad of 78 pt round keys, Delete bottom right, and
+  "Forgot your PIN?" as a link at the bottom.
 - What a wrong PIN does and where "Forgot your PIN?" leads are the
   Mac's `LockView`. No red.
+- When it is asked for (2026-11-11), by "Ask for the PIN" in You: "When
+  Peel opens" asks at every launch and every return from the background,
+  and Face ID does not apply; "After N hours away" keeps the PIN in the
+  Keychain (`RememberedPIN`: this device only, readable only while the
+  phone is unlocked, never iCloud) until Peel has been unused that long, so
+  a launch after the system ended Peel opens without it; "Never ask for
+  PIN" keeps it for good. Past the timeout the PIN is removed and typed.
+  Face ID, when on, is a check within the timeout, not where the PIN is
+  kept: a face at launch and on every return from the background (no
+  grace period since 2026-11-13), over a cover (the icon,
+  "Peel is locked", "Unlock with Face ID"), never the keypad (2026-11-13).
+  A face that fails falls back to the device passcode, as the system does
+  for other messengers; the Peel PIN shows only when it is due, or when
+  the kept one is gone. The twelve words and Change PIN always take the typed PIN. An
+  account that never chose one gets 24 hours. The Mac asks at launch only,
+  never again while it runs, and has no setting.
 
 ### 9. Chats, not connected
 

@@ -14,6 +14,9 @@ extension AppModel {
     /// Peel left the front (the Mac's app resigning, the phone's background).
     public func leftForeground() {
         Diagnostics.setForeground(false)
+        leftForegroundAt = .now
+        // The PIN timeout counts from here, also after the system ends Peel in the background.
+        if phase == .ready, !platform.locksOnlyAtLaunch { profile?.rememberedPIN?.touch(activeAt: .now) }
         activeLease.isForeground = false
         updateActiveLease()
         // A catch-up in flight goes on under a background task for at most `backgroundCatchUpBound`, and

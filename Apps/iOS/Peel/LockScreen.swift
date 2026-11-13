@@ -2,22 +2,63 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// Asks for the PIN at launch and after the PIN timeout (the Mac's
-/// `LockView`; docs/design/iphone.md, screen 8): the Peel icon, "Enter your
-/// PIN", the keypad with Face ID when it is on, and "Forgot your PIN?",
-/// which confirms Forget in place. Face ID is asked for once as the screen
-/// appears, and again from its key.
+/// Asks for the PIN (the Mac's `LockView`; docs/design/iphone.md, screen 8):
+/// the Peel icon, "Enter your PIN", the keypad, and "Forgot your PIN?",
+/// which confirms Forget in place. When the lock is Face ID's check within
+/// the PIN timeout (`AppModel.lockOffersBiometrics`), no keypad shows: a cover
+/// asks for a face as it appears and again from its button, and the system
+/// falls back to the device passcode. Past the timeout only the PIN opens Peel.
 struct LockScreen: View {
     @Environment(AppModel.self) private var model
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
-    @State private var biometry: String?
     /// Whether the account is known to hold sats, for Forget; never how
     /// many (`AppModel.balanceBeforeForget`).
     @State private var holdsSats = false
 
     var body: some View {
+        if model.lockOffersBiometrics, let name = model.biometryName {
+            biometricCover(name)
+        } else {
+            pinScreen
+        }
+    }
+
+    /// Face ID's check while the PIN is not due: the icon and a button, never the keypad.
+    private func biometricCover(_ name: String) -> some View {
+        VStack(spacing: 28) {
+            Spacer()
+            AppIcon(size: 64)
+                .accessibilityHidden(true)
+            VStack(spacing: Theme.Space.sm) {
+                Text("Peel is locked")
+                    .phoneFont(PhoneFont(size: 20, weight: .bold, style: .title3))
+                    .accessibilityAddTraits(.isHeader)
+                Text(problem ?? "Unlock with \(name) to continue.")
+                    .phoneFont(PhoneFont(size: 15, style: .subheadline))
+                    .foregroundStyle(Theme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button {
+                Task { await useBiometrics() }
+            } label: {
+                Text("Unlock with \(name)").buttonProgress(working)
+            }
+            .buttonStyle(.peel(.primary, size: .touch))
+            .disabled(working)
+            Spacer()
+            Spacer()
+        }
+        .padding(.horizontal, Theme.phoneGutter)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background.ignoresSafeArea())
+        .foregroundStyle(Theme.text)
+        .task { await useBiometrics() }
+    }
+
+    private var pinScreen: some View {
         ScrollView {
             VStack(spacing: 28) {
                 AppIcon(size: 64)
@@ -32,7 +73,7 @@ struct LockScreen: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                PinPad(pin: $pin, biometry: biometryKey) {
+                PinPad(pin: $pin) {
                     Task { await unlock() }
                 }
                 .disabled(working)
@@ -58,16 +99,6 @@ struct LockScreen: View {
         .task {
             holdsSats = await (model.balanceBeforeForget() ?? 0) > 0
         }
-        .task {
-            guard let name = model.biometryName, await model.biometricsOn() else { return }
-            biometry = name
-            await useBiometrics()
-        }
-    }
-
-    private var biometryKey: (name: String, action: () -> Void)? {
-        guard let biometry else { return nil }
-        return (biometry, { Task { await useBiometrics() } })
     }
 
     private func unlock() async {
@@ -82,17 +113,16 @@ struct LockScreen: View {
         }
     }
 
-    /// Face ID, which hands over the PIN; cancelled or not matched, the
-    /// keypad stays. Turned off by the attempt (the faces or the PIN
-    /// changed), its key goes and the PIN is asked for.
+    /// Face ID's check, with the device passcode as the system's fallback;
+    /// cancelled, the cover stays for another try. When the kept PIN is gone
+    /// (or wrong), the model drops the check and the keypad asks for the PIN.
     private func useBiometrics() async {
         guard !working else { return }
         working = true
         defer { working = false }
         do {
-            if try await !model.unlockWithBiometrics(), await !model.biometricsOn(), let name = biometry {
-                biometry = nil
-                problem = "Enter your PIN. Turn \(name) on again in You."
+            if try await !model.unlockWithBiometrics() {
+                problem = model.lockOffersBiometrics ? nil : "Enter your PIN."
             }
         } catch {
             problem = PIN.problem(error)

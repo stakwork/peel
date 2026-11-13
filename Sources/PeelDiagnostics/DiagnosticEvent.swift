@@ -155,6 +155,9 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
 
     public enum LockReason: String, Codable, Sendable, CaseIterable {
         case coldLaunch, idleTimeout
+        /// "When Peel opens": back from the background. Face ID's check (within the timeout). And a launch
+        /// that opened with the kept PIN, asking for nothing (not a lock, noted with them).
+        case everyOpen, biometricCheck, rememberedPIN
     }
 
     public enum NetworkStatus: String, Codable, Sendable, CaseIterable {

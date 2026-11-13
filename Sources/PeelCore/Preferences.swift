@@ -221,10 +221,15 @@ extension Preference where Value == Int {
 }
 
 public enum PINTimeout {
-    /// Never ask again after launch (the idle and foreground re-lock only;
-    /// launch always asks, and the PIN is never stored). Peel's scale: -1;
-    /// 0 means only at launch and positive hours are hours.
+    /// Never ask for the PIN, not even at launch: the iPhone keeps it
+    /// (`RememberedPIN`). Peel's scale: -1; 0 asks every time Peel opens (at
+    /// launch and back from the background), as the official 0 does, and
+    /// positive hours are hours without use. The Mac asks at launch only,
+    /// whatever this says.
     public static let never = -1
+
+    /// An account that never chose one.
+    public static let unsetDefault = 24
 
     /// The official scale's ends: 0 asks every time, 25 never.
     static let officialAlways = 0

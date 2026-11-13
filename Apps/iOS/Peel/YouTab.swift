@@ -175,83 +175,49 @@ private struct AgentRow: View {
     }
 }
 
-/// Face ID in place of the PIN (`AppModel.turnOnBiometrics`): on asks for
-/// the PIN first, which Face ID will then stand in for; off needs nothing.
+/// Face ID as a check on entering Peel within the PIN timeout
+/// (`AppModel.turnOnBiometrics`): on asks for a face, off needs nothing. Not
+/// with "When Peel opens", which asks for the PIN every time instead.
 private struct BiometricsRow: View {
     @Environment(AppModel.self) private var model
     /// "Face ID", read once by You (a system query).
     let name: String
     @State private var on = false
-    @State private var asking = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle(name, isOn: Binding(get: { on }, set: { wanted in
-                if wanted {
-                    asking = true
-                } else {
-                    Task {
-                        try? await model.turnOffBiometrics()
-                        on = await model.biometricsOn()
-                    }
-                }
-            }))
-            .tint(Theme.accent)
-            // Turned on on another device: never enrolled from there, only
-            // offered; the switch above turns it on, through the same PIN step.
-            if model.biometricsOffered, !on {
-                Text("\(name) is on on your other device")
+        let everyOpen = model.pinTimeoutHours == 0
+        // The notes are part of the label, so they wrap short of the switch.
+        Toggle(isOn: Binding(get: { on && !everyOpen }, set: { wanted in
+            Task {
+                if wanted { _ = await model.turnOnBiometrics() } else { try? await model.turnOffBiometrics() }
+                on = await model.biometricsOn()
+            }
+        })) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(name)
+                Text(everyOpen ? "Peel asks for your PIN every time it opens."
+                               : "Asks for \(name) when Peel opens, until it asks for your PIN.")
                     .phoneFont(.secondary)
                     .foregroundStyle(Theme.quietText(on: .raised))
+                // Turned on on another device: never enrolled from there, only
+                // offered; the switch turns it on, through the same PIN step.
+                if model.biometricsOffered, !on {
+                    Text("\(name) is on on your other device")
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.quietText(on: .raised))
+                }
             }
+            .padding(.trailing, Theme.Space.sm)
         }
-        .sheet(isPresented: $asking) {
-            Task { on = await model.biometricsOn() }
-        } content: {
-            TurnOnBiometrics(name: name)
-        }
+        .tint(Theme.accent)
+        .disabled(everyOpen)
         .task { on = await model.biometricsOn() }
     }
 }
 
-private struct TurnOnBiometrics: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let name: String
-    @State private var pin = ""
-    @State private var working = false
-    @State private var problem: String?
-
-    var body: some View {
-        NavigationStack {
-            PinPrompt(title: "Enter your PIN", detail: problem ?? "\(name) will unlock Peel and show your words in its place.",
-                      pin: $pin, working: working) {
-                Task { await turnOn() }
-            }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-    }
-
-    private func turnOn() async {
-        guard !working else { return }
-        working = true
-        defer { working = false }
-        do {
-            try await model.turnOnBiometrics(pin: pin)
-            dismiss()
-        } catch {
-            problem = PIN.problem(error)
-            pin = ""
-        }
-    }
-}
-
-/// When the PIN is asked for again (the Mac's PIN timeout): only when Peel
-/// opens, or after Peel has been away that long.
+/// When the PIN is asked for (`PINTimeout`): every time Peel opens (at launch
+/// and back from the background), after Peel has been away that long (the
+/// PIN is kept until then, also if the system ends Peel), or never.
 private struct PINTimeoutRow: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?
@@ -504,11 +470,6 @@ private struct WordsScreen: View {
     @State private var hideAt = Date.distantPast
     @State private var working = false
     @State private var problem: String?
-    /// Face ID's sheet is up: Peel is inactive behind it, which is not leaving.
-    @State private var askingFace = false
-    /// Peel went to the background while Face ID was asked: the words that
-    /// come back are not shown.
-    @State private var leftWhileAsking = false
     /// Bumped by `hide`, so a PIN check still running when the words are
     /// hidden does not show them after all.
     @State private var generation = 0
@@ -562,20 +523,15 @@ private struct WordsScreen: View {
                     if !model.wordsConfirmed {
                         Button { Task { await start(checking: true) } } label: { ActionLabel("Check words") }.primaryAction()
                     }
-                    Button { Task { await start(checking: false) } } label: { ActionLabel("Show words", working: askingFace) }
+                    Button { Task { await start(checking: false) } } label: { ActionLabel("Show words") }
                         .secondaryAction()
-                        .disabled(askingFace)
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { hide() }
         .onChange(of: scenePhase) { _, phase in
-            if askingFace {
-                if phase == .background { leftWhileAsking = true }
-            } else if phase != .active {
-                hide()
-            }
+            if phase != .active { hide() }
         }
     }
 
@@ -584,21 +540,7 @@ private struct WordsScreen: View {
         check = WordCheck()
         problem = nil
         guard model.profile?.requiresPIN == true else { return await reveal() }
-        if model.biometryName != nil, await model.biometricsOn() {
-            askingFace = true
-            leftWhileAsking = false
-            defer { askingFace = false }
-            let started = generation
-            do {
-                if let revealed = try await model.revealWordsWithBiometrics() {
-                    // Not if Peel left the screen while the PIN was checked.
-                    guard generation == started, !leftWhileAsking else { return hide() }
-                    return show(revealed)
-                }
-            } catch {
-                problem = PIN.problem(error)
-            }
-        }
+        // Always the typed PIN, whatever the timeout or Face ID.
         pin = ""
         asking = true
     }

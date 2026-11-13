@@ -327,6 +327,9 @@ public final class CallStore {
         leave()
         let joined = try provider.join(ticket, link: link, chat: chat, title: title, camera: camera, stay: stay)
         joined.movedAway = { [weak self, weak joined] in if let joined { self?.movedAway(joined) } }
+        (joined as? any SystemEndingCall)?.onSystemEnd = { [weak self, weak joined] in
+            if let joined, self?.call === joined { self?.leave() }
+        }
         call = joined
         return true
     }

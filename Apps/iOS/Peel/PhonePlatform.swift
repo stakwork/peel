@@ -128,4 +128,4 @@ struct LiveKitCalls: CallProvider {
     }
 }
 
-extension IOSCallSession: OngoingCall {}
+extension IOSCallSession: SystemEndingCall {}

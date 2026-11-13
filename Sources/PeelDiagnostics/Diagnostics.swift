@@ -318,6 +318,27 @@ public enum Diagnostics {
         current?.record(event)
     }
 
+    /// A call's audio (`callAudio`): enums and flags only.
+    public static func recordCallAudio(
+        _ stage: DiagnosticEvent.CallAudioStage, ok: Bool? = nil, category: DiagnosticEvent.AudioCategory? = nil,
+        micTrigger: DiagnosticEvent.MicTrigger? = nil, micEnabled: Bool? = nil, micPublicationMuted: Bool? = nil,
+        wantsMic: Bool? = nil, routeReason: Int? = nil, scenePhase: DiagnosticEvent.ScenePhase? = nil,
+        callKitError: Int? = nil
+    ) {
+        var event = DiagnosticEvent(kind: .callAudio)
+        event.callAudioStage = stage
+        event.callAudioOk = ok
+        event.audioCategory = category
+        event.micTrigger = micTrigger
+        event.micEnabled = micEnabled
+        event.micPublicationMuted = micPublicationMuted
+        event.wantsMic = wantsMic
+        event.routeReason = routeReason
+        event.scenePhase = scenePhase
+        event.callKitError = callKitError
+        current?.record(event)
+    }
+
     /// The tag a tribe goes by in the diagnostics: the first 24 bits of the SHA-256 of its key.
     public static func tribeTag(_ pubkey: String) -> Int {
         SHA256.hash(data: Data(pubkey.utf8)).prefix(3).reduce(0) { $0 << 8 | Int($1) }

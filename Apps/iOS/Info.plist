@@ -12,6 +12,10 @@
 	<string>$(PEEL_APS_ENVIRONMENT)</string>
 	<key>PeelPushRegisterWithHub</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

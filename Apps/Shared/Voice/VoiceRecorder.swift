@@ -44,9 +44,12 @@ final class VoiceRecorder {
         guard held else { return }
         do {
             #if os(iOS)
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
-            try session.setActive(true)
+            // On a call the session already records, and the call's settings stay.
+            if !IOSCallSession.isLive {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+                try session.setActive(true)
+            }
             #endif
             let url = try IncomingFiles.newFolder().appendingPathComponent("voice.wav")
             let settings: [String: Any] = [
@@ -107,10 +110,14 @@ final class VoiceRecorder {
     private func stop() -> URL? {
         ticker?.cancel()
         ticker = nil
+        let recorded = recorder != nil
         recorder?.stop()
         recorder = nil
         #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        // Only a session this recorder took, never a call's: every composer
+        // cancels as the app leaves the front, and deactivating the shared
+        // session then stops whatever else holds it, a call's microphone included.
+        if recorded, !IOSCallSession.isLive { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
         #else
         if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
         escapeMonitor = nil

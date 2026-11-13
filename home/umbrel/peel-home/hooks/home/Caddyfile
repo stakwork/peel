@@ -1,0 +1,39 @@
+# The peer port: the Mac's strut makes the two home sync calls to this
+# box's strut, and nothing else (README.md, "The peer port"). Caddy runs in
+# strut's network, where strut is on 127.0.0.1:3000.
+{
+	# Its API would listen in strut's network, where the bridge could open
+	# every route through it.
+	admin off
+	skip_install_trust
+	auto_https disable_redirects
+	# The certificate is for one fixed name, whatever address the Mac uses:
+	# the Mac's strut trusts only this CA for this peer, and verifies the
+	# name `peel-home`, the peer record's servername (README.md, "The peer port").
+	default_sni peel-home
+	servers {
+		protocols h1 h2
+	}
+}
+
+# `:8443` as well, so a request is routed whatever its Host header names.
+https://peel-home:8443, https://:8443 {
+	# The CA is kept under XDG_DATA_HOME (data/peer/caddy/pki/authorities/local).
+	tls internal
+
+	# Matched on the request's own URI, not a cleaned one: what is allowed
+	# is exactly what strut is sent.
+	@allowed expression `{method} == "POST" && {http.request.uri}.matches("^/home/(pull|push)$")`
+	handle @allowed {
+		# A push carries at most 10 000 changes (strut refuses more, but sets
+		# no size on one): room for 1.6 kB each, so strut's limit, not this
+		# one, is the one a push meets.
+		request_body {
+			max_size 16MB
+		}
+		reverse_proxy 127.0.0.1:3000
+	}
+	handle {
+		respond 403
+	}
+}

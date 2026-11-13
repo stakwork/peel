@@ -186,27 +186,31 @@ private struct BiometricsRow: View {
 
     var body: some View {
         let everyOpen = model.pinTimeoutHours == 0
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle(name, isOn: Binding(get: { on && !everyOpen }, set: { wanted in
-                Task {
-                    if wanted { _ = await model.turnOnBiometrics() } else { try? await model.turnOffBiometrics() }
-                    on = await model.biometricsOn()
-                }
-            }))
-            .tint(Theme.accent)
-            .disabled(everyOpen)
-            Text(everyOpen ? "Peel asks for your PIN every time it opens."
-                           : "Asks for \(name) when Peel opens, until it asks for your PIN.")
-                .phoneFont(.secondary)
-                .foregroundStyle(Theme.quietText(on: .raised))
-            // Turned on on another device: never enrolled from there, only
-            // offered; the switch above turns it on, through the same PIN step.
-            if model.biometricsOffered, !on {
-                Text("\(name) is on on your other device")
+        // The notes are part of the label, so they wrap short of the switch.
+        Toggle(isOn: Binding(get: { on && !everyOpen }, set: { wanted in
+            Task {
+                if wanted { _ = await model.turnOnBiometrics() } else { try? await model.turnOffBiometrics() }
+                on = await model.biometricsOn()
+            }
+        })) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(name)
+                Text(everyOpen ? "Peel asks for your PIN every time it opens."
+                               : "Asks for \(name) when Peel opens, until it asks for your PIN.")
                     .phoneFont(.secondary)
                     .foregroundStyle(Theme.quietText(on: .raised))
+                // Turned on on another device: never enrolled from there, only
+                // offered; the switch turns it on, through the same PIN step.
+                if model.biometricsOffered, !on {
+                    Text("\(name) is on on your other device")
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.quietText(on: .raised))
+                }
             }
+            .padding(.trailing, Theme.Space.sm)
         }
+        .tint(Theme.accent)
+        .disabled(everyOpen)
         .task { on = await model.biometricsOn() }
     }
 }

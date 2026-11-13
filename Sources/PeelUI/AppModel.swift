@@ -459,8 +459,6 @@ public final class AppModel {
     /// The lock screen is Face ID's check (`BiometricUnlock`), not the PIN's: within
     /// the timeout, a face opens Peel with the kept PIN; typing the PIN still does.
     public internal(set) var lockOffersBiometrics = false
-    /// Away this long, Peel asks for a face again when Face ID is on.
-    static let biometricCheckAfter: TimeInterval = 60
 
     /// When the iPhone asks for the PIN (`PINTimeout`): 0 every time Peel
     /// opens (at launch and back from the background), hours without use, or
@@ -1014,13 +1012,14 @@ public final class AppModel {
     }
 
     /// Back from the background (the iPhone): "When Peel opens" asks for the PIN
-    /// every time; within the timeout, Face ID asks for a face when it is on and
-    /// Peel was away `biometricCheckAfter` or more.
+    /// every time; within the timeout, Face ID asks for a face every time when it
+    /// is on. Only a real trip to the background counts: Face ID's own sheet makes
+    /// Peel inactive, never backgrounded, so it cannot ask again for itself.
     private func lockOnReturn() {
-        guard let left = leftForegroundAt, phase == .ready, profile?.requiresPIN == true,
+        guard leftForegroundAt != nil, phase == .ready, profile?.requiresPIN == true,
               !platform.locksOnlyAtLaunch else { return }
         if pinTimeoutHours == 0 { return lockForPIN(.everyOpen) }
-        guard Date.now.timeIntervalSince(left) >= Self.biometricCheckAfter, biometricCheckIsOn else { return }
+        guard biometricCheckIsOn else { return }
         Diagnostics.recordLock(.biometricCheck)
         lockOffersBiometrics = true
         phase = .locked

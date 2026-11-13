@@ -7,7 +7,7 @@ import Security
 /// It stands in for nothing: the PIN Peel opens with is the one it keeps
 /// while the PIN timeout has not run out (`RememberedPIN`), and past it the
 /// PIN is typed. On, Face ID is asked for before Peel opens with that kept
-/// PIN, at launch and after a minute away. The twelve words and a PIN change
+/// PIN, at launch and on every return from the background. The twelve words and a PIN change
 /// always take the typed PIN.
 ///
 /// Whether it is on is a flag in the Keychain, on this device only. Earlier
@@ -47,7 +47,7 @@ public struct BiometricUnlock: Sendable {
         try legacy?.discard()
     }
 
-    /// Asks for a face: whether one matched.
+    /// Asks for a face, or the device passcode when it fails: whether either matched.
     public func check(reason: String) async -> Bool {
         await checker.check(reason: reason)
     }
@@ -73,13 +73,13 @@ protocol BiometricChecker: Sendable {
     func check(reason: String) async -> Bool
 }
 
-/// `LAContext`'s biometric policy; its fallback button reads "Enter PIN" and
-/// ends the check unmatched, leaving the keypad.
+/// `LAContext`'s owner policy: a face, and when it fails, the device passcode
+/// (the system's own fallback, as other messengers do). The Peel PIN is never
+/// what it falls back to.
 struct SystemBiometricChecker: BiometricChecker {
     func check(reason: String) async -> Bool {
         let context = LAContext()
-        context.localizedFallbackTitle = "Enter PIN"
-        return (try? await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)) ?? false
+        return (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false
     }
 }
 

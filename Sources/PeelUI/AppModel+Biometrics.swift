@@ -3,7 +3,7 @@ import PeelCore
 
 /// Face ID as a check on entering Peel (`BiometricUnlock`): within the PIN
 /// timeout, a face opens Peel with the PIN this iPhone keeps
-/// (`RememberedPIN`), at launch and after a minute away; past it, the PIN is
+/// (`RememberedPIN`), at launch and on every return from the background; past it, the PIN is
 /// typed. Never for the twelve words or a PIN change. Whether it is on
 /// follows the account on the iPhone (`biometric_enabled`), but only as a
 /// wish: another device's "on" is offered here (`biometricsOffered`), never

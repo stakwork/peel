@@ -49,7 +49,8 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         case cameraPaused, cameraResumed
         /// The phase the app entered while a call is on (`scenePhase`).
         case scene
-        /// CallKit's call was requested, ended, or failed (`callAudioOk` false on a failure).
+        /// CallKit's call was requested, ended, or failed (`callAudioOk` false on a failure,
+        /// `callKitError` the system's code).
         case callKitStarted, callKitEnded, callKitFailed
     }
 
@@ -326,6 +327,8 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var micPublicationMuted: Bool?
     public var wantsMic: Bool?
     public var routeReason: Int?
+    /// `callAudio`'s `callKitFailed`: the `NSError` code CallKit gave (`CXErrorCodeRequestTransactionError`).
+    public var callKitError: Int?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

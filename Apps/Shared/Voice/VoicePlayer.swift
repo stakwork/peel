@@ -72,8 +72,11 @@ final class VoicePlayer {
             Self.current?.pause()
             Self.current = self
             #if os(iOS)
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try? AVAudioSession.sharedInstance().setActive(true)
+            // On a call the session already plays; `.playback` would stop its microphone.
+            if !IOSCallSession.isLive {
+                try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+                try? AVAudioSession.sharedInstance().setActive(true)
+            }
             #endif
             player.play()
             isPlaying = true

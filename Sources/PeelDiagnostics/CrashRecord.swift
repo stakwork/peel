@@ -265,6 +265,7 @@ extension DiagnosticEvent {
         if let value = micPublicationMuted { parts.append("micMuted=\(value)") }
         if let value = wantsMic { parts.append("wantsMic=\(value)") }
         if let value = routeReason { parts.append("routeReason=\(value)") }
+        if let value = callKitError { parts.append("callKitError=\(value)") }
         if let value = errorDetail { parts.append("detail=\"\(value)\"") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }

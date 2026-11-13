@@ -17,8 +17,8 @@ import Synchronization
 /// audio both ways and the live text: the LiveKit server forwards what it
 /// cannot read.
 ///
-/// Apple's voice processing stays on, as for every call (LiveKit's default,
-/// and on the phone a `.voiceChat` audio session, `IOSCallSession`'s), so
+/// Apple's voice processing stays on, as for every call (LiveKit's default;
+/// on the phone LiveKit also sets the audio session up, as for calls), so
 /// the agent never hears itself and the member interrupts it just by
 /// speaking. Mute is for talking to someone else in the room.
 @MainActor @Observable
@@ -81,7 +81,6 @@ final class TalkSession: TalkMedia {
         agent = ticket.agent
         toldVoice = ticket.voice
         #if os(iOS)
-        IOSCallSession.activateAudioSession()
         routeChanges = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
         ) { [weak self] note in
@@ -194,19 +193,15 @@ final class TalkSession: TalkMedia {
     }
 
     #if os(iOS)
-    /// Headphones in or out, a Bluetooth headset coming or going: the audio
-    /// session set up again and the microphone reopened, as `IOSCallSession`
-    /// does. Our own category change comes back as one too: only while the
-    /// room is up, and not during a switch.
+    /// Headphones in or out, a Bluetooth headset coming or going: the session
+    /// is kept active, and LiveKit's audio engine follows the new route itself.
+    /// The microphone is no longer turned off and on here: a category change
+    /// (LiveKit setting the session up, often as the microphone starts) came
+    /// back as a route change and restarted it, in a loop, as on calls.
     private func routeChanged(_ reason: AVAudioSession.RouteChangeReason?) {
-        guard let reason, [.newDeviceAvailable, .oldDeviceUnavailable, .categoryChange, .override].contains(reason),
-              room.connectionState == .connected, !leaving, !switchingMic else { return }
-        IOSCallSession.activateAudioSession()
-        guard micOn else { return }
-        Task {
-            await setMicrophone(false)
-            await setMicrophone(true)
-        }
+        guard let reason, [.newDeviceAvailable, .oldDeviceUnavailable, .override].contains(reason),
+              room.connectionState == .connected, !leaving else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
     #endif
 

@@ -322,7 +322,8 @@ public enum Diagnostics {
     public static func recordCallAudio(
         _ stage: DiagnosticEvent.CallAudioStage, ok: Bool? = nil, category: DiagnosticEvent.AudioCategory? = nil,
         micTrigger: DiagnosticEvent.MicTrigger? = nil, micEnabled: Bool? = nil, micPublicationMuted: Bool? = nil,
-        wantsMic: Bool? = nil, routeReason: Int? = nil, scenePhase: DiagnosticEvent.ScenePhase? = nil
+        wantsMic: Bool? = nil, routeReason: Int? = nil, scenePhase: DiagnosticEvent.ScenePhase? = nil,
+        callKitError: Int? = nil
     ) {
         var event = DiagnosticEvent(kind: .callAudio)
         event.callAudioStage = stage
@@ -334,6 +335,7 @@ public enum Diagnostics {
         event.wantsMic = wantsMic
         event.routeReason = routeReason
         event.scenePhase = scenePhase
+        event.callKitError = callKitError
         current?.record(event)
     }
 

@@ -102,6 +102,10 @@ final class IOSCallSession {
     /// goes to.
     @ObservationIgnored private var jamieIdentity: Participant.Identity?
 
+    /// A call is on: it owns the audio session, so voice messages played or
+    /// recorded meanwhile neither change its category nor deactivate it.
+    static private(set) var isLive = false
+
     @ObservationIgnored private let room = Room(roomOptions: RoomOptions(adaptiveStream: true, dynacast: true))
     @ObservationIgnored private var connecting: Task<Void, Never>?
     @ObservationIgnored private var failed = false
@@ -135,6 +139,7 @@ final class IOSCallSession {
         handoff = ticket.handoff
         self.stay = stay
         wantsCamera = camera
+        Self.isLive = true
         refreshAccess()
         callKit.onSystemEnd = { [weak self] in
             guard let self, !self.leaving else { return }
@@ -268,6 +273,7 @@ final class IOSCallSession {
         observers = []
         await room.disconnect()
         callKit.end()
+        Self.isLive = false
         Self.deactivateAudioSession()
     }
 
@@ -356,7 +362,7 @@ final class IOSCallSession {
 
     /// The microphone as the room has it, in the diagnostics.
     private func logMic(_ trigger: DiagnosticEvent.MicTrigger) {
-        let publication = room.localParticipant.getTrackPublication(source: .microphone)
+        let publication = microphonePublication
         Diagnostics.recordCallAudio(
             .micState, micTrigger: trigger, micEnabled: room.localParticipant.isMicrophoneEnabled(),
             micPublicationMuted: publication?.isMuted, wantsMic: wantsMic)
@@ -368,7 +374,7 @@ final class IOSCallSession {
     private func ensureMicrophone(trigger: DiagnosticEvent.MicTrigger, restart: Bool) async {
         guard wantsMic, !leaving else { return }
         let local = room.localParticipant
-        let publication = local.getTrackPublication(source: .microphone)
+        let publication = microphonePublication
         if !restart, publication != nil, local.isMicrophoneEnabled() {
             refresh()
             logMic(trigger)
@@ -389,6 +395,11 @@ final class IOSCallSession {
         refresh()
         syncSystemMute()
         logMic(trigger)
+    }
+
+    /// The microphone's publication, if any (LiveKit keeps its lookup by source internal).
+    private var microphonePublication: TrackPublication? {
+        room.localParticipant.audioTracks.first { $0.source == .microphone }
     }
 
     /// Tells the system's call screen whether the microphone is muted.

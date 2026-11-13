@@ -31,6 +31,36 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         // in history), and each stored tribe's membership as the engine starts and as a restore ends.
         // The tribe is named by `tribeTag`, never its key.
         case tribeTrace, tribeState
+        // A call's audio: the session, interruptions, route changes, the microphone's state, the camera
+        // paused for the background, the scene phase while on a call, and CallKit.
+        case callAudio
+    }
+
+    /// What happened to a call's audio (`callAudio`).
+    public enum CallAudioStage: String, Codable, Sendable, CaseIterable {
+        /// The audio session was set active (`callAudioOk`, `audioCategory`).
+        case sessionActivated
+        case interruptionBegan, interruptionEnded
+        /// The route changed (`routeReason` is the system's raw reason).
+        case routeChanged
+        /// The microphone as read (`micTrigger` says when; `micEnabled`, `micPublicationMuted`, `wantsMic`).
+        case micState
+        /// The camera stopped for the background, and came back.
+        case cameraPaused, cameraResumed
+        /// The phase the app entered while a call is on (`scenePhase`).
+        case scene
+        /// CallKit's call was requested, ended, or failed (`callAudioOk` false on a failure).
+        case callKitStarted, callKitEnded, callKitFailed
+    }
+
+    /// What made the microphone be read (`CallAudioStage.micState`).
+    public enum MicTrigger: String, Codable, Sendable, CaseIterable {
+        case foreground, background, toggle, reacquire, interruptionEnded, route, system
+    }
+
+    /// The audio session's category (`callAudio`).
+    public enum AudioCategory: String, Codable, Sendable, CaseIterable {
+        case playAndRecord, playback, record, other
     }
 
     /// What happened to a tribe, or to a message from one (`tribeTrace`).
@@ -286,6 +316,16 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var tribeMessageType: Int?
     public var tribeRestoring: Bool?
     public var tribeFromMe: Bool?
+    /// `callAudio`: the stage, whether it worked, the session's category, the microphone's state and
+    /// what read it, and the raw route-change reason. `scenePhase` carries the phase for `.scene`.
+    public var callAudioStage: CallAudioStage?
+    public var callAudioOk: Bool?
+    public var audioCategory: AudioCategory?
+    public var micTrigger: MicTrigger?
+    public var micEnabled: Bool?
+    public var micPublicationMuted: Bool?
+    public var wantsMic: Bool?
+    public var routeReason: Int?
 
     public init(
         kind: Kind, timestamp: Date = Date(), count: Int = 1, errorKind: ErrorKind? = nil,

@@ -220,6 +220,13 @@ public protocol OngoingCall: AnyObject {
     func leave() async
 }
 
+/// A call the system's own call screen can end (CallKit, on the phone): the
+/// store leaves it as it does for the hang-up button.
+@MainActor
+public protocol SystemEndingCall: OngoingCall {
+    var onSystemEnd: (() -> Void)? { get set }
+}
+
 /// The agent's side that needs PeelAgent, which only the Mac builds: its
 /// tools, Peel's strut (the memory) and the automations. Opened and closed
 /// with the account.

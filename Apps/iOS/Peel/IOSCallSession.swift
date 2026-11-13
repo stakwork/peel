@@ -3,6 +3,7 @@ import Combine
 import LiveKit
 import os
 import PeelCore
+import PeelDiagnostics
 import PeelUI
 import SwiftUI
 import UIKit
@@ -61,6 +62,9 @@ final class IOSCallSession {
     let identity: String
     /// Called when a newer device on this account joins the call.
     @ObservationIgnored var movedAway: (() -> Void)?
+    /// Called when the system's call screen (CallKit) ends the call.
+    @ObservationIgnored var onSystemEnd: (() -> Void)?
+    @ObservationIgnored private let callKit = CallKitCoordinator()
     @ObservationIgnored private let handoff: CallHandoff?
     /// Whether the person chose to stay on both devices: the announcement
     /// on connecting says so, and an earlier device does not leave.
@@ -102,7 +106,10 @@ final class IOSCallSession {
     @ObservationIgnored private var connecting: Task<Void, Never>?
     @ObservationIgnored private var failed = false
     @ObservationIgnored private var leaving = false
-    @ObservationIgnored private var switchingMic = false
+    /// The microphone's changes, one after another: a toggle, a re-acquire
+    /// after an interruption and the first turning on never overlap, and none
+    /// can leave a flag stuck (there is none to stick).
+    @ObservationIgnored private var micQueue: Task<Void, Never>?
     /// Whether the microphone is meant to be on, as last asked for.
     @ObservationIgnored private var wantsMic = false
     @ObservationIgnored private let routeLog = Logger(subsystem: "dev.peel.ios", category: "call-audio")
@@ -129,7 +136,19 @@ final class IOSCallSession {
         self.stay = stay
         wantsCamera = camera
         refreshAccess()
-        Self.activateAudioSession()
+        callKit.onSystemEnd = { [weak self] in
+            guard let self, !self.leaving else { return }
+            self.onSystemEnd?()
+        }
+        callKit.onMuteRequest = { [weak self] muted in
+            guard let self, !self.leaving else { return }
+            self.enqueueMic { await self.setMicrophoneNow(!muted, trigger: .system) }
+        }
+        callKit.onAudioActivated = { [weak self] in
+            guard let self, !self.leaving else { return }
+            Self.ensureAudioSessionActive()
+        }
+        callKit.start(title: title, video: camera)
         // LiveKit tells SwiftUI on the main queue after each change to the
         // room, a participant or a track (audio levels included, several
         // times a second per speaker); the tiles are worked out from it at
@@ -142,7 +161,17 @@ final class IOSCallSession {
             NotificationCenter.default.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.enteredForeground() }
+                MainActor.assumeIsolated {
+                    Diagnostics.recordCallAudio(.scene, scenePhase: .active)
+                    self?.enteredForeground()
+                }
+            },
+            NotificationCenter.default.addObserver(
+                forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    if self?.leaving == false { Diagnostics.recordCallAudio(.scene, scenePhase: .inactive) }
+                }
             },
             NotificationCenter.default.addObserver(
                 forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
@@ -153,7 +182,10 @@ final class IOSCallSession {
             NotificationCenter.default.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.enteredBackground() }
+                MainActor.assumeIsolated {
+                    Diagnostics.recordCallAudio(.scene, scenePhase: .background)
+                    self?.enteredBackground()
+                }
             },
             // A phone call or Siri taking the audio, and giving it back.
             NotificationCenter.default.addObserver(
@@ -168,7 +200,8 @@ final class IOSCallSession {
                 MainActor.assumeIsolated {
                     guard let self, !self.leaving else { return }
                     self.routeLog.info("media services were reset")
-                    Self.activateAudioSession()
+                    Self.ensureAudioSessionActive()
+                    self.enqueueMic { await self.ensureMicrophone(trigger: .reacquire, restart: true) }
                 }
             },
             // Headphones in or out, a Bluetooth headset coming or going:
@@ -206,7 +239,6 @@ final class IOSCallSession {
 
     private func connect(url: String, token: String, camera: Bool) async {
         await listenForHandoff()
-        Self.activateAudioSession()
         do {
             try await room.connect(url: url, token: token)
         } catch {
@@ -216,13 +248,12 @@ final class IOSCallSession {
         }
         guard !Task.isCancelled else { return }
         refresh()
+        callKit.connected()
         announce(stay: stay)
         // Not awaited by `leave`: a microphone prompt nobody answers must not
         // hold the call open.
-        Task {
-            await setMicrophone(true)
-            if camera { await setCamera(true) }
-        }
+        enqueueMic { await self.setMicrophoneNow(true, trigger: .toggle) }
+        if camera { Task { await setCamera(true) } }
     }
 
     /// Leaves once a join still in flight has finished, so it cannot outlive
@@ -236,6 +267,7 @@ final class IOSCallSession {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
         await room.disconnect()
+        callKit.end()
         Self.deactivateAudioSession()
     }
 
@@ -243,8 +275,11 @@ final class IOSCallSession {
 
     private func routeChanged(reason: AVAudioSession.RouteChangeReason?) {
         guard !leaving, let reason else { return }
+        // A category change is LiveKit (or CallKit) setting the session up,
+        // often as the microphone itself starts: acting on it would restart
+        // the microphone again, in a loop.
         switch reason {
-        case .newDeviceAvailable, .oldDeviceUnavailable, .categoryChange, .override:
+        case .newDeviceAvailable, .oldDeviceUnavailable, .override:
             break
         default:
             return
@@ -252,11 +287,10 @@ final class IOSCallSession {
         let route = AVAudioSession.sharedInstance().currentRoute
         let outputs = route.outputs.map(\.portName).joined(separator: ", ")
         routeLog.info("audio route changed (\(reason.rawValue)); now \(outputs)")
-        // Our own category change comes back as a notification: only act
-        // while the call is up, and not twice at once.
-        guard state == .connected, !switchingMic else { return }
-        Self.activateAudioSession()
-        reacquireMicrophone()
+        Diagnostics.recordCallAudio(.routeChanged, routeReason: Int(reason.rawValue))
+        guard state == .connected else { return }
+        Self.ensureAudioSessionActive()
+        enqueueMic { await self.ensureMicrophone(trigger: .route, restart: false) }
     }
 
     private func interrupted(type: AVAudioSession.InterruptionType?) {
@@ -264,65 +298,118 @@ final class IOSCallSession {
         switch type {
         case .began:
             routeLog.info("audio interruption began")
+            Diagnostics.recordCallAudio(.interruptionBegan)
         case .ended:
             routeLog.info("audio interruption ended")
-            Self.activateAudioSession()
-            if state == .connected, !switchingMic { reacquireMicrophone() }
+            Diagnostics.recordCallAudio(.interruptionEnded)
+            Self.ensureAudioSessionActive()
+            // The capture stopped with the interruption: start it again.
+            if state == .connected { enqueueMic { await self.ensureMicrophone(trigger: .interruptionEnded, restart: true) } }
         @unknown default:
             break
         }
     }
 
-    /// Back in the app: the audio session is set up again, and the camera
-    /// that the background took comes back.
+    /// Back in the app: the audio session is checked, the microphone is
+    /// checked and brought back if it is not really on, and the camera that
+    /// the background took comes back. Runs on both "will enter foreground"
+    /// and "did become active", which is harmless.
     private func enteredForeground() {
         guard !leaving else { return }
         refreshAccess()
-        Self.activateAudioSession()
+        Self.ensureAudioSessionActive()
         refresh()
+        logMic(.foreground)
+        if state == .connected { enqueueMic { await self.ensureMicrophone(trigger: .foreground, restart: false) } }
         guard resumeCameraOnForeground else { return }
         resumeCameraOnForeground = false
         guard cameraAccess == .allowed else { return }
+        Diagnostics.recordCallAudio(.cameraResumed)
         Task { await setCamera(true) }
     }
 
-    /// Stops the camera, keeping `wantsCamera`, and never the call.
+    /// Stops the camera, keeping `wantsCamera`, and never the microphone or
+    /// the call: the audio goes on in the background.
     private func enteredBackground() {
-        guard !leaving, cameraOn else { return }
+        guard !leaving else { return }
+        logMic(.background)
+        guard cameraOn else { return }
         resumeCameraOnForeground = true
+        Diagnostics.recordCallAudio(.cameraPaused)
         let wanted = wantsCamera
         Task {
             await setCamera(false)
             wantsCamera = wanted
+            logMic(.background)
         }
     }
 
-    /// Opens the microphone again when it is meant to be on.
-    private func reacquireMicrophone() {
-        guard wantsMic else { return }
-        Task {
-            guard !switchingMic, !leaving else { return }
-            switchingMic = true
-            defer { switchingMic = false }
-            let local = room.localParticipant
+    /// Runs a microphone change after the ones before it have finished.
+    private func enqueueMic(_ work: @escaping @MainActor () async -> Void) {
+        let previous = micQueue
+        micQueue = Task {
+            await previous?.value
+            guard !leaving else { return }
+            await work()
+        }
+    }
+
+    /// The microphone as the room has it, in the diagnostics.
+    private func logMic(_ trigger: DiagnosticEvent.MicTrigger) {
+        let publication = room.localParticipant.getTrackPublication(source: .microphone)
+        Diagnostics.recordCallAudio(
+            .micState, micTrigger: trigger, micEnabled: room.localParticipant.isMicrophoneEnabled(),
+            micPublicationMuted: publication?.isMuted, wantsMic: wantsMic)
+    }
+
+    /// Makes sure the microphone is published and not muted when it is meant
+    /// to be on; with `restart` (capture may have stopped) it is turned off
+    /// and on regardless. Turning on is tried again off and on when it fails.
+    private func ensureMicrophone(trigger: DiagnosticEvent.MicTrigger, restart: Bool) async {
+        guard wantsMic, !leaving else { return }
+        let local = room.localParticipant
+        let publication = local.getTrackPublication(source: .microphone)
+        if !restart, publication != nil, local.isMicrophoneEnabled() {
+            refresh()
+            logMic(trigger)
+            return
+        }
+        do {
+            if restart || publication != nil { try await local.setMicrophone(enabled: false) }
+            try await local.setMicrophone(enabled: true)
+            routeLog.info("microphone re-acquired")
+        } catch {
+            routeLog.error("microphone restart failed: \(String(describing: error))")
             do {
-                try await local.setMicrophone(enabled: false)
                 try await local.setMicrophone(enabled: true)
-                routeLog.info("microphone re-acquired")
             } catch {
-                routeLog.error("microphone restart failed: \(String(describing: error))")
                 deviceNotice = "Could not turn the microphone on"
             }
-            refresh()
         }
+        refresh()
+        syncSystemMute()
+        logMic(trigger)
     }
 
-    /// A voice call's session: record and play, with the earpiece or speaker
-    /// as the system's voice processing routes them, and Bluetooth headsets.
-    static func activateAudioSession() {
+    /// Tells the system's call screen whether the microphone is muted.
+    private func syncSystemMute() {
+        callKit.reportMuted(!room.localParticipant.isMicrophoneEnabled())
+    }
+
+    /// Activates the audio session without choosing its category: LiveKit
+    /// sets that up (and takes it down) with its audio engine, and setting it
+    /// here as well made the two fight, the engine stopping the capture.
+    static func ensureAudioSessionActive() {
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .defaultToSpeaker])
-        try? session.setActive(true)
+        var ok = true
+        do { try session.setActive(true) } catch { ok = false }
+        let category: DiagnosticEvent.AudioCategory = switch session.category {
+        case .playAndRecord: .playAndRecord
+        case .playback: .playback
+        case .record: .record
+        default: .other
+        }
+        Diagnostics.recordCallAudio(.sessionActivated, ok: ok, category: category)
     }
 
     /// Lets other apps' audio come back.
@@ -332,8 +419,10 @@ final class IOSCallSession {
 
     // MARK: Microphone and camera
 
+    /// Turns the microphone on if it is off and off if it is on, as the
+    /// room really has it when the change runs (not as the button last drew it).
     func toggleMicrophone() {
-        Task { await setMicrophone(!micOn) }
+        enqueueMic { await self.setMicrophoneNow(!self.room.localParticipant.isMicrophoneEnabled(), trigger: .toggle) }
     }
 
     func toggleCamera() {
@@ -362,19 +451,23 @@ final class IOSCallSession {
         }
     }
 
-    private func setMicrophone(_ on: Bool) async {
-        guard !switchingMic, !leaving else { return }
-        switchingMic = true
-        defer { switchingMic = false }
+    /// Turns the microphone on or off, to be run by `enqueueMic`; whatever
+    /// happens, the state shown is read back from the room afterwards.
+    private func setMicrophoneNow(_ on: Bool, trigger: DiagnosticEvent.MicTrigger) async {
+        guard !leaving else { return }
+        defer {
+            refresh()
+            syncSystemMute()
+            logMic(trigger)
+        }
         // Leaving may have happened while iOS asked.
         if on, await !mayUse(.audio) || leaving { return }
+        wantsMic = on
         do {
             try await room.localParticipant.setMicrophone(enabled: on)
-            wantsMic = on
         } catch {
             if on { deviceNotice = "Could not turn the microphone on" }
         }
-        refresh()
     }
 
     /// Off unpublishes the camera rather than muting it, so the camera is
@@ -477,7 +570,10 @@ final class IOSCallSession {
         case .disconnected, .disconnecting:
             now = connectedAt == nil && !failed ? .connecting : .lost
         }
-        if now != state { state = now }
+        if now != state {
+            state = now
+            if now == .lost { callKit.end(failed: true) }
+        }
     }
 
     /// A screen someone shares that was not there before takes the focus

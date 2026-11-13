@@ -257,6 +257,14 @@ extension DiagnosticEvent {
         if let value = tribeMessageType { parts.append("type=\(value)") }
         if let value = tribeRestoring { parts.append("restoring=\(value)") }
         if let value = tribeFromMe { parts.append("fromMe=\(value)") }
+        if let value = callAudioStage { parts.append("stage=\(value.rawValue)") }
+        if let value = callAudioOk { parts.append(value ? "ok" : "failed") }
+        if let value = audioCategory { parts.append("category=\(value.rawValue)") }
+        if let value = micTrigger { parts.append("trigger=\(value.rawValue)") }
+        if let value = micEnabled { parts.append("micEnabled=\(value)") }
+        if let value = micPublicationMuted { parts.append("micMuted=\(value)") }
+        if let value = wantsMic { parts.append("wantsMic=\(value)") }
+        if let value = routeReason { parts.append("routeReason=\(value)") }
         if let value = errorDetail { parts.append("detail=\"\(value)\"") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }

@@ -204,4 +204,25 @@ struct TraceEventTests {
     @Test func everyKindIsUnique() {
         #expect(Set(DiagnosticEvent.Kind.allCases.map(\.rawValue)).count == DiagnosticEvent.Kind.allCases.count)
     }
+
+    @Test func callAudioRoundTripsAndHasNoFreeText() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "peel-diag-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        var event = DiagnosticEvent(kind: .callAudio, timestamp: Date(timeIntervalSince1970: 9))
+        event.callAudioStage = .micState
+        event.micTrigger = .foreground
+        event.micEnabled = true
+        event.micPublicationMuted = false
+        event.wantsMic = true
+        event.audioCategory = .playAndRecord
+        let ring = DiagnosticsRing(file: file)
+        ring.append(event)
+        #expect(DiagnosticsRing(file: file).read() == [event])
+        #expect(event.line.contains("callAudio"))
+        #expect(event.line.contains("stage=micState"))
+        #expect(event.line.contains("trigger=foreground"))
+        #expect(event.line.contains("micEnabled=true"))
+        #expect(event.line.contains("micMuted=false"))
+        #expect(event.line.contains("wantsMic=true"))
+    }
 }

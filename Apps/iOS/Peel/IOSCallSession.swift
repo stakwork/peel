@@ -107,6 +107,9 @@ final class IOSCallSession {
     @ObservationIgnored private var wantsMic = false
     @ObservationIgnored private let routeLog = Logger(subsystem: "dev.peel.ios", category: "call-audio")
     @ObservationIgnored private var switchingCamera = false
+    /// Whether the camera was on when the app went to the background, where
+    /// iOS cannot capture it: it comes back on in the foreground.
+    @ObservationIgnored private var resumeCameraOnForeground = false
     /// Every screen track seen on this call, so one that comes back after
     /// a pause or a reconnect does not take the focus again.
     @ObservationIgnored private var seenScreenTracks: Set<String> = []
@@ -139,7 +142,34 @@ final class IOSCallSession {
             NotificationCenter.default.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshAccess() }
+                MainActor.assumeIsolated { self?.enteredForeground() }
+            },
+            NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.enteredForeground() }
+            },
+            // The camera cannot capture in the background; the audio goes on.
+            NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.enteredBackground() }
+            },
+            // A phone call or Siri taking the audio, and giving it back.
+            NotificationCenter.default.addObserver(
+                forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+            ) { [weak self] note in
+                let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                MainActor.assumeIsolated { self?.interrupted(type: raw.flatMap(AVAudioSession.InterruptionType.init(rawValue:))) }
+            },
+            NotificationCenter.default.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, !self.leaving else { return }
+                    self.routeLog.info("media services were reset")
+                    Self.activateAudioSession()
+                }
             },
             // Headphones in or out, a Bluetooth headset coming or going:
             // the session is set up again and the microphone reopened.
@@ -176,6 +206,7 @@ final class IOSCallSession {
 
     private func connect(url: String, token: String, camera: Bool) async {
         await listenForHandoff()
+        Self.activateAudioSession()
         do {
             try await room.connect(url: url, token: token)
         } catch {
@@ -225,6 +256,49 @@ final class IOSCallSession {
         // while the call is up, and not twice at once.
         guard state == .connected, !switchingMic else { return }
         Self.activateAudioSession()
+        reacquireMicrophone()
+    }
+
+    private func interrupted(type: AVAudioSession.InterruptionType?) {
+        guard !leaving, let type else { return }
+        switch type {
+        case .began:
+            routeLog.info("audio interruption began")
+        case .ended:
+            routeLog.info("audio interruption ended")
+            Self.activateAudioSession()
+            if state == .connected, !switchingMic { reacquireMicrophone() }
+        @unknown default:
+            break
+        }
+    }
+
+    /// Back in the app: the audio session is set up again, and the camera
+    /// that the background took comes back.
+    private func enteredForeground() {
+        guard !leaving else { return }
+        refreshAccess()
+        Self.activateAudioSession()
+        refresh()
+        guard resumeCameraOnForeground else { return }
+        resumeCameraOnForeground = false
+        guard cameraAccess == .allowed else { return }
+        Task { await setCamera(true) }
+    }
+
+    /// Stops the camera, keeping `wantsCamera`, and never the call.
+    private func enteredBackground() {
+        guard !leaving, cameraOn else { return }
+        resumeCameraOnForeground = true
+        let wanted = wantsCamera
+        Task {
+            await setCamera(false)
+            wantsCamera = wanted
+        }
+    }
+
+    /// Opens the microphone again when it is meant to be on.
+    private func reacquireMicrophone() {
         guard wantsMic else { return }
         Task {
             guard !switchingMic, !leaving else { return }

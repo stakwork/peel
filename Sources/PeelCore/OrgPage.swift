@@ -9,16 +9,46 @@ public enum StrutUI {
     /// alone; with `key`, the strut's key handed over as `?key=` (Peel's own
     /// strut, on this Mac); with `input`, an app opened at that view (strut's
     /// plans/apps.md §7.1, "Deep links"). Nil for a base that is not a URL's parts.
-    public static func page(on base: URL, key: String? = nil, _ name: String, _ value: String, input: String? = nil) -> URL? {
+    /// With `from`, another strut server's public app `value`, which this
+    /// UI hosts (strut's remote mode, its specs/API.md §17.9:
+    /// `&public=1&from=<seller>`).
+    public static func page(
+        on base: URL, key: String? = nil, _ name: String, _ value: String, input: String? = nil, from seller: URL? = nil
+    ) -> URL? {
         guard var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
         // The UI's folder with its `/`: without it the host redirects, and a
         // web view does not carry a request's credential across a redirect.
         let path = parts.percentEncodedPath
         parts.percentEncodedPath = path.hasSuffix("/") ? path : path + "/"
         parts.percentEncodedQuery = (key.map { "key=\(encoded($0))&" } ?? "") + "\(name)=\(encoded(value))"
-            + (input.map { "&input=\(encoded($0))" } ?? "") + "&solo=1"
+            + (input.map { "&input=\(encoded($0))" } ?? "")
+            + (seller.map { "&public=1&from=\(encoded($0.absoluteString))" } ?? "") + "&solo=1"
         parts.fragment = nil
         return parts.url
+    }
+
+    /// The stranger's public app a page of this UI (in its `folder`) hosts,
+    /// as its address names it (`page(…, from:)`): the seller as strut names
+    /// one (`Seller.base`) and the app. Nil for any other page, and for an
+    /// address strut and Peel could each read their own way (a value given
+    /// twice, a seller strut would not open, an app name it would refuse).
+    public static func remote(_ url: URL, in folder: String) -> (seller: URL, name: String)? {
+        guard isPage(url, in: folder), let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        else { return nil }
+        // Each given once: one given twice is no page.
+        func one(_ name: String) -> String? {
+            let found = items.filter { $0.name == name }
+            return found.count == 1 ? found[0].value : nil
+        }
+        guard one("public") == "1", let from = one("from"), let app = one("app"), AgentArtifact.Handle.isAppName(app),
+              let seller = Seller.base(from) else { return nil }
+        return (seller, app)
+    }
+
+    /// Whether `url` names a public app of another server (`public` or
+    /// `from` in its query): never an app of this strut's own.
+    static func namesRemote(_ url: URL) -> Bool {
+        (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).contains { $0.name == "public" || $0.name == "from" }
     }
 
     /// `page`, the same page at the view `input` (nil: the app's first),
@@ -92,7 +122,9 @@ public struct StrutAppLink: Sendable, Equatable {
     /// `app` or `input` given twice or that does not decode: strut and Peel
     /// would each read such a link their own way.
     public init?(_ url: URL, folder: String, from source: Source) {
-        guard StrutUI.isPage(url, in: folder), let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        // Another server's public app is never one of this strut's own (`StrutUI.remote`).
+        guard StrutUI.isPage(url, in: folder), !StrutUI.namesRemote(url),
+              let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         // As strut's UI reads its address (`URLSearchParams`): `+` is a space.
         func decoded(_ part: Substring) -> String? { part.replacingOccurrences(of: "+", with: " ").removingPercentEncoding }
         var app: String?

@@ -152,8 +152,8 @@ struct ChatListRow: View {
                     .lineLimit(1)
                 if isAgent { AgentTag() }
             }
-            .modifier(PreviewLine(line: isAgent ? nil : conversation.previewLine,
-                                  date: isAgent ? nil : conversation.dateLabel(), unread: unread > 0))
+            .modifier(PreviewLine(line: conversation.previewLine,
+                                  date: conversation.dateLabel(), unread: unread > 0))
         } trailing: {
             if onCall > 0 {
                 Image(systemName: "phone.fill")

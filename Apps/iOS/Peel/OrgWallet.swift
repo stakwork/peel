@@ -3,24 +3,36 @@ import PeelUI
 import SwiftUI
 import WebKit
 
-/// The app wallet's handler on the iPhone's org page (`StrutWallet`,
-/// docs/app-wallet.md): the main frame there is the org's own strut UI,
-/// which can name any of the org's apps, so the org is what Peel trusts.
-/// A connection is the org's (`WalletScope.org`), the sheets name it from
-/// Peel's own record of the page it opened (`OrgPageRequest`), never from
-/// the page, and only the main frame at the org's origin is answered. A
+/// The app wallet's handler on the iPhone's page sheet (`StrutWallet`,
+/// docs/app-wallet.md). On an org's page the main frame is the org's own
+/// strut UI, which can name any of the org's apps, so the org is what Peel
+/// trusts (`WalletScope.org`); on a stranger's public app Peel loaded
+/// itself, the box's own code, so only the origin Peel loaded
+/// (`WalletScope.origin`), which a sign-in's challenge must name. The
+/// sheets name either from Peel's own record of the page it opened, never
+/// from the page, and only the main frame at that origin is answered. A
 /// sheet opens only right after the person's own tap.
 @MainActor
 final class OrgWalletBridge: NSObject, WKScriptMessageHandlerWithReply {
-    private let page: OrgPageRequest
+    private let scope: WalletScope
+    private let place: String
+    /// The address Peel loaded: only its origin is answered.
+    private let origin: URL
+    private let serves: (URL) -> Bool
     private weak var model: AppModel?
     private weak var webView: WKWebView?
     private var acted: () -> Bool = { false }
     private var listening: UUID?
     private let sheets: PhoneWalletSheets
 
-    init(page: OrgPageRequest, model: AppModel, sheets: PhoneWalletSheets) {
-        self.page = page
+    init(
+        scope: WalletScope, place: String, origin: URL, serves: @escaping (URL) -> Bool, model: AppModel,
+        sheets: PhoneWalletSheets
+    ) {
+        self.scope = scope
+        self.place = place
+        self.origin = origin
+        self.serves = serves
         self.model = model
         self.sheets = sheets
     }
@@ -47,23 +59,21 @@ final class OrgWalletBridge: NSObject, WKScriptMessageHandlerWithReply {
         webView = nil
     }
 
-    private var scope: WalletScope { .org(peer: page.peer) }
-
     func userContentController(
         _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
     ) async -> (Any?, String?) {
-        guard StrutWallet.mayAnswer(message.frameInfo, origin: page.url), let webView, message.webView === webView,
-              let url = webView.url, page.serves(url), let model, let body = StrutWallet.json(message.body) else {
+        guard StrutWallet.mayAnswer(message.frameInfo, origin: origin), let webView, message.webView === webView,
+              let url = webView.url, serves(url), let model, let body = StrutWallet.json(message.body) else {
             return (nil, StrutWallet.notAnswered)
         }
-        let caller = WalletCaller(scope: scope, place: page.workspace, personActed: acted(), person: PhoneWalletPerson(sheets: sheets))
+        let caller = WalletCaller(scope: scope, place: place, personActed: acted(), person: PhoneWalletPerson(sheets: sheets))
         let reply = await model.walletReply(to: body, from: caller)
         return (StrutWallet.foundation(reply), nil)
     }
 
     private func push(_ push: WalletPush) {
         guard let webView, push.connection == scope.key else { return }
-        StrutWallet.push(push.envelope, into: webView, origin: page.url)
+        StrutWallet.push(push.envelope, into: webView, origin: origin)
     }
 }
 
@@ -78,6 +88,14 @@ struct PhoneWalletPerson: WalletPerson {
     func pay(_ sheet: WalletPaymentSheet) async -> Bool {
         await sheets.ask(.payment(sheet)).paid
     }
+
+    func buyCredit(_ sheet: WalletCreditSheet) async -> Bool {
+        await sheets.ask(.credit(sheet)).paid
+    }
+
+    func signedIn(to host: String, as key: SignInKey) async {
+        await sheets.show(WalletWords.signedIn(to: host, as: key))
+    }
 }
 
 /// The sheet the org page shows over itself, one at a time, answered once:
@@ -87,11 +105,13 @@ final class PhoneWalletSheets {
     enum Sheet: Identifiable {
         case connect(WalletConnectSheet)
         case payment(WalletPaymentSheet)
+        case credit(WalletCreditSheet)
 
         var id: String {
             switch self {
-            case .connect(let sheet): "connect \(sheet.app)"
+            case .connect(let sheet): "connect \(sheet.app) \(sheet.signIn?.host ?? "")"
             case .payment(let sheet): "pay \(sheet.payee) \(sheet.amountMsat)"
+            case .credit(let sheet): "credit \(sheet.host) \(sheet.amountMsat)"
             }
         }
     }
@@ -102,9 +122,23 @@ final class PhoneWalletSheets {
     }
 
     var shown: Sheet?
+    /// What a connection did with no sheet, for a moment over the page.
+    var toast: String?
     /// Whether an answer still counts when it is given (Peel unlocked).
     @ObservationIgnored var stillOpen: () -> Bool = { true }
     @ObservationIgnored private var waiting: CheckedContinuation<Answer, Never>?
+    @ObservationIgnored private var toastShown: Task<Void, Never>?
+
+    /// Shows `words` for a moment over the page, and says them to VoiceOver.
+    func show(_ words: String) {
+        toast = words
+        CopyFeedback.announce(words)
+        toastShown?.cancel()
+        toastShown = Task { [weak self] in
+            guard (try? await Task.sleep(for: .seconds(2.5))) != nil else { return }
+            self?.toast = nil
+        }
+    }
 
     func ask(_ sheet: Sheet) async -> Answer {
         guard waiting == nil, !Task.isCancelled else { return Answer() }
@@ -138,6 +172,8 @@ struct WalletConnectPhoneSheet: View {
     @State private var limit: String
     @State private var overLimit: WalletConnection.OverBudget
     @State private var optional: Set<WalletMethod>
+    /// Who the person signs in as, when the sheet asks.
+    @State private var identity: SignInKey?
 
     init(sheet: WalletConnectSheet, done: @escaping (WalletConnectAnswer?) -> Void) {
         self.sheet = sheet
@@ -145,6 +181,7 @@ struct WalletConnectPhoneSheet: View {
         _limit = State(initialValue: sheet.maxAmountMsat.map { String($0 / 1000) } ?? "")
         _optional = State(initialValue: Set(sheet.optional))
         _overLimit = State(initialValue: sheet.held?.overBudget ?? .ask)
+        _identity = State(initialValue: sheet.signIn?.keys.first)
     }
 
     private var limitMsat: Int64? {
@@ -153,57 +190,79 @@ struct WalletConnectPhoneSheet: View {
     }
 
     var body: some View {
+        let answers = WalletWords.connectAnswers(sheet)
         NavigationStack {
             Form {
                 Section {
                     Text(WalletWords.who(title: sheet.title, app: sheet.app, version: sheet.version, place: sheet.place,
                                          byOrg: sheet.byOrg))
-                    Text("Every app on \(sheet.place) shares this connection and its spending limit.")
+                    Text("Every app on \(sheet.place) shares this connection\(sheet.asksWallet ? " and its spending limit" : "").")
                         .foregroundStyle(Theme.secondaryText)
                 }
-                Section("It may") {
-                    ForEach(WalletWords.methods(sheet.required), id: \.self) { Text($0) }
-                    ForEach(sheet.optional, id: \.self) { method in
-                        Toggle(WalletWords.method(method), isOn: Binding(
-                            get: { optional.contains(method) },
-                            set: { if $0 { optional.insert(method) } else { optional.remove(method) } }
-                        ))
+                if let offer = sheet.signIn {
+                    Section {
+                        Picker("Sign in", selection: $identity) {
+                            ForEach(offer.keys, id: \.self) { key in
+                                Text(WalletWords.signIn(key)).tag(Optional(key))
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    } header: {
+                        Text("Sign in")
+                    } footer: {
+                        if let identity { Text(WalletWords.signInNote(identity)) }
                     }
-                    if !sheet.notifications.isEmpty { Text("Hear when its own payments land") }
                 }
-                Section {
-                    HStack {
-                        TextField("None", text: $limit)
-                            .keyboardType(.numberPad)
-                            .monospacedDigit()
-                        Text("sats").foregroundStyle(Theme.secondaryText)
-                    }
-                    Text(WalletWords.limit(limitMsat, renewal: sheet.renewal)).foregroundStyle(Theme.secondaryText)
-                    Picker("Over the limit", selection: $overLimit) {
-                        Text("Ask me each time").tag(WalletConnection.OverBudget.ask)
-                        Text("Refuse").tag(WalletConnection.OverBudget.refuse)
-                    }
-                } header: {
-                    Text("Spending limit")
-                } footer: {
-                    Text("Inside it, apps pay without asking you. Change it or take it back in You › Connected apps.")
-                }
+                if sheet.asksWallet { walletSections }
             }
-            .navigationTitle("Connect to your wallet?")
+            .navigationTitle(WalletWords.connectTitle(sheet))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Don't connect") { done(nil) } }
+                ToolbarItem(placement: .cancellationAction) { Button(answers.no) { done(nil) } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Connect") {
-                        done(WalletConnectAnswer(optional: Array(optional), maxAmountMsat: limitMsat, overBudget: overLimit))
+                    Button(answers.yes) {
+                        done(WalletConnectAnswer(optional: Array(optional), maxAmountMsat: limitMsat, overBudget: overLimit,
+                                                 signIn: identity))
                     }
                     // Not as the sheet rises: a tap meant for the page is never the yes.
-                    .disabled(!settled)
+                    .disabled(!settled || (sheet.signIn != nil && identity == nil))
                 }
             }
         }
         .interactiveDismissDisabled()
         .task { settled = (try? await Task.sleep(for: TouchPayButton.settle)) != nil }
+    }
+
+    /// What the app may spend: its methods, the limit, over it.
+    @ViewBuilder private var walletSections: some View {
+        Section("It may") {
+            ForEach(WalletWords.methods(sheet.required), id: \.self) { Text($0) }
+            ForEach(sheet.optional, id: \.self) { method in
+                Toggle(WalletWords.method(method), isOn: Binding(
+                    get: { optional.contains(method) },
+                    set: { if $0 { optional.insert(method) } else { optional.remove(method) } }
+                ))
+            }
+            if !sheet.notifications.isEmpty { Text("Hear when its own payments land") }
+        }
+        Section {
+            HStack {
+                TextField("None", text: $limit)
+                    .keyboardType(.numberPad)
+                    .monospacedDigit()
+                Text("sats").foregroundStyle(Theme.secondaryText)
+            }
+            Text(WalletWords.limit(limitMsat, renewal: sheet.renewal)).foregroundStyle(Theme.secondaryText)
+            Picker("Over the limit", selection: $overLimit) {
+                Text("Ask me each time").tag(WalletConnection.OverBudget.ask)
+                Text("Refuse").tag(WalletConnection.OverBudget.refuse)
+            }
+        } header: {
+            Text("Spending limit")
+        } footer: {
+            Text("Inside it, apps pay without asking you. Change it or take it back in You › Connected apps.")
+        }
     }
 
     @State private var settled = false
@@ -256,6 +315,45 @@ struct WalletPaymentPhoneSheet: View {
     }
 }
 
+/// The CREDIT sheet on the iPhone (specs/WALLET.md §1.2): credit bought on
+/// the server Peel loaded for a launch in its public app; the price as Peel
+/// decoded it, the rest marked as the server's, and the touch-safe two-step.
+struct WalletCreditPhoneSheet: View {
+    let sheet: WalletCreditSheet
+    let done: (Bool) -> Void
+    @State private var attempt = PaymentAttempt()
+
+    var body: some View {
+        let amount = UInt64(max(sheet.amountMsat, 0))
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                    Text(WalletWords.creditApp(sheet))
+                        .foregroundStyle(Theme.secondaryText)
+                    BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 34)
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text("Runs \(sheet.workflow)")
+                        Text("Buys " + WalletWords.creditBuys(sheet))
+                        Text("Fee added on top").foregroundStyle(Theme.secondaryText)
+                        Text("The server says: “\(sheet.description)”").foregroundStyle(Theme.secondaryText)
+                        Text(WalletWords.creditNote(sheet)).foregroundStyle(Theme.secondaryText)
+                    }
+                    TouchPayButton(verb: "Pay", totalMsat: amount, attempt: attempt, send: { confirmed in
+                        confirmed == amount ? .sent : .needsConfirmation(msat: amount)
+                    }, sent: { done(true) }, armedNote: "Check the amount, then confirm.")
+                }
+                .padding(Theme.Space.lg)
+            }
+            .navigationTitle(WalletWords.creditTitle(sheet))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Decline") { done(false) } }
+            }
+        }
+        .interactiveDismissDisabled()
+    }
+}
+
 /// You › Connected apps: each org or app the person connected, its
 /// spending limit and what it spent, what happens over it, Disconnect.
 struct ConnectedAppsScreen: View {
@@ -270,14 +368,17 @@ struct ConnectedAppsScreen: View {
             ForEach(model.walletConnections) { connection in
                 Section(connection.title) {
                     Text(connection.place).foregroundStyle(Theme.secondaryText)
-                    Text(WalletWords.limit(connection.maxAmountMsat, renewal: connection.renewal))
-                    Picker("Over the limit", selection: Binding(
-                        get: { connection.overBudget }, set: { model.setOverLimit(connection.key, $0) }
-                    )) {
-                        Text("Ask me").tag(WalletConnection.OverBudget.ask)
-                        Text("Refuse").tag(WalletConnection.OverBudget.refuse)
+                    if let signIn = connection.signIn { Text(WalletWords.signsIn(signIn, to: connection.place)) }
+                    if !connection.methods.isEmpty {
+                        Text(WalletWords.limit(connection.maxAmountMsat, renewal: connection.renewal))
+                        Picker("Over the limit", selection: Binding(
+                            get: { connection.overBudget }, set: { model.setOverLimit(connection.key, $0) }
+                        )) {
+                            Text("Ask me").tag(WalletConnection.OverBudget.ask)
+                            Text("Refuse").tag(WalletConnection.OverBudget.refuse)
+                        }
+                        ConnectedLimitRow(connection: connection)
                     }
-                    ConnectedLimitRow(connection: connection)
                     Button("Disconnect", role: .destructive) { model.revokeWalletConnection(connection.key) }
                 }
             }

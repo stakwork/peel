@@ -312,11 +312,18 @@ extension AppModel {
     }
 
     /// A `peel://` link Peel takes: a Peel Home link (`HomeLink`), which waits
-    /// in Account › Peel Home for the person's yes. False for any other scheme.
+    /// in Account › Peel Home for the person's yes, or a stranger's public
+    /// app to open (`PublicAppLink`). False for any other scheme.
     func openPeelLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "peel" else { return false }
         if url.host?.lowercased() == "home-setup", let link = HomeLink(url) {
             openHomeLink(link)
+        } else if url.host?.lowercased() == "open" {
+            if let link = PublicAppLink(peelLink: url) {
+                openPublicApp(link)
+            } else {
+                notice = "That link doesn't name an app Peel can open: only https addresses open."
+            }
         } else if url.host?.lowercased() == "brain" {
             notice = "That link is for the old home server, which Peel no longer uses. Set up Always on again and open the new link."
         } else {

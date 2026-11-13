@@ -75,6 +75,8 @@ struct ChatList: View {
         // Mac (never in the sections), and found by its name as a chat is.
         let agent = model.agentChat.flatMap { chat in model.conversations.first { $0.chat == chat } }
             .flatMap { ChatSections.matches($0.name, query: model.searchQuery) ? $0 : nil }
+            // Unread, it is in the Unread section instead.
+            .flatMap { agent in sections.unread.contains { $0.chat == agent.chat } ? nil : agent }
         let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty && agent == nil
         List {
             if !sections.searching {
@@ -109,7 +111,9 @@ struct ChatList: View {
             }
             if !sections.unread.isEmpty {
                 ChatsSection(title: "Unread") {
-                    ForEach(sections.unread) { ChatLink(conversation: $0, state: states[$0.chat]) }
+                    ForEach(sections.unread) {
+                        ChatLink(conversation: $0, state: states[$0.chat], isAgent: $0.chat == model.agentChat)
+                    }
                 }
             }
             // Searching shows every match, a section only with matches,

@@ -72,6 +72,20 @@ extension MemoryServer {
         StrutUI.page(on: base, key: key, name, value, input: input)
     }
 
+    /// strut's UI hosting another server's public app `name` (strut's
+    /// remote mode, specs/API.md §17.9): only its sandboxed frame is the
+    /// stranger's; the main frame stays this strut's UI, which the app
+    /// wallet's handler answers (`StrutWallet`).
+    public func page(public name: String, from seller: URL) -> URL? {
+        StrutUI.page(on: base, key: key, "app", name, from: seller)
+    }
+
+    /// The stranger's public app a page of this strut's UI hosts, as its
+    /// address names it; nil for any other page or address.
+    public func remoteApp(_ url: URL) -> (seller: URL, name: String)? {
+        serves(url) ? StrutUI.remote(url, in: uiFolder) : nil
+    }
+
     /// The app a page of this strut's UI links to (`StrutAppLink`), from a
     /// page of the org `peer`'s app or of one of this strut's own (nil);
     /// nil for a link to anything else, or anywhere else.

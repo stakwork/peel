@@ -639,6 +639,13 @@ extension Storage {
                     createdAt INTEGER NOT NULL);
                 """)
         }
+        migrator.registerMigration("v34") { db in
+            // Signing a visitor in to a public app rides the wallet
+            // connection (strut's plans/app-payments.md §4.4): which key the
+            // person let it sign with, 'root' or 'domain'; NULL for none. A
+            // connection may hold this alone, with no methods.
+            try db.execute(sql: "ALTER TABLE walletConnection ADD COLUMN signIn TEXT")
+        }
         return migrator
     }
 }

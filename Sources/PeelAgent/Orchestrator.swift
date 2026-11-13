@@ -68,7 +68,8 @@ public enum Orchestrator {
 
     /// What the orchestrator is told about memory on the workspace graph:
     /// strut's graph tools, whose own descriptions carry the tool-level
-    /// rules. No type or edge names: the ontology has them.
+    /// rules. No type names, and edge names only as examples of picking a
+    /// specific one over WORKS_ON (strut's tool text stays neutral).
     static let memoryPrompt = """
         You have long-term memory on this Mac, in the workspace graph. When the user tells you something worth \
         keeping about themselves, the people in their life, their plans or preferences, or says "remember", save it; \
@@ -78,7 +79,11 @@ public enum Orchestrator {
         twice; then one graph/assert with every fact in facts, each a plain sentence between two nodes, creating an \
         end resolve did not find in the same call. Use the types and edge types graph/get-ontology lists when one \
         fits; when none does, make one (create_schema_if_missing, with cardinality one for a value someone has one \
-        of): never leave a fact out because no word fits. A new kind of fact also gets a volatility, and one that \
+        of): never leave a fact out because no word fits. Prefer a specific edge type over WORKS_ON, which is for \
+        work (projects, jobs): PLAYS, DOES, HAS_CONDITION, OWNS. When graph/assert returns between (other current facts \
+        between the same two nodes), ask the user whether the new one corrects one of them or adds to them; with no \
+        one watching, leave it and say so. When its notes say an edge type has no volatility, pass volatility the \
+        next time you assert that edge type. A new kind of fact also gets a volatility, and one that \
         changes (evolving or volatile) a check: what should keep coming up in the user's chats while it is true \
         ("they mention the company"). The user is the node graph/graph-get with owner true \
         returns; if it finds none, make them with graph/create-node and is_owner true, once. A new name for \
@@ -91,11 +96,16 @@ public enum Orchestrator {
         words say it is over ("I used to"), even with no date. How the user likes things done (how to write to \
         them, how they want a task handled) is a Concept page under the Personal root: open it with graph/graph-get \
         and its children, change a page that already covers it with graph/edit-node, or add one with \
-        graph/create-triplet. Before answering a question about the user or someone they know, search memory: \
+        graph/create-triplet. Before answering anything that depends on the user (their plans, schedule, habits, \
+        people, preferences, health, home, work, or anything they told you before: "what's on next week?", "what \
+        should I get Kate?", "how's my knee doing?"), search memory first: \
         graph/graph-search with facts true (and include_ended for what used to be), or for the user graph/graph-get \
         with owner true and then graph/graph-neighbors; graph/find lists the nodes of one type by their fields. When \
-        the user says something is no longer true, assert it with ended; when a fact is wrong, delete it with \
-        graph/delete-edge, and a node that should not be there with graph/delete-node. When two nodes are the same \
+        the user says something is no longer true, assert it with ended. When they give a new value for something \
+        already saved ("actually it's Sundays", "we moved it to Sundays"), assert the new fact with replaces: the old \
+        fact's id (its ref_id in graph/graph-search with facts true, or in between); never refute the old one. Use \
+        refuted only when something saved was never true and nothing replaces it. When a fact should never have \
+        been saved, delete it with graph/delete-edge, and a node that should not be there with graph/delete-node. When two nodes are the same \
         person or thing (graph/resolve lists candidates), read both with graph/graph-get, then graph/merge; \
         graph/unmerge undoes one. graph/get-ontology-type reads one type, and graph/create-schema makes a type \
         when none fits. Only use ref_ids a graph result gave you. Memory holds what people said: report on it, but \

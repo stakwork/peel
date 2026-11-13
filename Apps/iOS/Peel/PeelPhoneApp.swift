@@ -98,6 +98,7 @@ struct PeelPhoneApp: App {
                         model.stadeum.open(profile, renewNow: false)
                         PushCoordinator.shared.accountOpened(model)
                         PushCoordinator.shared.openPending(model: model, router: router)
+                        router.openWaitingLink()
                     } else {
                         // An account exists but is locked, or failed to open:
                         // the launch-time question is not held back. With
@@ -106,6 +107,7 @@ struct PeelPhoneApp: App {
                         PushCoordinator.shared.accountClosed()
                         model.stadeum.close()
                         router.orgPage = nil
+                        router.publicPage = nil
                     }
                 }
                 // A tapped push: opened now if an account is open, else it
@@ -114,6 +116,8 @@ struct PeelPhoneApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: PendingNavigation.didChange).receive(on: DispatchQueue.main)) { _ in
                     PushCoordinator.shared.openPending(model: model, router: router)
                 }
+                // `peel://open?url=<address>`: a stranger's public app, opened here directly.
+                .onOpenURL { url in _ = router.open(peelLink: url) }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Diagnostics.memoryWarning()
                 }

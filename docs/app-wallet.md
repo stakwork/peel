@@ -286,17 +286,18 @@ it (the QR code still pays).
 ## The vectors
 
 `Tests/PeelCoreTests/WalletVectors/vectors.json` is a copy of strut's
-`kit/src/wallet/vectors.json` at stakwork/strut 879185f (main after #692),
+`kit/src/wallet/vectors.json` at stakwork/strut 5015396 (main after #695),
 byte for byte: it adds #625's `host_capabilities`, `credit_purchases` and
 `credit_replies` and #645's `sign_in_requests`, `sign_in_replies` and
 `sign_in_signatures` to #484's lists, which are unchanged; #689 adds two
 `sign_in_replies` (an answer's `address`, kept only when its pubkey is the
-key) and `sign_in_addresses`; #690 adds `native_apps` (a visitor's page
-keyed by its seller), which Peel does not run yet. It is ahead of the
-commit `Vendor/strut.lock` pins (9d74d29, #645's merge), whose UI reads
-`{ key, sig }` and passes over an `address`: every list there is
-unchanged here. When strut changes the contract, copy it again and say
-so here. `WalletProtocolTests`
+key) and `sign_in_addresses` (#695 notes that Peel's core makes its
+address); #690 adds `native_apps` (a visitor's page keyed by its seller),
+which Peel does not run yet. `Vendor/strut.lock` pins the strut the Mac
+bundles on its own; a strut UI from before #689 (#645's 9d74d29 among
+them) reads `{ key, sig }` and passes over an `address`, so the Mac sends
+the address on only with a pin past #689. When strut changes the
+contract, copy it again and say so here. `WalletProtocolTests`
 runs the `params`, `results`, `notifications`, `connection_requests` and
 `preimages` lists; `WalletHostTests.strutsScenario` replays all ten
 `scenarios` against a scripted wallet and a scripted person, with real

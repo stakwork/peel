@@ -198,9 +198,12 @@ is a short plan. Update the status and the journal when you finish something.
     `strut-visitor.<claims>.<hmac>`, read, never verified: the only thing
     signed for a page), `Seller` (strut's `isSellerUrl`, a seller's host and
     base), `SignInRequest` and its `problems` (a port of strut's, held to
-    its `sign_in_requests` vectors), `VisitorSignature` (`{ key, sig }`);
+    its `sign_in_requests` vectors), `VisitorSignature` (`{ key, sig,
+    address? }`: the account's Sphinx address only beside its own key, and
+    only one whose pubkey is that key, `address(_:for:)`);
     the engine's `signVisitor` (Engine+Wallet.swift) signs one with the
-    account's key, or with LUD-05's linking key for its host from the
+    account's key and its address (`signInAddress`, the core's reported
+    contact info), or with LUD-05's linking key for its host from the
     words' whole BIP39 seed (`Engine.bip39Seed`)
   - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
     server for a visitor's page (strut's specs/WALLET.md §1.2) and its

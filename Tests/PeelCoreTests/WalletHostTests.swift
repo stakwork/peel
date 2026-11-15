@@ -139,10 +139,15 @@ final class ScriptedWallet: AppWallet, Sendable {
 
     func updates() -> AsyncStream<WalletRecord> { stream.stream }
 
-    /// Signs as `key`: "<key>:<challenge>", so a test sees which key signed what.
+    /// The account's address, beside its key (`keyG`) as the engine's.
+    static let address = "\(keyG)_\(key3G)_1"
+
+    /// Signs as `key`: "<key>:<challenge>", so a test sees which key signed
+    /// what; the account's key with its address, as the engine's does.
     func signVisitor(_ challenge: VisitorChallenge, as key: SignInKey) async throws -> VisitorSignature {
         state.withLock { $0.calls.append("sign_in \(key.rawValue)") }
-        return VisitorSignature(key: key == .root ? keyG : key2G, sig: "\(key.rawValue):\(challenge.text)")
+        let sig = "\(key.rawValue):\(challenge.text)"
+        return key == .root ? VisitorSignature(key: keyG, sig: sig, address: Self.address) : VisitorSignature(key: key2G, sig: sig)
     }
 
     let signsPerDomain: Bool

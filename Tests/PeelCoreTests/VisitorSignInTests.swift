@@ -23,7 +23,9 @@ struct VisitorSignInTests {
 
     @Test func theSignInVectorsAreThere() {
         #expect(WalletVectors.list("sign_in_requests").count == 17)
+        #expect(WalletVectors.list("sign_in_replies").count == 13)
         #expect(WalletVectors.list("sign_in_signatures").count == 9)
+        #expect(WalletVectors.list("sign_in_addresses").count == 1)
         #expect(WalletVectors.list("host_capabilities").count == 9)
     }
 
@@ -50,6 +52,52 @@ struct VisitorSignInTests {
         #expect(try Sphinxrs.pubkeyFromSeed(seed: seed, idx: idx, time: "1", network: network) == vector["key"]?.string)
         #expect(try Sphinxrs.signBytes(seed: seed, idx: idx, time: "1", network: network, msg: Data(message.utf8))
             == vector["sig"]?.string, "\(WalletVectors.name(vector))")
+    }
+
+    /// The address Peel puts beside a key is the one strut's
+    /// `readSignInReply` keeps: only one whose pubkey is the key, so an
+    /// address of another key is never sent. Peel's answer with it is the
+    /// vector's reply, field for field.
+    @Test(arguments: WalletVectors.list("sign_in_replies").filter { $0["outcome"] == .string("signed") }.indices)
+    func peelSendsTheAddressStrutKeeps(_ index: Int) throws {
+        let vector = WalletVectors.list("sign_in_replies").filter { $0["outcome"] == .string("signed") }[index]
+        let sent = try #require(vector["reply"]?.objectValue["result"]?.objectValue)
+        let address = VisitorSignature.address(sent["address"]?.string, for: try #require(sent["key"]?.string))
+        #expect(address == vector["address"]?.string, "\(WalletVectors.name(vector))")
+        if let address {
+            let answer = VisitorSignature(key: try #require(vector["key"]?.string), sig: try #require(vector["sig"]?.string), address: address)
+            #expect(answer.result == .object(sent), "\(WalletVectors.name(vector))")
+        }
+    }
+
+    /// Peel's own address for strut's `sign_in_addresses` seed is the
+    /// vector's, made by Peel's linked core the way an account gets it: the
+    /// register topic `initialSetup` makes of the seed (its key at child
+    /// index 0, sphinx's `make_signer(seed, Some(0), …)`, as
+    /// `get_my_contact_info`'s), and the core's `myContactInfo` from the
+    /// server's answer there, which names the LSP and the scid (here the
+    /// vector's). Its pubkey is the root sign-in key, so Peel sends it.
+    @Test(arguments: WalletVectors.list("sign_in_addresses").indices)
+    func peelsOwnAddressIsStrutsVector(_ index: Int) throws {
+        let vector = WalletVectors.list("sign_in_addresses")[index]
+        let signer = try #require(vector["signer"]?.objectValue)
+        let seed = try #require(signer["seed"]?.string), network = try #require(signer["network"]?.string)
+        let idx = UInt64(try #require(WalletProtocol.integer(signer["idx"])))
+        let key = try #require(vector["key"]?.string), address = try #require(vector["address"]?.string)
+        #expect(idx == 0)
+        #expect(try Sphinxrs.pubkeyFromSeed(seed: seed, idx: idx, time: "1", network: network) == key)
+
+        let route = try #require(Engine.contactInfoParts(address))
+        let state = try #require(try Sphinxrs.setNetwork(network: network).stateMp)
+        let setup = try Sphinxrs.initialSetup(seed: seed, uniqueTime: "1", state: state, device: "dev", inviteCode: nil)
+        let topic = try #require(setup.registerTopic).replacingOccurrences(of: "/0/req/", with: "/0/res/")
+        let answer = #"{"scid":"\#(route[2])","server_pubkey":"\#(route[1])","blockheight":800000,"child_idx":0}"#
+        let registered = try Sphinxrs.handle(
+            topic: topic, payload: Data(answer.utf8), seed: seed, uniqueTime: "2", state: state, myAlias: "", myImg: ""
+        )
+        let own = try #require(registered.myContactInfo)
+        #expect(own == address, "\(WalletVectors.name(vector))")
+        #expect(VisitorSignature.address(own, for: key) == address)
     }
 
     /// What strut's UI reads a native host's capability as: on a
@@ -140,6 +188,8 @@ struct VisitorSignInTests {
         person.will("approve")
         let first = await host.handle(signIn(challenge("shop.example.com")), from: caller(person))
         #expect(first.objectValue["result"]?.objectValue["key"] == .string(keyG))
+        // As you: the account's address goes with its key, from the sheet...
+        #expect(first.objectValue["result"]?.objectValue["address"] == .string(ScriptedWallet.address))
         #expect(person.takeShown() == ["connect"])
         let sheet = try #require(person.lastConnect)
         #expect(sheet.signIn == SignInOffer(host: "shop.example.com", keys: [.root, .domain]))
@@ -149,7 +199,8 @@ struct VisitorSignInTests {
 
         person.will(nil)
         let again = await host.handle(signIn(challenge("shop.example.com")), from: caller(person, acted: false))
-        #expect(again.objectValue["result"] != nil)
+        // ...and from the connection that holds the grant.
+        #expect(again.objectValue["result"]?.objectValue["address"] == .string(ScriptedWallet.address))
         #expect(person.takeShown() == ["signed in to shop.example.com as root"])
 
         try storage.deleteWalletConnection(key: Self.origin.key)
@@ -167,6 +218,8 @@ struct VisitorSignInTests {
         person.pick(.domain)
         let picked = await host.handle(signIn(challenge("shop.example.com")), from: caller(person))
         #expect(picked.objectValue["result"]?.objectValue["key"] == .string(key2G))
+        // A new identity is unlinkable: it carries no address of the account.
+        #expect(picked.objectValue["result"]?.objectValue["address"] == nil)
         #expect(try storage.walletConnection(key: Self.origin.key)?.signIn == .domain)
 
         // A root grant does not answer an app that takes its domain's key alone: asked again, that key only.
@@ -295,6 +348,33 @@ struct VisitorSignInTests {
         let seedHeld = await engine.seed
         #expect(seedHeld == (try Engine.seed(of: abandon.joined(separator: " "))))
         #expect(forSite.sig == (try Sphinxrs.signBytesLud05(bip39Seed: bip39, domain: "site.com", msg: Data(site.utf8)).sig))
+    }
+
+    /// With the account's key the engine sends the account's own address,
+    /// the contact info the core reported (the one Peel shows as yours):
+    /// none before registering, none with a domain's key, and none when the
+    /// address is another key's, rather than a wrong one.
+    @Test func theEngineSendsItsAddressWithItsKeyAlone() async throws {
+        let account = TempProfile()
+        defer { withExtendedLifetime(account) {} }
+        let storage = try registeredStorage(account)
+        let engine = try testEngine(storage)
+        let challenge = try #require(challengeText("shop.example.com").flatMap(VisitorChallenge.init))
+        #expect(try await engine.signVisitor(challenge, as: .root).address == nil)
+
+        let accountKey = await engine.accountKey
+        let own = "\(accountKey)_\(key3G)_1099511627776"
+        try storage.set(own.uppercased(), for: .contactInfo)
+        let signed = try await engine.signVisitor(challenge, as: .root)
+        #expect(signed.address == own)
+        #expect(signed.result.objectValue["address"] == .string(own))
+        let domain = try await engine.signVisitor(challenge, as: .domain)
+        #expect(domain.address == nil && domain.result.objectValue["address"] == nil)
+
+        try storage.set("\(keyG)_\(key3G)_1", for: .contactInfo)
+        #expect(try await engine.signVisitor(challenge, as: .root).address == nil)
+        try storage.set("\(accountKey)_\(key3G)", for: .contactInfo)
+        #expect(try await engine.signVisitor(challenge, as: .root).address == nil)
     }
 
     // MARK: Helpers

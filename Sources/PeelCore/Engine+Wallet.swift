@@ -115,17 +115,28 @@ extension Engine {
     /// challenge's host (`.domain`: a new identity for that app alone, the
     /// one any BIP39 wallet with these words derives there;
     /// `sign_bytes_lud05`). Only a challenge the wallet host read and
-    /// checked, so never a message a page chose.
+    /// checked, so never a message a page chose. With the account's key,
+    /// its Sphinx address too (`signInAddress`); with a domain's, none.
     func signVisitor(_ challenge: VisitorChallenge, as key: SignInKey) throws -> VisitorSignature {
         let message = Data(challenge.text.utf8)
         switch key {
         case .root:
             let sig = try Sphinxrs.signBytes(seed: seed, idx: 0, time: clock.next(), network: network, msg: message)
-            return VisitorSignature(key: accountKey, sig: sig)
+            return VisitorSignature(key: accountKey, sig: sig, address: signInAddress())
         case .domain:
             let signed = try Sphinxrs.signBytesLud05(bip39Seed: bip39Seed, domain: challenge.host, msg: message)
             return VisitorSignature(key: signed.pubkey, sig: signed.sig)
         }
+    }
+
+    /// The account's own Sphinx address for a sign-in with its key: the
+    /// contact info the core reported at registering (`myContactInfo`,
+    /// `<pubkey>_<lsp_pubkey>_<scid>`, the one Peel shows as yours), whose
+    /// pubkey is the key at child index 0 (sphinx `get_my_contact_info`
+    /// builds it from that key, as `pubkeyFromSeed(idx: 0)` reads it). Nil
+    /// before registering, and nil rather than an address of another key.
+    nonisolated func signInAddress() -> String? {
+        VisitorSignature.address(try? storage.value(for: .contactInfo), for: accountKey)
     }
 }
 

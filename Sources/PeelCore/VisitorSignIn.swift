@@ -189,16 +189,36 @@ public struct SignInRequest: Sendable, Equatable {
 /// A visitor's signature over a challenge (strut's `SignInAnswer`): the key
 /// that signed, compressed, and its Lightning signed message over the
 /// challenge's UTF-8 bytes, `[31 + recovery id] ‖ r ‖ s`, both hex. What
-/// sphinx-rs's `sign_bytes` answers, checked by strut's `ln-message`.
+/// sphinx-rs's `sign_bytes` answers, checked by strut's `ln-message`. With
+/// the account's own key, the account's Sphinx address beside it, which the
+/// seller keeps to pay the person (strut's plans/human-steps.md §8.2).
 public struct VisitorSignature: Sendable, Equatable {
     public var key: String
     public var sig: String
+    /// The account's own Sphinx address, `<pubkey>_<lsp_pubkey>_<scid>`,
+    /// whose pubkey is `key`: only with the root key, never a domain's.
+    public var address: String?
 
-    public init(key: String, sig: String) {
+    public init(key: String, sig: String, address: String? = nil) {
         self.key = key
         self.sig = sig
+        self.address = address
     }
 
-    /// `{ key, sig }`, as the answer's `result`.
-    public var result: JSONValue { .object(["key": .string(key), "sig": .string(sig)]) }
+    /// `{ key, sig, address? }`, as the answer's `result`.
+    public var result: JSONValue {
+        var r: [String: JSONValue] = ["key": .string(key), "sig": .string(sig)]
+        if let address { r["address"] = .string(address) }
+        return .object(r)
+    }
+
+    /// `contactInfo` as the `address` of a sign-in with `key`: a Sphinx
+    /// address (`<pubkey>_<lsp_pubkey>_<scid>`, lower case) whose pubkey IS
+    /// `key`, as strut's `readSignInReply` and the seller keep it. Nil for
+    /// anything else, so a payout never goes to another key's address.
+    public static func address(_ contactInfo: String?, for key: String) -> String? {
+        guard let info = contactInfo.flatMap(ContactCode.contactInfo),
+              info.split(separator: "_").first.map(String.init) == key.lowercased() else { return nil }
+        return info
+    }
 }

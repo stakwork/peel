@@ -128,6 +128,20 @@ it, and the person is then `secp:<x-only key>` there.
   sign with no sheet and a toast. Disconnecting ends both. A connection
   that only signs in holds no wallet: `connected` is false and every
   method is `RESTRICTED`.
+- **The answer carries your address as you.** `{ key, sig, address? }`
+  (strut's specs/WALLET.md §1.2, "The answer"): with the root key, the
+  account's own Sphinx address, `<pubkey>_<lsp_pubkey>_<scid>`, beside the
+  signature, which the seller keeps to keysend the person a payout for
+  work done there (strut's plans/human-steps.md §8.2, ruling 11). It is
+  the contact info the core reported at registering (`myContactInfo`,
+  kept as `Setting.contactInfo`, the one Peel shows as yours), and goes
+  only when its pubkey is the root key (`Engine.signInAddress`,
+  `VisitorSignature.address`): none before registering, none rather than
+  another key's. A new identity sends none, so it stays unlinkable. The
+  engine's `signVisitor` adds it, so the sheet's sign-in and the held
+  connection's both send it. Nothing new is signed: the address rides
+  beside the signature, and the seller checks its pubkey against the key
+  again. A strut older than #689 reads `{ key, sig }` and passes over it.
 - **The sheet ends with the challenge.** strut's UI stops waiting when the
   challenge ends (60 s), so the sheet is taken down then (`RESTRICTED`). A
   yes given just as it ended is kept, and answered `RESTRICTED`; the next
@@ -272,13 +286,18 @@ it (the QR code still pays).
 ## The vectors
 
 `Tests/PeelCoreTests/WalletVectors/vectors.json` is a copy of strut's
-`kit/src/wallet/vectors.json` at stakwork/strut 9d74d29 (main at #645's
-merge, the commit `Vendor/strut.lock` pins; the same file as #645's
-b788159), byte for byte: it adds #625's `host_capabilities`,
-`credit_purchases` and `credit_replies` and #645's `sign_in_requests`,
-`sign_in_replies` and `sign_in_signatures` to #484's lists, which are
-unchanged. When strut changes the contract, copy it again from
-the commit `Vendor/strut.lock` pins and say so here. `WalletProtocolTests`
+`kit/src/wallet/vectors.json` at stakwork/strut 5015396 (main after #695),
+byte for byte: it adds #625's `host_capabilities`, `credit_purchases` and
+`credit_replies` and #645's `sign_in_requests`, `sign_in_replies` and
+`sign_in_signatures` to #484's lists, which are unchanged; #689 adds two
+`sign_in_replies` (an answer's `address`, kept only when its pubkey is the
+key) and `sign_in_addresses` (#695 notes that Peel's core makes its
+address); #690 adds `native_apps` (a visitor's page keyed by its seller),
+which Peel does not run yet. `Vendor/strut.lock` pins the strut the Mac
+bundles on its own; a strut UI from before #689 (#645's 9d74d29 among
+them) reads `{ key, sig }` and passes over an `address`, so the Mac sends
+the address on only with a pin past #689. When strut changes the
+contract, copy it again and say so here. `WalletProtocolTests`
 runs the `params`, `results`, `notifications`, `connection_requests` and
 `preimages` lists; `WalletHostTests.strutsScenario` replays all ten
 `scenarios` against a scripted wallet and a scripted person, with real
@@ -302,12 +321,20 @@ storage.
   threshold; the state stream.
 - `VisitorSignInTests`: strut's `sign_in_requests` and
   `sign_in_signatures` vectors (Peel's linked core signs exactly as
-  Sphinx's signer did for them); `host_capability`; the guard on each
+  Sphinx's signer did for them); `sign_in_replies` (the address Peel puts
+  beside a key is the one strut keeps, and its answer is the vector's
+  reply); `sign_in_addresses` (the vector's seed through Peel's core the
+  way an account registers, `initialSetup`'s register topic and the
+  core's `myContactInfo` from the server's answer: the vector's address,
+  its pubkey the root sign-in key); `host_capability`; the guard on each
   device (the iPhone's origin over the page's seller, the Mac's seller
   over the page's); what is never signed; the sheet, its choices and the
   grant kept, a later sign-in with a toast, revoking; a decline; the sheet
   ending with the challenge; one sheet for the wallet and signing in; a
-  sign-in alone is no wallet; the engine signing with the account's key.
+  sign-in alone is no wallet; the address from the sheet and from the held
+  connection, none with a new identity; the engine signing with the
+  account's key, and sending its address with that key alone (none before
+  registering, none that is another key's).
 - `CreditPurchaseTests`: strut's `credit_purchases` and `credit_replies`
   vectors (the latter through a port of strut's `readCreditReply`, so the
   host's own answers are read as strut's UI reads them); only a visitor's

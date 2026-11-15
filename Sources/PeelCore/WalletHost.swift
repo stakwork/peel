@@ -61,8 +61,9 @@ public protocol AppWallet: Sendable {
     /// or expired), as it happens.
     func updates() -> AsyncStream<WalletRecord>
     /// Signs a visitor in: `challenge` (only ever a strut visitor
-    /// challenge, which the host checked first) with the account's key or
-    /// with a key of the challenge's host alone.
+    /// challenge, which the host checked first) with the account's key,
+    /// its Sphinx address beside it, or with a key of the challenge's host
+    /// alone, no address. Every way a sign-in is answered sends its `result`.
     func signVisitor(_ challenge: VisitorChallenge, as key: SignInKey) async throws -> VisitorSignature
     /// Whether it can sign with a key of one domain alone (`SignInKey.domain`).
     var signsPerDomain: Bool { get }

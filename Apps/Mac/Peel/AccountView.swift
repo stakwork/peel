@@ -424,7 +424,7 @@ private struct ChangePINRow: View {
 private struct WordsRow: View {
     @Environment(AppModel.self) private var model
 
-    private static let shownFor: TimeInterval = 30
+    private static let shownFor: TimeInterval = 90
 
     @State private var askingPIN = false
     @State private var pin = ""

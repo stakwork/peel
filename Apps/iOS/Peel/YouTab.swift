@@ -459,7 +459,7 @@ private struct WordsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
 
-    private static let shownFor: TimeInterval = 30
+    private static let shownFor: TimeInterval = 90
 
     @State private var checking = false
     @State private var asking = false

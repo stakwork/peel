@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #702 (dd40648): after #698, adds #702 alone, merging a Concept branch into main, with the pages whose text comes from git (strut's seeded Concept pages among them) never changed automatically, by a merge or by the dream (whose edits now go through knowledge/edit-page and knowledge/add-page, and whose lesson says what it skipped), so a dream on the Personal tree no longer has its edits to a shipped page put back by git's text at the next launch.
-dd406484e9586391259f31fc6839ef1b99ed279e
+# stakwork/strut main at the merge of #707 (384557c): after #702, adds #704 (a payout still out after a day is cancelled), #703 (a public app served alone at a host its domains list) and #707 (strut's own page, shown to a named person, reads the graph as that person; the UI takes `&actor=` beside `?key=`), so the Knowledge app in Peel sees the private Concept tree and memory.
+384557c8554f5fd879b1847824a8effa22785f54

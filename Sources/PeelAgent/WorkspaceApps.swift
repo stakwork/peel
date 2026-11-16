@@ -68,8 +68,12 @@ extension MemoryServer {
         }
     }
 
+    /// Who Peel's own strut is told its pages are shown to: the person whose Mac this is. With a name, a page
+    /// strut ships (Knowledge) acts as its viewer and reads what they may, the private Concept tree included.
+    static let owner = "owner"
+
     private func page(_ name: String, _ value: String, input: String? = nil) -> URL? {
-        StrutUI.page(on: base, key: key, name, value, input: input)
+        StrutUI.page(on: base, key: key, actor: Self.owner, name, value, input: input)
     }
 
     /// strut's UI hosting another server's public app `name` (strut's

@@ -26,6 +26,9 @@ DEADLINE=330
 # LiveKit's framework still loads.
 plutil -replace CFBundleIdentifier -string dev.peel.mac.check "$APP/Contents/Info.plist"
 plutil -replace LSUIElement -bool true "$APP/Contents/Info.plist"
+# Not a handler of `peel:` links: those go to the Peel in daily use, never
+# to a check build left in some worktree. A drive sends its own (`link`).
+plutil -remove CFBundleURLTypes "$APP/Contents/Info.plist"
 rm -f "$APP/Contents/embedded.provisionprofile"
 codesign --force --sign "$("$ROOT/scripts/signing-identity.sh")" --options runtime --timestamp=none "$APP"
 

@@ -184,6 +184,22 @@ it, and the person is then `secp:<x-only key>` there.
   cannot make. The iPhone loads the address directly in the page sheet
   (`OrgPageSheet` over a `PublicPage`), with no credential, kept to its
   origin; a link that comes while Peel is locked opens once it unlocks.
+- **Where the visitor's session lives.** strut keeps a signed-in visitor
+  for 30 days (`VISITOR_SESSION_DAYS`) in a cookie and the page's
+  localStorage (`strut.visitorSession:<base>`, strut's
+  web/src/visitor-signin.ts). On the iPhone a `PublicPage` keeps them in
+  a persistent website data store of its own origin's
+  (`PublicPage.storeIdentifier`: a version 5 UUID over the origin, for
+  `WKWebsiteDataStore(forIdentifier:)`), so opening the same link again
+  finds the person signed in as the same visitor, and no site reads
+  another's. Signing out in the page clears both (strut removes the
+  localStorage entry and its `DELETE /visitors/session` the cookie).
+  Forgetting the account removes every such store
+  (`PhoneWeb.forgetWebsiteData`). An org's page still keeps nothing
+  (`.nonPersistent()`): Peel hands it the person's token at each open. The
+  Mac is unchanged: its page is Peel's own strut UI in remote mode, in a
+  web view that keeps nothing (it carries strut's key), so a visitor there
+  signs in again at each open.
 
 Review (2026-11-11, `/code-review`): fixed a yes that re-saved a
 connection revoked while its sheet was up (the connection is read again

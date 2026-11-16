@@ -5,6 +5,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import UserNotifications
+import WebKit
 
 // The iPhone's side of `Platform` (the Mac's is `MacPlatform.swift`). What
 // it cannot do yet throws or says so, and the views never offer it
@@ -114,7 +115,17 @@ final class PhoneWeb: WebPresenting {
         throw PeelError("Pages open on the Mac for now.")
     }
 
-    func forgetWebsiteData() async {}
+    /// The public sites' stores (`PublicPage.storeIdentifier`), the only
+    /// ones the iPhone keeps: emptied, then removed. WebKit refuses the
+    /// removal while a page still holds its store; its emptied folder is
+    /// then left behind, with nothing in it to sign anyone in.
+    func forgetWebsiteData() async {
+        for id in await WKWebsiteDataStore.allDataStoreIdentifiers {
+            await WKWebsiteDataStore(forIdentifier: id)
+                .removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+            try? await WKWebsiteDataStore.remove(forIdentifier: id)
+        }
+    }
 }
 
 /// Calls over LiveKit, each an `IOSCallSession`, and Talk calls, each a `TalkSession`.

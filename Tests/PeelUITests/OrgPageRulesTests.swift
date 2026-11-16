@@ -6,6 +6,23 @@ import Testing
 /// What an org page's sheet may download, what it saves a download as, and
 /// how the apps on the iPhone are searched and filtered.
 struct OrgPageRulesTests {
+    /// A public site's sign-in lives in its own store, found again on the
+    /// next open of any page there, and never another site's.
+    @Test func aPublicSiteKeepsOneStoreOfItsOwn() throws {
+        func store(_ address: String) throws -> UUID {
+            let url = try #require(URL(string: address))
+            return PublicPage(try #require(PublicAppLink(url))).storeIdentifier
+        }
+        let worker = try store("https://strut.stadeum1.sphinx.chat/?app=strut/worker&solo=1&public=1")
+        #expect(try store("https://strut.stadeum1.sphinx.chat/?app=strut/worker&solo=1&public=1") == worker)
+        #expect(try store("https://STRUT.stadeum1.sphinx.chat:443/?app=other&public=1") == worker)
+        #expect(try store("https://strut.stadeum2.sphinx.chat/?app=strut/worker&solo=1&public=1") != worker)
+        #expect(try store("https://strut.stadeum1.sphinx.chat:8443/?app=strut/worker&solo=1&public=1") != worker)
+        // A name-based UUID, version 5, RFC 9562's variant.
+        #expect(worker.uuid.6 >> 4 == 5)
+        #expect(worker.uuid.8 >> 6 == 0b10)
+    }
+
     @Test func onlyStrutsOwnMainFramePageMayDownload() {
         #expect(OrgPageRules.mayDownload(isMainFrame: true, sourceIsMainFrame: true, served: true))
         // A frame in the page holds what the org or an agent wrote.

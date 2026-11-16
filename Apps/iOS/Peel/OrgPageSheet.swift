@@ -19,6 +19,8 @@ protocol PhonePage: Identifiable, Equatable {
     func serves(_ other: URL) -> Bool
     /// A script run before the page's own, in its main frame; nil for none.
     var script: String? { get }
+    /// Where its cookies and storage live.
+    var websiteDataStore: WKWebsiteDataStore { get }
     /// Whether `other` is strut's UI page itself, rather than a file it serves.
     func isUIPage(_ other: URL) -> Bool
     /// The app a link names, opened here; nil for none.
@@ -36,6 +38,8 @@ protocol PhonePage: Identifiable, Equatable {
 
 extension OrgPageRequest: PhonePage {
     var script: String? { handOver }
+    /// Nothing kept: the page is handed the person's token each time it opens.
+    var websiteDataStore: WKWebsiteDataStore { .nonPersistent() }
     func isUIPage(_ other: URL) -> Bool { StrutUI.isPage(other, in: folder) }
     // Another app a link opened here is named by its workspace: its title is not known here.
     func title(showingAnotherApp: Bool) -> String {
@@ -49,6 +53,9 @@ extension OrgPageRequest: PhonePage {
 /// opened by Peel, and the sheet names it by its host.
 extension PublicPage: PhonePage {
     var script: String? { nil }
+    /// Kept, one store per origin (`storeIdentifier`): a visitor's sign-in
+    /// lasts across opens, and no site reads another's.
+    var websiteDataStore: WKWebsiteDataStore { WKWebsiteDataStore(forIdentifier: storeIdentifier) }
     func isUIPage(_ other: URL) -> Bool { false }
     func appLink(_ other: URL, from current: URL?) -> StrutAppLink? { nil }
     func request(for link: StrutAppLink) -> URLRequest? { nil }
@@ -294,7 +301,7 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
 
     func makeUIView(context: Context) -> TouchWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = page.websiteDataStore
         // A page's own `<video playsinline>` (strut's camera sheet's
         // viewfinder) plays in place, not in the system's full-screen player.
         configuration.allowsInlineMediaPlayback = true

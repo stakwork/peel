@@ -295,6 +295,10 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
     func makeUIView(context: Context) -> TouchWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        // A page's own `<video playsinline>` (strut's camera sheet's
+        // viewfinder) plays in place, not in the system's full-screen player.
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
         if let script = page.script {
             configuration.userContentController.addUserScript(
                 WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -477,6 +481,16 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
                 follow(url, from: action, in: webView)
             }
             return nil
+        }
+
+        /// The camera or microphone (strut's camera sheet): for the main
+        /// frame at the origin Peel loaded, the system's own permission
+        /// alone, with no second prompt from WebKit; never for a frame.
+        func webView(
+            _ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+            initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType
+        ) async -> WKPermissionDecision {
+            StrutWallet.mayAnswer(frame, origin: page.url) ? .grant : .deny
         }
 
         /// The page's process ended (memory, a crash): loaded again, with its

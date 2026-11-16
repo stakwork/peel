@@ -20,6 +20,9 @@ public struct ChatSections: Equatable, Sendable {
         public var pinnedApps: [String] = []
         /// The pinned apps show under the Apps row (Tom, 2026-10-28).
         public var appsOpen = true
+        /// Tribes and direct messages show as one list, newest first, rather
+        /// than in two sections.
+        public var combinedView = false
 
         public init() {}
 
@@ -33,6 +36,7 @@ public struct ChatSections: Equatable, Sendable {
             allDirect = try values.decodeIfPresent(Bool.self, forKey: .allDirect) ?? false
             pinnedApps = try values.decodeIfPresent([String].self, forKey: .pinnedApps) ?? []
             appsOpen = try values.decodeIfPresent(Bool.self, forKey: .appsOpen) ?? true
+            combinedView = try values.decodeIfPresent(Bool.self, forKey: .combinedView) ?? false
         }
     }
 
@@ -47,6 +51,9 @@ public struct ChatSections: Equatable, Sendable {
     /// while the section is closed, every match while searching.
     public private(set) var tribes: [Conversation] = []
     public private(set) var direct: [Conversation] = []
+    /// Every tribe and direct message not in `unread` (matching the search),
+    /// merged and newest first, for the Recent view.
+    public private(set) var combined: [Conversation] = []
     /// A search is filtering the lists: every section shows its matches,
     /// whatever the layout says.
     public private(set) var searching = false
@@ -83,6 +90,7 @@ public struct ChatSections: Equatable, Sendable {
             }
         }
         unread += mentioning + otherTribes
+        combined = (tribes + direct).sorted { ($0.lastTimestamp ?? 0) > ($1.lastTimestamp ?? 0) }
         tribesOpen = layout.tribesOpen || searching
         directOpen = layout.directOpen || searching
         (self.tribes, allTribes) = Self.shown(tribes, open: tribesOpen, all: layout.allTribes,

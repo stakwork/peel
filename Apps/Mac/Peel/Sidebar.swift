@@ -72,34 +72,48 @@ struct Sidebar: View {
                                 }
                             }
                         }
-                        // Searching shows every match: no chevron to say otherwise or
-                        // to change the saved layout.
-                        SidebarSection("Tribes", expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
-                            ForEach(sections.tribes) { conversation in
-                                ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                            }
-                            if sections.tribesOpen {
-                                if let all = sections.allTribes {
-                                    SidebarShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
-                                }
-                                SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
-                                SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
-                            }
+                        if !sections.searching {
+                            SidebarViewToggle(combined: $model.sidebarLayout.combinedView)
                         }
-                        SidebarSection("Direct messages",
-                                       expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
-                            if let agent = shownAgent(sections) {
-                                AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
-                            }
-                            ForEach(sections.direct) { conversation in
-                                ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                            }
-                            if sections.directOpen {
-                                if let all = sections.allDirect {
-                                    SidebarShowAll(what: Formatting.people(all), fewer: "people",
-                                                   all: $model.sidebarLayout.allDirect)
+                        if model.sidebarLayout.combinedView && !sections.searching {
+                            SidebarSection("Recent") {
+                                if let agent = shownAgent(sections) {
+                                    AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
                                 }
-                                ContactsSidebarRows()
+                                ForEach(sections.combined) { conversation in
+                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                                }
+                            }
+                        } else {
+                            // Searching shows every match: no chevron to say otherwise or
+                            // to change the saved layout.
+                            SidebarSection("Tribes", expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
+                                ForEach(sections.tribes) { conversation in
+                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                                }
+                                if sections.tribesOpen {
+                                    if let all = sections.allTribes {
+                                        SidebarShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
+                                    }
+                                    SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
+                                    SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
+                                }
+                            }
+                            SidebarSection("Direct messages",
+                                           expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
+                                if let agent = shownAgent(sections) {
+                                    AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
+                                }
+                                ForEach(sections.direct) { conversation in
+                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                                }
+                                if sections.directOpen {
+                                    if let all = sections.allDirect {
+                                        SidebarShowAll(what: Formatting.people(all), fewer: "people",
+                                                       all: $model.sidebarLayout.allDirect)
+                                    }
+                                    ContactsSidebarRows()
+                                }
                             }
                         }
                     }
@@ -167,12 +181,14 @@ struct Sidebar: View {
     private var rows: [(destination: AppModel.Destination, title: String)] {
         let sections = model.sidebarSections
         let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
+        let combined = model.sidebarLayout.combinedView && !sections.searching
         return [(.apps, "Apps")]
             + shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
             + [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads"), (.segments, "Segments")]
-            + (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
-            + agent
-            + sections.direct.map { (.chat($0.chat), $0.name) }
+            + (combined
+               ? (sections.unread + sections.combined).map { (.chat($0.chat), $0.name) } + agent
+               : (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) } + agent
+                   + sections.direct.map { (.chat($0.chat), $0.name) })
     }
 
     /// The apps under the Apps row, A–Z: those in the sidebar while it is
@@ -942,5 +958,32 @@ struct RestoreBar: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Switches the sidebar between separate Tribes and Direct messages sections
+/// and one Recent list.
+struct SidebarViewToggle: View {
+    @Binding var combined: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            option("Separated", selected: !combined) { combined = false }
+            option("Recent", selected: combined) { combined = true }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, Theme.Space.xs)
+    }
+
+    private func option(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(Theme.font(12))
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(selected ? Theme.selection : Color.clear,
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.control))
+                .foregroundStyle(selected ? Theme.selectionText : Theme.secondaryText)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

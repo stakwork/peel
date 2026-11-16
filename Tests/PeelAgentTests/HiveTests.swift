@@ -573,7 +573,7 @@ struct HiveTests {
         #expect(page.path == "/" && server.serves(page))
         // Encoded as strut's UI decodes it (`URLSearchParams`, where a bare `+` is a space).
         #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
-                == "key=k%2B1&app=%40acme%2Fhive%2Fboard&solo=1")
+                == "key=k%2B1&actor=owner&app=%40acme%2Fhive%2Fboard&solo=1")
     }
 
     /// The person's own apps come from Peel's strut itself, every one of
@@ -601,14 +601,14 @@ struct HiveTests {
         #expect(apps[2].title == "Knowledge" && apps[2].about == "The Concept tree" && apps[2].icon == "network" && apps[2].version == "v3")
         let knowledge = try #require(server.page(of: apps[2]))
         #expect(URLComponents(url: knowledge, resolvingAgainstBaseURL: false)?.percentEncodedQuery
-                == "key=k&app=strut%2Fknowledge&solo=1")
+                == "key=k&actor=owner&app=strut%2Fknowledge&solo=1")
         let page = try #require(server.page(of: apps[1]))
         #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
-                == "key=k&app=tools%2Fboard&solo=1")
+                == "key=k&actor=owner&app=tools%2Fboard&solo=1")
         // Another version, previewed: `name@vN`, as strut's UI reads it.
         let preview = try #require(server.page(of: apps[1], version: "v9"))
         #expect(URLComponents(url: preview, resolvingAgainstBaseURL: false)?.percentEncodedQuery
-                == "key=k&app=tools%2Fboard%40v9&solo=1")
+                == "key=k&actor=owner&app=tools%2Fboard%40v9&solo=1")
     }
 
     /// An app's versions are read, and what is live changed, on Peel's own
@@ -643,10 +643,10 @@ struct HiveTests {
         let page = try #require(server.page(showing: file))
         #expect(page.path == "/" && server.serves(page))
         #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
-                == "key=k%2B1&artifact=%2Fpeers%2Facme%2Fjobs%2Fpeer%252Fj-1%2Ffiles%2FLisbon%2520plan.md&solo=1")
+                == "key=k%2B1&actor=owner&artifact=%2Fpeers%2Facme%2Fjobs%2Fpeer%252Fj-1%2Ffiles%2FLisbon%2520plan.md&solo=1")
         let board = try #require(AgentArtifact.Handle(app: "@acme/hive/board"))
         let app = try #require(server.page(showing: board))
-        #expect(URLComponents(url: app, resolvingAgainstBaseURL: false)?.percentEncodedQuery == "key=k%2B1&app=%40acme%2Fhive%2Fboard&solo=1")
+        #expect(URLComponents(url: app, resolvingAgainstBaseURL: false)?.percentEncodedQuery == "key=k%2B1&actor=owner&app=%40acme%2Fhive%2Fboard&solo=1")
     }
 
     /// A page's link to another app (strut's page alone hands one to its
@@ -658,7 +658,7 @@ struct HiveTests {
         #expect(link == StrutAppLink(app: .app("@acme/board"), input: "view=%2Fruns"))
         let page = try #require(server.page(showing: link.app, input: link.input))
         #expect(URLComponents(url: page, resolvingAgainstBaseURL: false)?.percentEncodedQuery
-                == "key=k%2B1&app=%40acme%2Fboard&input=view%3D%252Fruns&solo=1")
+                == "key=k%2B1&actor=owner&app=%40acme%2Fboard&input=view%3D%252Fruns&solo=1")
         // Another strut's address is not this one's link.
         #expect(server.appLink(URL(string: "http://127.0.0.1:4101/?app=board")!, from: nil) == nil)
         // A file's page shows no app, so a link in it (an org's words) opens none.

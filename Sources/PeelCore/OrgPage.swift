@@ -7,20 +7,24 @@ import Foundation
 public enum StrutUI {
     /// The page at `base` showing `value` as `name` (`artifact` or `app`)
     /// alone; with `key`, the strut's key handed over as `?key=` (Peel's own
-    /// strut, on this Mac); with `input`, an app opened at that view (strut's
+    /// strut, on this Mac), and beside it `actor`, the person it is shown to; with `input`, an app opened at that view (strut's
     /// plans/apps.md §7.1, "Deep links"). Nil for a base that is not a URL's parts.
     /// With `from`, another strut server's public app `value`, which this
     /// UI hosts (strut's remote mode, its specs/API.md §17.9:
     /// `&public=1&from=<seller>`).
     public static func page(
-        on base: URL, key: String? = nil, _ name: String, _ value: String, input: String? = nil, from seller: URL? = nil
+        on base: URL, key: String? = nil, actor: String? = nil, _ name: String, _ value: String, input: String? = nil,
+        from seller: URL? = nil
     ) -> URL? {
         guard var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
         // The UI's folder with its `/`: without it the host redirects, and a
         // web view does not carry a request's credential across a redirect.
         let path = parts.percentEncodedPath
         parts.percentEncodedPath = path.hasSuffix("/") ? path : path + "/"
-        parts.percentEncodedQuery = (key.map { "key=\(encoded($0))&" } ?? "") + "\(name)=\(encoded(value))"
+        // `actor`: who the key's holder says the page is shown to (strut's UI sends it with the key).
+        let owner = key == nil ? nil : actor
+        parts.percentEncodedQuery = (key.map { "key=\(encoded($0))&" } ?? "") + (owner.map { "actor=\(encoded($0))&" } ?? "")
+            + "\(name)=\(encoded(value))"
             + (input.map { "&input=\(encoded($0))" } ?? "")
             + (seller.map { "&public=1&from=\(encoded($0.absoluteString))" } ?? "") + "&solo=1"
         parts.fragment = nil

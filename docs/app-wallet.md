@@ -165,7 +165,7 @@ it, and the person is then `secp:<x-only key>` there.
   its own strut's UI (`AppModel.openPublicApp`), naming the app from the
   address's `?app=`, else the box's `strut-serve` meta, else its public
   view's only app; it needs Peel's strut running. `Vendor/strut.lock`
-  pins strut main at #702's merge (dd40648), which has #625's remote mode,
+  pins strut main at #707's merge (384557c), which has #625's remote mode,
   #645's sign-in, #689's reading of the sign-in's `address` (the Mac's
   strut UI posts it to the seller, so a worker's withdrawal has
   somewhere to go) and #690's visitor wallet (a stranger's page is offered
@@ -174,7 +174,9 @@ it, and the person is then `secp:<x-only key>` there.
   opened, and keys the connection by them). Moved from #645's merge
   (9d74d29) to #698's (5015396) on 2026-11-15, then to #702's the same
   day, which changes nothing here (the Concept tree's merge and the
-  dream). Checked offscreen on the Mac (2026-11-12): a link to
+  dream), then to #707's on 2026-11-16, which adds #703 (a public app
+  served alone at a host its domains list) and #707 (strut's own pages
+  read the graph as their viewer). Checked offscreen on the Mac (2026-11-12): a link to
   a box serving a public app (strut's serve mode, a `file:` package with
   `signIn: [sphinx]`) opens it in the web pane, and the page reaches the
   box (its app and document, `/public/mcp`, `/visitors`). The sign-in

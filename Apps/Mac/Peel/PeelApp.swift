@@ -67,6 +67,10 @@ struct PeelApp: App {
             .main
         }
         #if os(macOS)
+        // A `peel://` link opens no window of any scene here (a second main
+        // window would show the sidebar and none of the app's web pane):
+        // `AppDelegate` opens it in the main window there is.
+        .handlesExternalEvents(matching: [])
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1180, height: 760)
         .commands {
@@ -119,6 +123,7 @@ struct PeelApp: App {
                 .tint(Theme.accent)
         }
         .defaultSize(width: 560, height: 520)
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
 
@@ -129,6 +134,7 @@ struct PeelApp: App {
                 .tint(Theme.accent)
         }
         .defaultSize(width: 560, height: 560)
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
 
@@ -142,6 +148,7 @@ struct PeelApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 960, height: 640)
         .commandsRemoved()
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
 
@@ -154,6 +161,7 @@ struct PeelApp: App {
         }
         .defaultSize(width: 400, height: 600)
         .commandsRemoved()
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(.disabled)
         // Open at launch only for the dev setting's `-talkAtLaunch`.
         .defaultLaunchBehavior(model.talk.home != nil ? .presented : .suppressed)
@@ -164,6 +172,7 @@ struct PeelApp: App {
             if let config = CallTest.config(for: model) { CallTestView(url: config.url, token: config.token) }
         }
         .commandsRemoved()
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(CallTest.config(for: model) != nil ? .presented : .suppressed)
         #endif

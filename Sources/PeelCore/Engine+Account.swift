@@ -255,6 +255,17 @@ extension Engine {
         try set(.autoDownloadMedia, on)
     }
 
+    /// Whether the chat list is on Recent, as synced between the account's
+    /// devices (`peel.chats_recent_view`); nil until it was ever chosen, when
+    /// the local layout's `combinedView` stands.
+    public func chatsRecentView() throws -> Bool? {
+        try storage.preference(.chatsRecentView)
+    }
+
+    public func setChatsRecentView(_ recent: Bool) throws {
+        try set(.chatsRecentView, recent)
+    }
+
     /// What an app's notification does; banner and sound unless chosen.
     public func notificationStyle() throws -> NotificationPolicy.Style {
         try storage.preference(.notificationStyle) ?? .default
@@ -324,6 +335,7 @@ extension Engine {
         public let notificationStyle: NotificationPolicy.Style?
         public let notificationSound: String?
         public let sidebarLayout: ChatSections.Layout?
+        public let chatsRecentView: Bool?
         public let callJamie: [String: String]?
         public let wordsConfirmed: Bool?
         public let connection: ConnectionState
@@ -341,6 +353,7 @@ extension Engine {
             notificationShowsText: try? notificationShowsText(),
             autoDownloadsMedia: try? autoDownloadsMedia(),
             notificationStyle: try? notificationStyle(), notificationSound: try? notificationSound(), sidebarLayout: try? sidebarLayout(),
+            chatsRecentView: (try? chatsRecentView()) ?? nil,
             callJamie: try? callJamie(), wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
         )
     }

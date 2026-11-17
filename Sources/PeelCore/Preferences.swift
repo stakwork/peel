@@ -165,6 +165,15 @@ extension Preference where Value == Bool {
         Self(key: "peel.auto_download_media", scope: .account, read: \.flag, write: { .string($0 ? "true" : "false") })
     }
 
+    /// Whether the chat list shows Recent (one merged list) rather than
+    /// Separated (tribes and direct messages apart): `true` is Recent. Peel
+    /// only (`peel.`: the official apps keep and ignore it). Unset until the
+    /// switch is used on a device; then the device's own layout decides
+    /// (`ChatSections.Layout.combinedView`). "Show all" stays local.
+    public static var chatsRecentView: Self {
+        Self(key: "peel.chats_recent_view", scope: .account, read: \.flag, write: { .string($0 ? "true" : "false") })
+    }
+
     /// Whether the person turned Face ID on: the official `biometric_enabled`
     /// (iOS writes it and applies it; the Mac app ignores it). Synced only
     /// by a device that has Face ID to offer (`PreferenceCapabilities`); a
@@ -323,6 +332,7 @@ public enum Preferences {
         Preference<String>.chatColor.entry,
         Preference<Bool>.biometricEnabled.entry,
         Preference<Bool>.autoDownloadMedia.entry,
+        Preference<Bool>.chatsRecentView.entry,
         Preference<AgentConfig>.agentConfig.entry,
         Preference<TimeZoneSharing>.timeZoneSharing.entry,
         Preference<Int>.pinTimeout.entry,

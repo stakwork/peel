@@ -233,8 +233,21 @@ public final class AppModel {
             guard sidebarLayout != savedLayout, let engine else { return }
             savedLayout = sidebarLayout
             let layout = sidebarLayout
-            Task { try? await engine.setSidebarLayout(layout) }
+            let recent = layout.combinedView != oldValue.combinedView ? layout.combinedView : nil
+            Task {
+                try? await engine.setSidebarLayout(layout)
+                // Separated / Recent follows the account (`peel.chats_recent_view`); "Show all" stays here.
+                if let recent { try? await engine.setChatsRecentView(recent) }
+            }
         }
+    }
+    /// The saved layout with Separated / Recent from the synced preference
+    /// when there is one, else the local `combinedView`; `allRecent` and the
+    /// rest stay local (`current` while running, else the saved ones).
+    static func layout(_ settings: Engine.Settings, keeping current: ChatSections.Layout? = nil) -> ChatSections.Layout {
+        var layout = current ?? settings.sidebarLayout ?? ChatSections.Layout()
+        if let recent = settings.chatsRecentView { layout.combinedView = recent }
+        return layout
     }
     /// The layout as the account has it, so loading it saves nothing.
     @ObservationIgnored private var savedLayout = ChatSections.Layout()
@@ -1742,7 +1755,7 @@ public final class AppModel {
         paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
         boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
         autoDownloadsMedia = settings.autoDownloadsMedia ?? true
-        savedLayout = settings.sidebarLayout ?? ChatSections.Layout()
+        savedLayout = Self.layout(settings)
         sidebarLayout = savedLayout
         activeLease.isForeground = platform.presence.isFrontmost
         connection = settings.connection
@@ -1884,6 +1897,9 @@ public final class AppModel {
                 paymentConfirmationMsat = settings.paymentConfirmationMsat ?? Engine.defaultPaymentConfirmationMsat
                 boostAmountMsat = settings.boostAmountMsat ?? Engine.defaultBoostAmountMsat
                 autoDownloadsMedia = settings.autoDownloadsMedia ?? true
+                let layout = Self.layout(settings, keeping: sidebarLayout)
+                savedLayout = layout
+                sidebarLayout = layout
                 if let hours = settings.pinTimeoutHours, hours != pinTimeoutHours {
                     pinTimeoutHours = hours
                     profile?.rememberedPIN?.timeoutChanged(to: hours)

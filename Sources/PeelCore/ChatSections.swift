@@ -20,6 +20,11 @@ public struct ChatSections: Equatable, Sendable {
         public var pinnedApps: [String] = []
         /// The pinned apps show under the Apps row (Tom, 2026-10-28).
         public var appsOpen = true
+        /// Tribes and direct messages show as one list, newest first, rather
+        /// than in two sections.
+        public var combinedView = false
+        /// "Show all 32 chats" was clicked in the Recent view.
+        public var allRecent = false
 
         public init() {}
 
@@ -33,11 +38,15 @@ public struct ChatSections: Equatable, Sendable {
             allDirect = try values.decodeIfPresent(Bool.self, forKey: .allDirect) ?? false
             pinnedApps = try values.decodeIfPresent([String].self, forKey: .pinnedApps) ?? []
             appsOpen = try values.decodeIfPresent(Bool.self, forKey: .appsOpen) ?? true
+            combinedView = try values.decodeIfPresent(Bool.self, forKey: .combinedView) ?? false
+            allRecent = try values.decodeIfPresent(Bool.self, forKey: .allRecent) ?? false
         }
     }
 
     /// How many tribes and direct messages show before "Show all".
     public static let recent = 5
+    /// How many chats the Recent view shows before "Show all".
+    public static let recentCombined = 10
 
     /// Every chat with something unread: direct messages first, then tribes
     /// that mention you, then the other tribes, each newest first.
@@ -47,6 +56,13 @@ public struct ChatSections: Equatable, Sendable {
     /// while the section is closed, every match while searching.
     public private(set) var tribes: [Conversation] = []
     public private(set) var direct: [Conversation] = []
+    /// Every tribe and direct message not in `unread` (matching the search),
+    /// merged and newest first, for the Recent view: trimmed to
+    /// `recentCombined` (with the open chat however far down) until shown in full.
+    public private(set) var combined: [Conversation] = []
+    /// How many chats there are in all, unread included, for the Recent view's
+    /// "Show all 32 chats" (or "Show fewer"); nil when it has no more to show.
+    public private(set) var allCombined: Int?
     /// A search is filtering the lists: every section shows its matches,
     /// whatever the layout says.
     public private(set) var searching = false
@@ -83,6 +99,9 @@ public struct ChatSections: Equatable, Sendable {
             }
         }
         unread += mentioning + otherTribes
+        let merged = (tribes + direct).sorted { ($0.lastTimestamp ?? 0) > ($1.lastTimestamp ?? 0) }
+        (combined, allCombined) = Self.shown(merged, open: true, all: layout.allRecent, searching: searching,
+                                             total: tribeCount + directCount, chat: open, limit: Self.recentCombined)
         tribesOpen = layout.tribesOpen || searching
         directOpen = layout.directOpen || searching
         (self.tribes, allTribes) = Self.shown(tribes, open: tribesOpen, all: layout.allTribes,
@@ -101,14 +120,14 @@ public struct ChatSections: Equatable, Sendable {
 
     /// A section's rows and its "Show all" count: the open chat alone while
     /// closed; every row while searching; the first `recent` and the open
-    /// chat unless shown in full.
+    /// chat unless shown in full (`limit`, `recent` unless said).
     private static func shown(
-        _ rows: [Conversation], open: Bool, all: Bool, searching: Bool, total: Int, chat: String?
+        _ rows: [Conversation], open: Bool, all: Bool, searching: Bool, total: Int, chat: String?, limit: Int = recent
     ) -> ([Conversation], Int?) {
         guard open else { return (rows.filter { $0.chat == chat }, nil) }
-        guard !searching, rows.count > recent else { return (rows, nil) }
+        guard !searching, rows.count > limit else { return (rows, nil) }
         guard !all else { return (rows, total) }
-        let trimmed = rows.enumerated().filter { $0.offset < recent || $0.element.chat == chat }.map(\.element)
+        let trimmed = rows.enumerated().filter { $0.offset < limit || $0.element.chat == chat }.map(\.element)
         return (trimmed, trimmed.count < rows.count ? total : nil)
     }
 

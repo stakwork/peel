@@ -68,6 +68,25 @@ struct ChatSectionsTests {
         #expect(sections.allDirect == 7)
     }
 
+    @Test func recentTrimsToTenNewestAndKeepsTheOpenChat() {
+        var layout = ChatSections.Layout()
+        layout.combinedView = true
+        let chats: [Conversation] = (1...15).map { n in
+            var chat = n.isMultiple(of: 2) ? tribe("t\(n)") : person("p\(n)")
+            chat.lastTimestamp = Int64(100 - n)
+            return chat
+        }
+        let sections = ChatSections(chats, states: [:], layout: layout, open: "p15")
+        #expect(names(sections.combined) == ["p1", "t2", "p3", "t4", "p5", "t6", "p7", "t8", "p9", "t10", "p15"])
+        #expect(sections.allCombined == 15)
+        layout.allRecent = true
+        let all = ChatSections(chats, states: [:], layout: layout)
+        #expect(all.combined.count == 15)
+        #expect(all.allCombined == 15)
+        let few = ChatSections(Array(chats.prefix(10)), states: [:], layout: ChatSections.Layout())
+        #expect(few.allCombined == nil)
+    }
+
     @Test func showAllCountsUnreadChatsTooAndStaysToShowFewer() {
         var layout = ChatSections.Layout()
         layout.allTribes = true

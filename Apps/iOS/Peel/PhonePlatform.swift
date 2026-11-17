@@ -16,7 +16,7 @@ extension Platform {
     static func phone() -> Platform {
         Platform(
             presence: PhonePresence(), files: PhoneFiles(), pasteboard: ClipboardPasteboard(),
-            playback: PhonePlayback(), web: { _ in PhoneWeb() }, calls: LiveKitCalls(), agent: nil,
+            playback: PhonePlayback(), web: { PhoneWeb(profile: $0) }, calls: LiveKitCalls(), agent: nil,
             // Chats is a list to come back to, not a pane to fill.
             opensFirstChat: false,
             // Face ID's on/off follows the account, as in the official iOS app.
@@ -111,20 +111,50 @@ struct PhonePlayback: Playback {
 
 /// No web pane yet; an HTML attachment says so where it was opened.
 final class PhoneWeb: WebPresenting {
+    private let profile: Profile?
+
+    init(profile: Profile?) {
+        self.profile = profile
+    }
+
     func openDocument(_ file: URL, named name: String) async throws {
         throw PeelError("Pages open on the Mac for now.")
     }
 
     /// The public sites' stores (`PublicPage.storeIdentifier`), the only
-    /// ones the iPhone keeps: emptied, then removed. WebKit refuses the
-    /// removal while a page still holds its store; its emptied folder is
-    /// then left behind, with nothing in it to sign anyone in.
+    /// ones the iPhone keeps, as `remember` listed them: emptied, then
+    /// removed. Not `WKWebsiteDataStore.allDataStoreIdentifiers`, which
+    /// crashes in WebKit's store queue. WebKit refuses the removal while a
+    /// page still holds its store; its emptied folder is then left behind,
+    /// with nothing in it to sign anyone in.
     func forgetWebsiteData() async {
-        for id in await WKWebsiteDataStore.allDataStoreIdentifiers {
+        guard let directory = profile?.directory else { return }
+        for id in Self.storeIDs(in: directory) {
             await WKWebsiteDataStore(forIdentifier: id)
                 .removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
             try? await WKWebsiteDataStore.remove(forIdentifier: id)
         }
+        try? FileManager.default.removeItem(at: Self.storesFile(in: directory))
+    }
+
+    /// A public site about to open: its store is listed in the profile, so
+    /// forgetting the account finds it.
+    static func remember(_ page: PublicPage, in profile: Profile?) {
+        guard let directory = profile?.directory else { return }
+        var ids = storeIDs(in: directory)
+        guard !ids.contains(page.storeIdentifier) else { return }
+        ids.append(page.storeIdentifier)
+        try? Data(ids.map(\.uuidString).joined(separator: "\n").utf8)
+            .write(to: storesFile(in: directory), options: .atomic)
+    }
+
+    private static func storesFile(in directory: URL) -> URL {
+        directory.appendingPathComponent("public-web-stores", isDirectory: false)
+    }
+
+    private static func storeIDs(in directory: URL) -> [UUID] {
+        guard let text = try? String(contentsOf: storesFile(in: directory), encoding: .utf8) else { return [] }
+        return text.split(whereSeparator: \.isNewline).compactMap { UUID(uuidString: String($0)) }
     }
 }
 

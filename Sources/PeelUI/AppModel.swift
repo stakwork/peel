@@ -147,7 +147,6 @@ public final class AppModel {
             if selectedChat != oldValue?.chat {
                 dropStaleConnectionNotice()
                 calls.chatChanged(to: selectedChat)
-                heldUnread = selectedChat.flatMap { readStates[$0] }.flatMap { $0.isUnread ? $0 : nil }
                 newMessages = nil
                 keepsUnread = nil
                 // A jump into this chat (`focus(on:)`) set both just before.
@@ -239,9 +238,6 @@ public final class AppModel {
     }
     /// The layout as the account has it, so loading it saves nothing.
     @ObservationIgnored private var savedLayout = ChatSections.Layout()
-    /// The open chat's read state as it was when it was opened from Unread
-    /// (`sidebarSections`).
-    private var heldUnread: ChatReadState?
     /// Bumped to put the cursor in the sidebar's search (⌘F with no chat open).
     public var sidebarSearchFocus = 0
     public var myAlias: String?
@@ -522,20 +518,15 @@ public final class AppModel {
     public var selectedChat: String? { destination?.chat }
 
     /// The sidebar's chats as shown: Unread, then the recent tribes and
-    /// direct messages, matching its search. The open chat, unread when it
-    /// was opened, stays in Unread until another is opened, so it does not
-    /// jump away as it is read and ⌥⇧↓ goes on from it.
+    /// direct messages, matching its search. A chat leaves Unread when it is
+    /// read, as its badge clears.
     public var sidebarSections: ChatSections {
-        var states = readStates
-        if let heldUnread, heldUnread.chat == selectedChat, states[heldUnread.chat]?.isUnread != true {
-            states[heldUnread.chat] = heldUnread
-        }
         // The agent's DM is the agent's own row, until it is unread: then
         // it is in Unread like any chat.
         let chats = agentChat.map { agent in
-            states[agent]?.isUnread == true ? conversations : conversations.filter { $0.chat != agent }
+            readStates[agent]?.isUnread == true ? conversations : conversations.filter { $0.chat != agent }
         } ?? conversations
-        return ChatSections(chats, states: states, layout: sidebarLayout, query: searchQuery, open: selectedChat)
+        return ChatSections(chats, states: readStates, layout: sidebarLayout, query: searchQuery, open: selectedChat)
     }
 
     /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the

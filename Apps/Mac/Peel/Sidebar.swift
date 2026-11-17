@@ -83,6 +83,12 @@ struct Sidebar: View {
                                 ForEach(sections.combined) { conversation in
                                     ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                                 }
+                                if let all = sections.allCombined {
+                                    SidebarShowAll(what: "\(all) chats", fewer: "chats", all: $model.sidebarLayout.allRecent)
+                                }
+                                SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
+                                SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
+                                ContactsSidebarRows()
                             }
                         } else {
                             // Searching shows every match: no chevron to say otherwise or
@@ -182,13 +188,19 @@ struct Sidebar: View {
         let sections = model.sidebarSections
         let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
         let combined = model.sidebarLayout.combinedView && !sections.searching
-        return [(.apps, "Apps")]
-            + shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
-            + [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads"), (.segments, "Segments")]
-            + (combined
-               ? (sections.unread + sections.combined).map { (.chat($0.chat), $0.name) } + agent
-               : (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) } + agent
-                   + sections.direct.map { (.chat($0.chat), $0.name) })
+        // Built in typed steps: as one expression it is too much for the type checker.
+        typealias Row = (destination: AppModel.Destination, title: String)
+        let apps: [Row] = shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
+        let fixed: [Row] = [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads"), (.segments, "Segments")]
+        let chats: [Row]
+        if combined {
+            chats = (sections.unread + sections.combined).map { (.chat($0.chat), $0.name) } + agent
+        } else {
+            let tribes: [Row] = (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
+            let direct: [Row] = sections.direct.map { (.chat($0.chat), $0.name) }
+            chats = tribes + agent + direct
+        }
+        return [(.apps, "Apps")] + apps + fixed + chats
     }
 
     /// The apps under the Apps row, A–Z: those in the sidebar while it is

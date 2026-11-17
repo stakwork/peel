@@ -17,6 +17,7 @@ struct Onboarding: View {
     @State private var path = Path.newAccount
     @State private var steps: [Step] = []
     @State private var invite = ""
+    @State private var scanningInvite = false
     @State private var words = Array(repeating: "", count: 12)
     @State private var name = ""
     @State private var pin = ""
@@ -105,7 +106,27 @@ struct Onboarding: View {
                     .autocorrectionDisabled()
                     .lineLimit(2...5)
                     .padding(Theme.Space.md)
+                    .padding(.trailing, 32)
+                    .overlay(alignment: .topTrailing) {
+                        Button { scanningInvite = true } label: {
+                            Image(systemName: "qrcode.viewfinder")
+                                .font(Theme.font(20))
+                                .padding(Theme.Space.md)
+                        }
+                        .accessibilityLabel("Scan invite QR code")
+                    }
                     .fieldBox(focused: false)
+                    .fullScreenCover(isPresented: $scanningInvite) {
+                        CodeScanner(
+                            title: "Scan your invite", prompt: "Point the camera at the invite's QR code.",
+                            pasteInstead: "paste the invite", cancel: { scanningInvite = false }
+                        ) { code in
+                            guard !code.trimmed.isEmpty else { return "That code is empty." }
+                            invite = code
+                            scanningInvite = false
+                            return nil
+                        }
+                    }
             } actions: {
                 continueButton(enabled: !invite.trimmed.isEmpty) { go(.name) }
             }

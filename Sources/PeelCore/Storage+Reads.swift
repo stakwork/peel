@@ -190,20 +190,27 @@ extension Storage {
         SELECT pubkey, name, photoURL, 1, 0 FROM tribe WHERE left = 0
         """
 
-    /// The newest text, attachment, direct payment or call (a payment or a
-    /// call only while not deleted; none with no words) gives each
-    /// conversation its place in the sidebar. `message_preview` (v23) holds
-    /// only those, so the joins and boosts after one are not stepped over;
-    /// its terms are this query's, and it must keep them.
+    /// The newest text, attachment, direct payment, call or boost (all but
+    /// text and attachments only while not deleted; none with no words) gives
+    /// each conversation its place in the sidebar. A boost counts when it is
+    /// news to us, the rule of `countsAsUnreadSQL`: someone else's on a
+    /// message of ours; and our own boosts, like our own payments. Someone
+    /// else's boost on someone else's message does not, so it never hides the
+    /// message a row shows. `message_preview` (v35) holds those types, so the
+    /// joins after one are not stepped over; its terms are this query's, and
+    /// it must keep them. The boost test is a subquery, which an index's WHERE
+    /// cannot hold, so it is a separate term of the query's.
     private static let conversationsSQL = """
         SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe,
-               m.type AS lastType, m.mediaType AS lastMediaType, m.deleted AS lastDeleted,
+               m.type AS lastType, m.mediaType AS lastMediaType, m.deleted AS lastDeleted, COALESCE(m.msat, m.amountMsat) AS lastMsat,
                CASE WHEN json_valid(m.sender) THEN json_extract(m.sender, '$.alias') END AS lastSenderAlias
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
             SELECT id FROM message INDEXED BY message_preview
             WHERE chat = c.chat AND noWords = 0 AND (type IN (\(MessageType.contentSQL))
-                OR (type IN (\(MessageType.directPayment), \(MessageType.call)) AND deleted = 0))
+                OR (type IN (\(MessageType.directPayment), \(MessageType.boost), \(MessageType.call)) AND deleted = 0))
+                AND (type != \(MessageType.boost) OR fromMe = 1 OR EXISTS (
+                    SELECT 1 FROM message b WHERE b.uuid = message.replyUUID AND b.chat = message.chat AND b.fromMe = 1))
             ORDER BY timestamp DESC, id DESC LIMIT 1
         )
         ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias

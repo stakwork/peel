@@ -149,6 +149,21 @@ struct MigrationTests {
         #expect(found == shippedSchemaV23)
     }
 
+    /// v35 puts boosts (29) in the preview index, which the sidebar's query
+    /// names, so a database from before it still opens and previews a boost.
+    @Test func v35PutsBoostsInThePreviewIndex() async throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v34")
+        #expect(try queue.read { try String.fetchOne($0, sql: "SELECT sql FROM sqlite_master WHERE name = 'message_preview'") }?
+            .contains("5, 32") == true)
+        try queue.close()
+        let storage = try profile.storage()
+        let sql = try rows(profile, "SELECT sql FROM sqlite_master WHERE name = 'message_preview'")
+            .first?["sql"] as String?
+        #expect(sql?.contains("type IN (5, 29, 32)") == true)
+        #expect(try #require(try await first(storage.conversations())).isEmpty)
+    }
+
     /// v27 marks the control messages stored before it, in direct messages only.
     @Test func v27MarksStoredControlMessages() throws {
         let queue = try profile.queue()

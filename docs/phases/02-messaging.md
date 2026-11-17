@@ -34,6 +34,21 @@ Keychain, a new account can be created from an invite, and an existing account
 can be brought back from its twelve words with its contacts and history. The
 restore is the point of this phase; the Keychain is what makes it allowed.
 
+### 2026-10-08: a boost on our last message previews as a boost
+
+Bug (Tom): a boost on the last message of a tribe put the row in the unread
+section (badge 1) with our own message as its preview. Cause: the unread count
+(`countsAsUnreadSQL`) counts someone's boost on our message, but the row's last
+message came from `message_preview`, which held no boosts. Now boosts are in
+the index (migration v35, which recreates it) and a boost is the row's last
+message when it is news to us (someone else's on a message of ours, the
+unread rule) or our own (like our own payments); someone else's boost on
+another's message, and a deleted one, are not. The subquery for that is a
+separate term of `conversationsSQL`, as an index's WHERE cannot hold one. The
+line reads "Paul boosted your message: 5 sats" (the contact's name in a
+contact chat, "Someone" without a name) or "You boosted a message: 5 sats",
+from `lastMsat` on `Conversation`.
+
 ## Rules for this phase
 
 - No real account touches Peel until tasks 1, 2 and 4 are done and task 4 has

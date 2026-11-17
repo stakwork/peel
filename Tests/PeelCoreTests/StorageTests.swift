@@ -543,6 +543,54 @@ struct StorageTests {
         #expect(conversations.first?.lastTimestamp == 1_000)
     }
 
+    /// A boost ends a row's preview only when it is news to us (someone
+    /// else's on our message) or ours; someone else's on another's message,
+    /// and a deleted one, leave the message the row showed (Tom, boost on
+    /// our last message showed our own text as unread).
+    @Test func boostsOnOurMessagesEndThePreview() async throws {
+        let storage = try profile.storage()
+        func boost(_ n: Int, on parent: Int, fromMe: Bool = false, deleted: Bool = false, chat: String = dm) -> Message {
+            var m = Message.fixture(
+                uuid: uuid(n), serverIndex: Int64(n), type: MessageType.boost, chat: chat, fromMe: fromMe,
+                sender: sender(alias: "Paul"), content: "", msat: fromMe ? nil : 5_000,
+                timestamp: Int64(n) * 1_000, replyUUID: uuid(parent), amountMsat: 5_000)
+            m.deleted = deleted
+            return m
+        }
+        func preview() async throws -> Conversation {
+            try #require(try await first(storage.conversations())?.first { $0.chat == dm })
+        }
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(dm, true), ("02bb", true)],
+            messages: [
+                (.fixture(uuid: uuid(1), serverIndex: 1, fromMe: true, content: "mine", timestamp: 1_000), false, nil),
+                (.fixture(uuid: uuid(2), serverIndex: 2, content: "theirs", timestamp: 2_000), false, nil),
+                // A boost on theirs: not news, the row keeps "theirs".
+                (boost(3, on: 2), false, nil),
+            ]
+        ))
+        var row = try await preview()
+        #expect(row.lastContent == "theirs" && row.lastType == MessageType.text)
+
+        // A boost on ours becomes the preview, with its amount, and the row moves up.
+        _ = try storage.apply(Storage.Commit(messages: [(boost(4, on: 1), false, nil)]))
+        row = try await preview()
+        #expect(row.lastType == MessageType.boost && row.lastMsat == 5_000 && row.lastTimestamp == 4_000)
+        #expect(row.previewLine == "Paul boosted your message: 5 sats")
+        let states = try #require(try await first(storage.readStates()))
+        #expect(states[dm]?.unread == 2) // theirs and the boost on ours
+
+        // Ours: "You boosted a message".
+        _ = try storage.apply(Storage.Commit(messages: [(boost(5, on: 2, fromMe: true), false, nil)]))
+        row = try await preview()
+        #expect(row.previewLine == "You boosted a message: 5 sats")
+
+        // A deleted boost never previews.
+        _ = try storage.apply(Storage.Commit(messages: [(boost(6, on: 1, deleted: true), false, nil)]))
+        row = try await preview()
+        #expect(row.lastTimestamp == 5_000)
+    }
+
     // MARK: Profile lock
 
     @Test func secondWritableStorageIsRejected() throws {

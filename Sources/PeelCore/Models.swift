@@ -107,6 +107,8 @@ public struct Conversation: Codable, Sendable, Identifiable, Equatable, Fetchabl
     public var lastDeleted: Bool?
     /// The nickname the last message's sender gave (a tribe's member).
     public var lastSenderAlias: String?
+    /// A boost's amount in msat: what arrived, else what was declared or sent.
+    public var lastMsat: Int64?
 
     public var id: String { chat }
 

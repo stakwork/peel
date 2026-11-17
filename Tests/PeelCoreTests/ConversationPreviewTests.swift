@@ -33,6 +33,20 @@ struct ConversationPreviewTests {
         #expect(line(MessageType.text, "hi", tribe: false, from: "Paul") == "hi")
     }
 
+    @Test func boostsNameTheBoosterAndAmount() {
+        func boost(me: Bool = false, tribe: Bool = false, from: String? = nil, msat: Int64? = 5_000) -> String? {
+            Conversation(chat: "c", alias: "Nina", isTribe: tribe, lastTimestamp: 1, lastFromMe: me,
+                         lastType: MessageType.boost, lastDeleted: false, lastSenderAlias: from, lastMsat: msat).previewLine
+        }
+        #expect(boost(tribe: true, from: "Paul") == "Paul boosted your message: 5 sats")
+        #expect(boost(tribe: true) == "Someone boosted your message: 5 sats")
+        #expect(boost() == "Nina boosted your message: 5 sats")
+        #expect(boost(from: "Nin") == "Nin boosted your message: 5 sats")
+        #expect(boost(msat: 1_000) == "Nina boosted your message: 1 sat")
+        #expect(boost(msat: nil) == "Nina boosted your message")
+        #expect(boost(me: true, tribe: true, from: "Paul") == "You boosted a message: 5 sats")
+    }
+
     @Test func noMessageNoLine() {
         #expect(Conversation(chat: "c", alias: nil, isTribe: true).previewLine == nil)
     }

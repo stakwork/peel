@@ -6,7 +6,8 @@ import SwiftUI
 /// connection bolt in its glass capsule (green when connected, orange when
 /// not), the top rows, then Unread, Tribes and Direct messages in the Mac
 /// sidebar's order and trimming (`AppModel.sidebarSections`), each section
-/// ending in its actions as on the Mac. Its stack is the router's `chats`.
+/// ending in its actions as on the Mac; or, with Recent chosen, one list of
+/// both, newest first. Its stack is the router's `chats`.
 struct ChatsTab: View {
     @Environment(PhoneRouter.self) private var router
 
@@ -58,7 +59,9 @@ extension View {
 
 /// The top rows, then the chats by section, Tribes ending in Join and
 /// Create a tribe and Direct messages in the pending invites, Add contact
-/// and Invite someone, as the Mac's sidebar ends them. Search shows it too,
+/// and Invite someone, as the Mac's sidebar ends them. Recent (the layout's
+/// `combinedView`, shared with the Mac) puts tribes and people in one list,
+/// newest first, trimmed to ten, ending in all those actions. Search shows it too,
 /// filtered by name: then only the matching chats, every section open, no
 /// actions.
 struct ChatList: View {
@@ -78,6 +81,7 @@ struct ChatList: View {
             // Unread, it is in the Unread section instead.
             .flatMap { agent in sections.unread.contains { $0.chat == agent.chat } ? nil : agent }
         let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty && agent == nil
+        let recent = model.sidebarLayout.combinedView && !sections.searching
         List {
             if !sections.searching {
                 Section {
@@ -116,39 +120,70 @@ struct ChatList: View {
                     }
                 }
             }
-            // Searching shows every match, a section only with matches,
-            // with no chevron to say otherwise or to change the saved
-            // layout, and no actions. Otherwise a section is always there,
-            // for its actions.
-            if !sections.searching || !sections.tribes.isEmpty {
-                ChatsSection(title: "Tribes",
-                             expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
-                    ForEach(sections.tribes) { ChatLink(conversation: $0, state: states[$0.chat]) }
-                    if let all = sections.allTribes {
-                        ShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
+            if !sections.searching {
+                Section {
+                    Picker("Chats", selection: $model.sidebarLayout.combinedView) {
+                        Text("Separated").tag(false)
+                        Text("Recent").tag(true)
                     }
-                    if sections.tribesOpen, !sections.searching {
-                        ActionRow(title: "Join a tribe") { sheet = .joinTribe }
-                        ActionRow(title: "Create a tribe") { sheet = .createTribe }
-                    }
+                    .pickerStyle(.segmented)
+                    .padding(.top, Theme.Space.lg)
+                    .listRowSeparator(.hidden)
                 }
+                .phoneRows()
             }
-            if !sections.searching || !sections.direct.isEmpty || agent != nil {
-                ChatsSection(title: "Direct messages",
-                             expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
+            if recent {
+                ChatsSection(title: "Recent") {
                     if let agent {
                         ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
                     }
-                    ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }
-                    if let all = sections.allDirect {
-                        ShowAll(what: Formatting.people(all), fewer: "people", all: $model.sidebarLayout.allDirect)
+                    ForEach(sections.combined) { ChatLink(conversation: $0, state: states[$0.chat]) }
+                    if let all = sections.allCombined {
+                        ShowAll(what: "\(all) chats", fewer: "chats", all: $model.sidebarLayout.allRecent)
                     }
-                    if sections.directOpen, !sections.searching {
-                        ForEach(model.pendingInvites) { invite in
-                            PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
+                    ActionRow(title: "Join a tribe") { sheet = .joinTribe }
+                    ActionRow(title: "Create a tribe") { sheet = .createTribe }
+                    ForEach(model.pendingInvites) { invite in
+                        PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
+                    }
+                    ActionRow(title: "Add contact") { sheet = .addContact }
+                    ActionRow(title: "Invite someone") { sheet = .inviteSomeone }
+                }
+            } else {
+                // Searching shows every match, a section only with matches,
+                // with no chevron to say otherwise or to change the saved
+                // layout, and no actions. Otherwise a section is always there,
+                // for its actions.
+                if !sections.searching || !sections.tribes.isEmpty {
+                    ChatsSection(title: "Tribes",
+                                 expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
+                        ForEach(sections.tribes) { ChatLink(conversation: $0, state: states[$0.chat]) }
+                        if let all = sections.allTribes {
+                            ShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
                         }
-                        ActionRow(title: "Add contact") { sheet = .addContact }
-                        ActionRow(title: "Invite someone") { sheet = .inviteSomeone }
+                        if sections.tribesOpen, !sections.searching {
+                            ActionRow(title: "Join a tribe") { sheet = .joinTribe }
+                            ActionRow(title: "Create a tribe") { sheet = .createTribe }
+                        }
+                    }
+                }
+                if !sections.searching || !sections.direct.isEmpty || agent != nil {
+                    ChatsSection(title: "Direct messages",
+                                 expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
+                        if let agent {
+                            ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
+                        }
+                        ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }
+                        if let all = sections.allDirect {
+                            ShowAll(what: Formatting.people(all), fewer: "people", all: $model.sidebarLayout.allDirect)
+                        }
+                        if sections.directOpen, !sections.searching {
+                            ForEach(model.pendingInvites) { invite in
+                                PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
+                            }
+                            ActionRow(title: "Add contact") { sheet = .addContact }
+                            ActionRow(title: "Invite someone") { sheet = .inviteSomeone }
+                        }
                     }
                 }
             }

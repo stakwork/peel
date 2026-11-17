@@ -773,8 +773,10 @@ struct SidebarShowAll: View {
         Button {
             all.toggle()
         } label: {
+            // In the link color, as on the iPhone, so it stands apart from the actions.
             SidebarActionLabel(title: all ? "Show fewer" : "Show all \(what)",
                                systemImage: all ? "chevron.up" : "chevron.down")
+                .foregroundStyle(Theme.link)
         }
         .buttonStyle(SidebarRowStyle(selected: false))
         .accessibilityLabel(all ? "Show fewer \(fewer)" : "Show all \(what)")

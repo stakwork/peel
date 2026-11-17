@@ -25,7 +25,7 @@ struct PreferencesTests {
         #expect(Preferences.registry["pin_timeout"]?.optIn == true)
         #expect(!Preferences.synced.contains("pin_timeout"))
         #expect(Preferences.syncedKeys(enabling: ["pin_timeout"]).contains("pin_timeout"))
-        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.auto_download_media", "peel.time_zone"])
+        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.auto_download_media", "peel.chats_recent_view", "peel.time_zone"])
         #expect(Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("biometric_enabled"))
         #expect(!Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("ai_agent_config"))
         #expect(Preferences.syncedKeys(enabling: ["ai_agent_config"]).contains("ai_agent_config"))
@@ -101,6 +101,20 @@ struct PreferencesTests {
         #expect(current.flatMap(sharing.read) == TimeZoneSharing(enabled: false, identifier: nil))
         #expect(sharing.read(.object(["timezone_identifier": .string("UTC")])) == nil)
         #expect(Preference<Bool>.notificationText.read(.string("FALSE")) == false)
+    }
+
+    /// Separated / Recent syncs as Peel's `peel.chats_recent_view`: unset until chosen, "true"/"false" in the file.
+    @Test func chatsRecentViewIsASyncedPeelFlag() throws {
+        let preference = Preference<Bool>.chatsRecentView
+        #expect(preference.key == "peel.chats_recent_view")
+        #expect(preference.scope == .account)
+        #expect(preference.read(.string("TRUE")) == true)
+        #expect(preference.read(.string("false")) == false)
+        #expect(try preference.write(true) == .string("true"))
+        let storage = try profile.storage()
+        #expect(try storage.preference(.chatsRecentView) == nil)
+        try storage.setPreference(.chatsRecentView, true)
+        #expect(try storage.preference(.chatsRecentView) == true)
     }
 
     /// Notification type and sound stay on this device; unset reads as the old behaviour.

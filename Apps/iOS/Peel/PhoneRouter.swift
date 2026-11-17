@@ -89,8 +89,11 @@ final class PhoneRouter {
     /// the agent's DM, or a workspace's app.
     var orgPage: OrgPageRequest?
     /// A stranger's public app over everything (`OrgPageSheet` on a
-    /// `PublicPage`), opened by a `peel://open?url=` link.
-    var publicPage: PublicPage?
+    /// `PublicPage`), opened by a `peel://open?url=` link. Its store is
+    /// listed for Forget (`PhoneWeb.remember`).
+    var publicPage: PublicPage? {
+        didSet { if let publicPage { PhoneWeb.remember(publicPage, in: model.profile) } }
+    }
     /// Such a link that came while Peel was locked: opened once it unlocks.
     var waitingLink: PublicAppLink?
     /// The call screen is up over everything (`IOSCallScreen`); the call

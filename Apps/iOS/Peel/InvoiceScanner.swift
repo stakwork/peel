@@ -58,7 +58,12 @@ struct CodeScanner: View {
                         description: Text(DataScannerViewController.isSupported
                                           ? "Peel can't use the camera. Allow it in Settings, or \(pasteInstead)."
                                           : "This device has no camera Peel can scan with, so \(pasteInstead) instead.")
-                    )
+                    ) {
+                        if DataScannerViewController.isSupported,
+                           let settings = URL(string: UIApplication.openSettingsURLString) {
+                            Button("Open Settings") { UIApplication.shared.open(settings) }
+                        }
+                    }
                     .background(Theme.background.ignoresSafeArea())
                 }
             }

@@ -52,13 +52,13 @@ struct CodeScanner: View {
                             .padding(Theme.phoneGutter)
                     }
                 } else {
-                    ContentUnavailableView(
-                        "Can't scan here",
-                        systemImage: "camera",
-                        description: Text(DataScannerViewController.isSupported
-                                          ? "Peel can't use the camera. Allow it in Settings, or \(pasteInstead)."
-                                          : "This device has no camera Peel can scan with, so \(pasteInstead) instead.")
-                    ) {
+                    ContentUnavailableView {
+                        Label("Can't scan here", systemImage: "camera")
+                    } description: {
+                        Text(DataScannerViewController.isSupported
+                             ? "Peel can't use the camera. Allow it in Settings, or \(pasteInstead)."
+                             : "This device has no camera Peel can scan with, so \(pasteInstead) instead.")
+                    } actions: {
                         if DataScannerViewController.isSupported,
                            let settings = URL(string: UIApplication.openSettingsURLString) {
                             Button("Open Settings") { UIApplication.shared.open(settings) }

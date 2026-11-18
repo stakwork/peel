@@ -131,7 +131,10 @@ struct AttachmentTextTests {
         var box = CGRect(x: 0, y: 0, width: 300, height: 200)
         let context = try #require(CGContext(file as CFURL, mediaBox: &box, nil))
         context.beginPDFPage(nil)
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: words))
+        // An explicit font, so the page carries text a reader can extract.
+        let font = CTFontCreateWithName("Helvetica" as CFString, 14, nil)
+        let text = CFAttributedStringCreate(nil, words as CFString, [kCTFontAttributeName: font] as CFDictionary)!
+        let line = CTLineCreateWithAttributedString(text)
         context.textPosition = CGPoint(x: 20, y: 100)
         CTLineDraw(line, context)
         context.endPDFPage()

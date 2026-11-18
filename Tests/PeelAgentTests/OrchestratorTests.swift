@@ -15,8 +15,8 @@ struct OrchestratorTests {
     @Test func theDeltaGrantsTheReadsTheSendAndTheAutomationsButNeverApprove() throws {
         let config = try AgentKit.JSONValue(parsing: String(decoding: try Orchestrator.hostConfig(), as: UTF8.self))
         let tools = config["orchestrator"]?["tools"]?.array?.compactMap(\.string) ?? []
-        #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/diagnostics",
-                          "sphinx/send", "automation/list", "automation/preview", "automation/create", "automation/update",
+        #expect(tools == ["sphinx/chats", "sphinx/read", "sphinx/threads", "sphinx/unseen", "sphinx/search", "sphinx/attachment",
+                          "sphinx/diagnostics", "sphinx/send", "automation/list", "automation/preview", "automation/create", "automation/update",
                           "automation/delete", "automation/run-now",
                           // Memory is Peel's to grant: strut's default orchestrator has none.
                           ] + Orchestrator.memoryTools)

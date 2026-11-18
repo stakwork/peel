@@ -118,7 +118,8 @@ struct ImageTile: View {
             // It said it was an image and is not: a plain file, never drawn.
             FileCard(message: message)
         } else {
-            let waiting = model.awaitsManualDownload(message)
+            // Waits for a click: Auto download media is off, or held by its size, or a failed download.
+            let waiting = model.awaitsManualDownload(message) || (handle.file == nil && (handle.isHeld || handle.isRetrying))
             Button {
                 if !waiting { model.showImages(group, at: index) }
             } label: {
@@ -148,10 +149,10 @@ struct ImageTile: View {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
                 Theme.quote.overlay {
-                    if model.awaitsManualDownload(message) {
+                    if model.awaitsManualDownload(message) || handle.isHeld || handle.isRetrying {
                         VStack(spacing: Theme.Space.sm) {
-                            Label("Image", systemImage: "photo").muted()
-                            Button("Download") { Task { await model.download(message) } }
+                            Label(tapLabel(handle), systemImage: "photo").muted()
+                            Button(handle.isRetrying ? "Retry" : "Download") { Task { await model.download(message) } }
                                 .buttonStyle(.peel(.outline, size: .sm))
                         }
                     } else if let notShown {
@@ -159,6 +160,9 @@ struct ImageTile: View {
                             .muted()
                     } else if handle.failureReason != nil {
                         Label("Image not available", systemImage: "photo")
+                            .muted()
+                    } else if handle.isIdle {
+                        Label("Waiting to download", systemImage: "clock")
                             .muted()
                     } else {
                         ProgressView().controlSize(.small)
@@ -169,6 +173,16 @@ struct ImageTile: View {
         .attachmentTile(fitted: displaySize, message: message, handle: handle)
         .help(handle.failureReason ?? "")
         .accessibilityLabel(isGIF ? "GIF" : message.content?.trimmed.nilIfEmpty ?? "Image")
+    }
+
+    /// What an image waiting for a click says: held by its size, a failed
+    /// download that may pass, or just "Image" (Auto download media is off).
+    private func tapLabel(_ handle: AttachmentHandle) -> String {
+        if handle.isRetrying { return "Couldn't download yet - tap to retry" }
+        if case .held(let size) = handle.state {
+            return ["Image", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " - ") + ", click to download"
+        }
+        return "Image"
     }
 
     /// A GIF by its own size (its frames may be decoded smaller, or evicted
@@ -314,7 +328,7 @@ struct FileCard: View {
             switch handle.state {
             case .downloading:
                 EmptyView()
-            case .idle, .held, .failed, .ready:
+            case .idle, .held, .retrying, .failed, .ready:
                 if model.opensAsPage(message) {
                     IconButton("globe", help: "Open in Peel", action: openPage)
                 }
@@ -346,6 +360,11 @@ struct AttachmentStatus: View {
             SavedNote(file: saved)
         } else if !isRecording, let reason = handle.failureReason {
             Text(reason)
+                .font(Theme.font(11))
+                .foregroundStyle(Theme.secondaryText)
+                .lineLimit(2)
+        } else if !isRecording, handle.isRetrying {
+            Text("Couldn't download yet - tap to retry")
                 .font(Theme.font(11))
                 .foregroundStyle(Theme.secondaryText)
                 .lineLimit(2)

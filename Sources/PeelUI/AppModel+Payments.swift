@@ -132,8 +132,15 @@ extension AppModel {
     /// nil when it cannot be had (another host's, or the server's refusal).
     public func templateImage(of message: Message, maxPixels: Int) async -> CGImage? {
         guard let engine, let id = message.id, let template = message.paymentTemplate else { return nil }
+        // A received payment's picture is fetched unasked: only with Auto download media on (else what is cached).
+        let cachedOnly = !message.fromMe && !autoDownloadsMedia
         return await ImageCache.shared.image(template: template.muid, host: template.host, maxPixels: maxPixels) {
-            try await engine.templateImage(messageID: id)
+            do {
+                return try await engine.templateImage(messageID: id, cachedOnly: cachedOnly)
+            } catch Engine.Failure.notDownloaded {
+                // Not "missing": it is fetched once the setting is on or the person asks.
+                throw CancellationError()
+            }
         }
     }
 

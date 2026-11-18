@@ -22,11 +22,20 @@ struct VoiceControls: View {
             downloadFailed: handle?.failureReason != nil, loaded: player.isLoaded, unplayable: player.isUnplayable
         )
         let ready = state == .ready
+        // Not here and not coming by itself (Auto download media is off, held by its size, or a
+        // download that failed in a way that may pass): a tap fetches it.
+        let needsTap = file == nil && state == .loading
+            && (model.awaitsManualDownload(message) || handle?.isHeld == true || handle?.isRetrying == true)
+        let waiting = file == nil && state == .loading && !needsTap && handle?.isIdle == true
         let fraction = VoiceMessage.fraction(current: player.time, total: player.duration)
         HStack(spacing: Theme.Space.md) {
-            Button { player.toggle() } label: {
+            Button {
+                if needsTap { Task { await model.download(message) } } else { player.toggle() }
+            } label: {
                 Group {
-                    if state == .loading || state == .uploading {
+                    if needsTap {
+                        Image(systemName: "arrow.down.circle").font(.system(size: 16))
+                    } else if state == .loading || state == .uploading {
                         ProgressView().controlSize(.small).tint(Theme.buttonText)
                     } else {
                         Image(systemName: state == .failed ? "exclamationmark.triangle" : player.isPlaying ? "pause.fill" : "play.fill")
@@ -35,18 +44,18 @@ struct VoiceControls: View {
                 }
                 .foregroundStyle(Theme.buttonText)
                 .frame(width: 36, height: 36)
-                .background(Theme.button.opacity(ready ? 1 : 0.4), in: Circle())
+                .background(Theme.button.opacity(ready || needsTap ? 1 : 0.4), in: Circle())
                 .frame(width: max(36, VoiceStyle.target), height: max(36, VoiceStyle.target))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(!ready)
-            .accessibilityLabel(label(state))
+            .disabled(!ready && !needsTap)
+            .accessibilityLabel(needsTap ? "Download" : label(state))
             VStack(alignment: .leading, spacing: 4) {
                 SeekBar(fraction: fraction, enabled: ready && (player.duration ?? 0) > 0) { x, width in
                     player.seek(to: VoiceMessage.seekTime(x: x, width: width, total: player.duration ?? 0))
                 }
-                Text(caption(state))
+                Text(needsTap ? tapCaption(handle) : waiting ? "Waiting to download" : caption(state))
                     .voiceCaption()
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
@@ -60,6 +69,14 @@ struct VoiceControls: View {
             }
         }
         .onDisappear { player.stop() }
+    }
+
+    private func tapCaption(_ handle: AttachmentHandle?) -> String {
+        if handle?.isRetrying == true { return "Couldn't download yet - tap to retry" }
+        if case .held(let size)? = handle?.state {
+            return ["Tap to download", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
+        }
+        return "Tap to download"
     }
 
     private func label(_ state: VoiceMessage.RowState) -> String {

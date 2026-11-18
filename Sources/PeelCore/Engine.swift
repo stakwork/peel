@@ -213,8 +213,13 @@ public actor Engine {
     public static let sendLimit = 32_000_000
     static let mediaCacheLimit = 500_000_000
     /// Videos and recordings up to this size download as they show; larger
-    /// ones wait to be asked for (images have no such rule: they are small).
+    /// ones wait to be asked for (`AutoDownloadPolicy`). Files are never
+    /// automatic.
     public static let autoDownloadLimit = 25_000_000
+    /// The same for images: a larger one waits for a tap, which downloads it
+    /// up to `attachmentLimit`. A download is held in memory whole, so this
+    /// bounds what an incoming message makes the app buffer unasked.
+    public static let autoDownloadImageLimit = 10_000_000
     /// Where the official apps keep attachments.
     static let defaultMemesHost = "memes.sphinx.chat"
     static let defaultCallServer = "chat.sphinx.chat"

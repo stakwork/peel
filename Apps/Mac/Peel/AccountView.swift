@@ -803,10 +803,14 @@ private struct AutoDownloadMediaRow: View {
 
     var body: some View {
         Fact("Auto download media") {
-            SettingDropdown(
-                selection: model.autoDownloadsMedia,
-                options: [(true, "On"), (false, "Off")]
-            ) { try await model.setAutoDownloadsMedia($0) }
+            VStack(alignment: .leading, spacing: 2) {
+                SettingDropdown(
+                    selection: model.autoDownloadsMedia,
+                    options: [(true, "On"), (false, "Off")]
+                ) { try await model.setAutoDownloadsMedia($0) }
+                Text("Off: images, videos, voice messages and files wait for a tap.")
+                    .muted()
+            }
         }
     }
 }

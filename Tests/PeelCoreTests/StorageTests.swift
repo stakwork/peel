@@ -548,13 +548,11 @@ struct StorageTests {
     /// is unread, and a deleted boost never previews.
     @Test func anyBoostEndsThePreview() async throws {
         let storage = try profile.storage()
-        func boost(_ n: Int, on parent: Int, fromMe: Bool = false, deleted: Bool = false, chat: String = dm) -> Message {
-            var m = Message.fixture(
+        func boost(_ n: Int, on parent: Int, fromMe: Bool = false, chat: String = dm) -> Message {
+            Message.fixture(
                 uuid: uuid(n), serverIndex: Int64(n), type: MessageType.boost, chat: chat, fromMe: fromMe,
                 sender: sender(alias: "Paul"), content: "", msat: fromMe ? nil : 5_000,
                 timestamp: Int64(n) * 1_000, replyUUID: uuid(parent), amountMsat: 5_000)
-            m.deleted = deleted
-            return m
         }
         func preview() async throws -> Conversation {
             try #require(try await first(storage.conversations())?.first { $0.chat == dm })
@@ -588,8 +586,15 @@ struct StorageTests {
         #expect(row.previewLine == "You boosted a message: 5 sats")
         #expect(try await unread() == 2)
 
-        // A deleted boost never previews: the row keeps the one before it.
-        _ = try storage.apply(Storage.Commit(messages: [(boost(6, on: 1, deleted: true), false, nil)]))
+        // A deleted boost never previews: the row keeps the one before it. A
+        // write never stores `deleted` (a delete message only empties text and
+        // attachments), so the column is set as the other tests do.
+        _ = try storage.apply(Storage.Commit(messages: [(boost(6, on: 1), false, nil)]))
+        row = try await preview()
+        #expect(row.lastTimestamp == 6_000)
+        try await storage.pool.write { db in
+            try db.execute(sql: "UPDATE message SET deleted = 1 WHERE uuid = ?", arguments: [uuid(6)])
+        }
         row = try await preview()
         #expect(row.lastTimestamp == 5_000 && row.previewLine == "You boosted a message: 5 sats")
     }

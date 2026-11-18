@@ -1,3 +1,4 @@
+import CoreLocation
 import PeelCore
 import PeelUI
 import SwiftUI
@@ -85,10 +86,13 @@ struct OrgPageSheet<Page: PhonePage>: View {
     @State private var controller = OrgPageController<Page>()
     /// The app wallet's sheets over this page (`OrgWalletBridge`).
     @State private var wallet = PhoneWalletSheets()
+    /// Peel's own location question for this page, and its notices.
+    @State private var location = PageLocationPrompts()
+    @State private var visible = false
 
     var body: some View {
         NavigationStack {
-            OrgWebView(page: page, controller: controller, model: model, wallet: wallet)
+            OrgWebView(page: page, controller: controller, model: model, wallet: wallet, location: location, visible: visible)
                 .overlay(alignment: .top) {
                     if controller.isLoading {
                         ProgressView(value: controller.progress)
@@ -134,6 +138,19 @@ struct OrgPageSheet<Page: PhonePage>: View {
                     }
                     ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
                 }
+        }
+        .onAppear { visible = true }
+        .onDisappear { visible = false }
+        .sheet(item: $location.asking) { ask in
+            PageLocationPromptSheet(host: ask.host) { location.answer($0) }
+        }
+        .alert("Location is off for Peel", isPresented: Binding(
+            get: { location.deniedBySystem != nil }, set: { if !$0 { location.deniedBySystem = nil } }
+        )) {
+            Button("Settings") { PageLocationAuthorizer.openSettings() }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("\(location.deniedBySystem ?? "The site") can't get your location until you turn it on for Peel in Settings.")
         }
         .sheet(item: $controller.shared) { file in
             ShareSheet(url: file.url).ignoresSafeArea()
@@ -296,8 +313,13 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
     let controller: OrgPageController<Page>
     let model: AppModel
     let wallet: PhoneWalletSheets
+    let location: PageLocationPrompts
+    /// Whether the sheet is on screen (a page asks only then).
+    let visible: Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator(page: page, controller: controller) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(page: page, controller: controller, model: model, location: location)
+    }
 
     func makeUIView(context: Context) -> TouchWebView {
         let configuration = WKWebViewConfiguration()
@@ -328,7 +350,9 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: TouchWebView, context: Context) {}
+    func updateUIView(_ webView: TouchWebView, context: Context) {
+        context.coordinator.visible = visible
+    }
 
     static func dismantleUIView(_ webView: TouchWebView, coordinator: Coordinator) {
         webView.stopLoading()
@@ -352,9 +376,17 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
         /// Downloads under way and the folder each saves in.
         private var downloads: [ObjectIdentifier: (download: WKDownload, folder: URL, file: URL?)] = [:]
 
-        init(page: Page, controller: OrgPageController<Page>) {
+        private let model: AppModel
+        private let location: PageLocationPrompts
+        private let authorizer = PageLocationAuthorizer()
+        /// The sheet is on screen.
+        var visible = false
+
+        init(page: Page, controller: OrgPageController<Page>, model: AppModel, location: PageLocationPrompts) {
             self.page = page
             self.controller = controller
+            self.model = model
+            self.location = location
         }
 
         /// The sheet is going: downloads stop and their folders go.
@@ -498,6 +530,64 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
             initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType
         ) async -> WKPermissionDecision {
             StrutWallet.mayAnswer(frame, origin: page.url) ? .grant : .deny
+        }
+
+        /// The page asks for the person's location (public from iOS 27; on iOS 26
+        /// WebKit asks with the system's own prompts and this is not called).
+        /// Peel decides by `PageLocation`: the site is the one Peel loaded,
+        /// never what WebKit names (needs the iOS 27 SDK to be the delegate's
+        /// witness; an older SDK builds it as a plain method that is never called); a kept no is silent; nothing is asked of
+        /// the system until the person said yes. Peel never reads a position.
+        @available(iOS 27.0, *)
+        func webView(
+            _ webView: WKWebView, requestGeolocationPermissionFor origin: WKSecurityOrigin,
+            initiatedBy frame: WKFrameInfo
+        ) async -> WKPermissionDecision {
+            // An opaque origin (a sandboxed srcdoc frame) has no scheme or host to name.
+            let opaque = origin.protocol.isEmpty || origin.protocol == "null" || origin.host.isEmpty
+            return await geolocationDecision(frameIsMain: frame.isMainFrame, frameURL: frame.request.url, opaque: opaque)
+        }
+
+        private func geolocationDecision(frameIsMain: Bool, frameURL: URL?, opaque: Bool) async -> WKPermissionDecision {
+            let log = PageLocationAuthorizer.log
+            let kind = frameIsMain ? "main" : "frame"
+            let active = UIApplication.shared.applicationState == .active
+            guard let origin = PageLocation.mayAsk(
+                frameIsMain: frameIsMain, frameURL: frameURL, frameOriginIsOpaque: opaque, pageURL: page.url,
+                pageVisible: visible, appActive: active),
+                let host = page.url.host() else {
+                log.info("location \(kind, privacy: .public) denied: not allowed to ask")
+                return .deny
+            }
+            let stored = model.siteLocation(for: origin)
+            var precise = stored?.precise ?? false
+            switch PageLocation.decide(stored: stored, allowOnce: location.allowedOnce.contains(origin)) {
+            case .deny:
+                log.info("location \(origin, privacy: .public) \(kind, privacy: .public) denied: kept no")
+                return .deny
+            case .allow:
+                break
+            case .ask:
+                let answer = await location.ask(host: host)
+                // The sheet may have gone, or Peel left the front, while it was asked.
+                guard visible, UIApplication.shared.applicationState == .active else { return .deny }
+                if answer.remember { model.decideSiteLocation(origin: origin, allowed: answer.allowed, precise: answer.precise) }
+                guard answer.allowed else {
+                    log.info("location \(origin, privacy: .public) \(kind, privacy: .public) denied: person said no")
+                    return .deny
+                }
+                if !answer.remember { location.allowedOnce.insert(origin) }
+                precise = answer.precise
+            }
+            switch await authorizer.authorize(precise: precise) {
+            case .granted:
+                log.info("location \(origin, privacy: .public) \(kind, privacy: .public) granted")
+                return .grant
+            case .denied:
+                log.info("location \(origin, privacy: .public) \(kind, privacy: .public) denied: system")
+                location.deniedBySystem = host
+                return .deny
+            }
         }
 
         /// The page's process ended (memory, a crash): loaded again, with its

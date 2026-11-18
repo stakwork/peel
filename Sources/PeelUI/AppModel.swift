@@ -398,6 +398,9 @@ public final class AppModel {
     public internal(set) var wallet: WalletHost?
     /// What the person granted apps' pages: Connected apps.
     public internal(set) var walletConnections: [WalletConnection] = []
+    /// What the person decided about sites asking for their location:
+    /// You › Site location (`AppModel+SiteLocation`).
+    public internal(set) var siteLocations: [SiteLocationGrant] = []
     /// The pages that hear the wallet's notifications (`listenToWallet`).
     @ObservationIgnored var walletListeners: [UUID: @MainActor (WalletPush) -> Void] = [:]
     /// The account's agent on this Mac (`AppModel+Agent`), open with the
@@ -1657,6 +1660,7 @@ public final class AppModel {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
         closeWallet()
+        siteLocations = []
         agentHost?.close(in: self)
         proposals.close()
         platform.pasteboard.clearSecret()
@@ -1784,6 +1788,7 @@ public final class AppModel {
         if selectedChat != nil { observeMessages() }
         let walletTasks = await openWallet(engine)
         accountTasks = walletTasks + [
+            Task { await self.observeSiteLocations(storage) },
             Task { await self.observeConversations(storage) },
             Task { await self.observeTribes(storage) },
             Task { await self.observeInvites(storage) },

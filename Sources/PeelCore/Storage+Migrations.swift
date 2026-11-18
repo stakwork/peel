@@ -646,6 +646,18 @@ extension Storage {
             // connection may hold this alone, with no methods.
             try db.execute(sql: "ALTER TABLE walletConnection ADD COLUMN signIn TEXT")
         }
+        migrator.registerMigration("v35") { db in
+            // What the person decided about a site asking for their
+            // location (iPhone's page sheet): by the origin Peel loaded.
+            // Never a position: only the decision.
+            try db.execute(sql: """
+                CREATE TABLE siteLocationGrant (
+                    origin TEXT PRIMARY KEY NOT NULL,
+                    allowed INTEGER NOT NULL,
+                    precise INTEGER NOT NULL,
+                    decidedAt INTEGER NOT NULL);
+                """)
+        }
         return migrator
     }
 }

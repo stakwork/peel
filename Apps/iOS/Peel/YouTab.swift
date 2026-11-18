@@ -51,6 +51,9 @@ struct YouTab: View {
                     NavigationLink(value: YouRoute.connectedApps) {
                         LabeledContent("Connected apps", value: model.walletConnections.isEmpty ? "None" : "\(model.walletConnections.count)")
                     }
+                    NavigationLink(value: YouRoute.siteLocation) {
+                        LabeledContent("Site location", value: model.siteLocations.isEmpty ? "None" : "\(model.siteLocations.count)")
+                    }
                     AutoDownloadMediaRow()
                     NavigationLink("Diagnostics", value: YouRoute.diagnostics)
                     LabeledContent("Server") {
@@ -100,6 +103,7 @@ struct YouTab: View {
                 case .changePIN: ChangePIN()
                 case .boostAmount: BoostAmountScreen()
                 case .connectedApps: ConnectedAppsScreen()
+                case .siteLocation: SiteLocationScreen()
                 case .diagnostics: DiagnosticsScreen()
                 case .agent, .server: EmptyView()
                 }

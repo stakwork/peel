@@ -543,11 +543,10 @@ struct StorageTests {
         #expect(conversations.first?.lastTimestamp == 1_000)
     }
 
-    /// A boost ends a row's preview only when it is news to us (someone
-    /// else's on our message) or ours; someone else's on another's message,
-    /// and a deleted one, leave the message the row showed (Tom, boost on
-    /// our last message showed our own text as unread).
-    @Test func boostsOnOurMessagesEndThePreview() async throws {
+    /// Any boost ends a row's preview (Tom, 2026-11-17): someone's on our
+    /// message, someone's on another's, and ours. Only a boost on our message
+    /// is unread, and a deleted boost never previews.
+    @Test func anyBoostEndsThePreview() async throws {
         let storage = try profile.storage()
         func boost(_ n: Int, on parent: Int, fromMe: Bool = false, deleted: Bool = false, chat: String = dm) -> Message {
             var m = Message.fixture(
@@ -560,35 +559,57 @@ struct StorageTests {
         func preview() async throws -> Conversation {
             try #require(try await first(storage.conversations())?.first { $0.chat == dm })
         }
+        func unread() async throws -> Int? { try #require(try await first(storage.readStates()))[dm]?.unread }
         _ = try storage.apply(Storage.Commit(
             contacts: [(dm, true), ("02bb", true)],
             messages: [
                 (.fixture(uuid: uuid(1), serverIndex: 1, fromMe: true, content: "mine", timestamp: 1_000), false, nil),
                 (.fixture(uuid: uuid(2), serverIndex: 2, content: "theirs", timestamp: 2_000), false, nil),
-                // A boost on theirs: not news, the row keeps "theirs".
-                (boost(3, on: 2), false, nil),
             ]
         ))
-        var row = try await preview()
-        #expect(row.lastContent == "theirs" && row.lastType == MessageType.text)
 
-        // A boost on ours becomes the preview, with its amount, and the row moves up.
+        // Their boost on theirs: the row's last message, said as "a message", and not unread.
+        _ = try storage.apply(Storage.Commit(messages: [(boost(3, on: 2), false, nil)]))
+        var row = try await preview()
+        #expect(row.lastType == MessageType.boost && row.lastTimestamp == 3_000)
+        #expect(row.previewLine == "Paul boosted a message: 5 sats")
+        #expect(try await unread() == 1) // only "theirs"
+
+        // Their boost on ours: "your message", and unread.
         _ = try storage.apply(Storage.Commit(messages: [(boost(4, on: 1), false, nil)]))
         row = try await preview()
         #expect(row.lastType == MessageType.boost && row.lastMsat == 5_000 && row.lastTimestamp == 4_000)
         #expect(row.previewLine == "Paul boosted your message: 5 sats")
-        let states = try #require(try await first(storage.readStates()))
-        #expect(states[dm]?.unread == 2) // theirs and the boost on ours
+        #expect(try await unread() == 2) // "theirs" and the boost on ours
 
-        // Ours: "You boosted a message".
+        // Ours, on theirs or ours: "You boosted a message", never unread.
         _ = try storage.apply(Storage.Commit(messages: [(boost(5, on: 2, fromMe: true), false, nil)]))
         row = try await preview()
         #expect(row.previewLine == "You boosted a message: 5 sats")
+        #expect(try await unread() == 2)
 
-        // A deleted boost never previews.
+        // A deleted boost never previews: the row keeps the one before it.
         _ = try storage.apply(Storage.Commit(messages: [(boost(6, on: 1, deleted: true), false, nil)]))
         row = try await preview()
-        #expect(row.lastTimestamp == 5_000)
+        #expect(row.lastTimestamp == 5_000 && row.previewLine == "You boosted a message: 5 sats")
+    }
+
+    /// A boost moves its chat up the sidebar like a message, even one on a
+    /// message of someone else's, and the other chat stays below it.
+    @Test func aBoostMovesItsConversationUp() async throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(dm, true), ("02bb", true)],
+            messages: [
+                (.fixture(uuid: uuid(1), serverIndex: 1, content: "first", timestamp: 1_000), false, nil),
+                (.fixture(uuid: uuid(2), serverIndex: 2, chat: "02bb", content: "second", timestamp: 2_000), false, nil),
+                (.fixture(uuid: uuid(3), serverIndex: 3, type: MessageType.boost, fromMe: true, content: "",
+                          timestamp: 3_000, replyUUID: uuid(99), amountMsat: 1_000), false, nil),
+            ]
+        ))
+        let rows = try #require(try await first(storage.conversations()))
+        #expect(rows.map(\.chat) == [dm, "02bb"])
+        #expect(rows.first?.previewLine == "You boosted a message: 1 sat")
     }
 
     // MARK: Profile lock

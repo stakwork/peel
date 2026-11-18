@@ -40,14 +40,19 @@ Bug (Tom): a boost on the last message of a tribe put the row in the unread
 section (badge 1) with our own message as its preview. Cause: the unread count
 (`countsAsUnreadSQL`) counts someone's boost on our message, but the row's last
 message came from `message_preview`, which held no boosts. Now boosts are in
-the index (migration v35, which recreates it) and a boost is the row's last
-message when it is news to us (someone else's on a message of ours, the
-unread rule) or our own (like our own payments); someone else's boost on
-another's message, and a deleted one, are not. The subquery for that is a
-separate term of `conversationsSQL`, as an index's WHERE cannot hold one. The
-line reads "Paul boosted your message: 5 sats" (the contact's name in a
-contact chat, "Someone" without a name) or "You boosted a message: 5 sats",
-from `lastMsat` on `Conversation`.
+the index (migration v35, which recreates it).
+
+Revised the same day (Tom's decision): *any* undeleted boost is a row's last
+message, as on iOS's own list: ours, someone else's on our message, someone
+else's on another's. No subquery in the row's WHERE any more, so the index's
+terms and the query's are the same. Only the unread count keeps its rule
+(boosts on our own messages). The query also gives `lastBoostOnMine` (is the
+boosted message ours) to `Conversation`, and the line reads "You boosted a
+message: 5 sats", "Paul boosted your message: 5 sats" or "Paul boosted a
+message: 5 sats" (the sender's nickname, else the contact's name in a contact
+chat, "Someone" without a name), with no "You: "/nickname prefix; a deleted
+boost never reaches a row (the query skips it) and would read "Message
+deleted". The amount is `lastMsat`.
 
 ## Rules for this phase
 

@@ -150,7 +150,7 @@ struct MigrationTests {
     }
 
     /// v35 puts boosts (29) in the preview index, which the sidebar's query
-    /// names, so a database from before it still opens and previews a boost.
+    /// names, so a database from before it still opens and previews any boost.
     @Test func v35PutsBoostsInThePreviewIndex() async throws {
         let queue = try profile.queue()
         try Storage.migrator.migrate(queue, upTo: "v34")
@@ -161,6 +161,8 @@ struct MigrationTests {
         let sql = try rows(profile, "SELECT sql FROM sqlite_master WHERE name = 'message_preview'")
             .first?["sql"] as String?
         #expect(sql?.contains("type IN (5, 29, 32)") == true)
+        // The query's terms, so `INDEXED BY message_preview` can use it.
+        #expect(sql?.contains("noWords = 0 AND (type IN (0, 6) OR (type IN (5, 29, 32) AND deleted = 0))") == true)
         #expect(try #require(try await first(storage.conversations())).isEmpty)
     }
 

@@ -4,13 +4,14 @@ extension Conversation {
     /// The chat's last message as one line for a list row: its text without
     /// markup, or for one with no words what it is ("Photo", "Voice message",
     /// "Video", "File", "GIF", "Payment", "Call"); "You: " first for your own, and in a tribe the sender's nickname ("Paul: ") for others'.
-    /// A boost names itself and its booster ("Paul boosted your message: 5 sats",
-    /// "You boosted a message: 5 sats"), with no prefix.
+    /// A boost names itself and its booster ("You boosted a message: 5 sats",
+    /// "Paul boosted your message: 5 sats", "Paul boosted a message: 5 sats"), with no prefix.
     /// Nil for a chat with nothing yet. The row truncates it to one line.
     public var previewLine: String? {
         guard let lastType else { return nil }
-        if lastType == MessageType.boost, lastDeleted != true {
-            return Self.boostLine(fromMe: lastFromMe == true, by: boosterName, msat: lastMsat)
+        if lastType == MessageType.boost {
+            if lastDeleted == true { return "Message deleted" }  // no prefix, like the other boost lines
+            return Self.boostLine(fromMe: lastFromMe == true, onMine: lastBoostOnMine == true, by: boosterName, msat: lastMsat)
         }
         let line = Self.previewLine(
             type: lastType, content: lastContent, mediaType: lastMediaType, deleted: lastDeleted ?? false)
@@ -32,9 +33,10 @@ extension Conversation {
         return nil
     }
 
-    static func boostLine(fromMe: Bool, by name: String?, msat: Int64?) -> String {
+    static func boostLine(fromMe: Bool, onMine: Bool, by name: String?, msat: Int64?) -> String {
         let amount = msat.map { ": " + Sats.format(msat: $0) } ?? ""
-        return fromMe ? "You boosted a message" + amount : "\(name ?? "Someone") boosted your message" + amount
+        if fromMe { return "You boosted a message" + amount }
+        return "\(name ?? "Someone") boosted \(onMine ? "your" : "a") message" + amount
     }
 
     static func previewLine(type: Int, content: String?, mediaType: String?, deleted: Bool) -> String {

@@ -237,10 +237,10 @@ struct PaymentTests {
         let storage = try storage([text(1), payment(2, sats: 1_000), text(1_500, chat: other)])
         let conversations = try #require(try await first(storage.conversations()))
         #expect(conversations.first { $0.chat == dm }?.lastTimestamp == 2_000)
-        // A boost does not.
+        // So does any boost, whoever it is by and whatever it boosts.
         _ = try storage.apply(Storage.Commit(messages: [(boost(3_000, on: 1, chat: other, sats: 1), false, nil)]))
         let after = try #require(try await first(storage.conversations()))
-        #expect(after.first { $0.chat == other }?.lastTimestamp == 1_500_000)
+        #expect(after.first { $0.chat == other }?.lastTimestamp == 3_000_000)
     }
 
     @Test func migrationFillsAmountsStoredBefore() throws {

@@ -1951,6 +1951,10 @@ built or run on a Mac). Scope: the agent's own DM, nowhere else.
   more remains, `Read the next part with offset=<n>.` The row in the DM is
   "Read an attachment". One `attachmentRead` diagnostics event per read
   (kind, outcome, milliseconds; no name, type string or text).
+- **The memes host.** Peel passes `MEMES_HOST` (the account's memes host,
+  `AgentAccount.memesHost`) to the bridge, locally and in what a move to Peel
+  Home carries (`BundledBridge.identity`), so no setting is needed; without it
+  the bridge fetches no picture.
 - **Not built here / to check on a Mac.** `PeelAgent` now imports AppKit or
   UIKit in `DocumentReader.swift` alone (the system reader lives there),
   against "no AppKit or UIKit" above. Speech needs the Mac's permission

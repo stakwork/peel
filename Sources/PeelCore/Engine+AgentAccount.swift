@@ -20,6 +20,10 @@ public struct AgentAccount: Sendable, Equatable, CustomStringConvertible, Custom
     public let device: String
     /// The broker as runner takes it, `host:port` (TLS on port 8883 only).
     public let broker: String
+    /// The memes host this account fetches attachments from (`Engine.memesServer`), which runner
+    /// may fetch pictures from and no other (its `MEMES_HOST`); nil when none is set. Read when
+    /// the account is made, which is at each start of the bridge, so a change takes hold at the next.
+    public var memesHost: String? = nil
 
     public var description: String { "agent account \(pubkey)" }
     public var debugDescription: String { description }
@@ -39,7 +43,8 @@ extension Engine {
         let agentSeed = try Sphinxrs.agentSeed(seed: seed, n: 1)
         return AgentAccount(
             seed: agentSeed, pubkey: try agentPubkey(of: agentSeed), network: network, owner: accountKey,
-            device: device, broker: "\(server.host):\(server.port)"
+            device: device, broker: "\(server.host):\(server.port)",
+            memesHost: try? configuredHost(.memesHost, default: Self.defaultMemesHost)
         )
     }
 

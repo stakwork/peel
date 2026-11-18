@@ -253,7 +253,7 @@ public enum UserFiles {
     /// control characters (bidirectional overrides among them), and at most
     /// `maxNameBytes` (the file system takes 255) with its extension kept,
     /// so shortening never turns "….pdf" into another type.
-    static func cleanName(_ name: String) -> String {
+    public static func cleanName(_ name: String) -> String {
         var clean = name.withoutControlCharacters
             .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         // Spaces and dots both, so " .zshrc" cannot become a hidden ".zshrc".

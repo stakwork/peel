@@ -33,6 +33,32 @@ struct ConversationPreviewTests {
         #expect(line(MessageType.text, "hi", tribe: false, from: "Paul") == "hi")
     }
 
+    @Test func boostsNameTheBoosterAndAmount() {
+        func boost(me: Bool = false, onMine: Bool = true, tribe: Bool = false, from: String? = nil,
+                   msat: Int64? = 5_000, deleted: Bool = false) -> String? {
+            Conversation(chat: "c", alias: "Nina", isTribe: tribe, lastTimestamp: 1, lastFromMe: me,
+                         lastType: MessageType.boost, lastDeleted: deleted, lastSenderAlias: from, lastMsat: msat,
+                         lastBoostOnMine: onMine).previewLine
+        }
+        // Someone's boost on our message.
+        #expect(boost(tribe: true, from: "Paul") == "Paul boosted your message: 5 sats")
+        #expect(boost(tribe: true) == "Someone boosted your message: 5 sats")
+        #expect(boost() == "Nina boosted your message: 5 sats")
+        #expect(boost(from: "Nin") == "Nin boosted your message: 5 sats")
+        #expect(boost(msat: 1_000) == "Nina boosted your message: 1 sat")
+        #expect(boost(msat: nil) == "Nina boosted your message")
+        // Someone's boost on another's message.
+        #expect(boost(onMine: false, tribe: true, from: "Paul") == "Paul boosted a message: 5 sats")
+        #expect(boost(onMine: false, tribe: true) == "Someone boosted a message: 5 sats")
+        #expect(boost(onMine: false) == "Nina boosted a message: 5 sats")
+        // Ours, whatever it boosts, with no "You: " in front.
+        #expect(boost(me: true, onMine: false, tribe: true, from: "Paul") == "You boosted a message: 5 sats")
+        #expect(boost(me: true, onMine: true) == "You boosted a message: 5 sats")
+        // A deleted one, with no name in front of it.
+        #expect(boost(tribe: true, from: "Paul", deleted: true) == "Message deleted")
+        #expect(boost(me: true, deleted: true) == "Message deleted")
+    }
+
     @Test func noMessageNoLine() {
         #expect(Conversation(chat: "c", alias: nil, isTribe: true).previewLine == nil)
     }

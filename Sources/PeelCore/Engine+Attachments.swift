@@ -286,9 +286,12 @@ extension Engine {
 
     /// A template's picture, from this account's memes server only, checked
     /// to be an image and kept in the media cache; from there when it is.
-    public func templateImage(muid: String) async throws -> URL {
+    /// With `cachedOnly` (Auto download media is off) nothing is fetched:
+    /// `Failure.notDownloaded` when it is not in the cache.
+    public func templateImage(muid: String, cachedOnly: Bool = false) async throws -> URL {
         guard MediaToken.isSafeMUID(muid) else { throw Failure.noPaymentTemplate }
         if let cached = media.lookup(media.template(muid: muid)) { return cached }
+        if cachedOnly { throw Failure.notDownloaded }
         let memes = try memesServer()
         let data: Data
         do {
@@ -304,11 +307,11 @@ extension Engine {
 
     /// The picture a direct payment carries, sent or received; refused when
     /// its media token names a host other than this account's memes server.
-    public func templateImage(messageID: Int64) async throws -> URL {
+    public func templateImage(messageID: Int64, cachedOnly: Bool = false) async throws -> URL {
         guard let template = try storage.message(id: messageID)?.paymentTemplate else { throw Failure.noPaymentTemplate }
         // Before the cache too: another host's muid never gets this server's picture.
         guard template.host == (try memesServer()).host else { throw Failure.untrustedMediaHost(template.host) }
-        return try await templateImage(muid: template.muid)
+        return try await templateImage(muid: template.muid, cachedOnly: cachedOnly)
     }
 
     /// The media token a payment carries for a template, as the Mac app's

@@ -1547,3 +1547,7 @@ until then the agent DM is a plain DM.
   moves into the Agent and Chats headers (above).
 - The official iOS app also registers a PushKit VoIP token for calls
   (`sphinx-ios-v2/sphinx/AppDelegate.swift:351`). Out of scope for v1.
+
+### Site location for pages (iPhone)
+
+Built, unverified in Xcode (no toolchain on the authoring machine): a page in the page sheet may ask for the person's location. `PageLocation` (PeelUI) holds the rules (visible sheet, active app, secure origin, main frame on the loaded origin or the page's `about:srcdoc` frame, always named by what Peel loaded); `SiteLocationGrant` (PeelCore, v36) keeps only the decision; `PageLocationAuthorizer` asks the system lazily (when-in-use only, never background; temporary full accuracy for Precise); You › Site location lists and changes decisions. The public WebKit hook exists from iOS 27 only, so on iOS 26 WebKit's own system prompts apply and sites are not listed. Peel never reads or logs coordinates.

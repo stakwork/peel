@@ -21,6 +21,11 @@ only from the account's own memes host, sent up to 32 MB (the memes
 server's limit, 2026-10-29) and downloaded up to 100 MB, never opened for
 you. Paid attachments came later, in phase 4.
 
+**Received media that did not download (2026-11, branch `fix/media-download-retry`):**
+built, not compiled or run (no Swift toolchain on the dev server). See the last
+journal section. Open: the default of Auto download media (on; a product
+decision), sender photos and Giphy GIFs still fetch unasked.
+
 **Connection control (2026-10-15):** built and verified, ready for review. A
 headerless status row and one check/reconnect icon; no explanatory copy or
 last-checked timestamp. Done means a real server ping when connected, immediate
@@ -3353,3 +3358,91 @@ dev server), so the phone and Mac builds are still to be run.
 ## The last message's time on the chat list (PR #548)
 
 Each chat row's preview line now ends, right-aligned, with when the last message was sent, on the iPhone list and the Mac sidebar: the time ("3:09 PM") if it was today, else the short date ("Nov 8"), in the locale's style. `Conversation.dateLabel(now:calendar:locale:)` (PeelCore, `ConversationPreview.swift`) is the one string; it is nil when there is no last message or no preview line. Tested in `ConversationPreviewTests` with a fixed calendar, locale and `now`. Not built or run here (no Swift toolchain on the dev server), so the Apple builds are still to be run.
+
+## Received media that showed "Video not available" (2026-11, branch `fix/media-download-retry`)
+
+**Root cause.** A tile started its download once, from a `.task` keyed on the
+message, its upload and the setting, so a failed attempt had no second one.
+`AppModel.download` turned every error (offline, a timeout, the transfer
+cancelled as the app went to the background, a 5xx, a sign-in hiccup, the
+memes session's 600 s limit) into the same `.failed`, which the tile read as
+final ("Video not available"). Leaving the chat and coming back made a new
+tile, whose `.task` ran again, so it worked. Nothing downloaded on receipt:
+the live `.message` event only fed the notifier.
+
+**Design.**
+- `MediaFetch.isTransient(_:)` (PeelCore, `MediaFetch.swift`, pure and tested)
+  sorts errors. Transient: `URLError` (except a bad or unsupported URL), a
+  cancelled task, HTTP 5xx, 404/408/429 (the file may not have propagated), a
+  failed sign-in. Permanent: an untrusted host, not an attachment, paid
+  without a key, bytes that do not decrypt, any other refusal.
+- `AttachmentHandle.State.retrying(reason:attempt:)` is the pending state: a
+  failure that may pass. Only `.failed` (permanent) says "Video not available"
+  (or the image, voice, file equivalent). Tiles read: not started "Waiting to
+  download"; running, progress; `.retrying` "Couldn't download yet - tap to
+  retry"; `.held` the size ("Image - 38 MB, tap to download"). A tap on any of
+  them downloads and starts the retry budget over.
+- `AppModel.download` retries a transient failure in its model-owned task (not
+  cancelled with the view) after 2, 10 and 30 s (`MediaFetch.retryDelay`), then
+  waits. `retryPendingMedia()` tries every `.retrying` handle again, with a
+  fresh budget, when the app comes to the front (`becameActive`) and when the
+  connection returns (`.connection(.connected)`). A retry of an automatic fetch
+  goes through `autoDownload` again, so a setting turned off meanwhile is honoured.
+- A live received attachment (`Arrival.live`, not ours, not deleted, type 6, not
+  paid) is fetched at once through `autoDownload` (`autoDownloadReceived`).
+  History and restore arrivals are not (a restore would start hundreds); their
+  tiles fetch as they show. A row updated later with its token arrives as a
+  `.message` event too, if the engine emits one (not verified: nothing runs here).
+- `AutoDownloadPolicy.decide(kind:size:setting:)` (pure, tested) is the one
+  gate: setting off, or a file kind, is `.cachedOnly`; images up to
+  `Engine.autoDownloadImageLimit` (10 MB), videos and voice messages up to
+  `Engine.autoDownloadLimit` (25 MB) are `.fetchNow(upTo:)`; larger by declared
+  size is `.hold` (a tap downloads up to `attachmentLimit`, 100 MB). Template
+  pictures of a received payment are cached-only with the setting off
+  (`Engine.templateImage(messageID:cachedOnly:)`).
+- Voice messages show a download control with the setting off, held or
+  retrying (`VoiceControls`).
+
+**Why not a background `URLSession`.** A system-run background download would
+finish without the app, but Peel cannot use its result there: the memes
+sign-in signs a challenge with the account seed (held by the engine, behind
+the PIN), the download is encrypted and decrypted by the engine, and the
+redirect policy that strips the bearer token is a session delegate that a
+background session would run only when the app is launched. So a transfer
+running as the app leaves the front gets the platform's grace period
+(`Platform.backgroundWork`, the iPhone's `beginBackgroundTask`, ended when the
+download finishes or expires), and the rest is retried on return.
+
+**Audit (2026-11).**
+- Holds, not regressed: `downloadAttachment` refuses a token whose host is not
+  the account's memes host before any request; `MemesServer.redirect` is https
+  only and drops `Authorization` on a host or port change (tested,
+  `AuditNetworkTests`); cache files are named by SHA256(muid + key); the
+  Content-Disposition name is sanitised; `AttachmentKind.verified` sniffs bytes.
+  No `NSAllowsArbitraryLoads` or `NSAppTransportSecurity` anywhere in the repo.
+- Fixed: images had no automatic cap (up to 100 MB held in memory); now 10 MB.
+  `FileCopy.named` (iPhone share copy) now cleans the name with
+  `UserFiles.cleanName` (separators, control characters, leading dots, length);
+  it already used a folder per copy.
+- Not changed, by decision: `Web.Transfer` buffers a body in memory. Bounds: a
+  download at most 100 MB + 128 bytes (a tap), at most 25 MB or 10 MB when
+  automatic, the Content-Length pre-check refusing before the body. Streaming
+  to a temp file needs a download-delegate sibling of `Transfer` that could not
+  be compiled or run here; left for a change that can be built.
+- Checked, fine: `IncomingFiles.newFolder` (UUID folder, 0700), `FileCopy.named`,
+  `UserFiles.save` (clean name, " (n)" on collision), the web panes' downloads
+  (a folder each, the saved name cleaned; `OrgPageRules.filename` keeps a leading
+  dot, harmless in a folder of its own), the picked movie's UUID name.
+- Automatic fetches driven by received content: attachments and template
+  pictures (memes host only, capped, now honour the setting); sender and
+  contact photos (`ImageCache.image(photo:)`, `Web.photo`: public https only,
+  2 MB) and Giphy GIFs (Giphy hosts only, 8 MB) do **not** honour the setting
+  and tell the sender's host or Giphy this device's address: open. No link
+  previews are fetched; no notification attachments are made.
+
+**Decision left.** Auto download media is on when unset (`?? true` in
+`Engine.autoDownloadsMedia`, and in `AppModel` the property's initial value,
+its reset and its two reads of the settings). Flipping those makes it off by default.
+
+Tests: `MediaFetchTests` (classification, the schedule, the policy for every kind
+with the setting on and off and at the caps). Not compiled or run here.

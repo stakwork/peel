@@ -143,6 +143,8 @@ struct FileStatus: View {
             note("Not uploaded")
         } else if let reason = notice ?? handle?.failureReason {
             note(handle?.failureReason != nil ? "\(reason) Tap to try again." : reason)
+        } else if handle?.isRetrying == true {
+            note("Couldn't download yet - tap to retry")
         }
     }
 
@@ -188,8 +190,9 @@ enum FileCopy {
     /// the temporary directory.
     static func named(_ file: URL, name: String?, mediaType: String?) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
-            var clean = ((name ?? "") as NSString).lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
-            if clean.isEmpty || clean == "." || clean == ".." { clean = "file" }
+            // The name comes from the sender or the server: one clean file name (no separators, control
+            // characters, leading dots or excess length), in a folder of its own.
+            var clean = UserFiles.cleanName(((name ?? "") as NSString).lastPathComponent)
             if (clean as NSString).pathExtension.isEmpty, let ext = AttachmentKind.fileExtension(mediaType: mediaType) {
                 clean += ".\(ext)"
             }

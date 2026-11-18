@@ -138,6 +138,12 @@ struct VideoTile: View {
     /// Why it cannot play, nil while it loads or plays.
     private enum Status: Equatable {
         case held(Int64?)
+        /// Not started yet: its download is about to begin.
+        case waiting
+        /// A download that failed in a way that may pass; a retry is
+        /// scheduled, and a tap tries now.
+        case retry
+        /// A download that failed for good.
         case failed
         /// Its upload failed and the file is gone: Retry is in the row's menu.
         case notUploaded
@@ -147,8 +153,10 @@ struct VideoTile: View {
             if unplayable { self = .unplayable; return }
             switch handle.state {
             case .held(let size): self = .held(size)
+            case .retrying: self = .retry
             case .failed: self = .failed
             case .idle where handle.file == nil && message.fromMe && message.uploadState == .failed: self = .notUploaded
+            case .idle where handle.file == nil && message.uploadState != .pending: self = .waiting
             case .idle, .downloading, .ready: return nil
             }
         }
@@ -157,6 +165,8 @@ struct VideoTile: View {
         var text: String {
             switch self {
             case .held(let size): ["Video", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
+            case .waiting: "Waiting to download"
+            case .retry: "Couldn't download yet - tap to retry"
             case .failed: "Video not available"
             case .notUploaded: "Not uploaded"
             case .unplayable: "Can't play this video"
@@ -166,7 +176,7 @@ struct VideoTile: View {
         /// Whether a tap can still play it (by loading it).
         var canLoad: Bool {
             switch self {
-            case .held, .failed: true
+            case .held, .waiting, .retry, .failed: true
             case .notUploaded, .unplayable: false
             }
         }
@@ -215,10 +225,10 @@ struct VideoTile: View {
             .padding(Theme.Space.md)
         } else if let status {
             VStack(spacing: Theme.Space.xs) {
-                Image(systemName: status.canLoad ? "arrow.down.circle" : "video.slash")
+                Image(systemName: status == .waiting ? "clock" : status.canLoad ? "arrow.down.circle" : "video.slash")
                     .font(.system(size: 28))
-                Text(status.text).phoneFont(.secondary)
-                if case .failed = status, let reason = handle.failureReason {
+                Text(status.text).phoneFont(.secondary).multilineTextAlignment(.center)
+                if let reason = handle.failureReason ?? handle.retryReason {
                     Text(reason).phoneFont(.time).lineLimit(2).multilineTextAlignment(.center)
                 }
             }

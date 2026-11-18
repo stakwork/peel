@@ -34,6 +34,36 @@ Keychain, a new account can be created from an invite, and an existing account
 can be brought back from its twelve words with its contacts and history. The
 restore is the point of this phase; the Keychain is what makes it allowed.
 
+### 2026-10-08: a boost on our last message previews as a boost
+
+Bug (Tom): a boost on the last message of a tribe put the row in the unread
+section (badge 1) with our own message as its preview. Cause: the unread count
+(`countsAsUnreadSQL`) counts someone's boost on our message, but the row's last
+message came from `message_preview`, which held no boosts. Now boosts are in
+the index (migration v35, which recreates it).
+
+Revised the same day (Tom's decision): *any* undeleted boost is a row's last
+message, as on iOS's own list: ours, someone else's on our message, someone
+else's on another's. No subquery in the row's WHERE any more, so the index's
+terms and the query's are the same. Only the unread count keeps its rule
+(boosts on our own messages). The query also gives `lastBoostOnMine` (is the
+boosted message ours) to `Conversation`, and the line reads "You boosted a
+message: 5 sats", "Paul boosted your message: 5 sats" or "Paul boosted a
+message: 5 sats" (the sender's nickname, else the contact's name in a contact
+chat, "Someone" without a name), with no "You: "/nickname prefix; a deleted
+boost never reaches a row (the query skips it) and would read "Message
+deleted". The amount is `lastMsat`.
+
+Revised again (2026-11-17, Tom's decision): the server's badge counts every
+boost from others, so the app does: `countsAsUnreadSQL` (row badge, app-icon
+total, Mark as unread, thread unread) counts every boost with `fromMe = 0`,
+whatever it boosts (no `EXISTS`; a deleted one still counts, like other types),
+`isMoneyForMe` (notifications) tells any boost that brought sats, and the "New
+messages" divider may sit above a message with a new boost from anyone. Our own
+boosts never count. `message_unread` now covers the unread count (no table row
+read), so its plan says "COVERING INDEX". `lastBoostOnMine` stays for the
+preview wording only.
+
 ## Rules for this phase
 
 - No real account touches Peel until tasks 1, 2 and 4 are done and task 4 has
@@ -262,8 +292,9 @@ restore is the point of this phase; the Keychain is what makes it allowed.
    until you change chats or send; a manual unread moves it. The thread
    panel uses the same captured marker. "Incoming" is what counts as unread
    (`Storage.countsAsUnreadSQL`, from the boosts branch): someone else's
-   text, attachment or payment, or their boost on your message; with only
-   new boosts, the divider goes above the first boosted message of yours.
+   text, attachment or payment, or any boost of theirs (changed 2026-11-17: it
+   was only boosts on your messages); with only new boosts, the divider goes
+   above the first message that has one.
    Chat-level "Mark as unread" uses the newest such message.
    Verified on the local stack (`ur-*` profiles, Alice on two devices
    restored from the same words, Bob): device 2 marks unread from #7 →

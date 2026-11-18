@@ -405,17 +405,14 @@ extension Storage {
     }
 
     /// Someone else's payment or boost that brought this account sats it has
-    /// not seen yet: a direct payment, or a boost on one of its own messages
-    /// (someone else's boost on someone else's message is not news to it;
-    /// the unread count in `readStatesSQL` holds the same rule). `row` is
-    /// someone else's payment or boost, just stored.
+    /// not seen yet: a direct payment, or a boost, on any message (the server
+    /// counts every boost; the unread count in `readStatesSQL` holds the same
+    /// rule, Tom 2026-11-17). `row` is someone else's payment or boost, just
+    /// stored.
     private static func isMoneyForMe(_ row: Message, _ db: Database) throws -> Bool {
         guard !row.deleted, (row.msat ?? 0) > 0, let index = row.serverIndex else { return false }
         let lastRead = try Int64.fetchOne(db, sql: "SELECT lastRead FROM chatState WHERE chat = ?", arguments: [row.chat])
-        guard index > lastRead ?? -1 else { return false }
-        guard row.type == MessageType.boost else { return true }
-        guard let boosted = row.replyUUID else { return false }
-        return try message(uuid: boosted, in: row.chat, db)?.fromMe == true
+        return index > lastRead ?? -1
     }
 
     /// What a page of the server's history settles. Someone else's payment

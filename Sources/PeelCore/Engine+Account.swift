@@ -245,8 +245,11 @@ extension Engine {
         try set(.notificationText, shows)
     }
 
-    /// Whether images and videos download as they show; on unless turned
-    /// off (also for a preferences file from before the setting).
+    /// Whether received media (images, videos, voice messages, payment
+    /// pictures) downloads on its own; on unless turned off (also for a
+    /// preferences file from before the setting). Off: only a tap fetches.
+    /// To make it off by default, flip the `?? true` here and in `AppModel`
+    /// (the property's initial value, its reset and its two reads of settings).
     public func autoDownloadsMedia() throws -> Bool {
         try storage.preference(.autoDownloadMedia) ?? true
     }

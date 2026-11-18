@@ -113,6 +113,8 @@ extension AttachmentKind {
 /// Why a video tile or audio card cannot play; nil while it loads or plays.
 private enum MediaStatus {
     case held(Int64?)
+    /// A download that failed in a way that may pass: a retry is scheduled, a click tries now.
+    case retry
     case failed
     /// Its upload failed and this Mac no longer has the file: Retry is on the row.
     case notUploaded
@@ -122,6 +124,7 @@ private enum MediaStatus {
         if unplayable { self = .unplayable; return }
         switch handle.state {
         case .held(let size): self = .held(size)
+        case .retrying: self = .retry
         case .failed: self = .failed
         case .idle where handle.file == nil && message.fromMe && message.uploadState == .failed: self = .notUploaded
         case .idle, .downloading, .ready: return nil
@@ -132,6 +135,7 @@ private enum MediaStatus {
     func text(_ label: String) -> String {
         switch self {
         case .held(let size): [label, AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
+        case .retry: "Couldn't download yet - tap to retry"
         case .failed: "\(label) not available"
         case .notUploaded: "Not uploaded"
         case .unplayable: "Can't play this \(label.lowercased())"
@@ -141,7 +145,7 @@ private enum MediaStatus {
     /// Whether a click can still play it (by loading it).
     var canLoad: Bool {
         switch self {
-        case .held, .failed: true
+        case .held, .retry, .failed: true
         case .notUploaded, .unplayable: false
         }
     }
@@ -285,8 +289,14 @@ struct VideoTile: View {
                     Button("Load") { Task { await model.download(message) } }
                         .buttonStyle(.peel(.outline, size: .sm))
                 }
+                if case .retry = status {
+                    Button("Retry") { Task { await model.download(message) } }
+                        .buttonStyle(.peel(.outline, size: .sm))
+                }
             } else if case .downloading = handle.state, let progress = handle.progress {
                 TransferBar(label: "Downloading", progress: progress).padding(.horizontal, Theme.Space.md)
+            } else if handle.isIdle {
+                Text("Waiting to download").muted()
             } else {
                 ProgressView().controlSize(.small)
             }

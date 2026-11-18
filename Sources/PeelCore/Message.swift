@@ -284,7 +284,7 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     }
 
     /// Unread past `marker`, as a row counts it (`Storage.readStates` also
-    /// counts others' boosts on our messages): someone else's text,
+    /// counts every boost from others): someone else's text,
     /// attachment or payment, if it has words and is not a control message.
     public func countsAsUnread(after marker: Int64) -> Bool {
         !fromMe && MessageType.unreadTypes.contains(type) && (serverIndex ?? -1) > marker && !hasNoWords

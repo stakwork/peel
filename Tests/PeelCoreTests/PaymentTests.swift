@@ -117,12 +117,13 @@ struct PaymentTests {
         #expect(row.amountMsat == 10_000)
     }
 
-    /// Payments to us and boosts on our messages are unread; someone else's
-    /// boost on someone else's message is not (Tom, 2026-10-07).
+    /// Payments to us and every boost from others are unread, whatever message
+    /// the boost is on (Tom, 2026-11-17); our own payments and boosts are not.
     @Test func onlyMoneyForMeCountsAsUnread() async throws {
         let rows = [
             text(1), text(2, fromMe: true), payment(3, sats: 1),
             boost(4, on: 1, sats: 1), boost(5, on: 2, sats: 1), payment(6, fromMe: true, sats: 1),
+            boost(7, on: 1, fromMe: true, sats: 1),
         ].enumerated().map { offset, message in
             var message = message
             message.serverIndex = Int64(offset + 1)
@@ -130,8 +131,8 @@ struct PaymentTests {
         }
         let storage = try storage(rows)
         let states = try #require(try await first(storage.readStates()))
-        // Their text, their payment, their boost on our message.
-        #expect(states[dm]?.unread == 3)
+        // Their text, their payment, their boosts on their message and on ours; not our own boost.
+        #expect(states[dm]?.unread == 4)
     }
 
     /// Someone's payment with its sats: told once the server's history has
@@ -154,14 +155,14 @@ struct PaymentTests {
         let storage = try storage([text(1), text(2, fromMe: true)])
         let incoming = [
             paid(payment(3, sats: 10), index: 3), paid(boost(4, on: 2, sats: 5), index: 4),
-            // Someone else's boost on someone else's message, and an unpaid "payment".
+            // Someone else's boost on someone else's message (news too), and an unpaid "payment".
             paid(boost(5, on: 1, sats: 5), index: 5), payment(6, sats: 99),
         ]
         let commit = Storage.Commit(messages: incoming.map { ($0, false, nil) })
         let stored = try storage.apply(commit)
         // News when it came; told only once confirmed.
         #expect(stored.confirmed.isEmpty && stored.newMoney)
-        let ids = try [uuid(3), uuid(4)].map { try storage.message(uuid: $0, in: dm)?.id }
+        let ids = try [uuid(3), uuid(4), uuid(5)].map { try storage.message(uuid: $0, in: dm)?.id }
         #expect(stored.announceable == ids.compactMap { $0 })
         // The same copies again (history, the server's echo) are not news.
         #expect(try storage.apply(commit).announceable.isEmpty)

@@ -544,8 +544,8 @@ struct StorageTests {
     }
 
     /// Any boost ends a row's preview (Tom, 2026-11-17): someone's on our
-    /// message, someone's on another's, and ours. Only a boost on our message
-    /// is unread, and a deleted boost never previews.
+    /// message, someone's on another's, and ours. Every boost from others is
+    /// unread (ours never is), and a deleted boost never previews.
     @Test func anyBoostEndsThePreview() async throws {
         let storage = try profile.storage()
         func boost(_ n: Int, on parent: Int, fromMe: Bool = false, chat: String = dm) -> Message {
@@ -566,25 +566,25 @@ struct StorageTests {
             ]
         ))
 
-        // Their boost on theirs: the row's last message, said as "a message", and not unread.
+        // Their boost on theirs: the row's last message, said as "a message", and unread too.
         _ = try storage.apply(Storage.Commit(messages: [(boost(3, on: 2), false, nil)]))
         var row = try await preview()
         #expect(row.lastType == MessageType.boost && row.lastTimestamp == 3_000)
         #expect(row.previewLine == "Paul boosted a message: 5 sats")
-        #expect(try await unread() == 1) // only "theirs"
+        #expect(try await unread() == 2) // "theirs" and the boost on it
 
         // Their boost on ours: "your message", and unread.
         _ = try storage.apply(Storage.Commit(messages: [(boost(4, on: 1), false, nil)]))
         row = try await preview()
         #expect(row.lastType == MessageType.boost && row.lastMsat == 5_000 && row.lastTimestamp == 4_000)
         #expect(row.previewLine == "Paul boosted your message: 5 sats")
-        #expect(try await unread() == 2) // "theirs" and the boost on ours
+        #expect(try await unread() == 3) // and the boost on ours
 
         // Ours, on theirs or ours: "You boosted a message", never unread.
         _ = try storage.apply(Storage.Commit(messages: [(boost(5, on: 2, fromMe: true), false, nil)]))
         row = try await preview()
         #expect(row.previewLine == "You boosted a message: 5 sats")
-        #expect(try await unread() == 2)
+        #expect(try await unread() == 3) // ours adds none
 
         // A deleted boost never previews: the row keeps the one before it. A
         // write never stores `deleted` (a delete message only empties text and
@@ -597,6 +597,32 @@ struct StorageTests {
         }
         row = try await preview()
         #expect(row.lastTimestamp == 5_000 && row.previewLine == "You boosted a message: 5 sats")
+    }
+
+    /// The badge counts every boost from others, on any message; our own none.
+    @Test func everyBoostFromOthersIsUnread() async throws {
+        let storage = try profile.storage()
+        func boost(_ n: Int, on parent: Int, fromMe: Bool = false) -> Message {
+            Message.fixture(
+                uuid: uuid(n), serverIndex: Int64(n), type: MessageType.boost, fromMe: fromMe, content: "",
+                msat: fromMe ? nil : 1_000, timestamp: Int64(n) * 1_000, replyUUID: uuid(parent), amountMsat: 1_000)
+        }
+        _ = try storage.apply(Storage.Commit(
+            contacts: [(dm, true)],
+            messages: [
+                (.fixture(uuid: uuid(1), serverIndex: 1, fromMe: true, content: "mine", timestamp: 1_000), false, nil),
+                (.fixture(uuid: uuid(2), serverIndex: 2, content: "theirs", timestamp: 2_000), false, nil),
+            ],
+            reads: [dm: 2]
+        ))
+        func unread() async throws -> Int? { try #require(try await first(storage.readStates()))[dm]?.unread }
+        #expect(try await unread() == 0)
+        _ = try storage.apply(Storage.Commit(messages: [(boost(3, on: 2), false, nil)]))
+        #expect(try await unread() == 1) // on their message
+        _ = try storage.apply(Storage.Commit(messages: [(boost(4, on: 1), false, nil)]))
+        #expect(try await unread() == 2) // on ours
+        _ = try storage.apply(Storage.Commit(messages: [(boost(5, on: 1, fromMe: true), false, nil)]))
+        #expect(try await unread() == 2) // our own never
     }
 
     /// A boost moves its chat up the sidebar like a message, even one on a

@@ -195,7 +195,7 @@ extension Storage {
     /// each conversation its place in the sidebar. Any boost counts, ours or
     /// someone else's, on any message (Tom, 2026-11-17): the row says who
     /// boosted what. Only the unread count (`countsAsUnreadSQL`) keeps its
-    /// rule, boosts on our own messages. `lastBoostOnMine` tells the line
+    /// rule, which counts every boost from others (Tom 2026-11-17). `lastBoostOnMine` tells the line
     /// whether the boosted message is ours. `message_preview` (v35) holds
     /// those types, so the joins after one are not stepped over; its terms
     /// are this query's, and it must keep them.
@@ -256,20 +256,16 @@ extension Storage {
     /// else's message of `MessageType.unreadTypes` (text, attachments,
     /// payments, requests and calls) with words (`Message.hasNoWords`, read
     /// from `message_unread`) and not a control message (`isControl`), or
-    /// their boost on our message (someone else's boost on someone else's
-    /// message is not news to us; Tom, 2026-10-07).
+    /// their boost, on any message (the server's badge counts every boost
+    /// from others, Tom 2026-11-17; our own never count).
     static let countsAsUnreadSQL = """
         m.fromMe = 0 AND m.noWords = 0 AND m.isControl = 0
             AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
-            -- The rule `isMoneyForMe` holds for notifications too.
-            AND (m.type != \(MessageType.boost) OR EXISTS (
-                SELECT 1 FROM message b WHERE b.uuid = m.replyUUID AND b.chat = m.chat AND b.fromMe = 1))
         """
 
     /// The unread and mention counts past each chat's read marker
     /// (`countsAsUnreadSQL`). One row per conversation; each count is ranges
-    /// on `message_unread` (one per type), plus a lookup of the boosted
-    /// message for each boost in range; the mentions a range on
+    /// on `message_unread` (one per type, boosts included); the mentions a range on
     /// `message_mentions`; `isBehind` a range past the marker on
     /// `message_chat_serverIndex`. A message deleted after it arrived still
     /// counts, as before payments (it was news when it came).

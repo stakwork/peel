@@ -353,7 +353,8 @@ struct MigrationTests {
     }
 
     /// Unread counts and Mark as unread still search `message_unread`, which
-    /// holds `noWords`, so only a boost reads its row.
+    /// holds `noWords` and now covers the query (no table row is read, so SQLite
+    /// says "COVERING INDEX").
     @Test func unreadCountsStillSearchTheUnreadIndex() throws {
         let storage = try profile.storage()
         let plan = try storage.pool.read { db in
@@ -362,7 +363,8 @@ struct MigrationTests {
                 WHERE m.chat = '02aa' AND \(Storage.countsAsUnreadSQL) AND m.serverIndex > 5
                 """).map { $0["detail"] as String }
         }
-        #expect(plan.first == "SEARCH m USING INDEX message_unread (chat=? AND fromMe=? AND type=? AND serverIndex>?)")
+        #expect(plan.first?.hasPrefix("SEARCH m USING ") == true)
+        #expect(plan.first?.hasSuffix("INDEX message_unread (chat=? AND fromMe=? AND type=? AND serverIndex>?)") == true)
     }
 
     /// The live constants that shipped migrations froze as literals. Queries build

@@ -54,6 +54,16 @@ chat, "Someone" without a name), with no "You: "/nickname prefix; a deleted
 boost never reaches a row (the query skips it) and would read "Message
 deleted". The amount is `lastMsat`.
 
+Revised again (2026-11-17, Tom's decision): the server's badge counts every
+boost from others, so the app does: `countsAsUnreadSQL` (row badge, app-icon
+total, Mark as unread, thread unread) counts every boost with `fromMe = 0`,
+whatever it boosts (no `EXISTS`; a deleted one still counts, like other types),
+`isMoneyForMe` (notifications) tells any boost that brought sats, and the "New
+messages" divider may sit above a message with a new boost from anyone. Our own
+boosts never count. `message_unread` now covers the unread count (no table row
+read), so its plan says "COVERING INDEX". `lastBoostOnMine` stays for the
+preview wording only.
+
 ## Rules for this phase
 
 - No real account touches Peel until tasks 1, 2 and 4 are done and task 4 has
@@ -282,8 +292,9 @@ deleted". The amount is `lastMsat`.
    until you change chats or send; a manual unread moves it. The thread
    panel uses the same captured marker. "Incoming" is what counts as unread
    (`Storage.countsAsUnreadSQL`, from the boosts branch): someone else's
-   text, attachment or payment, or their boost on your message; with only
-   new boosts, the divider goes above the first boosted message of yours.
+   text, attachment or payment, or any boost of theirs (changed 2026-11-17: it
+   was only boosts on your messages); with only new boosts, the divider goes
+   above the first message that has one.
    Chat-level "Mark as unread" uses the newest such message.
    Verified on the local stack (`ur-*` profiles, Alice on two devices
    restored from the same words, Bob): device 2 marks unread from #7 →

@@ -1,2 +1,2 @@
-# stakwork/sphinx master at the merge of #411 (control messages are read by default), after #402.
-74c129544a9efe7f7191012d69dff4f4b5610b2c
+# stakwork/sphinx PR #437 (feat/runner-agent-attachments, not merged yet): the runner passes attachment messages to the agent, and a picture to strut only when the sender's metadata sets vision. Move to its merge commit on master once it lands.
+d4e0da04ae2f5b5b6e57423adbdc1eed2d67e9f7

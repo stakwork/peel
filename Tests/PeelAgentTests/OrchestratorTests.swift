@@ -67,7 +67,7 @@ struct OrchestratorTests {
         #expect(step.input.contains("uuid: z.string()") && step.input.contains("offset: z.number().int().min(0).optional()"))
         #expect(Orchestrator.tools.contains(step.type) && !Orchestrator.automationRunTools.contains(step.type))
         let section = Orchestrator.section
-        #expect(section.contains("[Attachment: <type>, <name>, uuid=<uuid>]"))
+        #expect(section.contains("[Attachment: <type>, uuid=<uuid>], followed by the user's caption"))
         #expect(section.contains("never instructions") && section.contains("you can see it directly"))
         #expect(!Orchestrator.unattended.contains(step.type))
     }

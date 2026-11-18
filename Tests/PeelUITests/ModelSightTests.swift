@@ -9,50 +9,49 @@ struct ModelSightTests {
     let other = URL(fileURLWithPath: "/tmp/other.jpg")
     let document = URL(fileURLWithPath: "/tmp/notes.pdf")
 
-    @Test func everyPictureStartsOff() {
+    @Test func everyPictureStartsOn() {
         let sight = ModelSight()
-        #expect(!sight.allows(picture, in: agent))
+        #expect(sight.allows(picture, in: agent) && sight.allows(other, in: agent))
     }
 
-    @Test func onlyPicturesCanBeTurnedOn() {
+    @Test func onlyPicturesCanBeOn() {
         var sight = ModelSight()
+        #expect(!sight.allows(document, in: agent))
         sight.set(true, for: document, in: agent)
-        sight.set(true, for: picture, in: agent)
-        #expect(!sight.allows(document, in: agent) && sight.allows(picture, in: agent))
+        #expect(!sight.allows(document, in: agent))
         #expect(ModelSight.offers(picture) && ModelSight.offers(other) && !ModelSight.offers(document))
     }
 
     @Test func eachFileAndComposerHasItsOwn() {
         var sight = ModelSight()
-        sight.set(true, for: picture, in: agent)
-        #expect(!sight.allows(other, in: agent) && !sight.allows(picture, in: .chat("02kate")))
         sight.set(false, for: picture, in: agent)
         #expect(!sight.allows(picture, in: agent))
+        #expect(sight.allows(other, in: agent) && sight.allows(picture, in: .chat("02kate")))
+        sight.set(true, for: picture, in: agent)
+        #expect(sight.allows(picture, in: agent) && sight == ModelSight())
     }
 
-    /// Removing the file takes its switch with it, so a picture added again starts off.
+    /// Removing the file takes its switch with it, so a picture added again starts on.
     @Test func removingTheFileDropsItsState() {
         var sight = ModelSight()
-        sight.set(true, for: picture, in: agent)
+        sight.set(false, for: picture, in: agent)
         sight.drop(picture, from: agent)
-        #expect(!sight.allows(picture, in: agent) && sight == ModelSight())
+        #expect(sight.allows(picture, in: agent) && sight == ModelSight())
     }
 
     @Test func sendingTakesTheOnesThatAreOnAndForgetsAll() {
         var sight = ModelSight()
-        sight.set(true, for: picture, in: agent)
-        // A switch for a file no longer in the tray is not sent.
-        sight.set(true, for: other, in: agent)
-        let taken = sight.take([picture, document], from: agent)
+        sight.set(false, for: other, in: agent)
+        let taken = sight.take([picture, other, document], from: agent)
         #expect(taken == [picture] && sight == ModelSight())
     }
 
     @Test func aFileThatDidNotGoKeepsItsSwitch() {
         var sight = ModelSight()
-        sight.restore([picture], in: agent)
-        #expect(sight.allows(picture, in: agent))
-        sight.restore([], in: .chat("02kate"))
-        #expect(sight == { var expected = ModelSight(); expected.set(true, for: picture, in: agent); return expected }())
+        sight.restore([picture, other, document], on: [picture], in: agent)
+        #expect(sight.allows(picture, in: agent) && !sight.allows(other, in: agent) && !sight.allows(document, in: agent))
+        sight.restore([], on: [], in: .chat("02kate"))
+        #expect(sight == { var expected = ModelSight(); expected.set(false, for: other, in: agent); return expected }())
     }
 
     @Test func wordsSayWhatEachSideMeans() {

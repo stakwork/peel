@@ -2,7 +2,7 @@ import PeelUI
 import SwiftUI
 
 /// "Let the model see this picture", under a picture waiting in the agent
-/// chat's composer, on the Mac and the phone alike: off until turned on,
+/// chat's composer, on the Mac and the phone alike: on until turned off,
 /// with what each side means under it (`ModelSight`). Nothing for any
 /// other file or chat; the state is dropped with the file.
 struct ModelSightToggle: View {

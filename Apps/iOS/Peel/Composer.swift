@@ -443,11 +443,33 @@ private struct ReplyingTo: View {
 
 /// The files waiting to go, each with its remove button.
 private struct FilesTray: View {
+    @Environment(AppModel.self) private var model
     let files: [URL]
     let composer: ComposerID
     let remove: (URL) -> Void
 
+    /// In the agent's DM, a file the model does not see itself is read on
+    /// the Mac (`AttachmentReader`), which the phone cannot tell is running:
+    /// said once under the tray.
+    private var readOnTheMac: Bool {
+        model.isAgentChat(composer) && files.contains { !model.modelMaySee($0, in: composer) }
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            tray
+            if readOnTheMac {
+                Text("The agent reads files on your Mac, so Peel needs to be open there.")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private var tray: some View {
         ScrollView(.horizontal) {
             HStack(spacing: Theme.Space.sm) {
                 ForEach(files, id: \.self) { file in

@@ -1918,7 +1918,7 @@ built or run on a Mac). Scope: the agent's own DM, nowhere else.
   stays and the agent keeps what it read; Peel adds no deletion or cache
   clearing.
 - **Let the model see this picture.** Under each picture in the agent
-  chat's tray, off by default: "Off: only the text read from it goes to the
+  chat's tray, on by default: "Off: only the text read from it goes to the
   model. On: the picture is sent to your model provider." Per pending file
   (`ModelSight`, in `AppModel`, dropped with the file or when it is sent;
   the Mac's `PendingFilesTray` and the iPhone's `FilesTray` share
@@ -1929,13 +1929,17 @@ built or run on a Mac). Scope: the agent's own DM, nowhere else.
   `metadata.peel.vision`; strut's `orchestrator` step has `attachments` on,
   so a picture the run is launched with reaches the model as a file part.
 - **What is read.** The bridge turns the message into a line `[Attachment:
-  <type>, <name>, uuid=<uuid>]` and the model asks `sphinx/attachment` (device
+  <type>, uuid=<uuid>] <caption>` (no name; the caption, if any, after the
+  bracket) and the model asks `sphinx/attachment` (device
   request `attachments.read`, `{ uuid, offset? }`, `wait` 60) to read it.
   `AttachmentReader` answers only for a message of the user's own (`fromMe`)
   of type attachment in the agent's DM, else `failed: "not an attachment of
   your agent chat"`; it takes the file from the cache or the memes server
   (`downloadAttachment(upTo: sendLimit)`). `AttachmentText` reads it on the
-  Mac: pictures by Vision text recognition (4096 px, `.accurate`), PDFs by
+  Mac: pictures by Vision text recognition (4096 px, `.accurate`; every picture
+  sent to the agent goes as a real JPEG, `AgentPicture`: first frame,
+  upright, at most 4096 px, transparency on white, so runner can decode it
+  for the model too), PDFs by
   PDFKit (a page with no text drawn and recognised, at most 20 of those),
   text and anything UTF-8 as it is, Word, RTF and HTML through the system's
   attributed-string reader (Word on the Mac only), recordings up to 10

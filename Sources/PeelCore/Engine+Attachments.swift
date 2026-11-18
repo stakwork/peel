@@ -31,17 +31,24 @@ extension Engine {
         guard tribe != nil || Self.isPerson(pubkey, in: state) == true else { throw Failure.notAChat }
         _ = try memesServer()
         let links = try links(replyTo: replyTo, inThread: inThread, in: pubkey)
+        let toAgent = pubkey == (try? agentPubkey())
         let (outgoing, plain, sealed, key) = try await Task.detached {
             let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             guard values.isRegularFile == true else { throw Failure.notAFile(file.path) }
             try Self.checkSendable(file.lastPathComponent, size: values.fileSize ?? 0)
-            let plain = try Data(contentsOf: file)
-            try Self.checkSendable(file.lastPathComponent, size: plain.count)
+            var plain = try Data(contentsOf: file)
+            var name = file.lastPathComponent
+            // To the agent a picture is always a real JPEG (`AgentPicture`).
+            if toAgent, file.pathExtension.lowercased() != "pdf", let jpeg = AgentPicture.jpeg(from: plain) {
+                plain = jpeg
+                name = ((name as NSString).deletingPathExtension as NSString).appendingPathExtension("jpg") ?? "image.jpg"
+            }
+            try Self.checkSendable(name, size: plain.count)
             let key = MediaCrypto.newKey()
-            return (OutgoingFile(name: file.lastPathComponent, data: plain), plain,
+            return (OutgoingFile(name: name, data: plain), plain,
                     try MediaCrypto.encrypt(plain, key: key), key)
         }.value
-        let vision = modelMaySee && pubkey == (try? agentPubkey())
+        let vision = modelMaySee && toAgent
         let body = try Self.attachmentBody(
             text: text, key: key, mediaType: outgoing.mediaType, token: nil,
             replyTo: links.replyTo, thread: links.thread, draftPrice: priceSats,

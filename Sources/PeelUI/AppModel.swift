@@ -189,7 +189,7 @@ public final class AppModel {
     public var dropTarget: ComposerID?
     /// The price in sats, as typed, the files in a composer are sold for; empty for free.
     public var attachmentPrices: [ComposerID: String] = [:]
-    /// The pictures in the agent chat's tray its model may look at (off until the person turns one on).
+    /// The pictures in the agent chat's tray its model may look at (on until the person turns one off).
     var modelSight = ModelSight()
     /// The composer whose Send sats panel is open, from its bolt.
     public var sendingSats: ComposerID?

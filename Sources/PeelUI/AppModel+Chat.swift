@@ -420,7 +420,7 @@ extension AppModel {
             conversationNotices[chat] = refused.map(\.reason).joined(separator: " ")
             // What did not go waits in the composer again, with the reply it was for.
             pendingFiles[composer, default: []].insert(contentsOf: refused.map(\.file), at: 0)
-            modelSight.restore(seen.intersection(refused.map(\.file)), in: composer)
+            modelSight.restore(refused.map(\.file), on: seen, in: composer)
             // With their price: a refused paid file must never go again free.
             if let priceText, !priceText.isEmpty { attachmentPrices[composer] = priceText }
             if replyTargets[composer] == nil { replyTargets[composer] = reply }

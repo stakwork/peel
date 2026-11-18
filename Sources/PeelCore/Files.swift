@@ -207,6 +207,40 @@ enum ProfilePhoto {
     }
 }
 
+/// A picture sent to the agent's DM, drawn again as a real JPEG (its first
+/// frame, upright, transparency on white, no metadata): runner can decode
+/// only PNG, JPEG, GIF and WebP, and every still already goes as
+/// `image.jpg` whatever its bytes (`OutgoingFile`), so a HEIC or TIFF sent
+/// as it is would never reach the model. Big enough for the Mac's text
+/// recognition; runner shrinks it again for the model.
+enum AgentPicture {
+    static let maxPixels = 4096
+    static let quality = 0.85
+
+    /// The JPEG for `data`; nil when it is no picture ImageIO can draw, and
+    /// the file then goes as it is.
+    static func jpeg(from data: Data) -> Data? {
+        guard AttachmentKind.imageFrames(data) != nil,
+              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let image = ImageDecoding.thumbnail(source, maxPixels: maxPixels) else { return nil }
+        // JPEG has no alpha: onto white, as a page shows it.
+        guard let context = CGContext(
+            data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return nil }
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(rect)
+        context.draw(image, in: rect)
+        guard let flat = context.makeImage() else { return nil }
+        let out = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, flat, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return out as Data
+    }
+}
+
 /// Files Peel writes for the person: an attachment saved where they chose,
 /// or into Downloads. Each is a copy of the decrypted file, marked as
 /// downloaded from the internet (quarantined, with Peel as the agent), so

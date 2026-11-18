@@ -423,7 +423,7 @@ public final class BundledBridge: CustomReflectable {
     /// The settings that make it this agent wherever it runs, which a move
     /// of Peel Home carries (`PeelHomeMove`): its broker, the device its
     /// requests name (this Mac's, still), its name, the workflow it runs,
-    /// and the owner's actor on their orgs. Never its seed: that is in its store.
+    /// the account's memes host and the owner's actor on their orgs. Never its seed: that is in its store.
     public nonisolated static func identity(account: AgentAccount, alias: String, actor: String?) -> [String: String] {
         var identity = [
             "BROKER_URL": account.broker,
@@ -432,6 +432,8 @@ public final class BundledBridge: CustomReflectable {
             "RUNNER_ALIAS": alias,
         ]
         if let actor { identity["BRIDGE_ACTOR"] = actor }
+        // The only host runner may fetch pictures from; none set, none fetched.
+        if let host = account.memesHost { identity["MEMES_HOST"] = host }
         return identity
     }
 

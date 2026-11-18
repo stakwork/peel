@@ -8,6 +8,7 @@ enum AgentToolTitle {
         "read_recent_messages": "Read recent messages",
         "read_unseen_messages": "Read unseen messages",
         "read_threads": "Read threads",
+        "read_attachment": "Read an attachment",
         "search_messages": "Searched messages",
         "send_sphinx_message": "Send a message",
         // The old memory database's tools, still named in chats from before memory moved to the graph.
@@ -56,7 +57,7 @@ enum AgentToolTitle {
     /// same, so both read alike.
     private static let strutNames = [
         "sphinx_chats": "get_contacts_and_tribes", "sphinx_read": "read_recent_messages",
-        "sphinx_unseen": "read_unseen_messages", "sphinx_threads": "read_threads", "sphinx_search": "search_messages",
+        "sphinx_unseen": "read_unseen_messages", "sphinx_attachment": "read_attachment", "sphinx_threads": "read_threads", "sphinx_search": "search_messages",
         "sphinx_send": "send_sphinx_message", "memory_remember": "remember", "memory_recall": "recall",
         "memory_get": "read_memory", "memory_forget": "forget_memory", "memory_merge": "merge_memory",
         "automation_list": "list_automations", "automation_preview": "preview_schedule",
@@ -86,6 +87,8 @@ enum AgentToolTitle {
             guard line.hasPrefix("{") else { return summary(line) }
             return line.firstMatch(of: /"title":"([^"\\]{1,200})"/).map { String($0.1) } ?? ""
         }
+        // An attachment by nothing: its uuid says nothing to a person.
+        if let tool, strutNames[tool.replacingOccurrences(of: "[/-]", with: "_", options: .regularExpression)] == "read_attachment" { return "" }
         // A job by its title, not the whole prompt it was given.
         if let title = object["title"] as? String { return title }
         // Memory on the graph: what was looked for or remembered, never its ids, types or flags.

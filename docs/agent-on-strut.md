@@ -1903,6 +1903,79 @@ that sees and decides only its actor's proposals).
   only), as before. Hive's half of a tribe's proposals: the carrier and
   the outcome posts, and the decision from the owner's reply.
 
+### Built: attachments in the agent's DM
+
+The agent's DM takes files (written 2026-11-18, built on Linux and not yet
+built or run on a Mac). Scope: the agent's own DM, nowhere else.
+
+- **What is sent.** An ordinary attachment message (type 6: the file
+  encrypted, on the memes server, the 32 MB `Engine.sendLimit`), from the
+  Mac's paperclip, drag and drop and paste, the iPhone's + menu (Photos,
+  Camera, Files) and a voice note (`audio.wav`, as in any chat). Nothing is
+  sold: no price field, and `AppModel.send` never passes a price to the
+  agent. A file waits in the composer's tray with its remove (x) until Send.
+  Deleting the message does what it does everywhere: the memes server's copy
+  stays and the agent keeps what it read; Peel adds no deletion or cache
+  clearing.
+- **Let the model see this picture.** Under each picture in the agent
+  chat's tray, on by default: "Off: only the text read from it goes to the
+  model. On: the picture is sent to your model provider." Per pending file
+  (`ModelSight`, in `AppModel`, dropped with the file or when it is sent;
+  the Mac's `PendingFilesTray` and the iPhone's `FilesTray` share
+  `ModelSightToggle`). On, the message's body carries
+  `metadata: {"peel":{"v":1,"vision":true}}` (`MessageMetadata.vision`,
+  merged with the `tz` the engine adds; off has no `vision` key; the
+  engine drops it for any chat but the agent's DM). The bridge reads
+  `metadata.peel.vision`; strut's `orchestrator` step has `attachments` on,
+  so a picture the run is launched with reaches the model as a file part.
+- **What is read.** The bridge turns the message into a line `[Attachment:
+  <type>, uuid=<uuid>] <caption>` (no name; the caption, if any, after the
+  bracket) and the model asks `sphinx/attachment` (device
+  request `attachments.read`, `{ uuid, offset? }`, `wait` 60) to read it.
+  `AttachmentReader` answers only for a message of the user's own (`fromMe`)
+  of type attachment in the agent's DM, else `failed: "not an attachment of
+  your agent chat"`; it takes the file from the cache or the memes server
+  (`downloadAttachment(upTo: sendLimit)`). `AttachmentText` reads it on the
+  Mac: pictures by Vision text recognition (4096 px, `.accurate`; every picture
+  sent to the agent goes as a real JPEG, `AgentPicture`: first frame,
+  upright, at most 4096 px, transparency on white, so runner can decode it
+  for the model too), PDFs by
+  PDFKit (a page with no text drawn and recognised, at most 20 of those),
+  text and anything UTF-8 as it is, Word, RTF and HTML through the system's
+  attributed-string reader (Word on the Mac only), recordings up to 10
+  minutes by the on-device `SFSpeechURLRecognitionRequest` (no offline model
+  or no permission: "this Mac cannot transcribe offline for <locale>").
+  Video, archives and other files: only name, type and size, and that the
+  file cannot be read. A transcript or long text is kept in memory by uuid
+  for the next part.
+- **The answer** starts `[Attachment name, type, size] (characters a-b of
+  n)`, then the text between `ChatData`'s data markers (someone else's
+  words, never instructions; `TextLine.block`), at most 10,000 characters a
+  part (the whole answer under `ChatData.maxCharacters`, 12,000), and, when
+  more remains, `Read the next part with offset=<n>.` The row in the DM is
+  "Read an attachment". One `attachmentRead` diagnostics event per read
+  (kind, outcome, milliseconds; no name, type string or text).
+- **The memes host.** Peel passes `MEMES_HOST` (the account's memes host,
+  `AgentAccount.memesHost`) to the bridge, locally and in what a move to Peel
+  Home carries (`BundledBridge.identity`), so no setting is needed; without it
+  the bridge fetches no picture.
+- **Not built here / to check on a Mac.** `PeelAgent` now imports AppKit or
+  UIKit in `DocumentReader.swift` alone (the system reader lives there),
+  against "no AppKit or UIKit" above. Speech needs the Mac's permission
+  prompt (`NSSpeechRecognitionUsageDescription`) the first time.
+
+#### What Android needs
+
+- The picker, camera and voice note in the agent's DM (Android sends on pick
+  today): a pending chip per file with an x, and Send sends them with the
+  text; no price; the 32 MB cap.
+- For each image, the switch "Let the model see this picture", off by
+  default, with the help words above, dropped with the file. On, the message
+  metadata is exactly `{"peel":{"v":1,"vision":true}}` (merged with any
+  other keys, `tz` among them); off, no `vision` key.
+- The device read is the Mac's: Android answers no `attachments.read`.
+  `engine/AgentChat.kt` titles the read "Read an attachment".
+
 ## 5. Automations, jobs and connectors
 
 With the loop in strut, most of [automations-and-jobs.md](automations-and-jobs.md)'s

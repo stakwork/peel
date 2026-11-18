@@ -115,7 +115,7 @@ private struct AgentChatColumn: View {
                     // The model was removed: nothing sent here could be answered.
                     AgentModelPrompt()
                 } else {
-                    // Text only, to the agent contact (`AppModel.takesFiles`); Stop sends it a `cancel`.
+                    // Files and voice notes go to the agent contact too (`AttachmentText` reads them); Stop sends it a `cancel`.
                     ChatFooter(conversation: conversation, tribe: nil, composer: composer,
                                placeholder: "Message \(agent.name)", stop: stop)
                 }
@@ -124,6 +124,8 @@ private struct AgentChatColumn: View {
                 AgentSetUpPanel()
             }
         }
+        // Files dragged onto the DM wait in its composer (never the earlier chats', which have none).
+        .fileDrop(into: composer)
         // A reply's View opens the message; any other link goes where a
         // message's link goes (`WebPane.linkAction`).
         .environment(\.openURL, OpenURLAction { url in

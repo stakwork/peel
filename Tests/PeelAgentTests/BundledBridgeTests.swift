@@ -87,6 +87,25 @@ struct BundledBridgeTests {
                                           token: "t", alias: "Peel", data: data)["BRIDGE_ACTOR"] == nil)
     }
 
+    /// The memes host the account fetches attachments from is runner's only picture host, on the Mac
+    /// and in what a move of Peel Home carries; with none set there is no key.
+    @Test func runnerGetsTheAccountsMemesHostOnlyWhenThereIsOne() {
+        var account = account
+        account.memesHost = "memes.sphinx.chat"
+        let data = URL(filePath: "/tmp/peel-bridge")
+        let environment = BundledBridge.environment([:], account: account, strut: strut, port: 61008, admin: "a", token: "t",
+                                                    alias: "Peel", data: data)
+        #expect(environment["MEMES_HOST"] == "memes.sphinx.chat")
+        #expect(BundledBridge.identity(account: account, alias: "Peel", actor: nil)["MEMES_HOST"] == "memes.sphinx.chat")
+        // Home's move writes each identity key as `bridge.<KEY>` in the box's env file.
+        #expect(StrutMove.envFile(secretKey: "s", identity: BundledBridge.identity(account: account, alias: "Peel", actor: nil))
+            .contains("bridge.MEMES_HOST="))
+        account.memesHost = nil
+        #expect(BundledBridge.environment([:], account: account, strut: strut, port: 61008, admin: "a", token: "t",
+                                          alias: "Peel", data: data)["MEMES_HOST"] == nil)
+        #expect(BundledBridge.identity(account: account, alias: "Peel", actor: nil)["MEMES_HOST"] == nil)
+    }
+
     @Test func itsServerNeverPrintsTheToken() throws {
         let server = BundledBridge.Server(base: URL(string: "http://127.0.0.1:61008")!, token: "bridge token")
         var dumped = ""

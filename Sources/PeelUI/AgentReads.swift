@@ -19,7 +19,7 @@ public struct AgentReads: Equatable, Sendable {
     /// The kinds of read that fold; a send, an approval or a change to your
     /// calendar always has its own row.
     public enum Kind: Equatable, Sendable {
-        case unseen, chats, chat, threads, search, calendar
+        case unseen, chats, chat, threads, search, attachment, calendar
 
         public init?(_ kind: String) {
             switch kind {
@@ -28,6 +28,7 @@ public struct AgentReads: Equatable, Sendable {
             case "chats.read": self = .chat
             case "chats.threads": self = .threads
             case "chats.search": self = .search
+            case "attachments.read": self = .attachment
             case "calendar.events": self = .calendar
             default: return nil
             }
@@ -50,6 +51,7 @@ public struct AgentReads: Equatable, Sendable {
             case .chat: return count == 1 ? "a chat" : "\(count) chats"
             case .threads: return count == 1 ? "threads in a chat" : "threads in \(count) chats"
             case .calendar: return "your calendar"
+            case .attachment: return requests.count == 1 ? "an attachment" : "\(requests.count) attachments"
             case .search: return nil
             }
         }
@@ -98,6 +100,7 @@ public struct AgentReads: Equatable, Sendable {
             case .threads: return "threads"
             case .search: return count == 1 ? "a search" : "\(count) searches"
             case .calendar: return "your calendar"
+            case .attachment: return count == 1 ? "an attachment" : "\(count) attachments"
             }
         }
         // In English as the rest of the row, whatever the Mac's language.
@@ -120,7 +123,7 @@ public struct AgentReads: Equatable, Sendable {
             if case .string(let chat)? = args["chat"], !chat.isEmpty { return chat }
         case .search:
             if case .string(let words)? = args["q"], !words.isEmpty { return "“\(words)”" }
-        case .chats, .calendar:
+        case .chats, .calendar, .attachment:
             break
         }
         return nil

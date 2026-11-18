@@ -15,6 +15,11 @@ enum MessageMetadata {
 
     private struct Field: Decodable { let metadata: String? }
 
+    /// What a picture sent to the agent's DM carries when the person lets
+    /// the model see it (docs/agent-on-strut.md, "Attachments"): absent, only
+    /// the text read from it goes to the model.
+    static let vision = #"{"peel":{"v":1,"vision":true}}"#
+
     /// The metadata string in `body`, if it has one no longer than `maxLength`.
     static func string(in body: String?) -> String? {
         guard let metadata = JSON.decode(Field.self, from: body)?.metadata,

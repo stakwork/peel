@@ -34,6 +34,20 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         // A call's audio: the session, interruptions, route changes, the microphone's state, the camera
         // paused for the background, the scene phase while on a call, and CallKit.
         case callAudio
+        // The agent reading an attachment of its DM on this Mac: its kind, how it ended and how long it took.
+        // Never a name, a type string or any of its text.
+        case attachmentRead
+    }
+
+    /// What kind of file an attachment read was for (`attachmentRead`).
+    public enum AttachmentReadKind: String, Codable, Sendable, CaseIterable {
+        case image, pdf, text, document, audio, unreadable, unknown
+    }
+
+    /// How an attachment read ended: text returned, not the agent's own DM's attachment, a kind this Mac
+    /// cannot read, no way to transcribe offline, or it failed.
+    public enum AttachmentReadOutcome: String, Codable, Sendable, CaseIterable {
+        case ok, refused, unsupported, cannotTranscribe, failed
     }
 
     /// What happened to a call's audio (`callAudio`).
@@ -330,6 +344,9 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var micPublicationMuted: Bool?
     public var wantsMic: Bool?
     public var routeReason: Int?
+    /// `attachmentRead`: the file's kind and how the read ended (`milliseconds` is how long it took).
+    public var attachmentKind: AttachmentReadKind?
+    public var attachmentOutcome: AttachmentReadOutcome?
     /// `callAudio`'s `callKitFailed`: the `NSError` code CallKit gave (`CXErrorCodeRequestTransactionError`).
     public var callKitError: Int?
 

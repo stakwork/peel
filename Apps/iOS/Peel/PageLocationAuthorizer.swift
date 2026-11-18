@@ -62,8 +62,10 @@ final class PageLocationAuthorizer: NSObject, CLLocationManagerDelegate {
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // Only the status crosses to the main actor: the manager is not Sendable.
+        let status = manager.authorizationStatus
         Task { @MainActor in
-            guard manager.authorizationStatus != .notDetermined else { return }
+            guard status != .notDetermined else { return }
             waiting?.resume()
             waiting = nil
         }

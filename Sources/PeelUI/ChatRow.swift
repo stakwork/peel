@@ -494,6 +494,7 @@ public struct AgentRequest: Equatable, Sendable {
         case "chats.threads": "Read threads"
         case "chats.unseen": "Read your unread messages"
         case "chats.search": "Search your messages"
+        case "attachments.read": "Read an attachment"
         case "send": "Send a message"
         case "approve": "Asked for your approval"
         case "calendar.events": "Read your calendar"

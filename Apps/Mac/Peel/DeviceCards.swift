@@ -288,6 +288,7 @@ private struct AgentReadSteps: View {
         case .chat: "bubble.left"
         case .threads: "arrowshape.turn.up.left"
         case .search: "magnifyingglass"
+        case .attachment: "paperclip"
         case .calendar: "calendar"
         }
     }

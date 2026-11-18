@@ -339,6 +339,17 @@ public enum Diagnostics {
         current?.record(event)
     }
 
+    /// The agent read an attachment of its DM (`attachmentRead`): enums and a time, never the file.
+    public static func recordAttachmentRead(
+        kind: DiagnosticEvent.AttachmentReadKind, outcome: DiagnosticEvent.AttachmentReadOutcome, milliseconds: Int
+    ) {
+        var event = DiagnosticEvent(kind: .attachmentRead)
+        event.attachmentKind = kind
+        event.attachmentOutcome = outcome
+        event.milliseconds = milliseconds
+        current?.record(event)
+    }
+
     /// The tag a tribe goes by in the diagnostics: the first 24 bits of the SHA-256 of its key.
     public static func tribeTag(_ pubkey: String) -> Int {
         SHA256.hash(data: Data(pubkey.utf8)).prefix(3).reduce(0) { $0 << 8 | Int($1) }

@@ -395,6 +395,8 @@ struct TribeSendersTests {
 
             try await engine.stopShowingSenders(jamie, in: club)
             #expect(server.commands.last == "ShowSenders off")
+            // The off's answer lists Jamie unmarked: in before the list changes, never read as the next sweep's.
+            await server.settled()
             server.list(.absent)
             _ = await engine.markSendersOnce(jamie, in: [club])
             #expect(server.commands == ["ListMembers", "ShowSenders on", "ShowSenders off", "ListMembers"])

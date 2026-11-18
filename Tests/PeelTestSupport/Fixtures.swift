@@ -222,6 +222,8 @@ final class TribesServer: @unchecked Sendable {
     private var marked: Bool
     private var knows: Bool
     private var silentLists: Int
+    /// The answers on their way into the engine (`settled`).
+    private var replies: [Task<Void, Never>] = []
     private let tribe: String, jamie: String
     var engine: Engine?
 
@@ -238,6 +240,12 @@ final class TribesServer: @unchecked Sendable {
     var commands: [String] { lock.withLock { heard } }
     func upgrade() { lock.withLock { knows = true } }
     func list(_ listed: Listed) { lock.withLock { lists = [listed] } }
+
+    /// Every answer sent so far is in the engine: a command the engine does
+    /// not wait on (`stopShowingSenders`) has its answer in before the next step.
+    func settled() async {
+        for reply in lock.withLock({ replies }) { await reply.value }
+    }
 
     var transport: Transport {
         Transport(publishing: { [self] topic, payload in answer(topic, payload) })
@@ -268,9 +276,10 @@ final class TribesServer: @unchecked Sendable {
             return (members(listed), nil)
         }
         guard let reply else { return }
-        Task { [engine] in
+        let task = Task { [engine] in
             _ = try? await engine?.commit(coreResult(tribeMembers: reply.members, newTribe: reply.tribe), time: "1", expectedSender: nil)
         }
+        lock.withLock { replies.append(task) }
     }
 
     private func members(_ listed: Listed) -> String {

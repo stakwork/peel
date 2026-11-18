@@ -154,8 +154,8 @@ struct MigrationTests {
     @Test func v35PutsBoostsInThePreviewIndex() async throws {
         let queue = try profile.queue()
         try Storage.migrator.migrate(queue, upTo: "v34")
-        #expect(try queue.read { try String.fetchOne($0, sql: "SELECT sql FROM sqlite_master WHERE name = 'message_preview'") }?
-            .contains("5, 32") == true)
+        let before = try await queue.read { try String.fetchOne($0, sql: "SELECT sql FROM sqlite_master WHERE name = 'message_preview'") }
+        #expect(before?.contains("5, 32") == true)
         try queue.close()
         let storage = try profile.storage()
         let sql = try rows(profile, "SELECT sql FROM sqlite_master WHERE name = 'message_preview'")

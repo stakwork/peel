@@ -90,12 +90,13 @@ struct PeelPhoneApp: App {
                         model.noteActivity()
                     }
                 }
-                // Stadeum opens with the account; locked or forgotten, its
-                // tokens and an open org page go, read again when it opens.
+                // Stadeum and the boxes open with the account; locked or forgotten,
+                // their tokens and an open org page go, read again when it opens.
                 .onChange(of: model.phase) { _, phase in
                     if phase == .ready, let profile = model.profile {
                         // Renewed when due, not at every unlock.
                         model.stadeum.open(profile, renewNow: false)
+                        model.boxes.open(profile)
                         PushCoordinator.shared.accountOpened(model)
                         PushCoordinator.shared.openPending(model: model, router: router)
                         router.openWaitingLink()
@@ -106,6 +107,7 @@ struct PeelPhoneApp: App {
                         if phase == .locked || model.profile?.hasAccount == true { PushCoordinator.shared.requestLaunchPermission() }
                         PushCoordinator.shared.accountClosed()
                         model.stadeum.close()
+                        model.boxes.close()
                         router.orgPage = nil
                         router.publicPage = nil
                     }

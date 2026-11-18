@@ -11,11 +11,13 @@ import Testing
 /// Each against a stand-in strut on this machine, from a development profile.
 @MainActor @Suite(.timeLimit(.minutes(1)))
 struct BoxesTests {
-    /// A development profile in a folder of its own.
+    /// The test's profile folder, removed with it.
+    private let folder = TempProfile()
+
+    /// A development profile in the test's own folder.
     private func profile() throws -> Profile {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "boxes-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return Profile(developmentAt: folder)
+        try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+        return Profile(developmentAt: folder.url)
     }
 
     /// Waits for `done`, a few seconds at most.
@@ -64,6 +66,24 @@ struct BoxesTests {
     /// The tokens of the boxes `profile` keeps.
     private static func kept(_ profile: Profile) throws -> [String] {
         try BoxLink.read(from: profile.boxes).map(\.token)
+    }
+
+    /// What the account kept that cannot be read is never written over: a
+    /// link is refused rather than kept in place of every box there.
+    @Test func boxesThatCannotBeReadAreNeverWrittenOver() async throws {
+        let stub = try await HTTPStub(reply: { _, _ in BoxFixture.answer() })
+        defer { stub.stop() }
+        let profile = try profile()
+        try profile.boxes.write(Data("not what Peel keeps".utf8))
+        let signed = OSAllocatedUnfairLock(initialState: 0)
+        let boxes = boxes(on: profile, signed: signed)
+        defer { boxes.close() }
+        #expect(boxes.links.isEmpty && boxes.problem != nil)
+        boxes.take(try #require(BoxLinkOffer(box: "http://127.0.0.1:\(stub.port)",
+                                             challenge: BoxFixture.challenge(host: "127.0.0.1", exp: BoxFixture.later))))
+        #expect(boxes.accept() == nil && boxes.problem?.contains("couldn't read") == true)
+        #expect(signed.withLock { $0 } == 0 && stub.requests.isEmpty)
+        #expect(try profile.boxes.read() == Data("not what Peel keeps".utf8))
     }
 
     /// A link Peel will not sign is said, and never asked.

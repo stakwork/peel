@@ -30,6 +30,9 @@ public final class Boxes {
     @ObservationIgnored public var accountName: (@MainActor () -> String?)?
 
     @ObservationIgnored private var profile: Profile?
+    /// What the account kept could not be read: nothing is written over it
+    /// (a new link would replace every box kept) until it is read again.
+    @ObservationIgnored private var unreadable = false
     @ObservationIgnored private var renewing: Task<Void, Never>?
     /// Counts closes: what was begun before the last one keeps and says nothing.
     @ObservationIgnored private var generation = 0
@@ -41,11 +44,15 @@ public final class Boxes {
 
     /// The account opened: what it kept, renewed whenever due while it stays open.
     public func open(_ profile: Profile) {
+        // Why a link opened before the account did was refused, still said.
+        let said = self.profile == nil ? problem : nil
         close()
         self.profile = profile
+        problem = said
         do {
             links = try BoxLink.read(from: profile.boxes)
         } catch {
+            unreadable = true
             problem = PeelError.noted(error, couldNot: "read your linked boxes")
         }
         keepRenewed()
@@ -58,9 +65,11 @@ public final class Boxes {
         renewing?.cancel()
         renewing = nil
         profile = nil
+        unreadable = false
         links = []
         linking = nil
         problem = nil
+        notice = nil
     }
 
     // MARK: - Linking
@@ -91,10 +100,18 @@ public final class Boxes {
     /// caller that waits for it; nil when there was nothing to link.
     @discardableResult
     public func accept() -> Task<Void, Never>? {
-        guard let offer = asking, linking == nil else { return nil }
+        guard let offer = asking else { return nil }
         asking = nil
+        if let busy = linking {
+            problem = "Peel is still linking to \(busy.host). Open the link from \(offer.host) again once it's done."
+            return nil
+        }
         guard let profile, let sign else {
             problem = "Unlock Peel to link it to \(offer.host)."
+            return nil
+        }
+        guard !unreadable else {
+            problem = "Peel couldn't read the boxes it keeps, so it won't change them now. Quit and reopen Peel, then link again."
             return nil
         }
         if let refusal = offer.problem(allowsLoopback: profile.kind == .development) {
@@ -157,7 +174,9 @@ public final class Boxes {
     public func page(of box: BoxLink) async -> OrgPageRequest? {
         let generation = generation
         do {
-            return try await home(of: box)
+            let page = try await home(of: box)
+            // Closed meanwhile: its token is not handed on.
+            return generation == self.generation ? page : nil
         } catch {
             guard generation == self.generation, !(error is CancellationError) else { return nil }
             if links.contains(where: { $0.url == box.url }) { problem = PeelError.noted(error, couldNot: "open \(box.host)") }
@@ -194,7 +213,9 @@ public final class Boxes {
             do {
                 try await renew(box, at: now)
             } catch {
-                guard generation == self.generation, !(error is CancellationError) else { return }
+                guard generation == self.generation else { return }
+                // Forgotten meanwhile: the others are still renewed.
+                if error is CancellationError { continue }
                 problem = PeelError.noted(error, couldNot: "renew Peel's link to \(box.host)")
             }
         }
@@ -221,7 +242,7 @@ public final class Boxes {
 
     /// Keeps `link` (the Keychain first), in place of the box's earlier one.
     private func keep(_ link: BoxLink) throws {
-        guard let profile else { return }
+        guard let profile, !unreadable else { return }
         var kept = links
         if let at = kept.firstIndex(where: { $0.url == link.url }) { kept[at] = link } else { kept.append(link) }
         try BoxLink.write(kept, to: profile.boxes)

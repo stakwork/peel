@@ -263,6 +263,9 @@ final class WebPane: NSObject, Identifiable {
         guard let webView else { return }
         if page.isLoading {
             webView.stopLoading()
+        } else if let box {
+            // A box's page with its bearer again, where it went: a reload of WebKit's own sends none.
+            webView.load(box.request(at: webView.url) ?? box.request)
         } else {
             webView.reload()
         }
@@ -437,7 +440,8 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         if let document { return documentPolicy(for: action, file: document.file) }
         // A deliverable's rules are a strut page's, with the pane's downloads.
         if let strut { return strut.policy(for: action, in: webView, open: linkAction, downloads: true) }
-        if let box { return boxPolicy(for: action, in: webView, page: box) }
+        // A box's page keeps to the same rules, on its own strut.
+        if let box { return StrutPage.policy(for: action, in: webView, serves: box.serves, open: linkAction, downloads: true) }
         if action.shouldPerformDownload { return .download }
         guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
         let mainFrame = action.targetFrame?.isMainFrame ?? true
@@ -457,28 +461,6 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
             return mainFrame ? .cancel : .allow
         default:
             // file:, sphinx.chat:, mailto: and every app's scheme: not from a page.
-            return .cancel
-        }
-    }
-
-    /// A box's page goes anywhere in its strut's UI folder, its own frames
-    /// (`srcdoc`, a data or blob frame, never as the whole page), and a link
-    /// elsewhere only out, on the person's own click; a download only from
-    /// strut's own page. A strut page's rules (`StrutPage.policy`), on the box.
-    private func boxPolicy(for action: WKNavigationAction, in webView: WKWebView, page: OrgPageRequest) -> WKNavigationActionPolicy {
-        guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
-        if action.shouldPerformDownload { return action.sourceFrame.isMainFrame && page.serves(url) ? .download : .cancel }
-        let mainFrame = action.targetFrame?.isMainFrame ?? true
-        if page.serves(url) { return .allow }
-        switch scheme {
-        case "about":
-            return .allow
-        case "data", "blob":
-            return mainFrame ? .cancel : .allow
-        case "http", "https":
-            if action.navigationType == .linkActivated, (webView as? InputWebView)?.personActed == true { follow(url) }
-            return .cancel
-        default:
             return .cancel
         }
     }
@@ -509,8 +491,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-        if let strut { return strut.policy(for: response, downloads: true) }
-        if box != nil { return response.canShowMIMEType ? .allow : response.isForMainFrame ? .download : .cancel }
+        if strut != nil || box != nil { return StrutPage.policy(for: response, downloads: true) }
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
         let attachment = disposition?.lowercased().hasPrefix("attachment") == true
         return response.isForMainFrame && (attachment || !response.canShowMIMEType) ? .download : .allow

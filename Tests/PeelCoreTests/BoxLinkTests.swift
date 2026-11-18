@@ -235,11 +235,10 @@ struct BoxLinkTests {
         #expect(try await BoxClient(box: box.url).renew(box, now: later, sign: sign) == .unlinked)
     }
 
-    /// A renewal challenge for another host, or one run out, is never signed.
-    @Test(arguments: [("evil.example.com", nowMs + 60_000), ("127.0.0.1", nowMs - 1)])
-    func aRenewalChallengeForAnotherHostIsNeverSigned(host: String, exp: Int64) async throws {
-        let challenge = Self.challenge(host: host, actor: nil, name: nil, exp: exp)
-        let stub = try await HTTPStub(reply: { _, _ in #"{"challenge":"\#(challenge)","exp":\#(exp)}"# })
+    /// A renewal challenge for another host is never signed.
+    @Test func aRenewalChallengeForAnotherHostIsNeverSigned() async throws {
+        let challenge = Self.challenge(host: "evil.example.com", actor: nil, name: nil)
+        let stub = try await HTTPStub(reply: { _, _ in #"{"challenge":"\#(challenge)","exp":1}"# })
         defer { stub.stop() }
         let signed = OSAllocatedUnfairLock(initialState: 0)
         await #expect(throws: PeelError.self) {

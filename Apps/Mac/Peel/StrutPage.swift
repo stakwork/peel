@@ -39,10 +39,19 @@ struct StrutPage: Equatable, CustomStringConvertible, CustomDebugStringConvertib
     @MainActor func policy(
         for action: WKNavigationAction, in webView: WKWebView, open: OpenURLAction, downloads: Bool
     ) -> WKNavigationActionPolicy {
+        Self.policy(for: action, in: webView, serves: server.serves, open: open, downloads: downloads)
+    }
+
+    /// The same rules for any strut's UI, by what `serves` takes as that
+    /// strut's: Peel's own (`policy(for:in:open:downloads:)`) or a linked
+    /// box's (`WebPane.open(box:)`, `OrgPageRequest.serves`).
+    @MainActor static func policy(
+        for action: WKNavigationAction, in webView: WKWebView, serves: (URL) -> Bool, open: OpenURLAction, downloads: Bool
+    ) -> WKNavigationActionPolicy {
         if action.shouldPerformDownload { return downloads && action.sourceFrame.isMainFrame ? .download : .cancel }
         guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
         let mainFrame = action.targetFrame?.isMainFrame ?? true
-        if server.serves(url) { return .allow }
+        if serves(url) { return .allow }
         switch scheme {
         case "about":
             // The page's own frame (`srcdoc`).
@@ -59,7 +68,7 @@ struct StrutPage: Equatable, CustomStringConvertible, CustomDebugStringConvertib
 
     /// A response the page cannot show: a download of strut's own page's
     /// where the host keeps them, else nothing.
-    @MainActor func policy(for response: WKNavigationResponse, downloads: Bool) -> WKNavigationResponsePolicy {
+    @MainActor static func policy(for response: WKNavigationResponse, downloads: Bool) -> WKNavigationResponsePolicy {
         if response.canShowMIMEType { return .allow }
         return downloads && response.isForMainFrame ? .download : .cancel
     }
@@ -82,7 +91,7 @@ struct StrutPage: Equatable, CustomStringConvertible, CustomDebugStringConvertib
     ) {
         guard let url = action.request.url else { return }
         if !server.serves(url) {
-            follow(url, from: webView, open: open)
+            Self.follow(url, from: webView, open: open)
         } else if server.servesPage(url) {
             if Self.personActed(in: webView), let shown = shownApp, let link = server.appLink(url, from: shown.peer) { openApp(link) }
         } else if let download, Self.personActed(in: webView) {
@@ -104,7 +113,7 @@ struct StrutPage: Equatable, CustomStringConvertible, CustomDebugStringConvertib
 
     /// Only on the person's own click or key: a script's `click()` is
     /// `linkActivated` too, and could keep opening pages.
-    @MainActor private func follow(_ url: URL, from webView: WKWebView, open: OpenURLAction) {
+    @MainActor private static func follow(_ url: URL, from webView: WKWebView, open: OpenURLAction) {
         guard Self.personActed(in: webView) else { return }
         WebPane.follow(url, with: open)
     }

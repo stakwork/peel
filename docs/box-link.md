@@ -86,8 +86,10 @@ shows the box in the web pane (`WebPane.open(box:)`): a web view of its own
 on a store that keeps nothing, the token as the first request's bearer and
 handed to `sessionStorage["strut/apiKey"]` before the page's script
 (`OrgPageRequest.handOver`), only that strut's UI folder, a link out only on
-the person's own click, another of the box's apps opened in place. The page
-ends when its box is forgotten or let go.
+the person's own click, another of the box's apps opened in place, and
+Reload loads it again with its bearer (`StrutPage.policy`, the rules Peel's
+own strut's pages keep, on the box's `serves`). The page ends when its box
+is forgotten or let go.
 
 **iPhone**: `router.open(peelLink:)` takes it (the system camera scanning
 the QR opens the same link) and goes to You; an alert asks the question
@@ -108,7 +110,17 @@ its box goes.
   is not an org; it stays beside Stadeum, not in it.
 - **"A 401 on use"** is checked at Open (`GET /apps` with the token): the
   only place Peel uses the token outside the web view. A page already open
-  that the box stops answering is not watched; the next Open renews.
+  that the box stops answering is not watched; the next Open renews. strut
+  has no lighter read for a person token, so the check reads the app list.
+- **A renewal's challenge is not checked for its end**: it lives a minute,
+  and a device clock off by more would block every renewal; strut checks
+  it. Its host is checked, so Peel signs only for the box it renews. A
+  link's challenge (ten minutes) is checked, to say so before asking.
+- **Boxes that cannot be read are never written over**: until they are read
+  again (Peel reopened), a new link is refused rather than kept in place of
+  every box kept.
+- **On the iPhone the boxes close with the lock**, as Stadeum does, and open
+  again with the account.
 - **Forget is local.** Peel has no route to remove its own link (strut's
   `account/unlink` is for the box's own app); the words say to remove it in
   Connect there too.
@@ -162,6 +174,10 @@ server is unreachable (signing needs only the words). The drive steps
    /people/challenge 200`, `POST /people/token 403`; Peel let the box go,
    said "127.0.0.1 removed Peel's link, so Peel let it go", and the web pane
    ended the box's page.
+
+After the review's fixes the same drive ran again, ending with Forget: the
+card's buttons in a row, the box linked, opened (`POST /people/link 200`,
+`GET /apps 200`, `GET / 200`), forgotten, and its page ended.
 
 A first run's link was broken on the way in (an `&` lost in the drive
 file): Peel said "That link to a box doesn't work" and asked nothing.

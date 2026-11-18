@@ -67,9 +67,7 @@ public struct BoxChallenge: Sendable, Equatable {
     }
 
     /// Who it links, as the person reads it: the name, else the actor.
-    public var person: String? {
-        [name, actor].lazy.compactMap { $0.map { TextLine.clean($0, max: TextLine.maxName) }?.nilIfEmpty }.first
-    }
+    public var person: String? { BoxLink.person(name: name, actor: actor) }
 
     public func expired(at now: Date) -> Bool { expiresAtMs <= Int64(now.timeIntervalSince1970 * 1000) }
 }
@@ -159,8 +157,11 @@ public struct BoxLink: Codable, Sendable, Equatable, Identifiable, CustomStringC
     /// The box's host as the person reads it.
     public var host: String { Seller.host(of: url) ?? url.absoluteString }
     /// Who Peel is linked as there: their name, else their actor.
-    public var person: String {
-        [name, actor].lazy.compactMap { $0.map { TextLine.clean($0, max: TextLine.maxName) }?.nilIfEmpty }.first ?? ""
+    public var person: String { Self.person(name: name, actor: actor) ?? "" }
+
+    /// A member as the person reads them: their name, else their actor, cleaned.
+    static func person(name: String?, actor: String?) -> String? {
+        [name, actor].lazy.compactMap { $0.map { TextLine.clean($0, max: TextLine.maxName) }?.nilIfEmpty }.first
     }
 
     public var description: String { "box link to \(host)" }
@@ -249,7 +250,8 @@ public struct BoxClient: Sendable {
 
     /// A new token for `link`: a fresh challenge from the box
     /// (`GET /people/challenge`), for its own host, signed with `sign` (the
-    /// account's key) and posted (`POST /people/token`).
+    /// account's key) and posted (`POST /people/token`). Its end is the box's
+    /// to check: it lives a minute, and this device's clock may be off by more.
     public func renew(
         _ link: BoxLink, now: Date = Date(), sign: @Sendable (BoxChallenge) async throws -> VisitorSignature
     ) async throws -> Renewal {
@@ -259,8 +261,8 @@ public struct BoxClient: Sendable {
               let text = fields["challenge"]?.string, let challenge = BoxChallenge(text) else {
             throw PeelError("\(host)'s answer for renewing Peel's link could not be read.")
         }
-        guard challenge.host == host, !challenge.expired(at: now) else {
-            throw PeelError("\(host) gave a challenge for another host or one that had run out, so Peel didn't sign it.")
+        guard challenge.host == host else {
+            throw PeelError("\(host) gave a challenge for \(TextLine.clean(challenge.host, max: 80)), so Peel didn't sign it.")
         }
         let signed = try await sign(challenge)
         let (renewedStatus, renewed) = try await request("POST", "people/token",

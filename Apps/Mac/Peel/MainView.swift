@@ -36,6 +36,8 @@ struct MainView: View {
             }
             .webPaneBeside(model.web)
         }
+        // A box's page goes with its link.
+        .onChange(of: model.boxes.links) { model.web.boxesChanged(model.boxes) }
         // A Hive link to a paired workspace's app opens the app; any other
         // link goes where a message's link goes (`WebPane.linkAction`).
         .environment(\.openURL, OpenURLAction { url in
@@ -55,7 +57,11 @@ struct MainView: View {
         // The call being joined is on another device of yours too: asked
         // here, before anything connects, since the call window is not up yet.
         .overlay(alignment: .top) {
-            if model.calls.choosingDevice != nil {
+            if let offer = model.boxes.asking {
+                BoxLinkConfirm(offer: offer)
+                    .frame(maxWidth: 460)
+                    .padding(Theme.Space.md)
+            } else if model.calls.choosingDevice != nil {
                 CallDeviceConfirm(
                     cancel: { model.calls.cancelDeviceChoice() },
                     stay: { model.calls.stayOnBothDevices() },

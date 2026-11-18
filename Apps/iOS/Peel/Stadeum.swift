@@ -93,6 +93,65 @@ struct StadeumPairingCode: View {
     }
 }
 
+/// You › Boxes (`AppModel.boxes`): the strut boxes this account is linked
+/// to, each as its member. A tap opens the box's own strut UI as them,
+/// where its apps are (`Boxes.page(of:)`); a swipe or a long press
+/// forgets it here. Shown once there is something to show: a box is
+/// linked from its own Connect, by its QR code or Open in Peel.
+struct BoxesSection: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+    /// The box whose page is being opened.
+    @State private var opening: URL?
+
+    var body: some View {
+        let boxes = model.boxes
+        if !boxes.links.isEmpty || boxes.linking != nil || boxes.problem != nil || boxes.notice != nil {
+            Section {
+                ForEach(boxes.links) { box in
+                    Button { open(box) } label: {
+                        HStack {
+                            LabeledContent(box.host, value: box.person)
+                            if opening == box.url { ProgressView() }
+                        }
+                    }
+                    .disabled(opening != nil)
+                    .accessibilityHint("Opens \(box.host) as \(box.person)")
+                    .swipeActions { Button("Forget", role: .destructive) { boxes.forget(box) } }
+                    .contextMenu { Button("Forget", systemImage: "trash", role: .destructive) { boxes.forget(box) } }
+                }
+                if let offer = boxes.linking {
+                    HStack(spacing: Theme.Space.sm) {
+                        ProgressView()
+                        Text("Linking Peel to \(offer.host)…")
+                            .foregroundStyle(Theme.quietText(on: .raised))
+                    }
+                }
+                ForEach([boxes.notice, boxes.problem].compactMap { $0 }, id: \.self) { line in
+                    Text(line)
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.attention)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } header: {
+                PhoneSectionHeader("Boxes")
+            } footer: {
+                Text(BoxWords.howToLink)
+            }
+            .phoneRows(.grouped)
+            .environment(\.surface, .raised)
+        }
+    }
+
+    private func open(_ box: BoxLink) {
+        opening = box.url
+        Task {
+            defer { opening = nil }
+            if let page = await model.boxes.page(of: box) { router.orgPage = page }
+        }
+    }
+}
+
 extension Stadeum {
     /// Reads the workspaces' pinned apps, each on its own strut with the
     /// person's token: the iPhone has no strut to read through.

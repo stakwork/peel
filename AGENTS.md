@@ -205,6 +205,18 @@ is a short plan. Update the status and the journal when you finish something.
     account's key and its address (`signInAddress`, the core's reported
     contact info), or with LUD-05's linking key for its host from the
     words' whole BIP39 seed (`Engine.bip39Seed`)
+  - `BoxLink.swift` — Peel linked to a strut box (docs/box-link.md;
+    strut's plans/people-and-hosts.md §2.1): `PeelLink.values` (every
+    `peel://` link's values read one way), `BoxChallenge` (strut's
+    `strut-link.` challenge, read through `StrutClaims`, never verified),
+    `BoxLinkOffer` (`peel://strut/link?url=&challenge=` and what Peel won't
+    sign: another host, run out, naming nobody, this machine outside a
+    development profile), `BoxLink` (what `Profile.boxes` keeps, beside
+    `Profile.hive` and never in it: the box, the member, their token; due
+    daily; never described with its token) and `BoxClient` (`POST
+    /people/link`, the renewal's challenge and `POST /people/token`, a
+    token's check on use; refusals in words); the engine signs with
+    `signBoxLink`, the visitor `.root` path (Engine+Wallet.swift)
   - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
     server for a visitor's page (strut's specs/WALLET.md §1.2) and its
     `problems` (a port of strut's `creditPurchaseProblems`, held to its
@@ -489,6 +501,11 @@ is a short plan. Update the status and the journal when you finish something.
   word as your answer, and `answerInTribe`, the owner's reply to the post
   through `sendReply`; opened on the Mac only, and its writes go off the
   main actor);
+  `Boxes` (`AppModel.boxes`, the strut boxes this account is linked to,
+  docs/box-link.md: a link held for the person's yes (`take`, `accept`,
+  `decline`), renewed when due while the account is open, let go on `403
+  not_linked`; `page(of:)`, the box's own strut UI as its member, a 401
+  renewed once; `BoxWords`, the question for both apps);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
   the iPhone), Connect (Hive's device flow; `cameToFront`, from
@@ -576,7 +593,9 @@ is a short plan. Update the status and the journal when you finish something.
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
   restart Peel's strut with the new grants; below them
   `StadeumSection`, the Stadeum workspaces paired as peers, each with
-  Talk to Jamie, which opens `TalkWindow`),
+  Talk to Jamie, which opens `TalkWindow`; then `BoxesSection`, the strut
+  boxes linked, Open and Forget, and `BoxLinkConfirm`, a box's question
+  over the main window; a box opens in the web pane, `WebPane.open(box:)`),
   `AppModel+Automations` and `AppModel+Bridge` (`AgentBridge`: the
   agent's bridge beside Peel's own strut, in every build; `agentSetUp`,
   what the agent chat and Account › Assistant show of its own account,
@@ -833,7 +852,9 @@ is a short plan. Update the status and the journal when you finish something.
   web pane do nothing and are never offered; the web pane and calls throw
   their words), `Stadeum` (`StadeumSection`, You's Stadeum over
   `AppModel.stadeum`: connect, the workspaces, Connect again, Disconnect;
-  `readWorkspaceApps`, each org's pinned apps on its own strut), `AppsScreen`
+  `readWorkspaceApps`, each org's pinned apps on its own strut; `BoxesSection`,
+  You › Boxes: each box linked, opened in `OrgPageSheet`, forgotten; the
+  question is `MainTabs`' alert), `AppsScreen`
   (Chats' Apps row: Talk to Jamie on each workspace, its screen a
   full-screen cover; then the workspaces' pinned apps, A–Z, opened in
   `OrgPageSheet`, pulled to read again), `OrgWallet` (the app wallet on the iPhone: `OrgWalletBridge`, keyed by
@@ -1165,6 +1186,9 @@ is a short plan. Update the status and the journal when you finish something.
   `IncomingFilesTests`, `CallTests`, `CallServerTests`, `CallWatchTests`, `TalkCallTests`,
   `NotificationPolicyTests`, `PersonHueTests`, `TimeZoneTests`, `PreferencesTests`, `PreferencesFileTests` (with a port of the official reader),
   `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`,
+  `BoxLinkTests` (a box's link as strut writes it, what Peel won't take or
+  sign, the signature as strut's `ln-message` checks it, the list beside
+  Hive's pairing, the three routes on a stand-in),
   `ProposalTests` (strut's record and card read, each status, a record
   without a card, the words cleaned, the store, a workspace's strut asked
   with the person's token, a tribe post's proposals and outcomes);
@@ -1188,7 +1212,9 @@ is a short plan. Update the status and the journal when you finish something.
   engine and profile, no window or server: `CallStoreTests` (each chat's
   busiest watched call, the call you are on, locking stops the watches),
   `ChatListControllerTests` (the list controller's 25 cases on a fake
-  engine and store), `ChatSearchTests` (Return before a search's
+  engine and store), `BoxesTests` (a box linked only on the yes, renewed,
+  let go when unlinked, a refused token renewed once before it opens),
+  `ChatSearchTests` (Return before a search's
   matches waits for the first of them), `ProposalWatchTests` (what the
   watch keeps, reads again and decides, on a stand-in strut; a proposal on
   Jamie's post in a tribe, answered by a reply) and `DictationTests` (the hotkey's
@@ -1202,8 +1228,9 @@ is a short plan. Update the status and the journal when you finish something.
 - `Tests/PeelTestSupport/` — `Fixtures.swift`, the fixtures PeelCoreTests,
   PeelUITests and PeelAgentTests share (`TempProfile`, `rows`, `uuid`, `dm`,
   `Message.fixture`, `sender`, the keys, `registeredStorage`,
-  `withTestEngine`) and `HTTPStub.swift` (a loopback HTTP server that
-  records each whole request); a library target, since a test target
+  `withTestEngine`), `HTTPStub.swift` (a loopback HTTP server that
+  records each whole request) and `BoxFixtures.swift` (a strut box's
+  challenges and answers); a library target, since a test target
   cannot depend on another, imported `@testable`
 - `Tests/PeelAgentTests/` — offline tests for PeelAgent, Mac-only like it:
   `AutomationsClientTests` (strut's lists and runs read back, failures in

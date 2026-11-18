@@ -392,7 +392,10 @@ final class OffscreenDriver {
     /// Apps; `apps-refresh`, its header's Refresh; `apps-seed`, sample workspace apps in memory; `apps-fold`, the
     /// Apps row's chevron; `app-pin`, the open app's pin; `app-versions`, the
     /// open app's version chip (its menu); `app-make-live`, Make live for the
-    /// newest version waiting, as its panel's button.
+    /// newest version waiting, as its panel's button; `box-link`, Link on a
+    /// box's question (`BoxLinkConfirm`); `box-open` and `box-forget`, the
+    /// first linked box's Open and its Forget once confirmed (Account ›
+    /// Connections' `BoxesSection`).
     private func open(_ name: String) throws {
         guard let model = model() else { throw Failure(description: "no account open") }
         switch name {
@@ -528,6 +531,17 @@ final class OffscreenDriver {
         case "agent-remove-key":
             // Account › Peel agent: Remove, then its confirm.
             try model.agent?.removeKey()
+        case "box-link":
+            guard model.boxes.asking != nil else { throw Failure(description: "no box link waiting") }
+            model.boxes.accept()
+            model.openAccount(.connections)
+        case "box-open", "box-forget":
+            guard let box = model.boxes.links.first else { throw Failure(description: "no box linked") }
+            if name == "box-forget" {
+                model.boxes.forget(box)
+            } else {
+                Task { if let page = await model.boxes.page(of: box) { model.web.open(box: page) } }
+            }
         case "hive-connect":
             model.connectHive()
         case "hive-disconnect":

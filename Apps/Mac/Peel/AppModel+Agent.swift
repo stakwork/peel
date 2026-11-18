@@ -312,12 +312,21 @@ extension AppModel {
     }
 
     /// A `peel://` link Peel takes: a Peel Home link (`HomeLink`), which waits
-    /// in Account › Peel Home for the person's yes, or a stranger's public
-    /// app to open (`PublicAppLink`). False for any other scheme.
+    /// in Account › Peel Home for the person's yes, a box's link
+    /// (`BoxLinkOffer`), whose question waits over the main window, or a
+    /// stranger's public app to open (`PublicAppLink`). False for any other scheme.
     func openPeelLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "peel" else { return false }
         if url.host?.lowercased() == "home-setup", let link = HomeLink(url) {
             openHomeLink(link)
+        } else if url.host?.lowercased() == "strut" {
+            if let offer = BoxLinkOffer(peelLink: url) {
+                boxes.take(offer)
+                // Why Peel won't sign it, beside the boxes.
+                if boxes.asking == nil, phase == .ready { openAccount(.connections) }
+            } else {
+                notice = "That link to a box doesn't work. Choose Link Peel in Connect on the box again."
+            }
         } else if url.host?.lowercased() == "open" {
             if let link = PublicAppLink(peelLink: url) {
                 openPublicApp(link)

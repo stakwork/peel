@@ -36,12 +36,7 @@ public struct VisitorChallenge: Sendable, Equatable {
 
     /// Nil for anything that is not a strut visitor challenge.
     public init?(_ text: String) {
-        guard text.utf16.count <= Self.maxLength, text.hasPrefix(Self.prefix) else { return nil }
-        let parts = text.dropFirst(Self.prefix.count).split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count == 2, parts.allSatisfy(Self.isBase64URL),
-              let bytes = MediaToken.base64URLDecode(String(parts[0])),
-              let claims = String(data: bytes, encoding: .utf8),
-              case .object(let c)? = JSON.decode(JSONValue.self, from: claims),
+        guard let c = StrutClaims.read(text, prefix: Self.prefix, maxLength: Self.maxLength),
               let host = c["host"]?.string, !host.isEmpty, let nonce = c["nonce"]?.string, !nonce.isEmpty,
               let exp = WalletProtocol.integer(c["exp"]), exp >= 1,
               let key = c["visitorKey"]?.string.flatMap(SignInKey.init) else { return nil }
@@ -50,6 +45,23 @@ public struct VisitorChallenge: Sendable, Equatable {
         self.visitorKey = key
         self.nonce = nonce
         self.expiresAtMs = exp
+    }
+}
+
+/// The claims of something strut signed, as a client reads them:
+/// `<prefix><base64url JSON>.<base64url HMAC>`. Read, never verified: the
+/// HMAC is strut's to check. A visitor challenge and a box's link challenge
+/// (`BoxChallenge`) are read through here.
+enum StrutClaims {
+    /// The JSON object, or nil for anything else or past `maxLength` (UTF-16).
+    static func read(_ text: String, prefix: String, maxLength: Int) -> [String: JSONValue]? {
+        guard text.utf16.count <= maxLength, text.hasPrefix(prefix) else { return nil }
+        let parts = text.dropFirst(prefix.count).split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts.allSatisfy(isBase64URL),
+              let bytes = MediaToken.base64URLDecode(String(parts[0])),
+              let claims = String(data: bytes, encoding: .utf8),
+              case .object(let c)? = JSON.decode(JSONValue.self, from: claims) else { return nil }
+        return c
     }
 
     /// One or more of base64url's letters and nothing else.

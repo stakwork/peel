@@ -91,6 +91,10 @@ final class WebPane: NSObject, Identifiable {
     @ObservationIgnored private weak var strutModel: AppModel?
     /// The deliverable's app wallet handler, when it shows an app.
     @ObservationIgnored private var strutWallet: StrutWalletBridge?
+    /// A linked box's own strut UI on show (`open(box:)`): its member's
+    /// token is the first request's bearer and in the page's storage, never
+    /// in an address; the address field shows the box's name.
+    @ObservationIgnored private var box: OrgPageRequest?
 
     /// The deliverable on show is a Strut app or page: it can have a window of its own.
     var canOpenInNewWindow: Bool { strut != nil }
@@ -103,7 +107,7 @@ final class WebPane: NSObject, Identifiable {
 
     /// An HTML attachment or a deliverable is on show: no web address to
     /// show, copy, or offer to try again.
-    private var showsNoAddress: Bool { document != nil || strut != nil }
+    private var showsNoAddress: Bool { document != nil || strut != nil || box != nil }
 
     init(profile: Profile?) {
         self.profile = profile
@@ -170,6 +174,23 @@ final class WebPane: NSObject, Identifiable {
         view.load(URLRequest(url: page.url))
     }
 
+    /// Shows a linked box's own strut UI as its member, replacing what the
+    /// pane showed (`Boxes.page(of:)`): strut's UI there lists the box's apps
+    /// and opens them in place. A web view of its own on a store that keeps
+    /// nothing, handed the token as the first request's bearer and, before
+    /// the page's script runs, in its storage (`OrgPageRequest.handOver`), as
+    /// the iPhone opens an org's page. It goes nowhere but that strut's UI;
+    /// a link elsewhere opens here as a page of the web, ending it, and only
+    /// on the person's own click.
+    func open(box page: OrgPageRequest) {
+        endPage()
+        box = page
+        let view = makeWebView(keepsNothing: true, handOver: page.handOver)
+        isOpen = true
+        problem = nil
+        view.load(page.request)
+    }
+
     /// The header's Browser: the page as it is, or the pane with only its
     /// address field, which then has the keyboard.
     func show() {
@@ -215,6 +236,7 @@ final class WebPane: NSObject, Identifiable {
         strut = nil
         strutOpensApp = nil
         strutModel = nil
+        box = nil
     }
 
     /// Peel's strut started again (on another port, with another key) or
@@ -224,6 +246,14 @@ final class WebPane: NSObject, Identifiable {
         guard let strut, strut.server != server else { return }
         endPage()
         problem = Problem(url: nil, message: "Peel's strut started again. Open this from the agent's message again.")
+    }
+
+    /// The boxes linked changed: a box's page whose box is no longer linked
+    /// (forgotten, or its link removed there) ends, its token with it.
+    func boxesChanged(_ boxes: Boxes) {
+        guard let box, !boxes.shows(box) else { return }
+        endPage()
+        problem = Problem(url: nil, message: "Peel is no longer linked to \(box.workspace).")
     }
 
     func goBack() { webView?.goBack() }
@@ -276,9 +306,11 @@ final class WebPane: NSObject, Identifiable {
     }
 
     /// A web view for the web, with `offline` rules for an HTML attachment,
-    /// or one that `keepsNothing` for a deliverable on Peel's own strut.
+    /// or one that `keepsNothing` for a deliverable on Peel's own strut or a
+    /// box's page, which is run `handOver` before its own script.
     private func makeWebView(
-        offline rules: WKContentRuleList? = nil, keepsNothing: Bool = false, wallet page: StrutPage? = nil
+        offline rules: WKContentRuleList? = nil, keepsNothing: Bool = false, wallet page: StrutPage? = nil,
+        handOver: String? = nil
     ) -> PaneWebView {
         let configuration = WKWebViewConfiguration()
         if let rules {
@@ -294,8 +326,12 @@ final class WebPane: NSObject, Identifiable {
             // default store other apps' pages and other profiles would share.
             configuration.websiteDataStore = storeID(create: true).map(WKWebsiteDataStore.init) ?? .nonPersistent()
         }
-        // No user scripts, and no message handler but the app wallet's on a
-        // deliverable that is an app: the controller holds at most the rules.
+        // No user script but a box's token hand-over, and no message handler but
+        // the app wallet's on a deliverable that is an app.
+        if let handOver {
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: handOver, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         Self.limit(configuration)
         let wallet = page.flatMap { StrutWalletBridge.install(in: configuration, for: $0, model: strutModel) }
         let view = PaneWebView(frame: .zero, configuration: configuration)
@@ -360,7 +396,7 @@ final class WebPane: NSObject, Identifiable {
         let url = showsNoAddress ? nil
             : committed || !webView.isLoading || page.url == nil ? webView.url ?? page.url : page.url
         let new = Page(
-            url: url, fileName: document?.name ?? strut?.name, title: webView.title ?? "",
+            url: url, fileName: document?.name ?? strut?.name ?? box?.workspace, title: webView.title ?? "",
             canGoBack: webView.canGoBack, canGoForward: webView.canGoForward,
             isLoading: webView.isLoading, progress: webView.estimatedProgress,
             hasOnlySecureContent: webView.hasOnlySecureContent
@@ -401,6 +437,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
         if let document { return documentPolicy(for: action, file: document.file) }
         // A deliverable's rules are a strut page's, with the pane's downloads.
         if let strut { return strut.policy(for: action, in: webView, open: linkAction, downloads: true) }
+        if let box { return boxPolicy(for: action, in: webView, page: box) }
         if action.shouldPerformDownload { return .download }
         guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
         let mainFrame = action.targetFrame?.isMainFrame ?? true
@@ -420,6 +457,28 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
             return mainFrame ? .cancel : .allow
         default:
             // file:, sphinx.chat:, mailto: and every app's scheme: not from a page.
+            return .cancel
+        }
+    }
+
+    /// A box's page goes anywhere in its strut's UI folder, its own frames
+    /// (`srcdoc`, a data or blob frame, never as the whole page), and a link
+    /// elsewhere only out, on the person's own click; a download only from
+    /// strut's own page. A strut page's rules (`StrutPage.policy`), on the box.
+    private func boxPolicy(for action: WKNavigationAction, in webView: WKWebView, page: OrgPageRequest) -> WKNavigationActionPolicy {
+        guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
+        if action.shouldPerformDownload { return action.sourceFrame.isMainFrame && page.serves(url) ? .download : .cancel }
+        let mainFrame = action.targetFrame?.isMainFrame ?? true
+        if page.serves(url) { return .allow }
+        switch scheme {
+        case "about":
+            return .allow
+        case "data", "blob":
+            return mainFrame ? .cancel : .allow
+        case "http", "https":
+            if action.navigationType == .linkActivated, (webView as? InputWebView)?.personActed == true { follow(url) }
+            return .cancel
+        default:
             return .cancel
         }
     }
@@ -451,6 +510,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
         if let strut { return strut.policy(for: response, downloads: true) }
+        if box != nil { return response.canShowMIMEType ? .allow : response.isForMainFrame ? .download : .cancel }
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
         let attachment = disposition?.lowercased().hasPrefix("attachment") == true
         return response.isForMainFrame && (attachment || !response.canShowMIMEType) ? .download : .allow
@@ -490,7 +550,13 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
             problem = Problem(url: showsNoAddress ? nil : webView.url ?? page.url, message: "The page stopped working.")
             return
         }
-        if let strut { webView.load(URLRequest(url: strut.url(at: webView.url))) } else { webView.reload() }
+        if let strut {
+            webView.load(URLRequest(url: strut.url(at: webView.url)))
+        } else if let box {
+            webView.load(box.request(at: webView.url) ?? box.request)
+        } else {
+            webView.reload()
+        }
     }
 
     /// `target=_blank` and `window.open`: the pane is the one window.
@@ -502,6 +568,17 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
             strut.newWindow(for: action, from: webView, open: linkAction, download: { request in
                 webView.startDownload(using: request) { $0.delegate = self }
             }, openApp: { [strutOpensApp] in strutOpensApp?($0) })
+            return nil
+        }
+        if let box {
+            // A link to another of the box's apps opens it here, as its member; one out goes out.
+            guard let url = action.request.url, (webView as? InputWebView)?.personActed == true else { return nil }
+            if !box.serves(url) {
+                follow(url)
+            } else if action.sourceFrame.isMainFrame, let link = box.appLink(url, from: webView.url),
+                      let there = box.request(for: link) {
+                webView.load(there)
+            }
             return nil
         }
         guard let url = action.request.url, WebPage.address(url) != nil else { return nil }

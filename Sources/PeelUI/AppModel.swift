@@ -380,6 +380,8 @@ public final class AppModel {
     public let talk: TalkStore
     /// The person's Stadeum workspaces, paired on this device, and the apps listed.
     public let stadeum = Stadeum()
+    /// The strut boxes this account is linked to, beside Stadeum (`Boxes`).
+    public let boxes = Boxes()
     /// The proposals shown as cards in the agent chat: Peel's own strut's
     /// and the person's on each workspace, as last read (`ProposalWatch`).
     public let proposals = ProposalWatch()
@@ -1664,6 +1666,8 @@ public final class AppModel {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
         closeWallet()
+        boxes.close()
+        boxes.sign = nil
         siteLocations = []
         agentHost?.close(in: self)
         proposals.close()
@@ -1757,6 +1761,9 @@ public final class AppModel {
         refreshMentionAliases()
         myServer = settings.server
         calls.attach(engine, server: settings.callServer, jamiePicks: settings.callJamie ?? [:])
+        boxes.sign = { try await engine.signBoxLink($0) }
+        boxes.accountName = { [weak self] in self?.myAlias }
+        if let profile { boxes.open(profile) }
         pinTimeoutHours = settings.pinTimeoutHours ?? UserDefaults.standard.object(forKey: "pinTimeoutHours") as? Int
             ?? PINTimeout.unsetDefault
         balanceMsat = settings.balanceMsat

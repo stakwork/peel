@@ -121,12 +121,28 @@ extension Engine {
         let message = Data(challenge.text.utf8)
         switch key {
         case .root:
-            let sig = try Sphinxrs.signBytes(seed: seed, idx: 0, time: clock.next(), network: network, msg: message)
-            return VisitorSignature(key: accountKey, sig: sig, address: signInAddress())
+            return try signWithAccountKey(message)
         case .domain:
             let signed = try Sphinxrs.signBytesLud05(bip39Seed: bip39Seed, domain: challenge.host, msg: message)
             return VisitorSignature(key: signed.pubkey, sig: signed.sig)
         }
+    }
+
+    /// `message` as a Lightning signed message with the account's own key
+    /// (child index 0; sphinx-rs `sign_bytes`), the key, and the account's
+    /// Sphinx address beside it. Only for a strut challenge a caller read
+    /// and checked: a visitor's (`signVisitor`) or a box's (`signBoxLink`).
+    private func signWithAccountKey(_ message: Data) throws -> VisitorSignature {
+        let sig = try Sphinxrs.signBytes(seed: seed, idx: 0, time: clock.next(), network: network, msg: message)
+        return VisitorSignature(key: accountKey, sig: sig, address: signInAddress())
+    }
+
+    /// Signs a box's link challenge (strut's plans/people-and-hosts.md
+    /// §2.1): its UTF-8 bytes with the account's own key, as a visitor's
+    /// sign-in with it is signed. Only a `BoxChallenge`, so never a message
+    /// a page chose; the caller checked whom it names and where it is for.
+    public func signBoxLink(_ challenge: BoxChallenge) throws -> VisitorSignature {
+        try signWithAccountKey(Data(challenge.text.utf8))
     }
 
     /// The account's own Sphinx address for a sign-in with its key: the

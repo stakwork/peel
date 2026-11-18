@@ -20,7 +20,9 @@ struct SiteLocationTests {
     }
 
     @Test func clearAllForgetsEverySite() throws {
-        let storage = try TempProfile().storage()
+        let profile = TempProfile()
+        let storage = try profile.storage()
+        defer { withExtendedLifetime(profile) {} }
         try storage.putSiteLocationGrant(.init(origin: "https://a.example", allowed: true, decidedAt: 1))
         try storage.putSiteLocationGrant(.init(origin: "https://b.example", allowed: false, decidedAt: 1))
         try storage.clearSiteLocationGrants()

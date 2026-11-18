@@ -96,8 +96,15 @@ struct ImageTile: View {
                                 Text("Download image").phoneFont(.secondary)
                             }
                             .foregroundStyle(Theme.secondaryText)
+                        } else if case .held(let size)? = handle?.state {
+                            // Past the automatic limit (`Engine.autoDownloadImageLimit`): waits for a tap.
+                            note("arrow.down.circle", ["Image", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " - ") + ", tap to download")
+                        } else if handle?.isRetrying == true {
+                            note("arrow.down.circle", "Couldn't download yet - tap to retry")
                         } else if handle?.failureReason != nil {
-                            Image(systemName: "photo").foregroundStyle(Theme.secondaryText)
+                            note("photo", "Image not available")
+                        } else if case .idle? = handle?.state {
+                            note("clock", "Waiting to download")
                         } else {
                             ProgressView()
                         }
@@ -112,7 +119,7 @@ struct ImageTile: View {
         .accessibilityHint(model.awaitsManualDownload(message) ? "Downloads the image" : "Opens the image full screen")
         .contentShape(shape)
         .onTapGesture {
-            if model.awaitsManualDownload(message) {
+            if model.awaitsManualDownload(message) || canRetry {
                 Task { await model.download(message) }
                 return
             }
@@ -130,6 +137,26 @@ struct ImageTile: View {
                 await model.autoDownload(message)
             }
         }
+    }
+}
+
+extension ImageTile {
+    /// Whether a tap loads it: held back by its size, or a download that failed.
+    private var canRetry: Bool {
+        guard let handle = message.id.map(model.attachment), handle.file == nil else { return false }
+        switch handle.state {
+        case .held, .retrying, .failed: return true
+        case .idle, .downloading, .ready: return false
+        }
+    }
+
+    private func note(_ symbol: String, _ text: String) -> some View {
+        VStack(spacing: Theme.Space.xs) {
+            Image(systemName: symbol).font(.system(size: 28))
+            Text(text).phoneFont(.secondary).multilineTextAlignment(.center)
+        }
+        .foregroundStyle(Theme.secondaryText)
+        .padding(Theme.Space.sm)
     }
 }
 

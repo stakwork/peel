@@ -976,6 +976,8 @@ public final class AppModel {
         Task { await engine?.refreshPreferences() }
         Task { await notifier.refreshPermission() }
         checkOwnMessageStatus()
+        // A download cut off or failed while away (the system ends a transfer in the background).
+        retryPendingMedia()
     }
 
     /// Has the engine decide whether its connection can be trusted as the app comes to the
@@ -1810,6 +1812,8 @@ public final class AppModel {
                     caughtUpHere = false
                     connectionError = nil
                     if notice != nil, notice == serverCheckNotice { notice = nil }
+                    // What failed to download while offline is tried again.
+                    retryPendingMedia()
                     // The tribes an older Peel linked: their lists need the connection.
                     markLinkedJamies()
                     Task { await engine.refreshReadsAndMutes() }
@@ -1889,6 +1893,8 @@ public final class AppModel {
                 notifier.received(message, arrival)
                 approveJamie(asking: message)
                 if message.fromMe { proposals.answered(byOwn: message) } else { proposals.noticed(message) }
+                // A received attachment downloads as it arrives (through the setting and limits), not when its tile first shows.
+                if arrival == .live { autoDownloadReceived(message) }
             case .moneyReceived(let message):
                 money.received(Receipt(message))
             case .invoicePaid(let invoice):

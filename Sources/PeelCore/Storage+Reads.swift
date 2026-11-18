@@ -190,20 +190,26 @@ extension Storage {
         SELECT pubkey, name, photoURL, 1, 0 FROM tribe WHERE left = 0
         """
 
-    /// The newest text, attachment, direct payment or call (a payment or a
-    /// call only while not deleted; none with no words) gives each
-    /// conversation its place in the sidebar. `message_preview` (v23) holds
-    /// only those, so the joins and boosts after one are not stepped over;
-    /// its terms are this query's, and it must keep them.
+    /// The newest text, attachment, direct payment, call or boost (all but
+    /// text and attachments only while not deleted; none with no words) gives
+    /// each conversation its place in the sidebar. Any boost counts, ours or
+    /// someone else's, on any message (Tom, 2026-11-17): the row says who
+    /// boosted what. Only the unread count (`countsAsUnreadSQL`) keeps its
+    /// rule, which counts every boost from others (Tom 2026-11-17). `lastBoostOnMine` tells the line
+    /// whether the boosted message is ours. `message_preview` (v35) holds
+    /// those types, so the joins after one are not stepped over; its terms
+    /// are this query's, and it must keep them.
     private static let conversationsSQL = """
         SELECT c.*, m.content AS lastContent, m.timestamp AS lastTimestamp, m.fromMe AS lastFromMe,
-               m.type AS lastType, m.mediaType AS lastMediaType, m.deleted AS lastDeleted,
-               CASE WHEN json_valid(m.sender) THEN json_extract(m.sender, '$.alias') END AS lastSenderAlias
+               m.type AS lastType, m.mediaType AS lastMediaType, m.deleted AS lastDeleted, COALESCE(m.msat, m.amountMsat) AS lastMsat,
+               CASE WHEN json_valid(m.sender) THEN json_extract(m.sender, '$.alias') END AS lastSenderAlias,
+               CASE WHEN m.type = \(MessageType.boost) THEN EXISTS (
+                   SELECT 1 FROM message b WHERE b.uuid = m.replyUUID AND b.chat = m.chat AND b.fromMe = 1) END AS lastBoostOnMine
         FROM (\(chatsSQL)) c
         LEFT JOIN message m ON m.id = (
             SELECT id FROM message INDEXED BY message_preview
             WHERE chat = c.chat AND noWords = 0 AND (type IN (\(MessageType.contentSQL))
-                OR (type IN (\(MessageType.directPayment), \(MessageType.call)) AND deleted = 0))
+                OR (type IN (\(MessageType.directPayment), \(MessageType.boost), \(MessageType.call)) AND deleted = 0))
             ORDER BY timestamp DESC, id DESC LIMIT 1
         )
         ORDER BY lastTimestamp IS NULL, lastTimestamp DESC, alias
@@ -250,20 +256,16 @@ extension Storage {
     /// else's message of `MessageType.unreadTypes` (text, attachments,
     /// payments, requests and calls) with words (`Message.hasNoWords`, read
     /// from `message_unread`) and not a control message (`isControl`), or
-    /// their boost on our message (someone else's boost on someone else's
-    /// message is not news to us; Tom, 2026-10-07).
+    /// their boost, on any message (the server's badge counts every boost
+    /// from others, Tom 2026-11-17; our own never count).
     static let countsAsUnreadSQL = """
         m.fromMe = 0 AND m.noWords = 0 AND m.isControl = 0
             AND m.type IN (\(MessageType.sqlList(MessageType.unreadTypes + [MessageType.boost])))
-            -- The rule `isMoneyForMe` holds for notifications too.
-            AND (m.type != \(MessageType.boost) OR EXISTS (
-                SELECT 1 FROM message b WHERE b.uuid = m.replyUUID AND b.chat = m.chat AND b.fromMe = 1))
         """
 
     /// The unread and mention counts past each chat's read marker
     /// (`countsAsUnreadSQL`). One row per conversation; each count is ranges
-    /// on `message_unread` (one per type), plus a lookup of the boosted
-    /// message for each boost in range; the mentions a range on
+    /// on `message_unread` (one per type, boosts included); the mentions a range on
     /// `message_mentions`; `isBehind` a range past the marker on
     /// `message_chat_serverIndex`. A message deleted after it arrived still
     /// counts, as before payments (it was news when it came).

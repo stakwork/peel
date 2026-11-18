@@ -76,6 +76,14 @@ public final class AttachmentHandle {
         /// Too large to fetch on its own (a video or recording): it waits
         /// for a click. Its size, when known.
         case held(Int64?)
+        /// A failure that may pass (offline, a timeout, the app was
+        /// backgrounded mid-transfer, a server hiccup, the file not there
+        /// yet): not final. An automatic retry may be scheduled
+        /// (`AppModel.download`), and it is tried again when the app returns
+        /// to the front, the connection comes back or the tile is tapped.
+        /// `attempt` counts the failures so far.
+        case retrying(reason: String, attempt: Int)
+        /// A failure no retry mends (`MediaFetch.isTransient`): final until a tap.
         case failed(String)
     }
 
@@ -88,6 +96,13 @@ public final class AttachmentHandle {
     public var savedTo: URL?
     /// The download running now, for others asking meanwhile to wait on.
     @ObservationIgnored public var download: Task<Void, Never>?
+    /// Automatic retries spent since the last tap, foreground or reconnect.
+    @ObservationIgnored var attempts = 0
+    /// The scheduled automatic retry, owned by the model like `download`.
+    @ObservationIgnored var retry: Task<Void, Never>?
+    /// What a retry fetches: the message, and whether a person asked for it
+    /// (a retry then ignores the automatic limits).
+    @ObservationIgnored var retrying: (message: Message, userAsked: Bool)?
 
     public func transfer(bytes: Int64, total: Int64) {
         progress = bytes < total ? (bytes, total) : nil
@@ -101,9 +116,30 @@ public final class AttachmentHandle {
         if case .ready(let downloaded) = state { downloaded } else { nil }
     }
 
-    /// Why its download failed, when it did.
+    /// Why its download failed for good, when it did; a transient failure
+    /// is `isRetrying`, not this.
     public var failureReason: String? {
         if case .failed(let reason) = state { reason } else { nil }
+    }
+
+    /// Whether it waits for a tap because of its size.
+    public var isHeld: Bool {
+        if case .held = state { true } else { false }
+    }
+
+    /// Whether nothing was tried yet.
+    public var isIdle: Bool {
+        if case .idle = state { true } else { false }
+    }
+
+    /// Whether its last download failed in a way that may pass.
+    public var isRetrying: Bool {
+        if case .retrying = state { true } else { false }
+    }
+
+    /// Why its last download failed, when it may pass.
+    public var retryReason: String? {
+        if case .retrying(let reason, _) = state { reason } else { nil }
     }
 }
 
@@ -435,10 +471,15 @@ extension AppModel {
     /// Downloads an attachment into the cache, or finds it there, once at a
     /// time. Ours still uploading has nothing on the server yet. With
     /// `upTo`, one larger is held (`.held`) until asked for without it.
-    public func download(_ message: Message, upTo: Int? = nil, cachedOnly: Bool = false) async {
+    /// A failure that may pass (`MediaFetch.isTransient`) leaves it
+    /// `.retrying` and schedules up to three more tries, 2, 10 and 30 seconds
+    /// apart (`MediaFetch.retryDelay`); a call that is not `automatic` (a tap,
+    /// Save, Play) starts the budget over.
+    public func download(_ message: Message, upTo: Int? = nil, cachedOnly: Bool = false, automatic: Bool = false) async {
         guard let id = message.id, let engine, message.uploadState != .pending, message.uploadState != .failed
         else { return }
         let handle = attachment(id)
+        if !automatic { handle.attempts = 0 }
         // One download per attachment; a second caller waits for it, so it
         // can read the file once this returns (or, held back by a limit this
         // call does not have, fetch it whole).
@@ -446,9 +487,16 @@ extension AppModel {
         switch handle.state {
         case .ready: return
         case .held where upTo != nil: return
-        case .idle, .downloading, .held, .failed: break
+        // A retry is already scheduled: the tile showing again must not start a second.
+        case .retrying where automatic && handle.retry != nil: return
+        case .idle, .downloading, .held, .failed, .retrying: break
         }
+        handle.retry?.cancel()
+        handle.retry = nil
         handle.state = .downloading
+        // Time to finish if the app leaves the front mid-transfer (the iPhone's grace period).
+        let work = platform.backgroundWork
+        let background = work.begin(name: "Attachment download", onExpire: {})
         // Owned by the model, not the view that asked: a lazy row is made and
         // dropped as the list lays out, and its task's cancellation would cut
         // the download off (as it once did photos, see `ImageCache`).
@@ -459,14 +507,69 @@ extension AppModel {
                 handle.state = .idle
             } catch Engine.Failure.largeAttachment(let size) {
                 handle.state = .held(size)
+            } catch Engine.Failure.attachmentWithoutKey where automatic {
+                // A paid one not bought yet: nothing wrong with it, nothing to fetch.
+                handle.state = .idle
             } catch {
-                handle.state = .failed(PeelError.noted(error, couldNot: "download"))
+                let reason = PeelError.noted(error, couldNot: "download")
+                if MediaFetch.isTransient(error) {
+                    handle.attempts += 1
+                    handle.state = .retrying(reason: reason, attempt: handle.attempts)
+                    self.scheduleRetry(of: message, userAsked: !automatic, handle)
+                } else {
+                    handle.state = .failed(reason)
+                }
             }
             handle.progress = nil
             handle.download = nil
+            work.end(background)
         }
         handle.download = download
         await download.value
+    }
+
+    /// Tries `message` again after the next delay of the schedule, if any is
+    /// left; the model's task, so it outlives the view.
+    private func scheduleRetry(of message: Message, userAsked: Bool, _ handle: AttachmentHandle) {
+        handle.retrying = (message, userAsked)
+        guard let delay = MediaFetch.retryDelay(attempt: handle.attempts) else { return }
+        handle.retry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            handle.retry = nil
+            await self.fetch(message, userAsked: userAsked)
+        }
+    }
+
+    /// A tap's fetch, or an automatic one that applies the setting and the limits again.
+    private func fetch(_ message: Message, userAsked: Bool) async {
+        if userAsked {
+            await download(message, automatic: true)
+        } else {
+            await autoDownload(message)
+        }
+    }
+
+    /// Tries every attachment that failed in a way that may pass once more,
+    /// with a fresh budget: as the app returns to the front and when the
+    /// connection comes back. One that failed for good stays failed.
+    public func retryPendingMedia() {
+        for handle in attachmentHandles.values {
+            guard handle.isRetrying, handle.download == nil, let pending = handle.retrying else { continue }
+            handle.retry?.cancel()
+            handle.retry = nil
+            handle.attempts = 0
+            Task { await self.fetch(pending.message, userAsked: pending.userAsked) }
+        }
+    }
+
+    /// A received attachment, as it arrives: fetched through `autoDownload`
+    /// (the setting and the limits) without waiting for its tile to show.
+    /// Not a paid one (nothing of it is fetched until bought).
+    func autoDownloadReceived(_ message: Message) {
+        guard !message.fromMe, !message.deleted, message.type == MessageType.attachment, message.id != nil,
+              message.attachmentPriceMsat == nil else { return }
+        Task { await self.autoDownload(message) }
     }
 
     /// Lets the person pick where the file goes, then copies it there
@@ -528,34 +631,34 @@ extension AppModel {
         message.id.flatMap { attachment($0).downloaded?.kind } ?? message.attachmentKind
     }
 
-    /// Downloads an attachment as it shows: images whole, videos and
-    /// recordings up to `Engine.autoDownloadLimit` (larger ones are held).
-    /// With Auto download media off it only finds what is already in the
-    /// cache; anything else waits for `awaitsManualDownload`'s button.
+    /// Downloads an attachment as it shows, as `AutoDownloadPolicy` decides:
+    /// images up to `Engine.autoDownloadImageLimit`, videos and recordings
+    /// up to `Engine.autoDownloadLimit`, larger ones held for a tap, files
+    /// never. With Auto download media off it only finds what is already in
+    /// the cache; anything else waits for `awaitsManualDownload`'s button.
     public func autoDownload(_ message: Message) async {
-        // Voice messages and the like are not images or videos: they keep downloading.
-        guard autoDownloadsMedia || !isPicture(message) else {
-            await download(message, cachedOnly: true)
-            return
+        let kind = message.attachmentKind
+        switch AutoDownloadPolicy.decide(kind: kind, size: message.fileSize, setting: autoDownloadsMedia) {
+        case .fetchNow(let limit):
+            await download(message, upTo: limit, automatic: true)
+        case .cachedOnly:
+            await download(message, cachedOnly: true, automatic: true)
+        case .hold:
+            // The engine holds it by its declared size, after looking in the cache.
+            await download(message, upTo: AutoDownloadPolicy.limit(for: kind), automatic: true)
         }
-        let media = message.attachmentKind == .video || message.attachmentKind == .audio
-        await download(message, upTo: media ? Engine.autoDownloadLimit : nil)
     }
 
-    /// An image or a video, by what the message declares.
-    private func isPicture(_ message: Message) -> Bool {
-        message.attachmentKind == .image || message.attachmentKind == .video
-    }
-
-    /// Whether an image or video is not here and will not be fetched unasked
-    /// (Auto download media is off): its tile shows a button instead.
+    /// Whether an image, video or recording is not here and will not be
+    /// fetched unasked (Auto download media is off): its tile shows a button.
     public func awaitsManualDownload(_ message: Message) -> Bool {
-        guard !autoDownloadsMedia, isPicture(message), let id = message.id else { return false }
+        guard !autoDownloadsMedia, AutoDownloadPolicy.limit(for: message.attachmentKind) != nil,
+              let id = message.id else { return false }
         let handle = attachment(id)
         guard handle.file == nil else { return false }
         switch handle.state {
         case .idle, .failed: return true
-        case .downloading, .ready, .held: return false
+        case .downloading, .ready, .held, .retrying: return false
         }
     }
 

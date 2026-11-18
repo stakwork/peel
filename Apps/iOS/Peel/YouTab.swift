@@ -256,18 +256,23 @@ private struct PINTimeoutRow: View {
 }
 
 /// The amount over which a payment or boost takes a second tap.
-/// Auto download media: off, images and videos wait for a tap.
+/// Auto download media: off, images, videos, voice messages and files wait for a tap.
 private struct AutoDownloadMediaRow: View {
     @Environment(AppModel.self) private var model
     @State private var problem: String?
 
     var body: some View {
-        Toggle("Auto download media", isOn: Binding(get: { model.autoDownloadsMedia }, set: { on in
-            Task {
-                do { try await model.setAutoDownloadsMedia(on) } catch { problem = PeelError.problem(error) }
-            }
-        }))
-        .tint(Theme.accent)
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Auto download media", isOn: Binding(get: { model.autoDownloadsMedia }, set: { on in
+                Task {
+                    do { try await model.setAutoDownloadsMedia(on) } catch { problem = PeelError.problem(error) }
+                }
+            }))
+            .tint(Theme.accent)
+            Text("Off: images, videos, voice messages and files wait for a tap.")
+                .phoneFont(.secondary)
+                .foregroundStyle(Theme.secondaryText)
+        }
         if let problem { ProblemText(problem) }
     }
 }

@@ -295,9 +295,9 @@ public struct ChatRow: Identifiable, Equatable, Sendable {
             rows[index].boosts = boostsOn(rows[index].message)
             rows[index].purchase = rows[index].message.id.flatMap { purchases[$0] }
         }
-        // Only boosts on our messages are new: above the first of those.
+        // A boost from someone else, on any message, is new: above the first of those.
         if let after = newAfter, let index = rows.firstIndex(where: { row in
-            row.message.fromMe && (row.boosts?.boosts.contains { !$0.fromMe && ($0.serverIndex ?? -1) > after } ?? false)
+            (row.boosts?.boosts.contains { !$0.fromMe && ($0.serverIndex ?? -1) > after } ?? false)
         }) {
             rows[index].startsNew = true
         }

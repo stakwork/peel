@@ -149,6 +149,23 @@ struct MigrationTests {
         #expect(found == shippedSchemaV23)
     }
 
+    /// v35 puts boosts (29) in the preview index, which the sidebar's query
+    /// names, so a database from before it still opens and previews any boost.
+    @Test func v35PutsBoostsInThePreviewIndex() async throws {
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v34")
+        let before = try await queue.read { try String.fetchOne($0, sql: "SELECT sql FROM sqlite_master WHERE name = 'message_preview'") }
+        #expect(before?.contains("5, 32") == true)
+        try queue.close()
+        let storage = try profile.storage()
+        let sql = try rows(profile, "SELECT sql FROM sqlite_master WHERE name = 'message_preview'")
+            .first?["sql"] as String?
+        #expect(sql?.contains("type IN (5, 29, 32)") == true)
+        // The query's terms, so `INDEXED BY message_preview` can use it.
+        #expect(sql?.contains("noWords = 0 AND (type IN (0, 6) OR (type IN (5, 29, 32) AND deleted = 0))") == true)
+        #expect(try #require(try await first(storage.conversations())).isEmpty)
+    }
+
     /// v27 marks the control messages stored before it, in direct messages only.
     @Test func v27MarksStoredControlMessages() throws {
         let queue = try profile.queue()
@@ -336,7 +353,8 @@ struct MigrationTests {
     }
 
     /// Unread counts and Mark as unread still search `message_unread`, which
-    /// holds `noWords`, so only a boost reads its row.
+    /// holds `noWords` and now covers the query (no table row is read, so SQLite
+    /// says "COVERING INDEX").
     @Test func unreadCountsStillSearchTheUnreadIndex() throws {
         let storage = try profile.storage()
         let plan = try storage.pool.read { db in
@@ -345,7 +363,8 @@ struct MigrationTests {
                 WHERE m.chat = '02aa' AND \(Storage.countsAsUnreadSQL) AND m.serverIndex > 5
                 """).map { $0["detail"] as String }
         }
-        #expect(plan.first == "SEARCH m USING INDEX message_unread (chat=? AND fromMe=? AND type=? AND serverIndex>?)")
+        #expect(plan.first?.hasPrefix("SEARCH m USING ") == true)
+        #expect(plan.first?.hasSuffix("INDEX message_unread (chat=? AND fromMe=? AND type=? AND serverIndex>?)") == true)
     }
 
     /// The live constants that shipped migrations froze as literals. Queries build

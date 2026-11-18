@@ -646,6 +646,16 @@ extension Storage {
             // connection may hold this alone, with no methods.
             try db.execute(sql: "ALTER TABLE walletConnection ADD COLUMN signIn TEXT")
         }
+        migrator.registerMigration("v35") { db in
+            // Any boost ends a conversation's preview (`conversationsSQL`):
+            // the index holds boosts too (29). The terms are the query's
+            // own, as SQLite needs to use it.
+            try db.execute(sql: """
+                DROP INDEX IF EXISTS message_preview;
+                CREATE INDEX message_preview ON message (chat, timestamp)
+                WHERE noWords = 0 AND (type IN (0, 6) OR (type IN (5, 29, 32) AND deleted = 0));
+                """)
+        }
         return migrator
     }
 }

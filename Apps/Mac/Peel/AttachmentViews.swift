@@ -486,7 +486,8 @@ struct PendingFilesTray: View {
         ScrollView(.horizontal) {
             HStack(spacing: Theme.Space.sm) {
                 ForEach(files, id: \.self) { file in
-                    PendingFile(file: file)
+                    VStack(alignment: .leading, spacing: 4) {
+                        PendingFile(file: file)
                         .overlay(alignment: .topTrailing) {
                             Button {
                                 model.removeFile(file, from: composer)
@@ -500,6 +501,9 @@ struct PendingFilesTray: View {
                             .help("Remove \(file.lastPathComponent)")
                             .offset(x: 5, y: -5)
                         }
+                        // The agent's DM only: a picture's switch for the model.
+                        ModelSightToggle(file: file, composer: composer)
+                    }
                 }
                 Button {
                     model.chooseFiles(for: composer)
@@ -513,7 +517,8 @@ struct PendingFilesTray: View {
                 }
                 .buttonStyle(.plain)
                 .help("Add files")
-                AttachmentPriceField(composer: composer)
+                // Nothing is sold to the agent.
+                if model.sellsFiles(composer) { AttachmentPriceField(composer: composer) }
             }
             .padding(.top, Theme.Space.sm)
             .padding(.horizontal, 2)
@@ -621,8 +626,10 @@ extension FileDrop {
         let composer: ComposerID
         private var drag: NSPasteboard { NSPasteboard(name: .drag) }
 
-        func validateDrop(info: DropInfo) -> Bool { PasteboardFiles.hasFiles(drag) }
-        func dropEntered(info: DropInfo) { model.dropTargeted(PasteboardFiles.hasFiles(drag), composer: composer) }
+        private var takes: Bool { model.takesFiles(composer) && PasteboardFiles.hasFiles(drag) }
+
+        func validateDrop(info: DropInfo) -> Bool { takes }
+        func dropEntered(info: DropInfo) { model.dropTargeted(takes, composer: composer) }
         func dropExited(info: DropInfo) { model.dropTargeted(false, composer: composer) }
 
         func performDrop(info: DropInfo) -> Bool {

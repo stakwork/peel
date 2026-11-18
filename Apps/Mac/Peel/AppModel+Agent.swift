@@ -76,7 +76,7 @@ final class MacAgent: AgentHost {
     /// (reads only if the agent chat did not open); the engine answers only
     /// once its contact is set (`Setting.deviceAgent`).
     func deviceRequests(for engine: Engine) -> DeviceRequestHandler? {
-        guard let agent = deviceCards.model?.agent else { return DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias }).handler }
+        guard let agent = deviceCards.model?.agent else { return DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias }, attachments: AttachmentReader(engine: engine)).handler }
         return deviceCards.handler(for: engine, agent: agent)
     }
 

@@ -189,6 +189,8 @@ public final class AppModel {
     public var dropTarget: ComposerID?
     /// The price in sats, as typed, the files in a composer are sold for; empty for free.
     public var attachmentPrices: [ComposerID: String] = [:]
+    /// The pictures in the agent chat's tray its model may look at (off until the person turns one on).
+    var modelSight = ModelSight()
     /// The composer whose Send sats panel is open, from its bolt.
     public var sendingSats: ComposerID?
     /// Bumped to put the cursor in a composer.
@@ -1684,6 +1686,7 @@ public final class AppModel {
             .forEach { IncomingFiles.discard($0) }
         pendingFiles = [:]
         attachmentPrices = [:]
+        modelSight.removeAll()
         composerFocus = [:]
         dropTarget = nil
         viewer = nil

@@ -7,16 +7,22 @@ import PeelDiagnostics
 /// chat reads (docs/agent-on-strut.md, "Request types"), each through a
 /// Sphinx read tool (`SphinxTools`), whose `ChatData` strut's model reads,
 /// and `diagnostics.latest`, Peel's own last crash or run record, redacted
-/// as the "Show record" sheet shows it (docs/diagnostics.md). Any other
+/// as the "Show record" sheet shows it (docs/diagnostics.md), and
+/// `attachments.read`, the text of an attachment in the agent's own DM
+/// (`AttachmentReader`). Any other
 /// kind is refused, said plainly.
 public struct DeviceReads: Sendable {
     let tools: SphinxTools
     /// The user's own name, removed from a diagnostics record.
     let myAlias: @Sendable () async -> String?
+    /// Reads the agent's DM's attachments (`attachments.read`); none where
+    /// the engine is not at hand, which then refuses the kind.
+    let attachments: AttachmentReader?
 
-    public init(storage: Storage, myAlias: @escaping @Sendable () async -> String?) {
+    public init(storage: Storage, myAlias: @escaping @Sendable () async -> String?, attachments: AttachmentReader? = nil) {
         tools = SphinxTools(storage: storage)
         self.myAlias = myAlias
+        self.attachments = attachments
     }
 
     /// The handler `Engine.answerDeviceRequests` takes, for reads only.
@@ -64,6 +70,8 @@ public struct DeviceReads: Sendable {
             return (tools.unseenMessages, input(["chat": args["chat"]]))
         case "chats.search":
             return (tools.search, input(["query": args["q"], "chat": args["chat"], "limit": args["limit"]]))
+        case "attachments.read":
+            return attachments.map { ($0.tool, input(["uuid": args["uuid"], "offset": args["offset"]])) }
         case "diagnostics.latest":
             return (diagnostics, .object([:]))
         default:

@@ -530,7 +530,7 @@ is a short plan. Update the status and the journal when you finish something.
   `WebPresenting`, `CallProvider` (with `talk`, a Talk call's room) and `OngoingCall`, `TalkMedia`, and `AgentHost`, the
   agent's PeelAgent side); `ChatRow` (`Sender`, `Quote`, the rows built
   once per change; in a tribe a member's deliverables and the proposals
-  their post made, `strutProposals`); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
+  their post made, `strutProposals`); `ModelSight` (which pictures waiting in the agent chat's composer its model may see, off by default, dropped with the file; the shared `ModelSightToggle`); `PaymentAttempt`; `PaymentPaging` (Payments' limit and
   whether the server has more); `PaymentItem+Display`; `Formatting`
   (counts and their nouns, times and dates, offsets); `Labels` (a chat's
   title, Leave and Remove's words, a tribe's membership notes, a refused
@@ -971,7 +971,7 @@ is a short plan. Update the status and the journal when you finish something.
   Linux too: `swift test --filter PeelDiagnosticsTests`
 - `Sources/PeelAgent/` — the device side of the agent in strut: the Sphinx
   tools over PeelCore's storage, the device requests, and the strut and
-  bridge Peel ships (AgentKit and PeelCore; no AppKit or UIKit)
+  bridge Peel ships (AgentKit and PeelCore; no AppKit or UIKit, but `DocumentReader.swift`, the system's document reader)
   - `SphinxTools.swift` — the read tools under the official Mac app's names
     (`get_contacts_and_tribes`, `read_recent_messages`,
     `read_unseen_messages`, `read_threads`) and Peel's `search_messages`,
@@ -990,6 +990,13 @@ is a short plan. Update the status and the journal when you finish something.
     workspace gets its own card and its "Always allow" (`peerCall`), every
     other step the record's card by its title); a card past
     the request's time is `expired`; every other kind goes to `DeviceReads`
+  - `AttachmentRead.swift`, `AttachmentText.swift`, `AudioTranscribing.swift`,
+    `DocumentReader.swift` — `attachments.read` (`sphinx/attachment`,
+    docs/agent-on-strut.md, "Built: attachments in the agent's DM"):
+    `AttachmentReader` (only the user's own attachment in the agent's DM,
+    framed as `ChatData`, in parts of 10,000 characters, kept by uuid),
+    `AttachmentText` (Vision, PDFKit, text, documents, speech by
+    kind), `AudioTranscribing` (the seam for on-device speech)
   - `ChatDirectory.swift` — a chat by the name the agent gives: chat id,
     exact, normalised, without spaces, part of a name, then typos;
     ambiguous rather than a guess

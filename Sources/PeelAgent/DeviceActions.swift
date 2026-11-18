@@ -104,7 +104,7 @@ public struct DeviceActions: Sendable {
     ) {
         self.engine = engine
         tools = SphinxTools(storage: engine.storage)
-        reads = DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias })
+        reads = DeviceReads(storage: engine.storage, myAlias: { await engine.myAlias }, attachments: AttachmentReader(engine: engine))
         self.rules = rules
         grants = SendGrants(beside: rules)
         self.proposals = proposals

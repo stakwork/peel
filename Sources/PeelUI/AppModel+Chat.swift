@@ -120,10 +120,30 @@ extension AppModel {
         replyTargets[composer] = nil
     }
 
-    /// Whether files can go with what `composer` sends: not the agent
-    /// chat's, nor its DM's (its agent opens no files yet).
+    /// Whether files can go with what `composer` sends: the agent's DM
+    /// takes them too (its agent reads them, `AttachmentText`).
     public func takesFiles(_ composer: ComposerID) -> Bool {
-        composer.takesFiles && composer.chat != agentChat
+        composer.takesFiles
+    }
+
+    /// Whether `file`, waiting in `composer`, has the "Let the model see
+    /// this picture" switch: a picture in the agent chat only.
+    public func offersModelSight(_ file: URL, in composer: ComposerID) -> Bool {
+        isAgentChat(composer) && ModelSight.offers(file)
+    }
+
+    public func modelMaySee(_ file: URL, in composer: ComposerID) -> Bool {
+        modelSight.allows(file, in: composer)
+    }
+
+    public func setModelMaySee(_ on: Bool, for file: URL, in composer: ComposerID) {
+        guard offersModelSight(file, in: composer) else { return }
+        modelSight.set(on, for: file, in: composer)
+    }
+
+    /// Whether `composer` may sell files and take a price for them: not the agent's DM.
+    public func sellsFiles(_ composer: ComposerID) -> Bool {
+        takesFiles(composer) && !isAgentChat(composer)
     }
 
     /// Whether `composer` is the agent chat's: its DM's.
@@ -316,7 +336,9 @@ extension AppModel {
         Diagnostics.setAction(.send)
         defer { Diagnostics.setAction(.other) }
         let files = pendingFiles[composer] ?? []
-        let priceText = attachmentPrices[composer]
+        // Nothing is sold to the agent, even by a price left over from another chat.
+        let priceText = isAgentChat(composer) ? nil : attachmentPrices[composer]
+        let seen = modelSight.take(files, from: composer)
         let priceSats = priceText.flatMap { UInt64($0) }
         let reply = replyTargets[composer]
         let replyTo = reply?.uuid
@@ -336,7 +358,8 @@ extension AppModel {
             }
         }
         let outcome = await engine.sendAttachments(
-            files, text: text, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats
+            files, text: text, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats,
+            modelMaySee: isAgentChat(composer) ? seen : []
         ) { [weak self] file, id in
             // Shown from this Mac while it uploads.
             Task { @MainActor in self?.attachment(id).localFile = file }
@@ -361,6 +384,7 @@ extension AppModel {
             conversationNotices[chat] = refused.map(\.reason).joined(separator: " ")
             // What did not go waits in the composer again, with the reply it was for.
             pendingFiles[composer, default: []].insert(contentsOf: refused.map(\.file), at: 0)
+            modelSight.restore(seen.intersection(refused.map(\.file)), in: composer)
             // With their price: a refused paid file must never go again free.
             if let priceText, !priceText.isEmpty { attachmentPrices[composer] = priceText }
             if replyTargets[composer] == nil { replyTargets[composer] = reply }
@@ -407,6 +431,7 @@ extension AppModel {
 
     public func removeFile(_ url: URL, from composer: ComposerID) {
         pendingFiles[composer]?.removeAll { $0 == url }
+        modelSight.drop(url, from: composer)
         release(url)
     }
 

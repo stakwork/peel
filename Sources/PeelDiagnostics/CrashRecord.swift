@@ -266,6 +266,8 @@ extension DiagnosticEvent {
         if let value = wantsMic { parts.append("wantsMic=\(value)") }
         if let value = routeReason { parts.append("routeReason=\(value)") }
         if let value = callKitError { parts.append("callKitError=\(value)") }
+        if let value = attachmentKind { parts.append("attachment=\(value.rawValue)") }
+        if let value = attachmentOutcome { parts.append("outcome=\(value.rawValue)") }
         if let value = errorDetail { parts.append("detail=\"\(value)\"") }
         if let value = milliseconds { parts.append("took=\(value)ms") }
         if count > 1 { parts.append("x\(count)") }

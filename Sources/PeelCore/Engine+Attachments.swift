@@ -15,11 +15,14 @@ extension Engine {
     /// disk meanwhile). `priceSats` sells it, as the official apps do: the
     /// price goes in the media token and, in a direct message, the key stays
     /// out of the message until a buyer pays (see `answerPurchase`).
+    /// `modelMaySee` marks a picture the agent's model may look at, not only
+    /// read the text of (`MessageMetadata.vision`); it counts only in the
+    /// agent's own DM and is dropped anywhere else.
     /// Returns the row's id.
     @discardableResult
     public func sendAttachment(
         _ file: URL, text: String = "", to pubkey: String, replyTo: String? = nil, inThread: String? = nil,
-        priceSats: UInt64? = nil, stored: (@Sendable (Int64) -> Void)? = nil
+        priceSats: UInt64? = nil, modelMaySee: Bool = false, stored: (@Sendable (Int64) -> Void)? = nil
     ) async throws -> Int64 {
         if let priceSats, priceSats == 0 || priceSats > Self.maxAttachmentPriceSats {
             throw Failure.invalidPrice
@@ -38,9 +41,11 @@ extension Engine {
             return (OutgoingFile(name: file.lastPathComponent, data: plain), plain,
                     try MediaCrypto.encrypt(plain, key: key), key)
         }.value
+        let vision = modelMaySee && pubkey == (try? agentPubkey())
         let body = try Self.attachmentBody(
             text: text, key: key, mediaType: outgoing.mediaType, token: nil,
-            replyTo: links.replyTo, thread: links.thread, draftPrice: priceSats
+            replyTo: links.replyTo, thread: links.thread, draftPrice: priceSats,
+            metadata: vision ? MessageMetadata.vision : nil
         )
         let draft = Message(
             type: MessageType.attachment, chat: pubkey, fromMe: true, body: body, content: text,
@@ -84,10 +89,11 @@ extension Engine {
     /// they arrive in order. When the file the caption rode on is refused,
     /// the text still goes on its own (best effort). Each file's row id or
     /// why it was refused, and whether the text went (true when there was
-    /// none). `stored` is as for `sendAttachment`, with the file.
+    /// none). `stored` is as for `sendAttachment`, with the file;
+    /// `modelMaySee` names the files the agent's model may look at.
     public func sendAttachments(
         _ files: [URL], text: String = "", to pubkey: String, replyTo: String? = nil, inThread: String? = nil,
-        priceSats: UInt64? = nil, stored: (@Sendable (URL, Int64) -> Void)? = nil
+        priceSats: UInt64? = nil, modelMaySee: Set<URL> = [], stored: (@Sendable (URL, Int64) -> Void)? = nil
     ) async -> (results: [(file: URL, result: Result<Int64, any Error>)], textSent: Bool) {
         var results: [(file: URL, result: Result<Int64, any Error>)] = []
         var textSent = text.isEmpty
@@ -98,7 +104,7 @@ extension Engine {
             do {
                 let id = try await sendAttachment(
                     file, text: caption, to: pubkey, replyTo: replyTo, inThread: inThread, priceSats: priceSats,
-                    stored: storedFile
+                    modelMaySee: modelMaySee.contains(file), stored: storedFile
                 )
                 results.append((file, .success(id)))
                 if !caption.isEmpty { textSent = true }
@@ -120,9 +126,12 @@ extension Engine {
     /// sends it to each buyer); a tribe keeps it, as the official apps do.
     /// Before the upload the row keeps the price as `price`, which never
     /// goes out: the sent JSON is made again with the token.
-    private static func attachmentBody(
+    /// `metadata` (a JSON object as text) goes as the body's `metadata` when
+    /// it is within `MessageMetadata.maxLength`; the time zone is added to it
+    /// as `deliver` sends.
+    static func attachmentBody(
         text: String?, key: String, mediaType: String?, token: String?, replyTo: String?, thread: String?,
-        withholdKey: Bool = false, draftPrice: UInt64? = nil
+        withholdKey: Bool = false, draftPrice: UInt64? = nil, metadata: String? = nil
     ) throws -> String {
         var fields = ["content": text ?? "", "mediaKeyForSelf": key]
         if !withholdKey { fields["mediaKey"] = key }
@@ -131,6 +140,7 @@ extension Engine {
         fields["mediaToken"] = token
         fields["replyUuid"] = replyTo
         fields["threadUuid"] = thread
+        if let metadata, metadata.utf8.count <= MessageMetadata.maxLength { fields["metadata"] = metadata }
         return try json(fields)
     }
 
@@ -175,7 +185,8 @@ extension Engine {
                 body = try Self.attachmentBody(
                     text: message.content, key: key, mediaType: message.mediaType, token: token,
                     replyTo: message.replyUUID, thread: message.threadUUID,
-                    withholdKey: price != nil && tribes[message.chat] == nil
+                    withholdKey: price != nil && tribes[message.chat] == nil,
+                    metadata: MessageMetadata.string(in: message.body)
                 )
                 try storage.setUpload(.done, id: id, body: body)
                 // Our own copy is in the cache from the start, as in the official apps.

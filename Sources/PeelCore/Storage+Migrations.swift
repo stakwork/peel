@@ -656,6 +656,18 @@ extension Storage {
                 WHERE noWords = 0 AND (type IN (0, 6) OR (type IN (5, 29, 32) AND deleted = 0));
                 """)
         }
+        migrator.registerMigration("v36") { db in
+            // What the person decided about a site asking for their
+            // location (iPhone's page sheet): by the origin Peel loaded.
+            // Never a position: only the decision.
+            try db.execute(sql: """
+                CREATE TABLE siteLocationGrant (
+                    origin TEXT PRIMARY KEY NOT NULL,
+                    allowed INTEGER NOT NULL,
+                    precise INTEGER NOT NULL,
+                    decidedAt INTEGER NOT NULL);
+                """)
+        }
         return migrator
     }
 }

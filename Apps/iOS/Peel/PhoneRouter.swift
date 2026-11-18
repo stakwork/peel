@@ -63,7 +63,7 @@ enum PaymentsRoute: Hashable {
 
 /// What You can push.
 enum YouRoute: Hashable {
-    case agent, words, changePIN, boostAmount, server, connectedApps, diagnostics
+    case agent, words, changePIN, boostAmount, server, connectedApps, siteLocation, diagnostics
 }
 
 /// Which tab is shown and each tab's stack: the one place the phone's

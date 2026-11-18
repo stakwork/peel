@@ -18,7 +18,10 @@ struct ModelSightToggle: View {
             )
             VStack(alignment: .leading, spacing: 2) {
                 Toggle(isOn: on) {
-                    Text(ModelSight.title).font(Theme.font(11, .medium)).lineLimit(1)
+                    // Two lines where one does not fit (the phone's larger text).
+                    Text(ModelSight.title).font(Theme.font(11, .medium))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)

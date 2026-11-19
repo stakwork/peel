@@ -147,8 +147,17 @@ final class PhoneRouter {
 
     /// A `peel://open?url=<address>` link (`PublicAppLink`): the app at that
     /// address over everything, loaded directly (strut's R7), once Peel is
-    /// unlocked. False for any other link.
+    /// unlocked. A box's `peel://strut/link?…` (`BoxLinkOffer`): its
+    /// question over You once Peel is unlocked (`MainTabs`), or why Peel
+    /// won't sign it there. False for any other link.
     func open(peelLink url: URL) -> Bool {
+        if let offer = BoxLinkOffer(peelLink: url) {
+            model.boxes.take(offer)
+            // You's own page, where the boxes are listed.
+            tab = .you
+            you = []
+            return true
+        }
         guard let link = PublicAppLink(peelLink: url) else { return false }
         if model.phase == .ready {
             orgPage = nil

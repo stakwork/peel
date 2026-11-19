@@ -35,6 +35,7 @@ struct YouTab: View {
                 }
                 .phoneRows(.grouped)
                 StadeumSection()
+                BoxesSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
                         LabeledContent("Twelve words", value: model.wordsConfirmed ? "" : "Not checked yet")

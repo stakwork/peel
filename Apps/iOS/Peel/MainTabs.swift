@@ -59,10 +59,26 @@ struct MainTabs: View {
             }
         })
         // Its workspace no longer in use (revoked, disconnected, renewed
-        // without it): the page and its token go.
-        .onChange(of: model.stadeum.live) { _, live in
-            if let page = router.orgPage, !live.contains(where: { $0.id == page.peer }) { router.orgPage = nil }
+        // without it), or its box no longer linked: the page and its token go.
+        .onChange(of: model.stadeum.live) { closeGoneOrgPage() }
+        .onChange(of: model.boxes.links) { closeGoneOrgPage() }
+        // A box's link waiting for the person's yes (`Boxes.asking`): nothing
+        // is signed without it. The alert's buttons answer it; no other way shuts it.
+        .alert(
+            model.boxes.asking.map(BoxWords.title) ?? "",
+            isPresented: Binding(get: { model.boxes.asking != nil }, set: { _ in }),
+            presenting: model.boxes.asking
+        ) { _ in
+            Button("Link") { model.boxes.accept() }
+            Button("Cancel", role: .cancel) { model.boxes.decline() }
+        } message: { offer in
+            Text(BoxWords.question(offer))
         }
+    }
+
+    private func closeGoneOrgPage() {
+        guard let page = router.orgPage else { return }
+        if !model.stadeum.live.contains(where: { $0.id == page.peer }), !model.boxes.shows(page) { router.orgPage = nil }
     }
 }
 

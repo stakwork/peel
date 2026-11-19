@@ -286,7 +286,7 @@ struct AppPage: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-            page.policy(for: response, downloads: false)
+            StrutPage.policy(for: response, downloads: false)
         }
 
         func webView(

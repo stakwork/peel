@@ -8,7 +8,8 @@ import SwiftUI
 /// server: where it is, whether it answered and with how many tools (and
 /// how many ask first), which agents use it, Test and Remove. Add MCP
 /// server registers one. Below, the Stadeum workspaces
-/// paired as peers (`StadeumSection`).
+/// paired as peers (`StadeumSection`), and the strut boxes this account is
+/// linked to (`BoxesSection`).
 struct ConnectionsSection: View {
     @Environment(AppModel.self) private var model
     @State private var adding = false
@@ -44,6 +45,7 @@ struct ConnectionsSection: View {
                     .padding(.horizontal, 4)
             }
             StadeumSection()
+            BoxesSection()
         }
         // Read again whenever strut is (again) reachable.
         .task(id: model.memoryServer?.base) { await model.loadConnections() }

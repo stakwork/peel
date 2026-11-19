@@ -36,6 +36,8 @@ struct MainView: View {
             }
             .webPaneBeside(model.web)
         }
+        // A box's page goes with its link.
+        .onChange(of: model.boxes.links) { model.web.boxesChanged(model.boxes) }
         // A Hive link to a paired workspace's app opens the app; any other
         // link goes where a message's link goes (`WebPane.linkAction`).
         .environment(\.openURL, OpenURLAction { url in
@@ -52,17 +54,25 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: model.viewer == nil)
-        // The call being joined is on another device of yours too: asked
-        // here, before anything connects, since the call window is not up yet.
+        // A box's link waiting for a yes (`BoxLinkConfirm`), and the call
+        // being joined that is on another device of yours too: asked here,
+        // before anything connects, since the call window is not up yet.
         .overlay(alignment: .top) {
-            if model.calls.choosingDevice != nil {
-                CallDeviceConfirm(
-                    cancel: { model.calls.cancelDeviceChoice() },
-                    stay: { model.calls.stayOnBothDevices() },
-                    switchHere: { model.calls.switchToThisDevice() }
-                )
-                .frame(maxWidth: 460)
-                .padding(Theme.Space.md)
+            VStack(spacing: 0) {
+                if let offer = model.boxes.asking {
+                    BoxLinkConfirm(offer: offer)
+                        .frame(maxWidth: 460)
+                        .padding(Theme.Space.md)
+                }
+                if model.calls.choosingDevice != nil {
+                    CallDeviceConfirm(
+                        cancel: { model.calls.cancelDeviceChoice() },
+                        stay: { model.calls.stayOnBothDevices() },
+                        switchHere: { model.calls.switchToThisDevice() }
+                    )
+                    .frame(maxWidth: 460)
+                    .padding(Theme.Space.md)
+                }
             }
         }
         .peelMenuHost(main: true)

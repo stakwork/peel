@@ -115,6 +115,19 @@ public struct Profile: Sendable {
         }
     }
 
+    /// The strut boxes this account's key is linked to (`BoxLink`, strut's
+    /// plans/people-and-hosts.md §2.1): each box's address, the member and
+    /// their token. Beside `hive`, never in it. In the Keychain for an app
+    /// profile, renewed while the Mac is locked too, like Hive's pairing.
+    /// The account's own, so it goes with the account (`delete`).
+    public var boxes: any SecretItem {
+        switch kind {
+        case .app: KeychainItem(service: "dev.peel.boxes", account: name,
+                                accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+        case .development: FileItem(file: directory.appendingPathComponent("boxes"))
+        }
+    }
+
     /// Where the agent's database lives, beside the account's.
     public var agentDatabase: URL { directory.appendingPathComponent("agent.sqlite") }
 
@@ -165,6 +178,8 @@ public struct Profile: Sendable {
         try strutKey.delete()
         try brain.delete()
         try homePeer.delete()
+        // The boxes' links are this account key's: a restore links again from the box.
+        try boxes.delete()
         // An app profile's pairing is the device's and stays; a development one's is a file beside the words.
         if !keepsHive { try hive.delete() }
         try biometrics?.turnOff()

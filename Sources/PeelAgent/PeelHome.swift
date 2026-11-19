@@ -21,7 +21,7 @@ public struct HomeLink: Sendable, Equatable, CustomStringConvertible, CustomDebu
     public var customMirror: Mirror { Mirror(self, children: ["host": host], displayStyle: .struct) }
 
     public init?(_ link: URL) {
-        guard let values = peelLink(link, host: "home-setup", names: ["host", "code"]),
+        guard let values = PeelLink.values(link, host: "home-setup", names: ["host", "code"]),
               let host = values["host"], let code = values["code"] else { return nil }
         // A name or address with an optional port, in ASCII; nothing that could reach past it.
         let ascii = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
@@ -64,22 +64,6 @@ public struct HomeLink: Sendable, Equatable, CustomStringConvertible, CustomDebu
         /// Holding Peel Home, packed to send it back.
         case sendBack
     }
-}
-
-/// The values of a `peel://<host>?…` link that names exactly `names`, each
-/// once, and nothing else: no path, user or fragment. Nil for any other
-/// link. Any page can open one, so it is read only through here.
-func peelLink(_ link: URL, host: String, names: Set<String>) -> [String: String]? {
-    guard link.scheme?.lowercased() == "peel", link.host?.lowercased() == host,
-          link.path.isEmpty || link.path == "/", link.user == nil, link.fragment == nil,
-          let items = URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems,
-          items.count == names.count, Set(items.map(\.name)) == names else { return nil }
-    var values: [String: String] = [:]
-    for item in items {
-        guard let value = item.value else { return nil }
-        values[item.name] = value
-    }
-    return values
 }
 
 /// What a move carries from this Mac (docs/always-on.md, "What moves"):

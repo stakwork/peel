@@ -98,6 +98,9 @@ final class CallSession {
     private(set) var camera: String?
     /// A device that went away mid-call, said quietly under the bar.
     private(set) var deviceNotice: String?
+    /// The built-in microphone to offer, one click away, when the speaker
+    /// moved to the Mac but the microphone stayed on another device.
+    private(set) var micSwitchOffer: (name: String, id: String)?
     /// What you share, while you share it (and while it is being published).
     var sharing: ScreenShare.Content? { share?.content }
     /// Whether your running share is paused: its track is muted, the
@@ -165,6 +168,11 @@ final class CallSession {
     @ObservationIgnored private var seenScreenTracks: Set<String> = []
     @ObservationIgnored private var changes: AnyCancellable?
     @ObservationIgnored private var audioSettleTask: Task<Void, Never>?
+    /// The microphone after voice processing, as sent; read by the watchdog.
+    @ObservationIgnored private let micMeter = CallMicMeter()
+    @ObservationIgnored private var micMeterAdded = false
+    @ObservationIgnored private var micWatchdog: Task<Void, Never>?
+    @ObservationIgnored private var micRetryTask: Task<Void, Never>?
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
     /// Each person as last read, by identity, with the name and metadata
     /// it was read from: the room changes many times a second while people
@@ -178,6 +186,11 @@ final class CallSession {
     /// The session audio device changes go to: the newest.
     private static weak var audioDevicesOwner: CallSession?
     private static let audioSettleDelay: Duration = .milliseconds(1500)
+    /// How long the microphone may be silent before it is restarted, and
+    /// the level (linear full scale) above which it is not silent.
+    private static let micSilenceWindow: Duration = .seconds(3)
+    private static let micSilenceLevel = 0.00001
+    private static let micRetryLimit = 5
     private static let deviceLog = Logger(subsystem: "dev.peel.mac", category: "call-audio")
 
     init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) {
@@ -273,6 +286,10 @@ final class CallSession {
 
     private func connect(url: String, token: String, camera: Bool) async {
         claimAudioDevices()
+        if !micMeterAdded {
+            micMeterAdded = true
+            AudioManager.shared.add(localAudioRenderer: micMeter)
+        }
         await listenForHandoff()
         do {
             try await room.connect(url: url, token: token)
@@ -299,6 +316,15 @@ final class CallSession {
         leaving = true
         audioSettleTask?.cancel()
         audioSettleTask = nil
+        micWatchdog?.cancel()
+        micWatchdog = nil
+        micRetryTask?.cancel()
+        micRetryTask = nil
+        micSwitchOffer = nil
+        if micMeterAdded {
+            micMeterAdded = false
+            AudioManager.shared.remove(localAudioRenderer: micMeter)
+        }
         connecting?.cancel()
         await connecting?.value
         await stopSharing()
@@ -355,14 +381,33 @@ final class CallSession {
     }
 
     /// Opens the microphone track afresh, on whatever device the engine now
-    /// uses; a track left from before a device change stays silent.
-    private func reacquireMicrophone() async {
-        guard wantsMic, !leaving, !switchingMic else { return }
+    /// uses; a track left from before a device change stays silent. The
+    /// track is unpublished (which stops it) and a new one published, as
+    /// muting and unmuting would keep the same capture running. Asked while
+    /// another switch is running, it tries again shortly.
+    private func reacquireMicrophone(attempt: Int = 0) async {
+        guard wantsMic, !leaving else { return }
+        guard !switchingMic else {
+            guard attempt < Self.micRetryLimit else {
+                Self.deviceLog.error("microphone restart skipped: still switching after \(attempt) retries")
+                return
+            }
+            micRetryTask?.cancel()
+            micRetryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                await self?.reacquireMicrophone(attempt: attempt + 1)
+            }
+            return
+        }
         switchingMic = true
         defer { switchingMic = false }
         let local = room.localParticipant
         do {
-            try await local.setMicrophone(enabled: false)
+            if let publication = local.audioTracks.first(where: { $0.source == .microphone }) as? LocalTrackPublication {
+                try await local.unpublish(publication: publication)
+            }
+            guard !leaving else { return }
             try await local.setMicrophone(enabled: true)
             Self.deviceLog.info("microphone re-acquired")
         } catch {
@@ -370,6 +415,29 @@ final class CallSession {
             deviceNotice = "Could not turn the microphone on"
         }
         refresh()
+    }
+
+    /// After a device change: if the microphone is on yet delivers nothing
+    /// for a few seconds, it is restarted once; if it is still silent, the
+    /// line under the bar says so. One watchdog at a time.
+    private func startMicWatchdog() {
+        micWatchdog?.cancel()
+        micWatchdog = Task { @MainActor [weak self] in
+            for restart in [true, false] {
+                guard let self else { return }
+                _ = micMeter.take()
+                try? await Task.sleep(for: Self.micSilenceWindow)
+                guard !Task.isCancelled, wantsMic, micOn, !leaving else { return }
+                if micMeter.take() > Self.micSilenceLevel { return }
+                if restart {
+                    Self.deviceLog.info("microphone silent; restarting it")
+                    await reacquireMicrophone()
+                } else {
+                    Self.deviceLog.info("microphone still silent after a restart")
+                    deviceNotice = "Your microphone isn't picking anything up. Choose another in the device menu."
+                }
+            }
+        }
     }
 
     /// Off unpublishes the camera rather than muting it, so turning it on
@@ -525,7 +593,30 @@ final class CallSession {
         AudioManager.shared.inputDevice = device
         Self.pickedMicrophone = id
         deviceNotice = nil
+        micSwitchOffer = nil
         refreshAudioDevices()
+    }
+
+    /// The offer under the bar: the Mac's own microphone, picked, and the
+    /// microphone track restarted on it.
+    func switchToBuiltInMicrophone() {
+        let audio = AudioManager.shared
+        let device = Self.builtInMicrophone(in: audio.inputDevices) ?? audio.defaultInputDevice
+        chooseMicrophone(device.deviceId)
+        Task {
+            await reacquireMicrophone()
+            startMicWatchdog()
+        }
+    }
+
+    /// The Mac's own microphone: listed by itself, not Bluetooth.
+    private static func builtInMicrophone(in list: [AudioDevice]) -> AudioDevice? {
+        list.first { device in
+            let name = device.name.lowercased()
+            return !device.isDefault
+                && !name.contains("airpods") && !name.contains("bluetooth") && !name.contains("headset")
+                && (name.contains("macbook") || name.contains("built-in") || name.contains("microphone"))
+        }
     }
 
     func chooseSpeaker(_ id: String) {
@@ -571,6 +662,9 @@ final class CallSession {
     private func audioDevicesChanged() {
         audioSettleTask = nil
         guard !leaving else { return }
+        micSwitchOffer = nil
+        micWatchdog?.cancel()
+        micWatchdog = nil
         let audio = AudioManager.shared
         let goneMic = audio.inputDevices.contains { $0.deviceId == microphone } ? nil : microphones.first { $0.id == microphone }
         let goneSpeaker = audio.outputDevices.contains { $0.deviceId == speaker } ? nil : speakers.first { $0.id == speaker }
@@ -604,14 +698,24 @@ final class CallSession {
             microphone \(moveMic ? (audio.defaultInputDevice.name) : "kept"), \
             speaker \(moveSpeaker ? (audio.defaultOutputDevice.name) : "kept")
             """)
-        // The track bound to the old device is replaced; also when the
-        // room dropped the microphone though it is meant to be on.
-        if wantsMic, moveMic || moveSpeaker || !micOn {
+        // The speaker moved (to the Mac) but the microphone stayed on
+        // another device, say AirPods taken out: offer the built-in one.
+        if moveSpeaker, !moveMic, let builtIn = Self.builtInMicrophone(in: audio.inputDevices) {
+            let inUse = audio.inputDevices.first { $0.deviceId == microphone }
+            let inUseName = inUse.map { $0.isDefault ? audio.defaultInputDevice.name : $0.name }
+            if let inUseName, inUseName != builtIn.name {
+                micSwitchOffer = (name: builtIn.name, id: builtIn.deviceId)
+                deviceNotice = "Output moved to \(audio.defaultOutputDevice.name), but your microphone is still \(inUseName)."
+            }
+        }
+        // The track bound to the old device is replaced on any change.
+        if wantsMic {
             // The engine restart from the device changes should finish before
             // the track is reopened.
             Task {
                 try? await Task.sleep(for: .milliseconds(500))
                 await reacquireMicrophone()
+                startMicWatchdog()
             }
         }
     }
@@ -896,5 +1000,41 @@ extension CallSession: RoomDelegate {
         guard topic == CallChatWire.topic,
               let incoming = CallChatWire.decode(data, fromJamie: participant.map(Self.isJamie) ?? false) else { return }
         Task { @MainActor [weak self] in self?.receiveChat(incoming) }
+    }
+}
+
+/// The loudest level of the microphone since the last read: written by the
+/// audio engine (an `AudioRenderer`, about every 10 ms), read by the
+/// call's silence watchdog.
+final class CallMicMeter: NSObject, AudioRenderer, Sendable {
+    private let loudest = OSAllocatedUnfairLock<Double>(initialState: 0)
+
+    func render(pcmBuffer: AVAudioPCMBuffer) {
+        let level = Self.peak(pcmBuffer)
+        loudest.withLock { $0 = max($0, level) }
+    }
+
+    /// The loudest since the last read, and it starts again.
+    func take() -> Double {
+        loudest.withLock { value in
+            defer { value = 0 }
+            return value
+        }
+    }
+
+    /// The first channel's peak, in linear full scale.
+    private static func peak(_ buffer: AVAudioPCMBuffer) -> Double {
+        let frames = Int(buffer.frameLength), stride = buffer.stride
+        guard frames > 0 else { return 0 }
+        var peak: Float = 0
+        if let data = buffer.floatChannelData {
+            for frame in 0 ..< frames { peak = max(peak, abs(data[0][frame * stride])) }
+            return Double(peak)
+        }
+        if let data = buffer.int16ChannelData {
+            for frame in 0 ..< frames { peak = max(peak, abs(Float(data[0][frame * stride]) / 32768)) }
+            return Double(peak)
+        }
+        return 0
     }
 }

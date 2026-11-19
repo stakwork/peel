@@ -41,6 +41,26 @@ public struct ChatSections: Equatable, Sendable {
             combinedView = try values.decodeIfPresent(Bool.self, forKey: .combinedView) ?? false
             allRecent = try values.decodeIfPresent(Bool.self, forKey: .allRecent) ?? false
         }
+
+        /// Whether the app with key `id` (`WorkspaceApp.id`) is pinned.
+        public func isPinned(_ id: String) -> Bool { pinnedApps.contains(id) }
+
+        /// Pins the app with key `id` (last, in the order pinned) or takes it
+        /// off. The first pin opens the fold, which was no longer there to
+        /// open while nothing was pinned.
+        public mutating func setPinned(_ id: String, _ pinned: Bool) {
+            var pins = pinnedApps.filter { $0 != id }
+            if pinned {
+                if pins.isEmpty { appsOpen = true }
+                pins.append(id)
+            }
+            if pins != pinnedApps { pinnedApps = pins }
+        }
+
+        /// The pinned ones of `apps`, in their order.
+        public func pinned(_ apps: [WorkspaceApp]) -> [WorkspaceApp] {
+            apps.filter { isPinned($0.id) }
+        }
     }
 
     /// How many tribes and direct messages show before "Show all".

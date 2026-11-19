@@ -82,6 +82,19 @@ struct ChatList: View {
             .flatMap { agent in sections.unread.contains { $0.chat == agent.chat } ? nil : agent }
         let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty && agent == nil
         let recent = model.sidebarLayout.combinedView && !sections.searching
+        // The apps under the Apps row, A–Z, as the Mac's sidebar shows them: the
+        // pinned ones while open (the chevron only with some), or, searching,
+        // every app that matches. Only with Stadeum connected here.
+        let stadeumLive = !model.stadeum.live.isEmpty
+        let livePeers = Set(model.stadeum.live.map(\.id))
+        let listedApps = model.stadeum.apps.filter { $0.peer.map(livePeers.contains) ?? false }
+        let hasPins = stadeumLive && !model.sidebarLayout.pinned(listedApps).isEmpty
+        let pinnedApps: [WorkspaceApp] = {
+            guard stadeumLive else { return [] }
+            if sections.searching { return listedApps.filter { $0.matches(model.searchQuery) } }
+            return model.sidebarLayout.appsOpen ? model.sidebarLayout.pinned(listedApps) : []
+        }()
+        let showsSources = Set(listedApps.compactMap(\.peer)).count > 1
         List {
             if !sections.searching {
                 Section {
@@ -91,6 +104,10 @@ struct ChatList: View {
                         NavigationLink(value: ChatsRoute.apps) {
                             NavRow(title: "Apps", icon: WorkspaceAppIcon(nil, size: 20))
                         }
+                        .overlay(alignment: .trailing) {
+                            if hasPins { AppsFoldButton(open: $model.sidebarLayout.appsOpen) }
+                        }
+                        ForEach(pinnedApps) { PinnedAppRow(app: $0, showsSource: showsSources) }
                     }
                     // Automations is Mac-only for now; hidden on iOS until ready.
                     NavigationLink(value: ChatsRoute.threads) {
@@ -103,6 +120,14 @@ struct ChatList: View {
                 .phoneRows()
                 .listRowInsets(.vertical, 2)
                 .navigationLinkIndicatorVisibility(.hidden)
+            }
+            // Searching hides the top rows, but the apps that match still show.
+            if sections.searching, !pinnedApps.isEmpty {
+                Section {
+                    ForEach(pinnedApps) { PinnedAppRow(app: $0, showsSource: showsSources) }
+                }
+                .phoneRows()
+                .listRowInsets(.vertical, 2)
             }
             if model.diagnosticsNotice, !sections.searching {
                 Section { DiagnosticsNotice() }
@@ -198,6 +223,73 @@ struct ChatList: View {
             }
         }
         .sheet(item: $sheet) { $0.screen }
+        // Pinned apps are read without opening Apps first, and again when the
+        // workspaces change (a read under way is cut short by the next one).
+        .task(id: model.stadeum.live.map(\.id)) {
+            // Before any are listed there is no telling which pins are still
+            // there, so the saved pins decide.
+            if !model.sidebarLayout.pinnedApps.isEmpty, !model.stadeum.live.isEmpty {
+                model.stadeum.readWorkspaceApps()
+            }
+        }
+    }
+}
+
+/// The chevron over the Apps row's end: shows or hides the pinned apps under
+/// it, kept with the sidebar's layout (the Mac's `AppsFoldButton`).
+private struct AppsFoldButton: View {
+    @Binding var open: Bool
+
+    var body: some View {
+        Button {
+            open.toggle()
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .bold))
+                .rotationEffect(.degrees(open ? 0 : -90))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Pinned apps")
+        .accessibilityValue(open ? "Expanded" : "Collapsed")
+    }
+}
+
+/// A pinned app under the Apps row: its icon and title (with its workspace
+/// when the apps come from several). A tap opens it as Apps does; Unpin is
+/// its swipe and its menu.
+private struct PinnedAppRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
+    let app: WorkspaceApp
+    let showsSource: Bool
+
+    var body: some View {
+        Button {
+            if case .page(let page) = model.stadeum.opening(app) { router.orgPage = page }
+        } label: {
+            NavRow(title: showsSource ? "\(app.title) · \(app.source)" : app.title,
+                   icon: WorkspaceAppIcon(app, size: 20))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens it")
+        .contextMenu { PinToggle(app: app) }
+        .swipeActions(edge: .trailing) { PinToggle(app: app).tint(Theme.accent) }
+    }
+}
+
+/// Pin to Chats, or Unpin once it is: the menu's and the swipe's one button.
+private struct PinToggle: View {
+    @Environment(AppModel.self) private var model
+    let app: WorkspaceApp
+
+    var body: some View {
+        let pinned = model.isPinned(app)
+        Button(pinned ? "Unpin" : "Pin to Chats", systemImage: pinned ? "pin.slash" : "pin") {
+            model.setPinned(app, !pinned)
+        }
     }
 }
 

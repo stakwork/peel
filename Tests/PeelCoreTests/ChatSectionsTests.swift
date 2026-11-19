@@ -178,4 +178,41 @@ struct ChatSectionsTests {
         #expect(try await engine.sidebarLayout() == layout)
         #expect(await engine.settings().sidebarLayout == layout)
     }
+
+    @Test func pinningAppendsInOrderAndRepinDoesNotDuplicate() {
+        var layout = ChatSections.Layout()
+        layout.setPinned("@a/one", true)
+        layout.setPinned("@b/two", true)
+        layout.setPinned("@a/one", true)
+        #expect(layout.pinnedApps == ["@b/two", "@a/one"])
+        #expect(layout.isPinned("@a/one"))
+        #expect(!layout.isPinned("@c/three"))
+    }
+
+    @Test func unpinningRemovesOnlyThatApp() {
+        var layout = ChatSections.Layout()
+        layout.setPinned("@a/one", true)
+        layout.setPinned("@b/two", true)
+        layout.setPinned("@a/one", false)
+        layout.setPinned("@zzz/none", false)
+        #expect(layout.pinnedApps == ["@b/two"])
+    }
+
+    @Test func firstPinReopensAClosedFold() {
+        var layout = ChatSections.Layout()
+        layout.appsOpen = false
+        layout.setPinned("@a/one", true)
+        #expect(layout.appsOpen)
+        // A later pin leaves the person's fold alone.
+        layout.appsOpen = false
+        layout.setPinned("@b/two", true)
+        #expect(!layout.appsOpen)
+    }
+
+    @Test func layoutWithoutAppKeysKeepsDefaults() throws {
+        let layout = try JSONDecoder().decode(ChatSections.Layout.self, from: Data(#"{"tribesOpen":false}"#.utf8))
+        #expect(layout.pinnedApps.isEmpty)
+        #expect(layout.appsOpen)
+        #expect(!layout.tribesOpen)
+    }
 }

@@ -57,12 +57,17 @@ struct AppsScreen: View {
                     Button {
                         if case .page(let page) = stadeum.opening(app) { router.orgPage = page }
                     } label: {
-                        AppRow(app: app, showsSource: several)
+                        AppRow(app: app, showsSource: several, pinned: model.isPinned(app))
                     }
                     .buttonStyle(.plain)
                     // Copies a link to the app: nothing is sent, and it opens
                     // here only for someone with that workspace connected.
                     .contextMenu {
+                        let pinned = model.isPinned(app)
+                        Button(pinned ? "Unpin from Chats" : "Pin to Chats",
+                               systemImage: pinned ? "pin.slash" : "pin") {
+                            model.setPinned(app, !pinned)
+                        }
                         if let link = app.shareLink() {
                             Button("Share link", systemImage: "link") {
                                 Clipboard.copy(link.absoluteString)
@@ -155,6 +160,8 @@ struct AppsScreen: View {
 private struct AppRow: View {
     let app: WorkspaceApp
     let showsSource: Bool
+    /// Pinned to Chats: a small accent pin at the row's end.
+    var pinned = false
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.md) {
@@ -182,11 +189,18 @@ private struct AppRow: View {
                 AppStatus(app: app)
             }
             Spacer(minLength: 0)
+            if pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(.vertical, 7)
         .frame(minHeight: Theme.touchTarget)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityValue(pinned ? "Pinned to Chats" : "")
         .accessibilityHint("Opens it")
     }
 }

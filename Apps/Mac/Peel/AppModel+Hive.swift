@@ -250,22 +250,4 @@ extension AppModel {
     var showsAppSources: Bool {
         appSources.count > 1
     }
-
-    /// Whether the person pinned `app` under the sidebar's Apps row
-    /// (`ChatSections.Layout.pinnedApps`); none are until they do.
-    func isPinned(_ app: WorkspaceApp) -> Bool {
-        sidebarLayout.pinnedApps.contains(app.id)
-    }
-
-    /// Puts `app` under the sidebar's Apps row, or takes it off, kept with
-    /// the account's sidebar layout.
-    func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
-        var pins = sidebarLayout.pinnedApps.filter { $0 != app.id }
-        if pinned {
-            // The first pin shows: the row's fold, closed before, is no longer there to open.
-            if pins.isEmpty { sidebarLayout.appsOpen = true }
-            pins.append(app.id)
-        }
-        if pins != sidebarLayout.pinnedApps { sidebarLayout.pinnedApps = pins }
-    }
 }

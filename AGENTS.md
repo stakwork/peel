@@ -377,6 +377,12 @@ is a short plan. Update the status and the journal when you finish something.
     with the person's token for the iPhone (`pinned(on:)`), and A–Z
     (`byTitle`), and the version a held app of the person's own has
     waiting (`waiting`); its words for the person are PeelUI's
+    (iPhone, 2026-11-19: Pinned apps on Chats.) The pins are
+    `ChatSections.Layout.pinnedApps` with the fold `appsOpen`, one logic for
+    both apps (`Layout.isPinned`, `setPinned`, `pinned(_:)`; `AppModel`'s in
+    PeelUI's `AppModel+PinnedApps.swift`): the Mac pins from the app's pin
+    button, the iPhone from Apps' context menu ("Pin to Chats") and shows
+    them under Chats' Apps row, a chevron folding them
   - `AppVersions.swift` — one of the person's own apps' versions and
     releases as strut gives them (`GET /apps/:name/versions`, strut's
     plans/app-releases.md): the live version, held or following latest,

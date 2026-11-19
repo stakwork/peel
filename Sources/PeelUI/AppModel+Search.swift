@@ -20,6 +20,9 @@ public final class ChatSearch {
     public private(set) var current: Int?
     public private(set) var searching = false
     public private(set) var failed = false
+    /// History was still being fetched when the matches were found, so
+    /// older ones may be missing (`AppModel.runSearch`).
+    public private(set) var historySyncing = false
     /// Raised to put the cursor back in the field (⌘F while it is open).
     public var focusRequests = 0
     /// What was typed when Return came before its matches: the first of
@@ -41,6 +44,12 @@ public final class ChatSearch {
         return "\(current + 1) of \(total)"
     }
 
+    /// "Still loading older messages" while history was syncing for the
+    /// last search; nothing once a search has not run yet.
+    public var historyNote: String? {
+        historySyncing && query != nil ? "Still loading older messages" : nil
+    }
+
     public var canStepOlder: Bool { (current ?? -1) + 1 < matches.count }
     public var canStepNewer: Bool { (current ?? 0) > 0 }
 
@@ -60,12 +69,13 @@ public final class ChatSearch {
     /// Lists the matches; true when Return waited for them and there is a
     /// first to show.
     @discardableResult
-    func found(_ matches: [Message], for query: MessageQuery?, failed: Bool = false) -> Bool {
+    func found(_ matches: [Message], for query: MessageQuery?, failed: Bool = false, historySyncing: Bool = false) -> Bool {
         let showsFirst = returnAwaits != nil && returnAwaits == query && !matches.isEmpty
         returnAwaits = nil
         self.query = query
         self.matches = matches
         self.failed = failed
+        self.historySyncing = historySyncing
         current = nil
         searching = false
         return showsFirst
@@ -95,10 +105,12 @@ extension AppModel {
         }
     }
 
-    /// Closes the search; the cursor goes back to the chat's composer.
-    public func closeSearch() {
+    /// Closes the search; the cursor goes back to the chat's composer on
+    /// the Mac (`refocusComposer`; the iPhone's keyboard stays down).
+    public func closeSearch(refocusComposer: Bool = true) {
         guard let chat = search?.chat else { return }
         search = nil
+        guard refocusComposer else { return }
         composerFocus[.chat(chat), default: 0] += 1
     }
 
@@ -114,9 +126,10 @@ extension AppModel {
         search.began()
         do {
             let matches = try await storage.searchMessages(query, in: search.chat, limit: ChatSearch.limit)
+            let syncing = await engine?.isSyncingHistory ?? false
             // Typed on, or closed, meanwhile: a newer search has this.
             guard !Task.isCancelled, self.search === search, search.text == text else { return }
-            if search.found(matches, for: query) { showSearchMatch(0) }
+            if search.found(matches, for: query, historySyncing: syncing) { showSearchMatch(0) }
         } catch {
             guard !Task.isCancelled, self.search === search else { return }
             search.found([], for: query, failed: true)

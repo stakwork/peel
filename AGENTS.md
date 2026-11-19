@@ -481,7 +481,7 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+Contacts`
   (adding by code, invites, removing a contact, since when), `AppModel+TimeZones` (sender zones, local
   times, the zone setting, sharing it per chat) and `AppModel+Search` (`ChatSearch`, ⌘F's
-  matches, stepping through them with `focus(on:inThread:)`);
+  matches, stepping through them with `focus(on:inThread:)`; `historyNote` while history still syncs; `closeSearch(refocusComposer:)`, false on the iPhone);
   `ProposalWatch` (`AppModel.proposals`: the proposals shown as cards,
   Peel's own strut's and the person's on each workspace, kept as last read
   (`Storage.keepProposal`) so a restart draws them before the next read;
@@ -895,7 +895,7 @@ is a short plan. Update the status and the journal when you finish something.
   owner, how you appear in a tribe, the time zone switch; `TribeMembersScreen`),
   `ChatsLists` (Threads, Mentions, and Automations' "on your Mac for
   now"),
-  `ConversationScreen` (the header with Call and More in one capsule, the
+  `ChatSearch` (`PhoneChatSearchBar`: the search under a chat's header, from More › Search, in place of the composer; `PhoneSearchResultsSheet`, the matches as a list; over PeelUI's `ChatSearch`, main chat only), `ConversationScreen` (the header with Call and More in one capsule, the
   rows, the composer on `.floatingBar`, the thread sheet on
   `router.thread`), `MessageList` (opening at "New messages", following
   the newest at the bottom, the "N new messages" pill over `ListBottom`,

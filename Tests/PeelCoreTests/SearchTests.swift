@@ -28,6 +28,18 @@ struct SearchTests {
         try await storage.searchMessages(MessageQuery(text), in: chat, limit: 100).map(\.uuid)
     }
 
+    /// A match further back than one page of messages (`Storage.pageSize`)
+    /// is found, newest first, so the app can jump to it.
+    @Test func findsAMatchOlderThanOnePage() async throws {
+        let count = Storage.pageSize + 50
+        var messages = [message(1, "the old needle")]
+        for n in 2...count { messages.append(message(n, "filler \(n)")) }
+        messages.append(message(count + 1, "a new needle"))
+        let storage = try storage(messages)
+        let found = try await search(storage, "needle")
+        #expect(found == [uuid(count + 1), uuid(1)])
+    }
+
     /// Rows the index holds for `text`, whatever the message table says now.
     private func indexed(_ text: String) throws -> Int {
         try profile.queue().read { db in

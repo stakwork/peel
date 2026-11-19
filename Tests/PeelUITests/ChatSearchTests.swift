@@ -46,4 +46,28 @@ struct ChatSearchTests {
         #expect(!search.waitForMatches())
         #expect(!typed("").waitForMatches())
     }
+
+    /// Stepping stops at either end: up is newer, down older, and a match
+    /// far older than one page of messages is reachable like any other.
+    @Test func stepsOnlyWithinTheMatches() {
+        let search = typed("needle")
+        let old = Message.fixture(content: "an old needle", timestamp: 1_000)
+        search.found([match, old], for: needle)
+        #expect(!search.canStepNewer)
+        #expect(search.canStepOlder)
+        #expect(search.status == "2 matches")
+    }
+
+    /// Matches found while history still syncs say older ones may be
+    /// missing; a later search without it drops the note.
+    @Test func historySyncingIsNotedPerSearch() {
+        let search = typed("needle")
+        #expect(search.historyNote == nil)
+        search.found([match], for: needle, historySyncing: true)
+        #expect(search.historyNote == "Still loading older messages")
+        search.found([], for: needle, historySyncing: true)
+        #expect(search.historyNote != nil)
+        search.found([match], for: needle)
+        #expect(search.historyNote == nil)
+    }
 }

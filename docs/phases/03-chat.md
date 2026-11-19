@@ -3446,3 +3446,15 @@ its reset and its two reads of the settings). Flipping those makes it off by def
 
 Tests: `MediaFetchTests` (classification, the schedule, the policy for every kind
 with the setting on and off and at the caps). Not compiled or run here.
+
+## In-chat search on the iPhone, and Search in the Mac's ••• menu
+
+Built, not compiled or run (no Swift toolchain on the dev server). The iPhone's
+chat gets the Mac's search (`ChatSearch`, `runSearch`, unchanged storage): More ›
+Search opens `PhoneChatSearchBar` under the header (field, "3 of 27", newer/older,
+a results sheet, close) and hides the composer until it closes. A match in a
+thread opens the thread sheet; the results sheet's pick is shown only after the
+sheet is down, so sheets never stack. The Mac's tribe and direct ••• menus gain
+Search (⌘F). `ChatSearch.historyNote` says older messages may be missing while
+history syncs. Tests: `ChatSearchTests` (stepping, the note), `SearchTests` (a
+match older than one page).

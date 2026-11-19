@@ -135,7 +135,10 @@ struct DirectHeader: View {
                     HeaderMoreButton(chat: conversation.chat) { details in
                         .sections(
                             WebMenuEntries.entries(for: nil, pane: model.web),
-                            [details, ConversationMenu.notifications(for: conversation, model: model)]
+                            [.button("Search", systemImage: "magnifyingglass", shortcut: .command("f")) {
+                                model.openSearch(in: conversation.chat)
+                            },
+                             details, ConversationMenu.notifications(for: conversation, model: model)]
                         )
                     }
                 }

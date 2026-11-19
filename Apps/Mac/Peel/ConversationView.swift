@@ -372,7 +372,10 @@ struct TribeHeader: View {
         }
         return .sections(
             WebMenuEntries.entries(for: tribe, pane: model.web),
-            [.button("Members", systemImage: "person.2") { panel = .members },
+            [.button("Search", systemImage: "magnifyingglass", shortcut: .command("f")) {
+                model.openSearch(in: conversation.chat)
+             },
+             .button("Members", systemImage: "person.2") { panel = .members },
              details]
                 + (tribe.map(ConversationMenu.link) ?? [])
                 + [ConversationMenu.notifications(for: conversation, model: model)],

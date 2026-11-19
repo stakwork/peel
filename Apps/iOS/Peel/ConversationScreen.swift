@@ -58,6 +58,11 @@ struct ConversationScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let search = model.search, search.chat == chat {
+                PhoneChatSearchBar(search: search, placeholder: "Search in \(conversation?.title ?? "chat")")
+            }
+        }
         .floatingBar(.bottom) { footer(tribe: tribe) }
         .onCallBannerInset()
         .onAppear { attachVoice() }
@@ -85,6 +90,9 @@ struct ConversationScreen: View {
             ThreadSheet(thread: thread, conversation: conversation)
         }
     }
+
+    /// This chat's search is open: it takes the composer's place until closed.
+    private var searching: Bool { model.search?.chat == chat }
 
     /// The model's rows are this chat's, loaded.
     private var isLive: Bool {
@@ -186,6 +194,7 @@ struct ConversationScreen: View {
     }
 
     @ViewBuilder private func moreMenu(tribe: Tribe?) -> some View {
+        Button("Search", systemImage: "magnifyingglass") { model.openSearch(in: chat) }
         if let pinned = model.pinnedMessage, pinned.chat == chat {
             Button("Pinned message", systemImage: "pin") { router.open(pinned) }
         }
@@ -231,7 +240,7 @@ struct ConversationScreen: View {
                 VoicePanel(voice: voice)
                     .padding(.horizontal, Theme.Space.md)
                     .padding(.bottom, Theme.Space.sm)
-            } else if let conversation {
+            } else if let conversation, !searching {
                 HStack(alignment: .bottom, spacing: 0) {
                     PhoneComposer(
                         composer: .chat(chat),

@@ -637,8 +637,10 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
             model.destination = destination
             clicked()
         } label: {
-            HStack(spacing: 9) {
-                icon.frame(width: Theme.AvatarSize.sm)
+            // Row-level siblings, all centred on the row's height: icon, text
+            // stack, time, accessory. The time is not part of the preview line.
+            HStack(alignment: .center, spacing: 9) {
+                icon.frame(width: Theme.AvatarSize.sm, height: Theme.AvatarSize.sm)
                 if let preview {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(title).lineLimit(1)
@@ -651,20 +653,19 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
                                 .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
-                            if let previewDate {
-                                Spacer(minLength: 4)
-                                Text(previewDate)
-                                    .font(Theme.font(11, .regular))
-                                    .foregroundStyle(Theme.tertiaryText)
-                                    .lineLimit(1)
-                                    .fixedSize()
-                            }
                         }
                     }
                 } else {
                     Text(title).lineLimit(1)
                 }
                 Spacer(minLength: 4)
+                if preview != nil, let previewDate {
+                    Text(previewDate)
+                        .font(Theme.font(11, .regular))
+                        .foregroundStyle(Theme.tertiaryText)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
                 accessory
             }
             .opacity(dimmed ? 0.6 : 1)

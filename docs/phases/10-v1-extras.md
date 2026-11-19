@@ -99,6 +99,16 @@ approved the in-chat half before the agent; ⌘K stays for after it.
   step's row flashes as a jump does. Changing chats closes the search.
 - Rendered on a new development account seeded with local rows (dark
   and light; the bar, the list, a thread match, `from:`, an accent).
+- Sidebar search across chats (2026-11, not yet built or run: written
+  without a Swift toolchain). Typing in the sidebar's search keeps the
+  name filter and adds a "Messages" section: `SidebarSearch` (PeelUI) runs
+  `Storage.searchMessages(_:in: nil, limit: 25)` after 250 ms, cancels a
+  stale search and drops a result for text no longer typed. Rows show the
+  line around the match lit, the chat and the time; one opens its chat at
+  the message through `focus(on:inThread:)`. Tribes and direct messages
+  show at most 8 each while searching. "Searching…", "Could not search
+  messages" and "No results" are shown; clearing or Escape restores the
+  list. `SidebarSearchTests` cover it. The in-chat ⌘F is unchanged.
 - ⌘F fix (2026-10-09, Tom: "it defaulted to the left sidebar search",
   then "nothing works" after closing). Seen on a seeded offline profile
   with synthetic keys: closing the bar (Escape or ×) left the window

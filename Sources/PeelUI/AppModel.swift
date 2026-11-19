@@ -228,6 +228,8 @@ public final class AppModel {
     @ObservationIgnored public weak var mainPresenter: (any MenuHosting)?
     /// The sidebar's search, which filters its lists.
     public var searchQuery = ""
+    /// The messages that match it, in every chat (`SidebarSearch`).
+    public let sidebarSearch = SidebarSearch()
     /// Which sidebar sections are open and shown in full, kept with the
     /// account (`Engine.sidebarLayout`).
     public var sidebarLayout = ChatSections.Layout() {
@@ -1687,6 +1689,7 @@ public final class AppModel {
         destination = nil
         accountPage = .profile
         searchQuery = ""
+        sidebarSearch.clear()
         timeline = .empty
         openThread = nil
         threads = []

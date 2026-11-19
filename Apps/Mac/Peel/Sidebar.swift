@@ -25,6 +25,9 @@ struct Sidebar: View {
         // Read here, where the mentions count already reads them all, and
         // passed down: one chat's tick redraws only its own row.
         let readStates = model.readStates
+        // Chats, the agent or apps match the search: "No results" waits for none.
+        let chatsFound = !(sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty
+            && shownApps(searching: sections.searching).isEmpty && shownAgent(sections) == nil)
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -94,7 +97,7 @@ struct Sidebar: View {
                             // Searching shows every match: no chevron to say otherwise or
                             // to change the saved layout.
                             SidebarSection("Tribes", expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
-                                ForEach(sections.tribes) { conversation in
+                                ForEach(sections.searching ? SidebarSearch.capped(sections.tribes) : sections.tribes) { conversation in
                                     ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                                 }
                                 if sections.tribesOpen {
@@ -110,7 +113,7 @@ struct Sidebar: View {
                                 if let agent = shownAgent(sections) {
                                     AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
                                 }
-                                ForEach(sections.direct) { conversation in
+                                ForEach(sections.searching ? SidebarSearch.capped(sections.direct) : sections.direct) { conversation in
                                     ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                                 }
                                 if sections.directOpen {
@@ -121,6 +124,9 @@ struct Sidebar: View {
                                     ContactsSidebarRows()
                                 }
                             }
+                        }
+                        if sections.searching {
+                            SidebarMessageResults(search: model.sidebarSearch, chatsFound: chatsFound)
                         }
                     }
                     .padding(.bottom, Theme.Space.md)
@@ -196,8 +202,10 @@ struct Sidebar: View {
         if combined {
             chats = (sections.unread + sections.combined).map { (.chat($0.chat), $0.name) } + agent
         } else {
-            let tribes: [Row] = (sections.unread + sections.tribes).map { (.chat($0.chat), $0.name) }
-            let direct: [Row] = sections.direct.map { (.chat($0.chat), $0.name) }
+            let tribes: [Row] = (sections.unread + (sections.searching ? SidebarSearch.capped(sections.tribes) : sections.tribes))
+                .map { (.chat($0.chat), $0.name) }
+            let direct: [Row] = (sections.searching ? SidebarSearch.capped(sections.direct) : sections.direct)
+                .map { (.chat($0.chat), $0.name) }
             chats = tribes + agent + direct
         }
         return [(.apps, "Apps")] + apps + fixed + chats
@@ -342,6 +350,13 @@ struct SidebarColumn: View {
                         prompt: inAccount ? "Search settings" : "Search", focusRequest: model.sidebarSearchFocus)
                 // Return: the first category found.
                 .onSubmit { if inAccount, let first = found.first { model.accountPage = first } }
+                // Escape clears the search: the normal chat list again.
+                .onKeyPress(.escape) {
+                    guard !inAccount, !model.searchQuery.isEmpty else { return .ignored }
+                    model.clearSidebarSearch()
+                    return .handled
+                }
+                .onChange(of: model.searchQuery) { if !inAccount { model.updateSidebarSearch() } }
             // Stacked, not in the column: while one fades out and the other in,
             // they share the space rather than each taking half.
             ZStack(alignment: .top) {
@@ -429,6 +444,88 @@ struct SearchField: View {
     var body: some View {
         FormTextField(label: prompt, prompt: prompt, text: $text, systemImage: "magnifyingglass",
                       focusRequest: focusRequest)
+    }
+}
+
+/// "Messages" while searching: the messages in every chat that match, each
+/// with a line around the match lit, its chat and when; "No results" when
+/// the chats found nothing either. Selecting one opens its chat at it.
+struct SidebarMessageResults: View {
+    @Environment(AppModel.self) private var model
+    let search: SidebarSearch
+    /// The chats (or the apps) above found something.
+    let chatsFound: Bool
+
+    var body: some View {
+        if search.searching && search.messages.isEmpty {
+            SidebarSection("Messages") {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Searching…")
+                }
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.secondaryText)
+                .padding(.horizontal, Theme.Space.md)
+            }
+        } else if search.failed {
+            SidebarSection("Messages") {
+                Text("Could not search messages")
+                    .font(Theme.font(13))
+                    .foregroundStyle(Theme.attention)
+                    .padding(.horizontal, Theme.Space.md)
+            }
+        } else if !search.messages.isEmpty {
+            let terms = search.query?.terms ?? []
+            SidebarSection("Messages") {
+                ForEach(Array(search.messages.enumerated()), id: \.offset) { _, message in
+                    SidebarMessageRow(
+                        message: message,
+                        chat: model.conversations.first { $0.chat == message.chat }?.name ?? "",
+                        snippet: AttributedString(search.query?.snippet(of: message.preview) ?? message.preview)
+                            .highlighting(terms)
+                    ) {
+                        model.openSidebarMessage(message)
+                    }
+                }
+            }
+        } else if search.foundNone && !chatsFound {
+            Text("No results")
+                .font(Theme.font(13))
+                .foregroundStyle(Theme.secondaryText)
+                .padding(.horizontal, Theme.Space.md)
+        }
+    }
+}
+
+/// A message found: its line with the match lit, over its chat and when.
+private struct SidebarMessageRow: View {
+    let message: Message
+    let chat: String
+    let snippet: AttributedString
+    let action: () -> Void
+
+    var body: some View {
+        ListRow(minHeight: 44, action: action) {
+            EmptyView()
+        } title: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(snippet)
+                    .font(Theme.font(13))
+                    .lineLimit(1)
+                HStack(spacing: Theme.Space.sm) {
+                    Text(chat)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(Formatting.relative(message.date))
+                        .monospacedDigit()
+                        .fixedSize()
+                }
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.secondaryText)
+            }
+        } trailing: {
+            EmptyView()
+        }
     }
 }
 

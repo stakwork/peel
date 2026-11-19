@@ -542,7 +542,11 @@ private struct CallControls: View {
             }
         }
         if let notice = call.deviceNotice {
-            note(notice)
+            if let offer = call.micSwitchOffer {
+                note(notice, action: "Switch to \(offer.name)") { call.switchToBuiltInMicrophone() }
+            } else {
+                note(notice)
+            }
         }
         if call.state == .lost {
             note(model.calls.failures[call.link.room]

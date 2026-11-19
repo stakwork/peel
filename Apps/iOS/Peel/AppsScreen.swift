@@ -60,6 +60,13 @@ struct AppsScreen: View {
                         AppRow(app: app, showsSource: several, pinned: model.isPinned(app))
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        let pinned = model.isPinned(app)
+                        Button(pinned ? "Unpin" : "Pin to Chats", systemImage: pinned ? "pin.slash" : "pin") {
+                            model.setPinned(app, !pinned)
+                        }
+                        .tint(Theme.accent)
+                    }
                     // Copies a link to the app: nothing is sent, and it opens
                     // here only for someone with that workspace connected.
                     .contextMenu {

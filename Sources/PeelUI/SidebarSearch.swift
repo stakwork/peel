@@ -11,7 +11,7 @@ import PeelCore
 @MainActor @Observable
 public final class SidebarSearch {
     /// The most messages asked for and listed.
-    public static let messageLimit = 25
+    public static let messageLimit = 50
     /// The most chats a list of name matches shows.
     public static let chatLimit = 8
 

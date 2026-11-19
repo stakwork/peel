@@ -102,7 +102,7 @@ approved the in-chat half before the agent; ⌘K stays for after it.
 - Sidebar search across chats (2026-11, not yet built or run: written
   without a Swift toolchain). Typing in the sidebar's search keeps the
   name filter and adds a "Messages" section: `SidebarSearch` (PeelUI) runs
-  `Storage.searchMessages(_:in: nil, limit: 25)` after 250 ms, cancels a
+  `Storage.searchMessages(_:in: nil, limit: 50)` after 250 ms, cancels a
   stale search and drops a result for text no longer typed. Rows show the
   line around the match lit, the chat and the time; one opens its chat at
   the message through `focus(on:inThread:)`. Tribes and direct messages

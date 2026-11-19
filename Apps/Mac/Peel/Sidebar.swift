@@ -347,7 +347,9 @@ struct SidebarColumn: View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             SidebarHeader()
             SearchField(text: inAccount ? $settingsQuery : $model.searchQuery,
-                        prompt: inAccount ? "Search settings" : "Search", focusRequest: model.sidebarSearchFocus)
+                        prompt: inAccount ? "Search settings" : "Search", focusRequest: model.sidebarSearchFocus,
+                        // Account clears its own bound text; chats reset the search model too.
+                        onClear: inAccount ? nil : { model.clearSidebarSearch() })
                 // Return: the first category found.
                 .onSubmit { if inAccount, let first = found.first { model.accountPage = first } }
                 // Escape clears the search: the normal chat list again.
@@ -440,10 +442,20 @@ struct SearchField: View {
     @Binding var text: String
     var prompt = "Search"
     var focusRequest = 0
+    /// What the clear button does; without one it empties `text`.
+    var onClear: (() -> Void)?
 
     var body: some View {
         FormTextField(label: prompt, prompt: prompt, text: $text, systemImage: "magnifyingglass",
                       focusRequest: focusRequest)
+            .overlay(alignment: .trailing) {
+                if !text.isEmpty {
+                    IconButton("xmark", help: "Clear search", size: .sm) {
+                        if let onClear { onClear() } else { text = "" }
+                    }
+                    .padding(.trailing, Theme.Space.xs)
+                }
+            }
     }
 }
 
@@ -480,7 +492,8 @@ struct SidebarMessageResults: View {
                 ForEach(Array(search.messages.enumerated()), id: \.offset) { _, message in
                     SidebarMessageRow(
                         message: message,
-                        chat: model.conversations.first { $0.chat == message.chat }?.name ?? "",
+                        conversation: model.conversations.first { $0.chat == message.chat },
+                        sender: model.sender(of: message),
                         snippet: AttributedString(search.query?.snippet(of: message.preview) ?? message.preview)
                             .highlighting(terms)
                     ) {
@@ -497,23 +510,36 @@ struct SidebarMessageResults: View {
     }
 }
 
-/// A message found: its line with the match lit, over its chat and when.
+/// A message found: its chat's avatar, the sender and its line with the match
+/// lit, over its chat and when.
 private struct SidebarMessageRow: View {
     let message: Message
-    let chat: String
+    let conversation: Conversation?
+    let sender: Sender
     let snippet: AttributedString
     let action: () -> Void
 
     var body: some View {
         ListRow(minHeight: 44, action: action) {
-            EmptyView()
+            if let conversation {
+                ConversationIcon(conversation: conversation, size: Theme.AvatarSize.sm)
+            } else {
+                Avatar(name: sender.avatarName, url: sender.photoURL, size: Theme.AvatarSize.sm, hue: sender.hue)
+            }
         } title: {
             VStack(alignment: .leading, spacing: 1) {
-                Text(snippet)
-                    .font(Theme.font(13))
-                    .lineLimit(1)
                 HStack(spacing: Theme.Space.sm) {
-                    Text(chat)
+                    Text(sender.label)
+                        .font(Theme.font(13, .semibold))
+                        .foregroundStyle(sender.hue.name)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    Text(snippet)
+                        .lineLimit(1)
+                }
+                .font(Theme.font(13))
+                HStack(spacing: Theme.Space.sm) {
+                    Text(conversation?.name ?? "")
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     Text(Formatting.relative(message.date))

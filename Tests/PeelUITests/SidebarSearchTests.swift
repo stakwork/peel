@@ -67,6 +67,15 @@ struct SidebarSearchTests {
         #expect(search.isIdle && search.messages.isEmpty)
     }
 
+    @Test func clearingAfterResultsRestoresTheList() async {
+        let search = search(), finds = Finds([.fixture(content: "a needle")])
+        search.update("needle", find: finds.find)
+        await search.settled()
+        #expect(!search.messages.isEmpty)
+        search.clear()
+        #expect(search.isIdle && search.messages.isEmpty && search.query == nil)
+    }
+
     @Test func emptyOrTooShortTextRestoresTheList() async {
         let search = search(), finds = Finds([.fixture(content: "a needle")])
         search.update("needle", find: finds.find)

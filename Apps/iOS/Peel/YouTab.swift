@@ -22,6 +22,8 @@ struct YouTab: View {
                     .listRowSeparator(.hidden)
                 Section { ContactInfoCard() }
                     .listRowBackground(Color.clear)
+                    // Edge to edge of the row, as the grouped sections below.
+                    .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                 Section {
                     AgentRow()
@@ -167,7 +169,7 @@ private struct ContactInfoCard: View {
             : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Space.lg))
         PhoneCard {
             layout {
-                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info", size: 120)
+                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info", size: 104)
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("Your contact info")
                         .phoneFont(.row)
@@ -177,6 +179,9 @@ private struct ContactInfoCard: View {
                     if let info = model.myContactInfo {
                         CopyButton("Copy contact info", text: info)
                             .buttonStyle(.peel(.outline, size: .touch))
+                            .font(.callout)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .id(info)
                     } else {
                         Text("Not ready yet")

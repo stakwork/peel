@@ -88,7 +88,7 @@ struct TalkHistorySessionScreen: View {
         List {
             ForEach(session.lines) { line in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(line.speaker == .you ? "You" : "Jamie")
+                    Text(line.speaker == .you ? String(localized: "You") : String(localized: "Jamie"))
                         .phoneFont(.secondary)
                         .foregroundStyle(Theme.secondaryText)
                     Text(line.text)

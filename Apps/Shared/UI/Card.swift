@@ -114,7 +114,7 @@ struct Callout<Actions: View>: View {
             Spacer(minLength: 8)
             if title == nil { actions }
             if let dismiss {
-                IconButton("xmark", help: "Dismiss", size: .sm, action: dismiss)
+                IconButton("xmark", help: String(localized: "Dismiss", table: "Shared"), size: .sm, action: dismiss)
                     // Its hover square reaches into the padding, so a one-line bar keeps its height.
                     .padding(.vertical, -6)
             }

@@ -65,7 +65,7 @@ struct MemoryRowDetail: View {
                     .foregroundStyle(Theme.secondaryText)
             }
             if !remembered.about.isEmpty {
-                SectionHeader("About")
+                SectionHeader(String(localized: "About"))
                     .padding(.top, Theme.Space.xs)
                 ChipFlow(spacing: Theme.Space.xs) {
                     ForEach(remembered.about, id: \.entity.id) { MemoryChip(ref: $0.entity, isNew: $0.isNew) }
@@ -76,7 +76,7 @@ struct MemoryRowDetail: View {
                 }
             }
             if !remembered.proposed.isEmpty || !remembered.notes.isEmpty {
-                SectionHeader("New words")
+                SectionHeader(String(localized: "New words"))
                     .padding(.top, Theme.Space.xs)
                 if !remembered.proposed.isEmpty {
                     Text(remembered.proposed.joined(separator: ", "))
@@ -120,7 +120,7 @@ struct MemoryRowDetail: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     MemoryLink(ref: node.ref)
                         .fontWeight(.semibold)
-                    Text([MemoryWords.type(entity.ref.type ?? ""), Formatting.count(entity.facts.count, "fact")]
+                    Text([MemoryWords.type(entity.ref.type ?? ""), Formatting.count(entity.facts.count, .fact)]
                         .filter { !$0.isEmpty }.joined(separator: " · "))
                         .foregroundStyle(Theme.secondaryText)
                 }
@@ -141,7 +141,7 @@ struct MemoryRowDetail: View {
 /// A fact's sentence or a name: a replaced fact struck through and faint;
 /// one strut named only by its ref_id, "An earlier fact".
 private func memoryText(_ ref: MemoryRef, replaced: Bool = false) -> some View {
-    Text(ref.name.isEmpty ? "An earlier fact" : ref.name)
+    Text(ref.name.isEmpty ? String(localized: "An earlier fact") : ref.name)
         .strikethrough(replaced && !ref.name.isEmpty, color: Theme.tertiaryText.opacity(0.6))
         .foregroundStyle(replaced ? Theme.tertiaryText : Theme.text)
 }
@@ -251,10 +251,10 @@ struct MemoryPanelView: View {
         VStack(spacing: 0) {
             DetailHeader(title: title) {
                 if panel.canGoBack {
-                    IconButton("chevron.left", help: "Back") { panel.back() }
+                    IconButton("chevron.left", help: String(localized: "Back")) { panel.back() }
                 }
             } trailing: {
-                IconButton("xmark", help: "Close") { model.closeMemory() }
+                IconButton("xmark", help: String(localized: "Close")) { model.closeMemory() }
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.lg) {
@@ -282,9 +282,9 @@ struct MemoryPanelView: View {
     private var title: String {
         switch panel.node {
         case .entity(let entity)?: MemoryWords.title(entity.ref.type ?? "")
-        case .fact?: "Fact"
-        case .episode?: "Said"
-        case nil: panel.current?.type.map(MemoryWords.title) ?? "Memory"
+        case .fact?: String(localized: "Fact")
+        case .episode?: String(localized: "Said")
+        case nil: panel.current?.type.map(MemoryWords.title) ?? String(localized: "Memory")
         }
     }
 
@@ -299,15 +299,15 @@ struct MemoryPanelView: View {
                       + (entity.aliases.isEmpty ? [] : ["also " + entity.aliases.joined(separator: ", ")]))
                     .joined(separator: " · "))
             }
-            MemorySection("What it knows") {
+            MemorySection(String(localized: "What it knows")) {
                 if entity.facts.isEmpty {
-                    EmptyState("Nothing about \(entity.ref.name) yet.", size: .sm)
+                    EmptyState(String(localized: "Nothing about \(entity.ref.name) yet."), size: .sm)
                 } else {
                     FactRows(facts: entity.facts.map { ($0.fact, $0.since) })
                 }
             }
             if entity.mentionedIn > 0 {
-                Text("Mentioned \(Formatting.count(entity.mentionedIn, "time"))").muted()
+                Text("Mentioned \(Formatting.count(entity.mentionedIn, .time))").muted()
             }
         }
     }
@@ -323,31 +323,31 @@ struct MemoryPanelView: View {
                     .foregroundStyle(fact.expired == nil ? Theme.text : Theme.tertiaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
-                Text(MemoryWords.predicate(fact.predicate) + (fact.expired == nil ? "" : " · replaced")).muted()
+                Text(fact.expired == nil ? MemoryWords.predicate(fact.predicate) : String(localized: "\(MemoryWords.predicate(fact.predicate)) · replaced")).muted()
             }
             FactList(labelWidth: 84) {
                 if let subject = fact.subject {
-                    Fact("About") { open(subject) }
+                    Fact(String(localized: "About")) { open(subject) }
                 }
                 if let object = fact.object {
-                    Fact("Also about") { open(object) }
+                    Fact(String(localized: "Also about")) { open(object) }
                 }
                 if let since = fact.since {
-                    Fact("Since", text: Formatting.dateAndTime(since))
+                    Fact(String(localized: "Since"), text: Formatting.dateAndTime(since))
                 }
                 if let expired = fact.expired {
-                    Fact("Replaced", text: Formatting.dateAndTime(expired))
+                    Fact(String(localized: "Replaced"), text: Formatting.dateAndTime(expired))
                 }
-                Fact("Written by", text: fact.byAgent ? "Peel's agent" : "You")
+                Fact(String(localized: "Written by"), text: fact.byAgent ? String(localized: "Peel's agent") : String(localized: "You"))
             }
             if !fact.replaced.isEmpty {
-                MemorySection("It replaced") { FactRows(facts: fact.replaced.map { ($0, nil) }, replaced: true) }
+                MemorySection(String(localized: "It replaced")) { FactRows(facts: fact.replaced.map { ($0, nil) }, replaced: true) }
             }
             if !fact.replacedBy.isEmpty {
-                MemorySection("Replaced by") { FactRows(facts: fact.replacedBy.map { ($0, nil) }) }
+                MemorySection(String(localized: "Replaced by")) { FactRows(facts: fact.replacedBy.map { ($0, nil) }) }
             }
             if !fact.from.isEmpty {
-                MemorySection("From what was said") { ForEach(fact.from, id: \.id) { SaidCard(said: $0) } }
+                MemorySection(String(localized: "From what was said")) { ForEach(fact.from, id: \.id) { SaidCard(said: $0) } }
             }
         }
 
@@ -363,7 +363,7 @@ struct MemoryPanelView: View {
         var body: some View {
             SaidCard(said: episode.said)
             if !episode.mentions.isEmpty {
-                MemorySection("Mentions") {
+                MemorySection(String(localized: "Mentions")) {
                     ChipFlow(spacing: Theme.Space.xs) {
                         ForEach(episode.mentions, id: \.id) { MemoryChip(ref: $0) }
                     }

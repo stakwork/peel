@@ -250,15 +250,15 @@ public struct DeviceActions: Sendable {
             return .done("Allowed. The automation may post to \(grant.summary).")
         }
         if let grant {
-            let who = grant.name.map { "the automation \u{201C}\($0)\u{201D}" } ?? "this automation"
+            let who = grant.name.map { String(localized: "the automation \u{201C}\($0)\u{201D}", table: "Shared") } ?? String(localized: "this automation", table: "Shared")
             let names = ListFormatter.localizedString(byJoining: grant.chats.map(\.name))
             let prefix = Self.agentPrefix.trimmingCharacters(in: .whitespaces)
             // The Mac's own words first, before the agent's.
-            intent.details.insert("Lets \(who) post as you to \(names) without asking, each message starting with \u{201C}\(prefix)\u{201D}", at: 0)
+            intent.details.insert(String(localized: "Lets \(who) post as you to \(names) without asking, each message starting with \u{201C}\(prefix)\u{201D}", table: "Shared"), at: 0)
             // Always a cost, so a grant is only made by a click, never by Return.
             intent.cost = grant.maxPriceSats > 0
-                ? "Up to \(grant.maxPriceSats) sats a message, paid from your balance."
-                : "No sats: only chats that cost nothing to post in."
+                ? String(localized: "Up to \(grant.maxPriceSats) sats a message, paid from your balance.", table: "Shared")
+                : String(localized: "No sats: only chats that cost nothing to post in.", table: "Shared")
         }
         if let refusal = await decide(request, tool: "approve", intent: intent) { return refusal.answer }
         if let dropped {

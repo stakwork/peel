@@ -17,17 +17,17 @@ struct ConnectionsSection: View {
     var body: some View {
         let connections = model.connections
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection("Services") {
+            SettingsSection(String(localized: "Services")) {
                 if adding {
                     AddMCPServerForm { adding = false }
                 } else {
                     ForEach(connections.servers) { server in
                         MCPServerRow(server: server)
                     }
-                    Fact("Add a service") {
+                    Fact(String(localized: "Add a service")) {
                         Text(model.brain?.moved != nil
-                             ? "Your assistant runs on your home server, with the services it had. Turn off Always on to change them."
-                             : "Your assistant uses it with your own key, kept in its memory. A tool the service marks read-only runs as asked; any other asks you first.")
+                             ? String(localized: "Your assistant runs on your home server, with the services it had. Turn off Always on to change them.")
+                             : String(localized: "Your assistant uses it with your own key, kept in its memory. A tool the service marks read-only runs as asked; any other asks you first."))
                             .muted()
                             .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
@@ -66,10 +66,10 @@ private struct MCPServerRow: View {
                 status(connections.probes[server.name], testing: connections.testing.contains(server.name))
                 if model.grantsConnections {
                     HStack(spacing: Theme.Space.lg) {
-                        grantSwitch("Assistant", isOn: connections.grants.assistant.contains(server.name)) {
+                        grantSwitch(String(localized: "Assistant"), isOn: connections.grants.assistant.contains(server.name)) {
                             model.setGrant(server.name, assistant: $0)
                         }
-                        grantSwitch("Tasks", isOn: connections.grants.jobs.contains(server.name)) {
+                        grantSwitch(String(localized: "Tasks"), isOn: connections.grants.jobs.contains(server.name)) {
                             model.setGrant(server.name, jobs: $0)
                         }
                     }
@@ -80,7 +80,7 @@ private struct MCPServerRow: View {
                             .buttonStyle(.peel(.outline))
                             .disabled(connections.testing.contains(server.name))
                     }
-                    InlineConfirm(trigger: "Remove", prompt: "Remove \(server.name)?",
+                    InlineConfirm(trigger: "Remove", prompt: String(localized: "Remove \(server.name)?"),
                                   explanation: "Your assistant stops using it, and its key is deleted from your memory.",
                                   confirm: "Remove", alignment: .leading, confirming: $removing) {
                         Task { await model.removeMCPServer(server.name) }
@@ -109,11 +109,18 @@ private struct MCPServerRow: View {
             HStack(spacing: 6) {
                 ConnectedLabel()
                     .fixedSize()
-                Text("\(probe.tools.count) \(probe.tools.count == 1 ? "tool" : "tools")\(asking > 0 ? ", \(asking) ask\(asking == 1 ? "s" : "") first" : "")")
+                Text(toolsSummary(probe, asking: asking))
                     .muted()
             }
             .font(Theme.font(12))
         }
+    }
+
+    private func toolsSummary(_ probe: MCPProbe, asking: Int) -> String {
+        let tools = String(localized: "\(probe.tools.count) tools")
+        guard asking > 0 else { return tools }
+        let ask = String(localized: "\(asking) ask first")
+        return String(localized: "\(tools), \(ask)")
     }
 
     private func grantSwitch(_ label: String, isOn: Bool, set: @escaping (Bool) -> Void) -> some View {
@@ -141,19 +148,19 @@ private struct AddMCPServerForm: View {
         VStack(alignment: .leading, spacing: 14) {
             FormLabel("Add an MCP server", detail: "Linear's is https://mcp.linear.app/mcp, with a personal API key from Linear's settings.")
             FormItem(label: "Name", helper: "Letters, digits, - or _. Its tools are named after it.") {
-                FormTextField(label: "Name", prompt: "linear", text: $name, focusOnAppear: true)
+                FormTextField(label: String(localized: "Name"), prompt: "linear", text: $name, focusOnAppear: true)
             }
             FormItem(label: "Address") {
-                FormTextField(label: "Address", prompt: "https://mcp.linear.app/mcp", text: $address, monospaced: true)
+                FormTextField(label: String(localized: "Address"), prompt: "https://mcp.linear.app/mcp", text: $address, monospaced: true)
             }
             FormItem(label: "Key or token", helper: "Kept in your assistant's memory, encrypted. Leave empty if it takes none.") {
-                FormTextField(label: "Key or token", text: $key, secure: true)
+                FormTextField(label: String(localized: "Key or token"), text: $key, secure: true)
                     .onSubmit(add)
             }
             FormFooter(problem: problem) {
                 Button("Cancel", action: done)
                     .buttonStyle(.peel(.outline))
-                Button(adding ? "Adding…" : "Add", action: add)
+                Button(adding ? String(localized: "Adding…") : String(localized: "Add"), action: add)
                     .buttonStyle(.peel(.primary))
                     .keyboardShortcut(.defaultAction)
                     .disabled(url == nil || name.trimmed.isEmpty || adding)

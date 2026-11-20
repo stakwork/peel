@@ -20,7 +20,7 @@ struct TribeLinkCard: View {
         let member = known.map { !$0.left && ($0.status == .active || $0.status == .pending) } ?? false
         let deleted = read == .deleted || known?.status == .deleted
         LinkCardLayout(
-            title: name ?? (read == nil || read == .loading ? "Loading tribe" : "Tribe on \(link.host)"),
+            title: name ?? (read == nil || read == .loading ? String(localized: "Loading tribe") : String(localized: "Tribe on \(link.host)")),
             detail: detail(read, info: info, known: known, deleted: deleted),
             detailLines: 2,
             placeholder: name == nil && (read == nil || read == .loading),
@@ -41,7 +41,7 @@ struct TribeLinkCard: View {
             } else if !deleted {
                 Button("Join") { joining = true }
                     .buttonStyle(.peel(.primary, size: .sm))
-                    .help(info == nil ? "Look up this tribe, then join" : "See the price, then join")
+                    .help(info == nil ? String(localized: "Look up this tribe, then join") : String(localized: "See the price, then join"))
                     .peelPopover(isPresented: $joining) {
                         JoinTribeForm(link: link.text, info: info) { joining = false }
                     }
@@ -62,10 +62,10 @@ struct TribeLinkCard: View {
     }
 
     private func detail(_ read: LinkedTribe?, info: TribeInfo?, known: Tribe?, deleted: Bool) -> String? {
-        if deleted { return "This tribe has been deleted." }
+        if deleted { return String(localized: "This tribe has been deleted.") }
         if let problem = read?.problem { return problem }
         if let summary = (info?.summary ?? known?.summary)?.trimmed.nilIfEmpty { return summary }
-        return read == nil || read == .loading ? "Loading…" : link.host
+        return read == nil || read == .loading ? String(localized: "Loading…") : link.host
     }
 
     @ViewBuilder private func facts(
@@ -85,7 +85,7 @@ struct TribeLinkCard: View {
                 if let members { Text("· \(members)") }
             }
         } else if let info {
-            Text([info.isPrivate == true ? "Private" : nil, "\(info.joinPrice.text) to join"]
+            Text([info.isPrivate == true ? String(localized: "Private") : nil, String(localized: "\(info.joinPrice.text) to join")]
                 .compactMap { $0 }.joined(separator: " · "))
         } else if read?.problem != nil {
             Button("Try again") { Task { await model.loadLinkedTribe(link, again: true) } }
@@ -109,7 +109,7 @@ struct ContactLinkCard: View {
         let pubkey = String(info.prefix(66))
         let isMe = pubkey == model.myPubkey
         let contact = model.conversations.first { $0.chat == pubkey && !$0.isTribe }
-        let name = isMe ? "You" : contact.map(\.name) ?? "New contact"
+        let name = isMe ? String(localized: "You") : contact.map(\.name) ?? String(localized: "New contact")
         LinkCardLayout(
             title: name,
             detail: Formatting.shortKey(pubkey),

@@ -53,10 +53,10 @@ struct FormItem<Field: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(Theme.font(13, .medium))
+            Text(LocalizedStringKey(label)).font(Theme.font(13, .medium))
             field
             if let text = problem ?? helper {
-                Text(text)
+                Text(LocalizedStringKey(text))
                     .font(Theme.font(12))
                     .foregroundStyle(problem == nil ? Theme.secondaryText : Theme.attention)
                     .fixedSize(horizontal: false, vertical: true)
@@ -79,9 +79,9 @@ struct FormLabel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(Theme.font(13))
+            Text(LocalizedStringKey(title)).font(Theme.font(13))
             if let detail {
-                Text(detail)
+                Text(LocalizedStringKey(detail))
                     .font(Theme.font(11))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -193,7 +193,7 @@ struct FormNumberField: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TextField(label, text: $text, prompt: Text(prompt).foregroundStyle(Theme.tertiaryText))
+            TextField(label, text: $text, prompt: Text(LocalizedStringKey(prompt)).foregroundStyle(Theme.tertiaryText))
                 .textFieldStyle(.plain)
                 .font(Theme.font(13))
                 .monospacedDigit()
@@ -352,7 +352,7 @@ struct InlineConfirm<Trigger: View>: View {
         Group {
             if let explanation {
                 VStack(alignment: alignment, spacing: 10) {
-                    Text(explanation)
+                    Text(LocalizedStringKey(explanation))
                         .font(Theme.font(style == .section ? 12 : 13))
                         .foregroundStyle(Theme.secondaryText)
                         .multilineTextAlignment(textAlignment)
@@ -406,9 +406,9 @@ struct InlineConfirm<Trigger: View>: View {
     /// A row's prompt takes the row's font.
     @ViewBuilder private func promptText(_ prompt: String) -> some View {
         if style == .text {
-            Text(prompt).foregroundStyle(Theme.secondaryText)
+            Text(LocalizedStringKey(prompt)).foregroundStyle(Theme.secondaryText)
         } else {
-            Text(prompt).muted()
+            Text(LocalizedStringKey(prompt)).muted()
         }
     }
 
@@ -424,7 +424,7 @@ struct InlineConfirm<Trigger: View>: View {
                         isAsking.wrappedValue = false
                     }
                 } label: {
-                    Text(confirm).buttonProgress(working, size: style == .text ? .mini : .small)
+                    Text(LocalizedStringKey(confirm)).buttonProgress(working, size: style == .text ? .mini : .small)
                 },
                 confirmKind
             )
@@ -454,7 +454,7 @@ extension InlineConfirm where Trigger == Text {
         self.init(
             prompt: prompt, explanation: explanation, confirm: confirm, confirmKind: confirmKind, style: style,
             alignment: alignment, confirming: confirming, action: action
-        ) { Text(trigger) }
+        ) { Text(LocalizedStringKey(trigger)) }
     }
 }
 

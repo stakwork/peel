@@ -86,8 +86,8 @@ struct PhoneComposer: View {
                     .padding(.leading, 16)
                 }
                 if let paysTo, composer.chat != nil, composer.thread == nil {
-                    ComingButton(systemImage: "bolt", label: "Send sats",
-                                 note: "Sending sats to \(paysTo) from here is coming. Send from the Mac for now.")
+                    ComingButton(systemImage: "bolt", label: String(localized: "Send sats"),
+                                 note: String(localized: "Sending sats to \(paysTo) from here is coming. Send from the Mac for now."))
                         // Hidden while the mic is held, keeping its space so
                         // the mic does not move under the finger.
                         .opacity(recorder.state.isRecording ? 0 : 1)
@@ -147,7 +147,7 @@ private struct SendButton: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityLabel("Send")
-        .accessibilityHint(enabled ? "" : "Set your name first, in You")
+        .accessibilityHint(enabled ? Text("Set your name first, in You") : Text(verbatim: ""))
     }
 }
 
@@ -232,7 +232,7 @@ private struct AttachButton: View {
         if !picked.refused.isEmpty, let chat = composer.chat {
             // The kind only: the refusals name files.
             Diagnostics.note(errorKind: .refused)
-            model.conversationNotices[chat] = PeelError.problem(picked.refused.joined(separator: " "), couldNot: "attach")
+            model.conversationNotices[chat] = PeelError.problem(picked.refused.joined(separator: " "), couldNot: String(localized: "attach"))
         }
     }
 }
@@ -255,7 +255,7 @@ enum PickedFiles {
                         files += picked.files
                         refused += picked.refused
                     } catch {
-                        refused.append("The video: \(PeelError.readable(error)).")
+                        refused.append(String(localized: "The video: \(PeelError.readable(error))."))
                     }
                     continue
                 }
@@ -272,7 +272,7 @@ enum PickedFiles {
 
     static func photo(_ image: UIImage) -> (files: [URL], refused: [String]) {
         do {
-            guard let data = jpeg(image) else { throw PeelError("the photo could not be read") }
+            guard let data = jpeg(image) else { throw PeelError(String(localized: "the photo could not be read")) }
             return ([try IncomingFiles.write(data, type: .jpeg)], [])
         } catch {
             return ([], [PeelError.readable(error)])
@@ -295,7 +295,7 @@ enum PickedFiles {
             return ([try IncomingFiles.accept(target, in: folder)], [])
         } catch {
             if let copy { IncomingFiles.discard(copy) }
-            return ([], ["The video: \(PeelError.readable(error))."])
+            return ([], [String(localized: "The video: \(PeelError.readable(error)).")])
         }
     }
 
@@ -327,7 +327,7 @@ enum PickedFiles {
     private static func write(_ data: Data, isGIF: Bool, index: Int) throws -> URL {
         if isGIF { return try IncomingFiles.write(data, type: .gif, index: index) }
         guard let image = UIImage(data: data), let jpeg = jpeg(image) else {
-            throw PeelError("a photo could not be read")
+            throw PeelError(String(localized: "a photo could not be read"))
         }
         return try IncomingFiles.write(jpeg, type: .jpeg, index: index)
     }

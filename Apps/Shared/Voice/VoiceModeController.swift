@@ -96,12 +96,12 @@ final class VoiceModeController {
         var announcedApproval = false
     }
 
-    private static let sendFailed = "I could not send that. Say Peel send to try again."
+    private static let sendFailed = String(localized: "I could not send that. Say Peel send to try again.", table: "Shared")
     /// How long the draft must be still before a reply is read over it.
     private static let quietBeforeSpeaking: TimeInterval = 3
     /// How often the thinking tone sounds while the agent works.
     private static let thinkingEvery: TimeInterval = 10
-    private static let approval = "Peel is waiting for your approval. Approve it on your Mac."
+    private static let approval = String(localized: "Peel is waiting for your approval. Approve it on your Mac.", table: "Shared")
     /// How long a sent message may take to show in the chat before voice mode stops waiting for it.
     private static let findTimeout: TimeInterval = 20
 
@@ -156,7 +156,7 @@ final class VoiceModeController {
             try activateSession()
             try startListener()
         } catch {
-            fail("Voice mode could not start the microphone.")
+            fail(String(localized: "Voice mode could not start the microphone.", table: "Shared"))
             return
         }
         observe()
@@ -229,7 +229,7 @@ final class VoiceModeController {
     }
 
     private func blockedReason(_ model: AppModel, _ hooks: Hooks) -> String? {
-        if model.calls.call != nil { return "Voice mode is off during a call." }
+        if model.calls.call != nil { return String(localized: "Voice mode is off during a call.", table: "Shared") }
         return hooks.blocked()
     }
 
@@ -260,11 +260,11 @@ final class VoiceModeController {
                 // What was heard while muted is forgotten.
                 listener?.resetTranscript()
             case .speakLastReply:
-                if let lastReply, !lastReply.chunks.isEmpty { say(lastReply.chunks) } else { say(["There is nothing to repeat."]) }
+                if let lastReply, !lastReply.chunks.isEmpty { say(lastReply.chunks) } else { say([String(localized: "There is nothing to repeat.", table: "Shared")]) }
             case .speakFullReply:
-                if let lastReply, !lastReply.full.isEmpty { say(lastReply.full) } else { say(["There is nothing more to read."]) }
+                if let lastReply, !lastReply.full.isEmpty { say(lastReply.full) } else { say([String(localized: "There is nothing more to read.", table: "Shared")]) }
             case .stopAgent:
-                if let stop = hooks?.stopAgentTurn { stop() } else { say(["I can't stop the agent from here. Use your Mac."]) }
+                if let stop = hooks?.stopAgentTurn { stop() } else { say([String(localized: "I can't stop the agent from here. Use your Mac.", table: "Shared")]) }
             }
         }
     }
@@ -447,10 +447,10 @@ final class VoiceModeController {
         guard phase.isActive else { return }
         retries += 1
         guard retries <= VoiceDefaults.retryLimit else {
-            fail("Voice mode stopped: \(problem)")
+            fail(String(localized: "Voice mode stopped: \(problem)", table: "Shared"))
             return
         }
-        if retries == 1 { say(["I lost the microphone. Trying again."]) }
+        if retries == 1 { say([String(localized: "I lost the microphone. Trying again.", table: "Shared")]) }
         let wait = VoiceDefaults.backoff(attempt: retries)
         retry?.cancel()
         retry = Task { [weak self] in
@@ -462,7 +462,7 @@ final class VoiceModeController {
                 try activateSession()
                 try startListener()
             } catch {
-                recognizerProblem("The microphone is not available.")
+                recognizerProblem(String(localized: "The microphone is not available.", table: "Shared"))
             }
         }
     }
@@ -525,7 +525,7 @@ final class VoiceModeController {
         guard settings.spokenReplies else { return }
         let spoken = new.map { SpokenText(markdown: $0.shownText) }.filter { !$0.chunks.isEmpty }
         guard !spoken.isEmpty else { return }
-        let intro = new.contains { $0.replyUUID != nil } ? "Peel answered an earlier message." : "A new message from Peel."
+        let intro = new.contains { $0.replyUUID != nil } ? String(localized: "Peel answered an earlier message.", table: "Shared") : String(localized: "A new message from Peel.", table: "Shared")
         lastReply = spoken.last
         say([intro] + spoken.flatMap(\.chunks))
     }
@@ -698,7 +698,7 @@ final class VoiceModeController {
         observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 // Everything audio was rebuilt by the system: start over is the safe way.
-                self?.fail("Voice mode ended: audio was reset by the system.")
+                self?.fail(String(localized: "Voice mode ended: audio was reset by the system.", table: "Shared"))
             }
         })
         #endif
@@ -715,7 +715,7 @@ final class VoiceModeController {
         case .ended:
             let resume = options.map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
             guard resume else {
-                fail("Voice mode ended: another app took the audio.")
+                fail(String(localized: "Voice mode ended: another app took the audio.", table: "Shared"))
                 return
             }
             do {
@@ -723,7 +723,7 @@ final class VoiceModeController {
                 try startListener()
                 speaker.resume()
             } catch {
-                fail("Voice mode ended: the microphone is not available.")
+                fail(String(localized: "Voice mode ended: the microphone is not available.", table: "Shared"))
             }
         default: break
         }

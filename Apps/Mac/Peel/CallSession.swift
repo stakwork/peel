@@ -250,9 +250,9 @@ final class CallSession {
     /// or what the connection is doing.
     func status(at now: Date) -> String {
         switch state {
-        case .connecting: return "Connecting…"
-        case .reconnecting: return "Reconnecting…"
-        case .lost: return "Disconnected"
+        case .connecting: return String(localized: "Connecting…")
+        case .reconnecting: return String(localized: "Reconnecting…")
+        case .lost: return String(localized: "Disconnected")
         case .connected:
             guard let start = callStartedAt ?? connectedAt else { return "" }
             let seconds = Int(max(0, now.timeIntervalSince(start)))
@@ -378,7 +378,7 @@ final class CallSession {
             try await room.localParticipant.setMicrophone(enabled: on)
             wantsMic = on
         } catch {
-            if on { deviceNotice = "Could not turn the microphone on" }
+            if on { deviceNotice = String(localized: "Could not turn the microphone on") }
         }
         refresh()
     }
@@ -415,7 +415,7 @@ final class CallSession {
             Self.deviceLog.info("microphone re-acquired")
         } catch {
             Self.deviceLog.error("microphone restart failed: \(String(describing: error))")
-            deviceNotice = "Could not turn the microphone on"
+            deviceNotice = String(localized: "Could not turn the microphone on")
         }
         lastMicRestart = .now
         refresh()
@@ -438,7 +438,7 @@ final class CallSession {
                     await reacquireMicrophone()
                 } else {
                     Self.deviceLog.info("microphone still silent after a restart")
-                    deviceNotice = "Your microphone isn't picking anything up. Choose another in the device menu."
+                    deviceNotice = String(localized: "Your microphone isn't picking anything up. Choose another in the device menu.")
                 }
             }
         }
@@ -462,7 +462,7 @@ final class CallSession {
                 wantsCamera = false
             }
         } catch {
-            if on { deviceNotice = "Could not turn the camera on" }
+            if on { deviceNotice = String(localized: "Could not turn the camera on") }
         }
         refresh()
     }
@@ -517,7 +517,7 @@ final class CallSession {
         do {
             if paused { try await publication.mute() } else { try await publication.unmute() }
         } catch {
-            deviceNotice = paused ? "Could not pause sharing" : "Could not resume sharing"
+            deviceNotice = paused ? String(localized: "Could not pause sharing") : String(localized: "Could not resume sharing")
             return
         }
         // The share may have stopped or been replaced meanwhile.
@@ -537,7 +537,7 @@ final class CallSession {
         do {
             started = try await ScreenShare.start(filter, includePeel: includePeelWindows) { [weak self] in self?.shareEnded() }
         } catch {
-            deviceNotice = "Could not start sharing"
+            deviceNotice = String(localized: "Could not start sharing")
             return
         }
         // Stop shows at once: the screen is being captured from here.
@@ -554,7 +554,7 @@ final class CallSession {
             sharePublication = publication
         } catch {
             await stopSharing()
-            deviceNotice = "Could not start sharing"
+            deviceNotice = String(localized: "Could not start sharing")
         }
         refresh()
     }
@@ -650,7 +650,7 @@ final class CallSession {
     /// WebRTC lists the system's default as an entry of its own, named
     /// after the device it stands for, which is also listed by itself.
     private static func device(_ device: AudioDevice) -> Device {
-        Device(id: device.deviceId, name: device.isDefault ? "System default (\(device.name))" : device.name)
+        Device(id: device.deviceId, name: device.isDefault ? String(localized: "System default (\(device.name))") : device.name)
     }
 
     /// The one picked while it is listed, else the system's default.
@@ -692,7 +692,9 @@ final class CallSession {
         if moveMic { audio.inputDevice = audio.defaultInputDevice }
         if moveSpeaker { audio.outputDevice = audio.defaultOutputDevice }
         if let gone = goneMic ?? goneSpeaker {
-            deviceNotice = "\(gone.name) was disconnected; using the default \(goneMic != nil ? "microphone" : "speaker")"
+            deviceNotice = goneMic != nil
+                ? String(localized: "\(gone.name) was disconnected; using the default microphone")
+                : String(localized: "\(gone.name) was disconnected; using the default speaker")
         }
         refreshAudioDevices()
         let names = { (list: [AudioDevice]) in list.map(\.name).joined(separator: ", ") }
@@ -709,7 +711,7 @@ final class CallSession {
             let inUseName = inUse.map { $0.isDefault ? audio.defaultInputDevice.name : $0.name }
             if let inUseName, inUseName != builtIn.name {
                 micSwitchOffer = (name: builtIn.name, id: builtIn.deviceId)
-                deviceNotice = "Output moved to \(audio.defaultOutputDevice.name), but your microphone is still \(inUseName)."
+                deviceNotice = String(localized: "Output moved to \(audio.defaultOutputDevice.name), but your microphone is still \(inUseName).")
             }
         }
         // The track bound to the old device is replaced when the devices it
@@ -747,7 +749,8 @@ final class CallSession {
     private func cameraUnplugged(_ id: String?) {
         guard !leaving else { return }
         if cameraOn, let id, id == camera {
-            deviceNotice = "\(cameras.first { $0.id == id }?.name ?? "The camera") was disconnected"
+            let cameraName = cameras.first { $0.id == id }?.name ?? String(localized: "The camera")
+            deviceNotice = String(localized: "\(cameraName) was disconnected")
             Task { await setCamera(false) }
         }
         Task { await refreshCameras() }
@@ -910,7 +913,7 @@ extension CallSession {
         )
         log.appendLocal(message)
         if CallChatWire.mentionsJamie(text), jamieBusy {
-            showChatNotice("Jamie is still working on your last request; this one may be skipped.")
+            showChatNotice(String(localized: "Jamie is still working on your last request; this one may be skipped."))
         }
         await publish(message)
     }
@@ -961,7 +964,7 @@ extension CallSession {
                     options: DataPublishOptions(destinationIdentities: [jamie], topic: CallChatWire.topic, reliable: true)
                 )
             } catch {
-                deviceNotice = "Could not reach Jamie"
+                deviceNotice = String(localized: "Could not reach Jamie")
             }
         }
     }

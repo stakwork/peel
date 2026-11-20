@@ -25,7 +25,7 @@ extension Engine {
         // Plain http to this Mac is for the local test stack: a link someone
         // sent cannot point an account on a real server at a local service.
         guard !TribeLink.isLoopback(link.host) || server.map({ ServerAddress.isLoopback(host: $0.host) }) == true else {
-            throw PeelError("\(link.host) is not on the internet")
+            throw PeelError(String(localized: "\(link.host) is not on the internet", table: "Shared"))
         }
         let info = try await TribeInfo.fetch(pubkey: link.pubkey, host: link.host)
         guard info.deleted != true else { throw Failure.tribeDeleted }

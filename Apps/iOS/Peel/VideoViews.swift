@@ -128,7 +128,7 @@ struct VideoTile: View {
     private func uploadLine(handle: AttachmentHandle) -> some View {
         if message.fromMe, message.uploadState == .pending {
             let backdrop = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-            TransferLine(label: "Uploading", progress: handle.progress)
+            TransferLine(label: String(localized: "Uploading"), progress: handle.progress)
                 .padding(Theme.Space.sm)
                 .background(Theme.input.opacity(0.92), in: backdrop)
                 .padding(Theme.Space.sm)
@@ -164,12 +164,12 @@ struct VideoTile: View {
         /// "Video · 38.3 MB", "Video not available".
         var text: String {
             switch self {
-            case .held(let size): ["Video", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
-            case .waiting: "Waiting to download"
-            case .retry: "Couldn't download yet - tap to retry"
-            case .failed: "Video not available"
-            case .notUploaded: "Not uploaded"
-            case .unplayable: "Can't play this video"
+            case .held(let size): [String(localized: "Video"), AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
+            case .waiting: String(localized: "Waiting to download")
+            case .retry: String(localized: "Couldn't download yet - tap to retry")
+            case .failed: String(localized: "Video not available")
+            case .notUploaded: String(localized: "Not uploaded")
+            case .unplayable: String(localized: "Can't play this video")
             }
         }
 
@@ -198,7 +198,7 @@ struct VideoTile: View {
         .disabled(status.map { !$0.canLoad } ?? false)
         .accessibilityLabel(label(status: status, duration: duration))
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(status == nil ? "Opens the video full screen" : status?.canLoad == true ? "Loads the video" : "")
+        .accessibilityHint(status == nil ? String(localized: "Opens the video full screen") : status?.canLoad == true ? String(localized: "Loads the video") : "")
     }
 
     @ViewBuilder
@@ -258,7 +258,7 @@ struct VideoTile: View {
 
     private func label(status: Status?, duration: TimeInterval?) -> String {
         if let status { return status.text }
-        return ["Video", duration.map(MediaInfo.format(duration:))].compactMap { $0 }.joined(separator: ", ")
+        return [String(localized: "Video"), duration.map(MediaInfo.format(duration:))].compactMap { $0 }.joined(separator: ", ")
     }
 
     /// Opens it full screen, downloading first when it was held or failed (the tap

@@ -76,9 +76,9 @@ struct Onboarding: View {
             }
             Spacer()
             VStack(spacing: 12) {
-                Button { start(.newAccount, at: .invite) } label: { ActionLabel("Join with an invite") }
+                Button { start(.newAccount, at: .invite) } label: { ActionLabel(String(localized: "Join with an invite")) }
                     .primaryAction()
-                Button { start(.restore, at: .enterWords) } label: { ActionLabel("Restore with recovery words") }
+                Button { start(.restore, at: .enterWords) } label: { ActionLabel(String(localized: "Restore with recovery words")) }
                     .secondaryAction()
                 Text("No invite? Ask a friend who uses Peel.")
                     .font(Theme.font(14))
@@ -98,7 +98,7 @@ struct Onboarding: View {
     private func page(_ step: Step) -> some View {
         switch step {
         case .invite:
-            StepPage(title: "Paste your invite", detail: "The link or code someone sent you.",
+            StepPage(title: String(localized: "Paste your invite"), detail: String(localized: "The link or code someone sent you."),
                      progress: progress(step), problem: problem) {
                 TextField("sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
                     .font(Theme.font(16))
@@ -118,10 +118,10 @@ struct Onboarding: View {
                     .fieldBox(focused: false)
                     .fullScreenCover(isPresented: $scanningInvite) {
                         CodeScanner(
-                            title: "Scan your invite", prompt: "Point the camera at the invite's QR code.",
-                            pasteInstead: "paste the invite", cancel: { scanningInvite = false }
+                            title: String(localized: "Scan your invite"), prompt: String(localized: "Point the camera at the invite's QR code."),
+                            pasteInstead: String(localized: "paste the invite"), cancel: { scanningInvite = false }
                         ) { code in
-                            guard !code.trimmed.isEmpty else { return "That code is empty." }
+                            guard !code.trimmed.isEmpty else { return String(localized: "That code is empty.") }
                             invite = code
                             scanningInvite = false
                             return nil
@@ -131,7 +131,7 @@ struct Onboarding: View {
                 continueButton(enabled: !invite.trimmed.isEmpty) { go(.name) }
             }
         case .enterWords:
-            StepPage(title: "Restore with recovery words", detail: "Type them in order, or paste all twelve.",
+            StepPage(title: String(localized: "Restore with recovery words"), detail: String(localized: "Type them in order, or paste all twelve."),
                      progress: progress(step), problem: problem) {
                 WordEntry(words: $words)
             } actions: {
@@ -141,12 +141,12 @@ struct Onboarding: View {
                         _ = try Engine.validate(mnemonic: words.joined(separator: " "))
                         go(.pin)
                     } catch {
-                        problem = "Those twelve words don't make a valid account. Check each one."
+                        problem = String(localized: "Those twelve words don't make a valid account. Check each one.")
                     }
                 }
             }
         case .name:
-            StepPage(title: "What should people call you?", progress: progress(step), problem: problem) {
+            StepPage(title: String(localized: "What should people call you?"), progress: progress(step), problem: problem) {
                 TextField("Name", text: $name)
                     .font(Theme.font(17))
                     .textContentType(.nickname)
@@ -159,26 +159,26 @@ struct Onboarding: View {
                 continueButton(enabled: !name.trimmed.isEmpty) { go(.pin) }
             }
         case .pin:
-            StepPage(title: "Set a PIN",
+            StepPage(title: String(localized: "Set a PIN"),
                      progress: progress(step), problem: problem) {
                 PinBoxes(pin: $pin) { go(.confirmPin) }
             } actions: {
                 continueButton(enabled: pin.count == PIN.length) { go(.confirmPin) }
             }
         case .confirmPin:
-            StepPage(title: "Enter your PIN again", progress: progress(step), problem: problem) {
+            StepPage(title: String(localized: "Enter your PIN again"), progress: progress(step), problem: problem) {
                 PinBoxes(pin: $confirmation) { Task { await confirmPin() } }
                     .disabled(working)
             } actions: {
                 Button { Task { await confirmPin() } } label: {
-                    ActionLabel(path == .newAccount ? "Create account" : "Restore", working: working)
+                    ActionLabel(path == .newAccount ? String(localized: "Create account") : String(localized: "Restore"), working: working)
                 }
                 .primaryAction()
                 .disabled(confirmation.count != PIN.length || working)
             }
         case .showWords:
-            StepPage(title: "Write down your twelve words",
-                     detail: "Anyone with these words controls your account.",
+            StepPage(title: String(localized: "Write down your twelve words"),
+                     detail: String(localized: "Anyone with these words controls your account."),
                      progress: progress(step), problem: problem) {
                 NumberedWords(places: Array(shownWords.indices)) { index in
                     Text(shownWords[index])
@@ -188,26 +188,26 @@ struct Onboarding: View {
                 }
                 if model.myContactInfo == nil {
                     // Signed up, the server's answer not yet in (as on the Mac).
-                    ProblemText("Not confirmed yet. If it stays this way, ask for a new invite.")
+                    ProblemText(String(localized: "Not confirmed yet. If it stays this way, ask for a new invite."))
                 }
             } actions: {
-                Button { go(.checkWords) } label: { ActionLabel("I've written them down") }
+                Button { go(.checkWords) } label: { ActionLabel(String(localized: "I've written them down")) }
                     .primaryAction()
             }
         case .checkWords:
-            StepPage(title: "Check what you wrote", detail: "Type these three words from your paper.",
+            StepPage(title: String(localized: "Check what you wrote"), detail: String(localized: "Type these three words from your paper."),
                      progress: progress(step), problem: problem) {
                 WordCheckBoxes(check: $check) { Task { await checkWords() } }
             } actions: {
-                Button { Task { await checkWords() } } label: { ActionLabel("Open Peel", working: working) }
+                Button { Task { await checkWords() } } label: { ActionLabel(String(localized: "Open Peel"), working: working) }
                     .primaryAction()
                     .disabled(!check.isFilled || working)
             }
         case .restoring:
             RestoreProgress(onOpen: openAfterRestore)
         case .restoreName:
-            StepPage(title: "What should people call you?",
-                     detail: "We couldn't find a name in your account's history.", problem: problem) {
+            StepPage(title: String(localized: "What should people call you?"),
+                     detail: String(localized: "We couldn't find a name in your account's history."), problem: problem) {
                 TextField("Name", text: $name)
                     .font(Theme.font(17))
                     .textContentType(.nickname)
@@ -217,7 +217,7 @@ struct Onboarding: View {
                     .frame(height: 50)
                     .fieldBox(focused: false)
             } actions: {
-                Button { Task { await finishRestore() } } label: { ActionLabel("Continue", working: working) }
+                Button { Task { await finishRestore() } } label: { ActionLabel(String(localized: "Continue"), working: working) }
                     .primaryAction()
                     .disabled(name.trimmed.isEmpty || working)
             }
@@ -225,7 +225,7 @@ struct Onboarding: View {
     }
 
     private func continueButton(enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) { ActionLabel("Continue") }
+        Button(action: action) { ActionLabel(String(localized: "Continue")) }
             .primaryAction()
             .disabled(!enabled)
     }
@@ -258,7 +258,7 @@ struct Onboarding: View {
         guard !working, confirmation.count == PIN.length else { return }
         guard confirmation == pin else {
             // Shown once the step change below has cleared both PINs.
-            problemAfterBack = "The PINs don't match. Set it again."
+            problemAfterBack = String(localized: "The PINs don't match. Set it again.")
             steps.removeLast()
             return
         }
@@ -300,7 +300,7 @@ struct Onboarding: View {
             try await model.setName(name.trimmed)
             model.enterApp()
         } catch {
-            problem = PeelError.problem(error, couldNot: "save your name")
+            problem = PeelError.problem(error, couldNot: String(localized: "save your name"))
         }
     }
 
@@ -331,7 +331,7 @@ struct RestoreProgress: View {
 
     var body: some View {
         let progress = model.restoreProgress
-        StepPage(title: "Restoring your account", detail: "You can start now while older messages arrive.") {
+        StepPage(title: String(localized: "Restoring your account"), detail: String(localized: "You can start now while older messages arrive.")) {
             let lines = progress.lines(connection: model.connection)
             VStack(spacing: 0) {
                 ForEach(lines.indices, id: \.self) { index in
@@ -344,7 +344,7 @@ struct RestoreProgress: View {
                 ProblemText(failure)
             }
         } actions: {
-            Button(action: onOpen) { ActionLabel("Open Peel") }
+            Button(action: onOpen) { ActionLabel(String(localized: "Open Peel")) }
                 .primaryAction()
         }
     }

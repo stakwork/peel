@@ -68,7 +68,7 @@ extension AppModel {
     /// The connected model, read from the Keychain; nil without one. Throws
     /// when it cannot be read or no account is open: not known to be gone.
     private func connectedCredential() throws -> AgentCredential? {
-        guard let profile else { throw PeelError("Peel's account is not open.") }
+        guard let profile else { throw PeelError(String(localized: "Peel's account is not open.")) }
         return try KeptCredential(item: profile.agentCredential).read()
     }
 
@@ -96,8 +96,8 @@ extension AppModel {
             credential = try connectedCredential()
         } catch {
             // A Keychain that cannot be read is not a model removed: strut's store is left as it is.
-            automations.problem = PeelError.noted(error, couldNot: "read the connected model's key")
-            return handedOver(.failed("Not connected to your assistant: \(PeelError.noted(error))"))
+            automations.problem = PeelError.noted(error, couldNot: String(localized: "read the connected model's key"))
+            return handedOver(.failed(String(localized: "Not connected to your assistant: \(PeelError.noted(error))")))
         }
         // This strut has it already (`connection` set again to the same).
         if let handed = strutModel, handed.server == client.server, handed.credential == credential {
@@ -108,10 +108,10 @@ extension AppModel {
             try await client.setModel(credential)
         } catch {
             strutModel = nil
-            automations.problem = PeelError.noted(error, couldNot: "give strut the connected model")
+            automations.problem = PeelError.noted(error, couldNot: String(localized: "give strut the connected model"))
             let reason = PeelError.noted(error)
             return handedOver(.failed(credential == nil ? "Your assistant may still have the old key: \(reason)"
-                                      : "Not connected to your assistant: \(reason)"))
+                                      : String(localized: "Not connected to your assistant: \(reason)")))
         }
         // The strut changed meanwhile: handed to the new one next (`lookForMemory`).
         guard automationsClient?.server == client.server else { return }
@@ -153,7 +153,7 @@ extension AppModel {
         } catch {
             // The view's read loop starting again (a run started or ended) is not strut gone.
             guard !Task.isCancelled else { return }
-            automations.problem = PeelError.noted(error, couldNot: "read the automations")
+            automations.problem = PeelError.noted(error, couldNot: String(localized: "read the automations"))
         }
         if !automations.loaded { automations.loaded = true }
     }
@@ -171,7 +171,7 @@ extension AppModel {
             try await markTurnedOn(now)
             return list
         } catch {
-            automations.problem = PeelError.noted(error, couldNot: "keep which system automations are turned on")
+            automations.problem = PeelError.noted(error, couldNot: String(localized: "keep which system automations are turned on"))
             return list
         }
     }
@@ -180,7 +180,7 @@ extension AppModel {
     /// (`Engine.systemAutomationsOn`), read once per strut.
     private func systemTurnedOn() async throws -> Set<String> {
         if let done = automations.turnedOn { return done }
-        guard let engine else { throw PeelError("Peel's account is not open.") }
+        guard let engine else { throw PeelError(String(localized: "Peel's account is not open.")) }
         let done = try await engine.systemAutomationsOn()
         automations.turnedOn = done
         return done
@@ -190,7 +190,7 @@ extension AppModel {
     private func markTurnedOn(_ workflows: Set<String>) async throws {
         let done = try await systemTurnedOn()
         guard !workflows.isSubset(of: done) else { return }
-        guard let engine else { throw PeelError("Peel's account is not open.") }
+        guard let engine else { throw PeelError(String(localized: "Peel's account is not open.")) }
         try await engine.setSystemAutomationsOn(done.union(workflows))
         automations.turnedOn = done.union(workflows)
     }
@@ -201,7 +201,7 @@ extension AppModel {
     }
 
     func setAutomation(_ automation: Automation, enabled: Bool) async {
-        await changeAutomations("change \u{201C}\(automation.name)\u{201D}") {
+        await changeAutomations(String(localized: "change \u{201C}\(automation.name)\u{201D}")) {
             _ = try await $0.update(automation, enabled: enabled)
             // The person's own choice, once strut took it: never turned on for them after it.
             if automation.isSystem { try await markTurnedOn([automation.workflow]) }
@@ -211,7 +211,7 @@ extension AppModel {
     /// Shows it going from the tap: the read after strut's answer lists the run.
     func runAutomationNow(_ automation: Automation) async {
         guard !automations.isRunning(automation) else { return }
-        await changeAutomations("run \u{201C}\(automation.name)\u{201D}") { client in
+        await changeAutomations(String(localized: "run \u{201C}\(automation.name)\u{201D}")) { client in
             automations.firing.insert(automation.id)
             defer { automations.firing.remove(automation.id) }
             try await client.runNow(automation)
@@ -219,14 +219,14 @@ extension AppModel {
     }
 
     func deleteAutomation(_ automation: Automation) async {
-        await changeAutomations("delete \u{201C}\(automation.name)\u{201D}") { client in
+        await changeAutomations(String(localized: "delete \u{201C}\(automation.name)\u{201D}")) { client in
             try await client.delete(automation)
             try macAgent.deviceCards.revokeGrants(of: automation.id)
         }
     }
 
     func updateAutomationPrompt(_ automation: Automation, to prompt: String) async {
-        await changeAutomations("change \u{201C}\(automation.name)\u{201D}") { _ = try await $0.update(automation, prompt: prompt) }
+        await changeAutomations(String(localized: "change \u{201C}\(automation.name)\u{201D}")) { _ = try await $0.update(automation, prompt: prompt) }
     }
 
     /// Moves the person's automations to `workflow` on `server`
@@ -245,9 +245,9 @@ extension AppModel {
                 let stuck = try await client.moveYours()
                 guard !stuck.isEmpty else { return nil }
                 let names = ListFormatter.localizedString(byJoining: stuck.map { "\u{201C}\($0)\u{201D}" })
-                return "Couldn't move \(names) to \(workflow): it stays where it was until the next try."
+                return String(localized: "Couldn't move \(names) to \(workflow): it stays where it was until the next try.")
             } catch {
-                return PeelError.noted(error, couldNot: "move the automations to \(workflow)")
+                return PeelError.noted(error, couldNot: String(localized: "move the automations to \(workflow)"))
             }
         }
         bridge.moving = move

@@ -41,9 +41,9 @@ enum VoiceAuthorization: Equatable {
     var notice: String? {
         switch self {
         case .granted: nil
-        case .microphoneDenied: "Allow the microphone for Peel in Settings to use voice mode."
-        case .speechDenied: "Allow speech recognition for Peel in Settings to use voice mode."
-        case .unavailable: "Speech recognition is not available for your language on this device."
+        case .microphoneDenied: String(localized: "Allow the microphone for Peel in Settings to use voice mode.", table: "Shared")
+        case .speechDenied: String(localized: "Allow speech recognition for Peel in Settings to use voice mode.", table: "Shared")
+        case .unavailable: String(localized: "Speech recognition is not available for your language on this device.", table: "Shared")
         }
     }
 
@@ -223,7 +223,7 @@ final class VoiceListener: SpeechListening {
             if engine.isRunning, Self.inputSignature() == builtFor { return }
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
-            do { try buildEngine() } catch { fail("The microphone stopped working.") }
+            do { try buildEngine() } catch { fail(String(localized: "The microphone stopped working.", table: "Shared")) }
         }
     }
 
@@ -360,7 +360,7 @@ final class VoiceListener: SpeechListening {
         if failed, text == nil, Date().timeIntervalSince(lastStart) < 2 {
             quickFailures += 1
             if quickFailures >= 3 {
-                fail("Speech recognition stopped working.")
+                fail(String(localized: "Speech recognition stopped working.", table: "Shared"))
                 return
             }
         }

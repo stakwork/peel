@@ -52,14 +52,14 @@ extension View {
     /// "Leave the call in #design and join?", the Mac's `CallSwitchConfirm`.
     func callSwitchConfirmation(_ pending: Binding<PendingCall?>, model: AppModel, router: PhoneRouter) -> some View {
         let action = pending.wrappedValue
-        let other = model.calls.otherCall(than: action?.room) ?? "the call"
+        let other = model.calls.otherCall(than: action?.room) ?? String(localized: "the call")
         let joining = action?.isJoin ?? true
         return confirmationDialog(
-            "Leave the call in \(other) and \(joining ? "join" : "start a new one")?",
+            joining ? String(localized: "Leave the call in \(other) and join?") : String(localized: "Leave the call in \(other) and start a new one?"),
             isPresented: Binding(get: { action != nil }, set: { if !$0 { pending.wrappedValue = nil } }),
             titleVisibility: .visible
         ) {
-            Button(joining ? "Leave and join" : "Leave and start") {
+            Button(joining ? String(localized: "Leave and join") : String(localized: "Leave and start")) {
                 pending.wrappedValue = nil
                 action?.run(model, router)
             }
@@ -144,8 +144,8 @@ struct IOSOnCallBar: View {
             connected: call.state == .connected,
             micOn: call.micOn,
             micDisabled: call.micAccess == .refused,
-            returnLabel: "Return to the call in \(call.title)",
-            leaveLabel: "Leave the call",
+            returnLabel: String(localized: "Return to the call in \(call.title)"),
+            leaveLabel: String(localized: "Leave the call"),
             toggleMic: call.toggleMicrophone,
             returnToCall: { router.callShown = true },
             leave: { model.calls.leave() }
@@ -167,17 +167,17 @@ struct IOSOnTalkBar: View {
         }()
         let phase = session?.phase
         OnCallBarLayout(
-            title: "Jamie · " + (model.talk.home?.name ?? ""),
+            title: String(localized: "Jamie · \(model.talk.home?.name ?? "")"),
             connected: phase.map { !$0.isOver && $0 != .connecting && $0 != .reconnecting } ?? false,
             micOn: session?.micOn ?? false,
             micDisabled: !(session?.micReady ?? false),
-            returnLabel: "Return to the call with Jamie",
-            leaveLabel: "Hang up",
+            returnLabel: String(localized: "Return to the call with Jamie"),
+            leaveLabel: String(localized: "Hang up"),
             toggleMic: { session?.toggleMicrophone() },
             returnToCall: { router.talkMinimized = false },
             leave: { model.talk.hangUp() }
         ) {
-            Text(phase?.words ?? "Calling Jamie…")
+            Text(phase?.words ?? String(localized: "Calling Jamie…"))
                 .phoneFont(.secondary)
                 .foregroundStyle(Theme.secondaryText)
                 .lineLimit(1)
@@ -226,7 +226,7 @@ private struct OnCallBarLayout<Status: View>: View {
             }
             .buttonStyle(.plain)
             .disabled(micDisabled)
-            .accessibilityLabel(micOn ? "Mute" : "Unmute")
+            .accessibilityLabel(micOn ? Text("Mute") : Text("Unmute"))
             Button(action: leave) {
                 Image(systemName: "phone.down.fill")
                     .foregroundStyle(Theme.destructive)
@@ -362,7 +362,7 @@ private struct IOSCallTile: View {
                         Label("Speak replies aloud", systemImage: "speaker.wave.2")
                     }
                 }
-                .accessibilityAction(named: speaks ? "Stop speaking replies" : "Speak replies aloud") {
+                .accessibilityAction(named: speaks ? Text("Stop speaking replies") : Text("Speak replies aloud")) {
                     call.setJamieSpeaks(!speaks)
                 }
         } else {
@@ -373,8 +373,8 @@ private struct IOSCallTile: View {
     @ViewBuilder private var content: some View {
         let shown = model.avatar(of: tile.person)
         let name = tile.isScreen
-            ? (tile.isYou ? "Your screen" : "\(shown.name)’s screen")
-            : (tile.isYou ? "You" : shown.name)
+            ? (tile.isYou ? String(localized: "Your screen") : String(localized: "\(shown.name)’s screen"))
+            : (tile.isYou ? String(localized: "You") : shown.name)
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
         ZStack(alignment: .bottomLeading) {
             tile.isScreen ? Theme.callBackground : Theme.quote
@@ -419,7 +419,7 @@ private struct IOSCallTile: View {
         .contentShape(shape)
         .onTapGesture(perform: tap)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(tile.speaking ? "\(name), speaking" : name)
+        .accessibilityLabel(tile.speaking ? String(localized: "\(name), speaking") : name)
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Shows this large, or everyone")
     }
@@ -436,16 +436,16 @@ private struct IOSCallControls: View {
             HStack(spacing: Theme.Space.md) {
                 round(
                     call.micOn ? "mic" : "mic.slash", on: call.micOn,
-                    label: call.micOn ? "Mute" : "Unmute", refused: call.micAccess == .refused,
+                    label: call.micOn ? String(localized: "Mute") : String(localized: "Unmute"), refused: call.micAccess == .refused,
                     action: call.toggleMicrophone
                 )
                 round(
                     call.cameraOn ? "video" : "video.slash", on: call.cameraOn,
-                    label: call.cameraOn ? "Turn camera off" : "Turn camera on", refused: call.cameraAccess == .refused,
+                    label: call.cameraOn ? String(localized: "Turn camera off") : String(localized: "Turn camera on"), refused: call.cameraAccess == .refused,
                     action: call.toggleCamera
                 )
                 if call.cameraOn {
-                    round("arrow.triangle.2.circlepath.camera", on: true, label: "Flip camera", refused: false, action: call.flipCamera)
+                    round("arrow.triangle.2.circlepath.camera", on: true, label: String(localized: "Flip camera"), refused: false, action: call.flipCamera)
                 }
                 Button { model.calls.leave() } label: {
                     Image(systemName: "phone.down.fill")
@@ -480,10 +480,11 @@ private struct IOSCallControls: View {
     /// Quiet lines under the bar: access iOS refused, something that went
     /// wrong, a connection that was lost.
     @ViewBuilder private var notes: some View {
-        let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
-            .compactMap { $0 }
-        if !refused.isEmpty {
-            note("Can't use \(refused.joined(separator: " or "))", action: "Open Settings") {
+        let micRefused = call.micAccess == .refused, cameraRefused = call.cameraAccess == .refused
+        if micRefused || cameraRefused {
+            note(micRefused && cameraRefused ? String(localized: "Can't use the microphone or the camera")
+                    : micRefused ? String(localized: "Can't use the microphone") : String(localized: "Can't use the camera"),
+                 action: String(localized: "Open Settings")) {
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
             }
         }
@@ -492,8 +493,8 @@ private struct IOSCallControls: View {
         }
         if call.state == .lost {
             note(model.calls.failures[call.link.room]
-                    ?? (call.connectedAt == nil ? "Could not connect to the call" : "Lost the connection to the call"),
-                 action: model.calls.joiningRoom == call.link.room ? nil : "Rejoin") { model.calls.rejoin() }
+                    ?? (call.connectedAt == nil ? String(localized: "Could not connect to the call") : String(localized: "Lost the connection to the call")),
+                 action: model.calls.joiningRoom == call.link.room ? nil : String(localized: "Rejoin")) { model.calls.rejoin() }
         }
     }
 

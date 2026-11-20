@@ -53,7 +53,7 @@ public final class Boxes {
             links = try BoxLink.read(from: profile.boxes)
         } catch {
             unreadable = true
-            problem = PeelError.noted(error, couldNot: "read your linked boxes")
+            problem = PeelError.noted(error, couldNot: String(localized: "read your linked boxes", table: "Shared"))
         }
         keepRenewed()
     }
@@ -103,15 +103,15 @@ public final class Boxes {
         guard let offer = asking else { return nil }
         asking = nil
         if let busy = linking {
-            problem = "Peel is still linking to \(busy.host). Open the link from \(offer.host) again once it's done."
+            problem = String(localized: "Peel is still linking to \(busy.host). Open the link from \(offer.host) again once it's done.", table: "Shared")
             return nil
         }
         guard let profile, let sign else {
-            problem = "Unlock Peel to link it to \(offer.host)."
+            problem = String(localized: "Unlock Peel to link it to \(offer.host).", table: "Shared")
             return nil
         }
         guard !unreadable else {
-            problem = "Peel couldn't read the boxes it keeps, so it won't change them now. Quit and reopen Peel, then link again."
+            problem = String(localized: "Peel couldn't read the boxes it keeps, so it won't change them now. Quit and reopen Peel, then link again.", table: "Shared")
             return nil
         }
         if let refusal = offer.problem(allowsLoopback: profile.kind == .development) {
@@ -132,7 +132,7 @@ public final class Boxes {
                 try keep(link)
             } catch {
                 guard generation == self.generation else { return }
-                problem = PeelError.noted(error, couldNot: "link Peel to \(offer.host)")
+                problem = PeelError.noted(error, couldNot: String(localized: "link Peel to \(offer.host)", table: "Shared"))
             }
         }
     }
@@ -147,7 +147,7 @@ public final class Boxes {
             links = kept
             problem = nil
         } catch {
-            problem = PeelError.noted(error, couldNot: "forget \(box.host)")
+            problem = PeelError.noted(error, couldNot: String(localized: "forget \(box.host)", table: "Shared"))
         }
     }
 
@@ -159,7 +159,7 @@ public final class Boxes {
     /// one that refuses even a renewed token. Throws why it does not open.
     public func home(of box: BoxLink) async throws -> OrgPageRequest {
         guard let kept = links.first(where: { $0.url == box.url }) else {
-            throw PeelError("Peel is no longer linked to \(box.host).")
+            throw PeelError(String(localized: "Peel is no longer linked to \(box.host).", table: "Shared"))
         }
         if try await BoxClient(box: kept.url).accepts(kept) { return kept.home }
         guard let renewed = try await renew(kept) else { throw PeelError(Self.unlinked(kept)) }
@@ -179,7 +179,7 @@ public final class Boxes {
             return generation == self.generation ? page : nil
         } catch {
             guard generation == self.generation, !(error is CancellationError) else { return nil }
-            if links.contains(where: { $0.url == box.url }) { problem = PeelError.noted(error, couldNot: "open \(box.host)") }
+            if links.contains(where: { $0.url == box.url }) { problem = PeelError.noted(error, couldNot: String(localized: "open \(box.host)", table: "Shared")) }
             return nil
         }
     }
@@ -216,7 +216,7 @@ public final class Boxes {
                 guard generation == self.generation else { return }
                 // Forgotten meanwhile: the others are still renewed.
                 if error is CancellationError { continue }
-                problem = PeelError.noted(error, couldNot: "renew Peel's link to \(box.host)")
+                problem = PeelError.noted(error, couldNot: String(localized: "renew Peel's link to \(box.host)", table: "Shared"))
             }
         }
     }
@@ -226,7 +226,7 @@ public final class Boxes {
     /// `CancellationError` when the account closed or the box was forgotten meanwhile.
     @discardableResult
     func renew(_ box: BoxLink, at now: Date = Date()) async throws -> BoxLink? {
-        guard let sign else { throw PeelError("Peel's account is not open.") }
+        guard let sign else { throw PeelError(String(localized: "Peel's account is not open.", table: "Shared")) }
         let generation = generation
         let renewal = try await BoxClient(box: box.url).renew(box, now: now, sign: sign)
         guard generation == self.generation, links.contains(where: { $0.url == box.url }) else { throw CancellationError() }
@@ -261,7 +261,7 @@ public final class Boxes {
 
     /// What is said of a box that no longer links the key.
     static func unlinked(_ box: BoxLink) -> String {
-        "\(box.host) removed Peel's link, so Peel let it go. Link it again from Connect there."
+        String(localized: "\(box.host) removed Peel's link, so Peel let it go. Link it again from Connect there.", table: "Shared")
     }
 }
 
@@ -279,16 +279,15 @@ extension BoxLink {
 public enum BoxWords {
     /// The question: "Link Peel to <host> as <name>?".
     public static func title(_ offer: BoxLinkOffer) -> String {
-        "Link Peel to \(offer.host) as \(offer.challenge.person ?? "you")?"
+        String(localized: "Link Peel to \(offer.host) as \(offer.challenge.person ?? "you")?", table: "Shared")
     }
 
     /// Under it: what the yes does.
     public static func question(_ offer: BoxLinkOffer) -> String {
-        let who = offer.challenge.person ?? "you"
-        return "\(offer.host) will know your Sphinx account as \(who): your @jamie in its tribes runs as \(who), "
-            + "and Peel opens its apps as \(who). Link only if you just asked for this there."
+        let who = offer.challenge.person ?? String(localized: "you", table: "Shared")
+        return String(localized: "\(offer.host) will know your Sphinx account as \(who): your @jamie in its tribes runs as \(who), and Peel opens its apps as \(who). Link only if you just asked for this there.", table: "Shared")
     }
 
     /// Where a box is linked from, for the rows.
-    public static let howToLink = "To link Peel to a box, choose Link Peel in Connect in its Jamie app."
+    public static var howToLink: String { String(localized: "To link Peel to a box, choose Link Peel in Connect in its Jamie app.", table: "Shared") }
 }

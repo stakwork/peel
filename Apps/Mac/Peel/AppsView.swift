@@ -18,11 +18,11 @@ struct AppsView: View {
     var body: some View {
         let apps = model.stadeum.apps
         VStack(spacing: 0) {
-            DetailHeader(title: "Apps", subtitle: apps.isEmpty ? nil : Formatting.count(apps.count, "app")) {
+            DetailHeader(title: String(localized: "Apps"), subtitle: apps.isEmpty ? nil : Formatting.count(apps.count, .app)) {
                 WorkspaceApp.headerIcon(nil)
             } trailing: {
                 // The person's own and the workspaces' now, not at the sidebar's next read.
-                IconButton("arrow.clockwise", help: "Refresh", working: model.stadeum.readingApps) {
+                IconButton("arrow.clockwise", help: String(localized: "Refresh"), working: model.stadeum.readingApps) {
                     model.refreshApps()
                 }
                 .disabled(model.stadeum.readingApps)
@@ -31,8 +31,8 @@ struct AppsView: View {
                 list(apps)
             } else {
                 // Building one is the way in; a workspace's come with Stadeum.
-                EmptyState("Ask Peel to build you one. Apps your Stadeum workspaces pin show here too.",
-                           title: "No apps yet") {
+                EmptyState(String(localized: "Ask Peel to build you one. Apps your Stadeum workspaces pin show here too."),
+                           title: String(localized: "No apps yet")) {
                     HStack(spacing: Theme.Space.sm) {
                         Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.primary))
                         if model.stadeum.live.isEmpty {
@@ -52,10 +52,10 @@ struct AppsView: View {
         let shownSource = sources.count > 1 && sources.contains(source ?? "") ? source : nil
         let shown = apps.filter { (shownSource == nil || $0.source == shownSource) && $0.matches(query) }
         HStack(spacing: Theme.Space.md) {
-            SearchField(text: $query, prompt: "Search apps").frame(maxWidth: 320)
+            SearchField(text: $query, prompt: String(localized: "Search apps")).frame(maxWidth: 320)
             if sources.count > 1 {
                 SegmentedChoice(selection: Binding(get: { shownSource }, set: { source = $0 }),
-                                options: [(nil, "All")] + sources.map { ($0, $0) })
+                                options: [(nil, String(localized: "All"))] + sources.map { ($0, $0) })
             }
             Spacer(minLength: 0)
         }
@@ -63,7 +63,7 @@ struct AppsView: View {
         .padding(.top, Theme.Space.md)
         if shown.isEmpty {
             // Only a search empties it: the choice lists no source without apps.
-            EmptyState("No apps match “\(query.trimmingCharacters(in: .whitespaces))”.")
+            EmptyState(String(localized: "No apps match “\(query.trimmingCharacters(in: .whitespaces))”."))
         } else {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Theme.Space.md, alignment: .top)],

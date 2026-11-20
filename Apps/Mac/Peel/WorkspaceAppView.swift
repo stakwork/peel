@@ -37,9 +37,9 @@ struct WorkspaceAppView: View {
                 }
                 AppShareButton(app: app)
                 AppPinButton(app: app)
-                IconButton("arrow.up.forward.app", help: "Open in new window") { openInNewWindow() }
+                IconButton("arrow.up.forward.app", help: String(localized: "Open in new window")) { openInNewWindow() }
                     .disabled(model.memoryServer == nil)
-                IconButton("arrow.clockwise", help: "Reload") { loads += 1 }
+                IconButton("arrow.clockwise", help: String(localized: "Reload")) { loads += 1 }
             }
             if let previewing, let versions {
                 AppPreviewBar(shown: previewing, live: versions.active) { self.previewing = nil }
@@ -58,7 +58,7 @@ struct WorkspaceAppView: View {
                     // renaming it, which would lose what the page holds.
                     .id(id)
             } else {
-                EmptyState("Apps open on Peel's own strut, which is not running.")
+                EmptyState(String(localized: "Apps open on Peel's own strut, which is not running."))
             }
         }
         // Read again when the listing says something moved (a new version, a new live one or
@@ -126,7 +126,7 @@ struct AppPinButton: View {
 
     var body: some View {
         let pinned = model.isPinned(app)
-        IconButton(help: pinned ? "Unpin from the sidebar" : "Pin to the sidebar") {
+        IconButton(help: pinned ? String(localized: "Unpin from the sidebar") : String(localized: "Pin to the sidebar")) {
             model.setPinned(app, !pinned)
         } label: {
             // As the call window's keep-on-top pin.
@@ -136,7 +136,7 @@ struct AppPinButton: View {
                 Image(systemName: "pin")
             }
         }
-        .accessibilityValue(pinned ? "On" : "Off")
+        .accessibilityValue(pinned ? String(localized: "On") : String(localized: "Off"))
     }
 }
 
@@ -148,9 +148,9 @@ struct AppShareButton: View {
 
     var body: some View {
         if let link = app.shareLink() {
-            IconButton("link", help: "Copy link to share") {
+            IconButton("link", help: String(localized: "Copy link to share")) {
                 guard Clipboard.copy(link.absoluteString) else { return }
-                (model.mainPresenter as? MenuPresenter)?.showToast("Link copied")
+                (model.mainPresenter as? MenuPresenter)?.showToast(String(localized: "Link copied"))
             }
         }
     }

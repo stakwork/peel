@@ -82,7 +82,7 @@ struct PendingInviteRow: View {
             HStack(spacing: Theme.Space.md) {
                 InviteIcon(size: 30)
                     .accessibilityHidden(true)
-                Text(invite.nickname ?? "Invite")
+                Text(invite.nickname ?? String(localized: "Invite"))
                     .phoneFont(.row)
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
@@ -98,7 +98,7 @@ struct PendingInviteRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Invite, \(invite.nickname ?? "no nickname")")
+        .accessibilityLabel(invite.nickname.map { String(localized: "Invite, \($0)") } ?? String(localized: "Invite, no nickname"))
         .accessibilityValue(invite.statusLine)
         .accessibilityAddTraits(.isButton)
     }
@@ -165,7 +165,7 @@ struct CodeEntry: View {
                 }
                 .buttonStyle(.peel(.outline, size: .touch))
                 PhotosPicker(selection: $photo, matching: .images) {
-                    Label(reading ? "Reading…" : "Photo", systemImage: "photo")
+                    Label(reading ? String(localized: "Reading…") : String(localized: "Photo"), systemImage: "photo")
                 }
                 .buttonStyle(.peel(.outline, size: .touch))
                 .disabled(reading)
@@ -180,7 +180,7 @@ struct CodeEntry: View {
             Task { await read(item) }
         }
         .fullScreenCover(isPresented: $scanning) {
-            CodeScanner(title: scanTitle, prompt: scanPrompt, pasteInstead: "paste the code",
+            CodeScanner(title: scanTitle, prompt: scanPrompt, pasteInstead: String(localized: "paste the code"),
                         cancel: { scanning = false }) { code in
                 if let refused = accept(code) { return refused }
                 take(code)
@@ -204,7 +204,7 @@ struct CodeEntry: View {
             guard let data = try await item.loadTransferable(type: Data.self) else { return }
             let codes = try await Task.detached { try QRImage.codes(in: data) }.value
             guard let chosen = choose(codes) else {
-                problem = codes.isEmpty ? "No QR code found in that photo." : "That photo's code isn't one Peel can use here."
+                problem = codes.isEmpty ? String(localized: "No QR code found in that photo.") : String(localized: "That photo's code isn't one Peel can use here.")
                 return
             }
             take(chosen)
@@ -339,7 +339,7 @@ extension AppModel {
     func uploadPicture(_ item: PhotosPickerItem) async throws -> String {
         let picked = await PickedFiles.media([item])
         guard let file = picked.files.first else {
-            throw PeelError(picked.refused.first ?? "the photo could not be read")
+            throw PeelError(picked.refused.first ?? String(localized: "the photo could not be read"))
         }
         defer { IncomingFiles.discard(file) }
         return try await uploadPicture(file)

@@ -110,10 +110,10 @@ final class RecordingController {
         problem = nil
         Task {
             guard await Self.allowed(.audio, settings: "Privacy_Microphone") else {
-                return fail("Peel can't use the microphone: turn it on in System Settings, then record again.")
+                return fail(String(localized: "Peel can't use the microphone: turn it on in System Settings, then record again."))
             }
             let camera = cameraOn ? await Self.allowed(.video, settings: "Privacy_Camera") : false
-            if cameraOn, !camera { problem = "Recording without the camera: turn it on for Peel in System Settings." }
+            if cameraOn, !camera { problem = String(localized: "Recording without the camera: turn it on for Peel in System Settings.") }
             // Peel's own windows stay in the picture the picker hands back:
             // the bubble, and Peel itself when it is what you are showing.
             guard let filter = await ScreenShare.pick(.display, includePeel: true) else {
@@ -121,7 +121,7 @@ final class RecordingController {
                 return
             }
             let screen = ScreenShare.screen(of: filter) ?? NSScreen.main
-            if camera, !bubble.show(on: screen) { problem = "Recording without the camera: none was found." }
+            if camera, !bubble.show(on: screen) { problem = String(localized: "Recording without the camera: none was found.") }
             picked = (filter, screen)
             phase = .ready
             bar.show(on: screen)
@@ -146,7 +146,7 @@ final class RecordingController {
             } catch {
                 putAway()
                 log.error("recording did not start: \(String(describing: error), privacy: .public)")
-                return fail("The recording couldn't start.")
+                return fail(String(localized: "The recording couldn't start."))
             }
             phase = .recording
             bar.show(on: picked.screen)
@@ -214,16 +214,16 @@ final class RecordingController {
         elapsed = recorder.duration
         let left = TimeInterval(longest * 60) - elapsed
         if left <= 0 {
-            problem = "The segment stopped at \(longest) minutes, your segment limit."
+            problem = String(localized: "The segment stopped at \(longest) minutes, your segment limit.")
             stop()
-            notice.show(.message("Segment saved to Downloads. It stopped at \(longest) minutes"))
+            notice.show(.message(String(localized: "Segment saved to Downloads. It stopped at \(longest) minutes")))
             return
         }
         let before = (timeLeft == nil, micNote)
         timeLeft = left <= Self.warning ? left : nil
         // Gone deaf (a headset's mic dropped): said, as the mic picked at
         // Record stays for the recording (`ScreenRecorder`).
-        micNote = recorder.micSilence >= Self.deaf ? "No sound from your mic" : nil
+        micNote = recorder.micSilence >= Self.deaf ? String(localized: "No sound from your mic") : nil
         if before != (timeLeft == nil, micNote) { bar.refit() }
     }
 
@@ -247,7 +247,7 @@ final class RecordingController {
                 log.error("recording failed: \(String(describing: error), privacy: .public)")
                 guard (try? await AVURLAsset(url: url).load(.isPlayable)) == true else {
                     try? FileManager.default.removeItem(at: url)
-                    problem = "The segment couldn't be saved."
+                    problem = String(localized: "The segment couldn't be saved.")
                     return
                 }
             }
@@ -261,10 +261,10 @@ final class RecordingController {
                 log.error("recording not kept in Downloads: \(String(describing: error), privacy: .public)")
                 guard let target = FilePanels().saveLocation(named: name + ".mp4"), (try? FileManager.default.moveItem(at: url, to: target)) != nil else {
                     try? FileManager.default.removeItem(at: url)
-                    problem = "The segment couldn't be saved."
+                    problem = String(localized: "The segment couldn't be saved.")
                     return
                 }
-                problem = "Saved where you chose, not in Downloads, so it isn't listed here."
+                problem = String(localized: "Saved where you chose, not in Downloads, so it isn't listed here.")
                 await addCaptions(to: target)
             }
         }
@@ -299,7 +299,7 @@ final class RecordingController {
     /// then the file written whole with its index first, captions or not:
     /// a chat's player starts before the download ends.
     private func addCaptions(to video: URL) async {
-        captions[video] = "Adding captions…"
+        captions[video] = String(localized: "Adding captions…")
         let temp = FileManager.default.temporaryDirectory
         let wav = temp.appendingPathComponent("peel-recording-\(UUID().uuidString).wav")
         let pieces = temp.appendingPathComponent("peel-recording-\(UUID().uuidString)")
@@ -329,12 +329,12 @@ final class RecordingController {
                 words += reply.words.map { TimedWord(text: $0.text, start: $0.start + piece.start) }
             }
             cues = RecordingCaptions.cues(from: words, duration: duration)
-            status = words.isEmpty ? "No speech was heard" : "Captioned"
+            status = words.isEmpty ? String(localized: "No speech was heard") : String(localized: "Captioned")
         } catch let failure as StrutSpeech.Failure {
-            status = "No captions: \(failure)"
+            status = String(localized: "No captions: \(String(describing: failure))")
         } catch {
             log.error("captions failed: \(String(describing: error), privacy: .public)")
-            status = "No captions: they couldn't be made"
+            status = String(localized: "No captions: they couldn't be made")
         }
         do {
             try await RecordingMedia.addCaptions(cues, to: video, writingTo: captioned)
@@ -342,7 +342,7 @@ final class RecordingController {
         } catch {
             // The recording as written still plays, only not before it is all downloaded.
             log.error("recording not rewritten: \(String(describing: error), privacy: .public)")
-            if !cues.isEmpty { status = "No captions: they couldn't be made" }
+            if !cues.isEmpty { status = String(localized: "No captions: they couldn't be made") }
         }
         captions[video] = status
         refresh()

@@ -49,7 +49,7 @@ public final class CallStore {
     @ObservationIgnored public private(set) var leaving: Task<Void, Never>?
     /// How long "The call moved to your other device." stays in its chat.
     static let movedNoticeDuration: Duration = .seconds(5)
-    static let movedNotice = "The call moved to your other device."
+    static var movedNotice: String { String(localized: "The call moved to your other device.", table: "Shared") }
     /// The chat showing that notice and the timer that takes it down;
     /// a new handoff restarts the timer.
     @ObservationIgnored private var movedChat: String?
@@ -76,11 +76,11 @@ public final class CallStore {
     @ObservationIgnored var chatNotice: (_ chat: String, _ change: (String?) -> String?) -> Void = { _, _ in }
     /// A chat's title for the call window ("#tribe" or the contact's name),
     /// looked up when a call is joined, so a rejoin shows a rename.
-    @ObservationIgnored var chatTitle: (_ chat: String) -> String = { _ in "Call" }
+    @ObservationIgnored var chatTitle: (_ chat: String) -> String = { _ in String(localized: "Call", table: "Shared") }
     /// A call with Jamie in it for a Stadeum workspace: the link Hive made
     /// (`Stadeum.callLink`). Throws when there is none to be had.
     @ObservationIgnored var hiveCall: (_ peer: HivePeer) async throws -> String = { _ in
-        throw PeelError("Connect Stadeum to call with Jamie.")
+        throw PeelError(String(localized: "Connect Stadeum to call with Jamie.", table: "Shared"))
     }
     /// Where a join asks Hive for its ticket to a call Hive made, so this
     /// device's person speaks as themselves there (`Stadeum.callTicket`,
@@ -300,7 +300,7 @@ public final class CallStore {
             return try await join(with: ticket, link: link, chat: chat, camera: camera, engine: engine)
         } catch {
             if failureInChat {
-                let notice = PeelError.noted(error, couldNot: "join the call")
+                let notice = PeelError.noted(error, couldNot: String(localized: "join the call", table: "Shared"))
                 chatNotice(chat) { _ in notice }
             } else {
                 failures[link.room] = PeelError.noted(error)
@@ -431,7 +431,7 @@ public final class CallStore {
             let link = try await engine.startCall(in: chat, audioOnly: audioOnly, hiveLink: hiveLink).link
             return await join(link, in: chat, camera: !audioOnly, failureInChat: true)
         } catch {
-            let notice = PeelError.noted(error, couldNot: "start the call")
+            let notice = PeelError.noted(error, couldNot: String(localized: "start the call", table: "Shared"))
             chatNotice(chat) { _ in notice }
             return false
         }

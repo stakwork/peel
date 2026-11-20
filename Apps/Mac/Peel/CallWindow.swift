@@ -25,7 +25,7 @@ struct CallWindow: View {
         .background(Theme.callBackground)
         .foregroundStyle(Theme.text)
         .ignoresSafeArea(edges: .top)
-        .navigationTitle(model.calls.call?.title ?? "Call")
+        .navigationTitle(model.calls.call?.title ?? String(localized: "Call"))
         .peelMenuHost()
         .onAppear { if model.calls.call == nil { dismissWindow(id: Self.id) } }
         .onChange(of: model.calls.call == nil) { _, gone in if gone { dismissWindow(id: Self.id) } }
@@ -60,7 +60,7 @@ struct CallStatusText: View {
 enum CallLayout: String, CaseIterable {
     case grid, speaker
 
-    var title: String { self == .grid ? "Grid" : "Speaker" }
+    var title: String { self == .grid ? String(localized: "Grid") : String(localized: "Speaker") }
     var systemImage: String { self == .grid ? "square.grid.2x2" : "rectangle.inset.filled" }
 }
 
@@ -152,7 +152,7 @@ private struct CallRoomView: View {
 
     private var keepOnTop: some View {
         let on = call.keepOnTop
-        return IconButton(help: on ? "Stop keeping the call above other windows" : "Keep the call above other windows") {
+        return IconButton(help: on ? String(localized: "Stop keeping the call above other windows") : String(localized: "Keep the call above other windows")) {
             call.keepOnTop.toggle()
         } label: {
             if on {
@@ -161,7 +161,7 @@ private struct CallRoomView: View {
                 Image(systemName: "pin")
             }
         }
-        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityValue(on ? Text("On") : Text("Off"))
     }
 }
 
@@ -175,12 +175,12 @@ private struct CallStripToggle: View {
 
     var body: some View {
         if CallStage.main(of: call, layout: layout) != nil, call.tiles.count > 1 {
-            IconButton(help: hidden ? "Show everyone else beside the large tile" : "Hide everyone else, for a larger view") {
+            IconButton(help: hidden ? String(localized: "Show everyone else beside the large tile") : String(localized: "Hide everyone else, for a larger view")) {
                 hidden.toggle()
             } label: {
                 Image(systemName: hidden ? "sidebar.right" : "rectangle.righthalf.inset.filled")
             }
-            .accessibilityLabel(hidden ? "Show participants" : "Hide participants")
+            .accessibilityLabel(hidden ? Text("Show participants") : Text("Hide participants"))
         }
     }
 }
@@ -297,8 +297,8 @@ private struct CallTileView: View {
     var body: some View {
         let shown = model.avatar(of: tile.person)
         let name = tile.isScreen
-            ? (tile.isYou ? "Your screen" : "\(shown.name)’s screen")
-            : (tile.isYou ? "You" : shown.name)
+            ? (tile.isYou ? String(localized: "Your screen") : String(localized: "\(shown.name)’s screen"))
+            : (tile.isYou ? String(localized: "You") : shown.name)
         ZStack(alignment: .bottomLeading) {
             tile.isScreen ? Theme.callBackground : Theme.quote
             if tile.paused {
@@ -351,11 +351,11 @@ private struct CallTileView: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
         .onTapGesture(perform: click)
-        .help(focused ? "\(name) · Click or press Escape to go back" : "\(name) · Click to focus")
+        .help(focused ? Text("\(name) · Click or press Escape to go back") : Text("\(name) · Click to focus"))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(tile.speaking ? "\(name), speaking" : name)
+        .accessibilityLabel(tile.speaking ? Text("\(name), speaking") : Text(verbatim: name))
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(focused ? "Goes back" : "Shows this large")
+        .accessibilityHint(focused ? Text("Goes back") : Text("Shows this large"))
     }
 }
 
@@ -389,7 +389,7 @@ private struct CallControls: View {
                 Button {
                     model.calls.leave()
                 } label: {
-                    pill("phone.down.fill", "Leave", weight: .bold, text: Theme.buttonText, fill: Theme.destructive)
+                    pill("phone.down.fill", String(localized: "Leave"), weight: .bold, text: Theme.buttonText, fill: Theme.destructive)
                         .padding(.horizontal, Theme.Space.xs)
                 }
                 .buttonStyle(.plain)
@@ -406,12 +406,12 @@ private struct CallControls: View {
     private var chat: some View {
         let open = call.chatOpen
         return Button { call.setChatOpen(!open) } label: {
-            pill(open ? "bubble.left.fill" : "bubble.left", "Chat", weight: .medium, text: Theme.text, fill: Theme.hover)
+            pill(open ? "bubble.left.fill" : "bubble.left", String(localized: "Chat"), weight: .medium, text: Theme.text, fill: Theme.hover)
         }
         .buttonStyle(.plain)
         .keyboardShortcut("c", modifiers: [.command, .shift])
-        .help(open ? "Hide chat (⌘⇧C)" : "Show chat (⌘⇧C)")
-        .accessibilityLabel(call.chatUnread > 0 && !open ? "Chat, \(call.chatUnread) unread" : "Chat")
+        .help(open ? Text("Hide chat (⌘⇧C)") : Text("Show chat (⌘⇧C)"))
+        .accessibilityLabel(call.chatUnread > 0 && !open ? Text("Chat, \(call.chatUnread) unread") : Text("Chat"))
         .overlay(alignment: .topTrailing) {
             if call.chatUnread > 0, !open {
                 Badge(count: call.chatUnread).offset(x: 6, y: -6).allowsHitTesting(false)
@@ -424,14 +424,14 @@ private struct CallControls: View {
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
             Button { call.toggleScreenSharePause() } label: {
-                pill(call.sharePaused ? "play.fill" : "pause.fill", call.sharePaused ? "Resume" : "Pause", weight: .medium,
+                pill(call.sharePaused ? "play.fill" : "pause.fill", call.sharePaused ? String(localized: "Resume") : String(localized: "Pause"), weight: .medium,
                      text: Theme.text, fill: Theme.hover)
             }
             .buttonStyle(.plain)
-            .help(call.sharePaused ? "Resume sharing" : "Pause sharing")
-            .accessibilityLabel(call.sharePaused ? "Resume sharing" : "Pause sharing")
+            .help(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
+            .accessibilityLabel(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
             Button { call.stopScreenShare() } label: {
-                pill("rectangle.inset.filled.and.person.filled", "Stop sharing", weight: .medium,
+                pill("rectangle.inset.filled.and.person.filled", String(localized: "Stop sharing"), weight: .medium,
                      text: Theme.buttonText, fill: Theme.accent)
             }
             .buttonStyle(.plain)
@@ -447,13 +447,13 @@ private struct CallControls: View {
         let unavailable = call.state != .connected
         return HStack(spacing: 0) {
             Button { call.startScreenShare(.display) } label: {
-                pill("rectangle.inset.filled.and.person.filled", "Share", weight: .medium, text: Theme.text, fill: .clear)
+                pill("rectangle.inset.filled.and.person.filled", String(localized: "Share"), weight: .medium, text: Theme.text, fill: .clear)
             }
             .buttonStyle(.plain)
             .keyboardShortcut("s", modifiers: [.command, .shift])
             .help("Share your entire screen (⌘⇧S)")
             Theme.callChevronLine.frame(width: 1)
-            chevron(shareChevron, help: "Share the screen, a window or an app", label: "Choose what to share") {
+            chevron(shareChevron, help: String(localized: "Share the screen, a window or an app"), label: String(localized: "Choose what to share")) {
                 showShareMenu(at: shareChevron)
             }
         }
@@ -496,7 +496,7 @@ private struct CallControls: View {
             .help("\(label) (⌘⇧\(key))")
             .accessibilityLabel(label)
             Theme.callChevronLine.frame(width: 1)
-            self.chevron(chevron, help: "Microphone, speaker and camera", label: "Choose devices") {
+            self.chevron(chevron, help: String(localized: "Microphone, speaker and camera"), label: String(localized: "Choose devices")) {
                 showDevices(at: chevron)
             }
         }
@@ -526,15 +526,16 @@ private struct CallControls: View {
     @ViewBuilder private var notes: some View {
         if let sharing = call.sharing {
             if call.sharePaused {
-                note("Sharing paused: no one sees your screen", action: "Resume", perform: call.resumeScreenShare)
+                note(String(localized: "Sharing paused: no one sees your screen"), action: String(localized: "Resume"), perform: call.resumeScreenShare)
             } else {
-                note(sharing.note(includingPeel: call.sharingIncludesPeel), action: "Stop", perform: call.stopScreenShare)
+                note(sharing.note(includingPeel: call.sharingIncludesPeel), action: String(localized: "Stop"), perform: call.stopScreenShare)
             }
         }
-        let refused = [call.micAccess == .refused ? "the microphone" : nil, call.cameraAccess == .refused ? "the camera" : nil]
-            .compactMap { $0 }
-        if !refused.isEmpty {
-            note("Can't use \(refused.joined(separator: " or "))", action: "Open System Settings") {
+        let micRefused = call.micAccess == .refused, cameraRefused = call.cameraAccess == .refused
+        if micRefused || cameraRefused {
+            let refusedText = micRefused && cameraRefused ? String(localized: "Can't use the microphone or the camera")
+                : micRefused ? String(localized: "Can't use the microphone") : String(localized: "Can't use the camera")
+            note(refusedText, action: String(localized: "Open System Settings")) {
                 let pane = call.micAccess == .refused ? "Privacy_Microphone" : "Privacy_Camera"
                 if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
                     NSWorkspace.shared.open(url)
@@ -543,15 +544,15 @@ private struct CallControls: View {
         }
         if let notice = call.deviceNotice {
             if let offer = call.micSwitchOffer {
-                note(notice, action: "Switch to \(offer.name)") { call.switchToBuiltInMicrophone() }
+                note(notice, action: String(localized: "Switch to \(offer.name)")) { call.switchToBuiltInMicrophone() }
             } else {
                 note(notice)
             }
         }
         if call.state == .lost {
             note(model.calls.failures[call.link.room]
-                    ?? (call.connectedAt == nil ? "Could not connect to the call" : "Lost the connection to the call"),
-                 action: model.calls.joiningRoom == call.link.room ? nil : "Rejoin") { model.calls.rejoin() }
+                    ?? (call.connectedAt == nil ? String(localized: "Could not connect to the call") : String(localized: "Lost the connection to the call")),
+                 action: model.calls.joiningRoom == call.link.room ? nil : String(localized: "Rejoin")) { model.calls.rejoin() }
         }
     }
 
@@ -578,9 +579,9 @@ private struct CallControls: View {
             ? [.header("Jamie"), .button("Speak replies aloud", checked: speaks) { call.setJamieSpeaks(!speaks) }]
             : []
         let entries = [MenuEntry].sections(
-            section("Microphone", call.microphones, chosen: call.microphone, choose: call.chooseMicrophone),
-            section("Speaker", call.speakers, chosen: call.speaker, choose: call.chooseSpeaker),
-            section("Camera", call.cameras, chosen: call.camera, choose: call.chooseCamera),
+            section(String(localized: "Microphone"), call.microphones, chosen: call.microphone, choose: call.chooseMicrophone),
+            section(String(localized: "Speaker"), call.speakers, chosen: call.speaker, choose: call.chooseSpeaker),
+            section(String(localized: "Camera"), call.cameras, chosen: call.camera, choose: call.chooseCamera),
             jamie
         )
         presenter?.show(entries, at: anchor, source: "call-devices", minWidth: 268)

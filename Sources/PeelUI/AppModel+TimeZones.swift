@@ -75,14 +75,14 @@ extension AppModel {
     /// sender's offset then was not yours.
     public func timeTooltip(_ date: Date, zone: TimeZone?, name: String) -> String? {
         guard let zone, difference(zone, at: date) != 0 else { return nil }
-        return "\(Formatting.time(date, in: .autoupdatingCurrent)) your time · \(Formatting.time(date, in: zone)) for \(name)"
+        return String(localized: "\(Formatting.time(date, in: .autoupdatingCurrent)) your time · \(Formatting.time(date, in: zone)) for \(name)", table: "Shared")
     }
 
     /// "02:14 local time · 6 h ahead": someone's time now, when their
     /// offset is not yours.
     public func localTimeLine(_ local: LocalTime?, at now: Date) -> String? {
         guard let local, let offset = Formatting.offset(difference(local.zone, at: now)) else { return nil }
-        return "\(Formatting.time(now, in: local.zone)) local time · \(offset)"
+        return String(localized: "\(Formatting.time(now, in: local.zone)) local time · \(offset)", table: "Shared")
     }
 
     /// A contact's local time, or with `member` a tribe member's; nil when

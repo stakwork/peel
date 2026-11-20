@@ -35,10 +35,10 @@ struct ThreadPanel: View {
         let composer = ComposerID.thread(ref)
         let tribe = conversation.isTribe ? model.tribes[conversation.chat] : nil
         VStack(spacing: 0) {
-            DetailHeader(title: "Thread", subtitle: conversation.title) {
+            DetailHeader(title: String(localized: "Thread"), subtitle: conversation.title) {
                 EmptyView()
             } trailing: {
-                IconButton("xmark", help: "Close thread (Escape)") {
+                IconButton("xmark", help: String(localized: "Close thread (Escape)")) {
                     ThreadPanel.closing { model.closeThread() }
                 }
             }
@@ -53,7 +53,7 @@ struct ThreadPanel: View {
             // The chat's notices (a reply refused here among them) when
             // the chat they would show under is not drawn.
             ChatFooter(conversation: conversation, tribe: tribe, composer: composer,
-                       placeholder: "Reply in thread", showsNotice: !beside)
+                       placeholder: String(localized: "Reply in thread"), showsNotice: !beside)
         }
         .background(Theme.panel)
         .fileDrop(into: composer)
@@ -166,7 +166,7 @@ struct ThreadsView: View {
     var body: some View {
         let threads = model.threads
         VStack(spacing: 0) {
-            DetailHeader(title: "Threads") {
+            DetailHeader(title: String(localized: "Threads")) {
                 EmptyView()
             } trailing: {
                 if model.unreadThreads > 0 {
@@ -175,7 +175,7 @@ struct ThreadsView: View {
                 }
             }
             if threads.isEmpty {
-                EmptyState("No threads yet.")
+                EmptyState(String(localized: "No threads yet."))
             } else {
                 let conversations = Dictionary(model.conversations.map { ($0.chat, $0) }, uniquingKeysWith: { $1 })
                 ScrollView {

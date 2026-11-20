@@ -131,14 +131,14 @@ private struct ViewerPage: View {
             if model.attachment(id).file == nil { await model.download(message) }
             let handle = model.attachment(id)
             guard let file = handle.file else {
-                if !Task.isCancelled { notShown = handle.failureReason ?? "The image could not be opened." }
+                if !Task.isCancelled { notShown = handle.failureReason ?? String(localized: "The image could not be opened.") }
                 return
             }
             let decoded = await ImageCache.shared.image(file, maxPixels: Self.pixels)
             guard !Task.isCancelled else { return }
             image = decoded
             if decoded == nil, placeholder == nil {
-                notShown = await AttachmentFormat.notShown(file) ?? "The image could not be drawn."
+                notShown = await AttachmentFormat.notShown(file) ?? String(localized: "The image could not be drawn.")
             }
         }
     }

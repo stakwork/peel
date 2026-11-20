@@ -13,11 +13,11 @@ import PeelUI
 extension AppModel {
     func openPublicApp(_ link: PublicAppLink) {
         guard phase == .ready else {
-            notice = "Unlock Peel, then open the link again."
+            notice = String(localized: "Unlock Peel, then open the link again.")
             return
         }
         guard memoryServer != nil || strut != nil else {
-            notice = "Peel opens \(link.host)'s app through its own strut, which isn't running on this Mac."
+            notice = String(localized: "Peel opens \(link.host)'s app through its own strut, which isn't running on this Mac.")
             return
         }
         Task { [weak self] in
@@ -25,7 +25,7 @@ extension AppModel {
                 let name = try await link.appName()
                 // A link that launched Peel comes while its strut is still starting.
                 guard let server = await self?.runningStrut() else {
-                    self?.notice = "Peel opens \(link.host)'s app with its own strut, which did not start. Try again in a moment."
+                    self?.notice = String(localized: "Peel opens \(link.host)'s app with its own strut, which did not start. Try again in a moment.")
                     return
                 }
                 guard let self, let url = server.page(public: name, from: link.seller) else { return }
@@ -33,7 +33,7 @@ extension AppModel {
                     self?.open($0)
                 }
             } catch {
-                self?.notice = PeelError.noted(error, couldNot: "open \(link.host)'s app")
+                self?.notice = PeelError.noted(error, couldNot: String(localized: "open \(link.host)'s app"))
             }
         }
     }

@@ -21,28 +21,28 @@ struct AppStatus: View {
         if app.problems > 0 {
             HStack(spacing: 5) {
                 Circle().fill(Theme.attention).frame(width: 7, height: 7).accessibilityHidden(true)
-                Text(Formatting.count(app.problems, "problem"))
+                Text(String(localized: "\(app.problems) problems", table: "Shared"))
             }
             .font(Theme.font(12))
             .foregroundStyle(Theme.attention)
             #if os(macOS)
-            .help("Strut's monitor flagged how its page uses the workspace")
+            .help(Text("Strut's monitor flagged how its page uses the workspace", tableName: "Shared"))
             #endif
-            .accessibilityHint("Strut's monitor flagged how its page uses the workspace")
+            .accessibilityHint(Text("Strut's monitor flagged how its page uses the workspace", tableName: "Shared"))
         } else if let waiting = app.waiting {
-            Text("\(waiting) waiting")
+            Text("\(waiting) waiting", tableName: "Shared")
                 .font(Theme.font(12, .medium))
                 .foregroundStyle(Theme.attention)
             #if os(macOS)
-                .help("\(waiting) is built and waits for you to make it live; everyone opens \(app.version ?? "")")
+                .help(String(localized: "\(waiting) is built and waits for you to make it live; everyone opens \(app.version ?? "")", table: "Shared"))
             #endif
         } else if let release = app.release {
-            Chip("Release \(release)")
+            Chip(String(localized: "Release \(release)", table: "Shared"))
                 .fixedSize()
             #if os(macOS)
-                .help("Its workspace holds it at release \(release) while newer versions wait")
+                .help(String(localized: "Its workspace holds it at release \(release) while newer versions wait", table: "Shared"))
             #endif
-                .accessibilityHint("Its workspace holds it at release \(release) while newer versions wait")
+                .accessibilityHint(String(localized: "Its workspace holds it at release \(release) while newer versions wait", table: "Shared"))
         }
     }
 }

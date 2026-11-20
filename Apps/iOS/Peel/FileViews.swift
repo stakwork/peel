@@ -23,10 +23,10 @@ struct FileCard: View {
         let handle: AttachmentHandle? = message.id.map(model.attachment)
         let name: String? = handle?.downloaded?.fileName ?? message.fileName
         let size: Int64? = handle?.downloaded.map { Int64($0.size) } ?? message.fileSize
-        let title: String = name ?? AttachmentFormat.kind(mediaType: message.mediaType) ?? "File"
+        let title: String = name ?? AttachmentFormat.kind(mediaType: message.mediaType) ?? String(localized: "File")
         let detail: String = [AttachmentFormat.size(size), AttachmentFormat.kind(name)]
             .compactMap { $0 }.joined(separator: " · ")
-        let spoken: String = [name ?? "File", AttachmentFormat.size(size)]
+        let spoken: String = [name ?? String(localized: "File"), AttachmentFormat.size(size)]
             .compactMap { $0 }.joined(separator: ", ")
         let openable: Bool = canOpen(handle)
         PhoneCard {
@@ -54,7 +54,7 @@ struct FileCard: View {
                 .buttonStyle(.plain)
                 .disabled(!openable)
                 .accessibilityLabel(spoken)
-                .accessibilityHint(openable ? "Opens a preview" : "")
+                .accessibilityHint(openable ? Text("Opens a preview") : Text(verbatim: ""))
                 if openable {
                     Button(action: share) {
                         Image(systemName: "square.and.arrow.up")
@@ -122,7 +122,7 @@ struct FileCard: View {
         do {
             return try await FileCopy.named(file, name: handle.downloaded?.fileName ?? message.fileName, mediaType: message.mediaType)
         } catch {
-            notice = PeelError.noted(error, couldNot: "open the file")
+            notice = PeelError.noted(error, couldNot: String(localized: "open the file"))
             return nil
         }
     }
@@ -136,15 +136,15 @@ struct FileStatus: View {
 
     var body: some View {
         if message.fromMe, message.uploadState == .pending {
-            TransferLine(label: "Uploading", progress: handle?.progress)
+            TransferLine(label: String(localized: "Uploading"), progress: handle?.progress)
         } else if case .downloading? = handle?.state {
-            TransferLine(label: "Downloading", progress: handle?.progress)
+            TransferLine(label: String(localized: "Downloading"), progress: handle?.progress)
         } else if message.fromMe, message.uploadState == .failed {
-            note("Not uploaded")
+            note(String(localized: "Not uploaded"))
         } else if let reason = notice ?? handle?.failureReason {
-            note(handle?.failureReason != nil ? "\(reason) Tap to try again." : reason)
+            note(handle?.failureReason != nil ? String(localized: "\(reason) Tap to try again.") : reason)
         } else if handle?.isRetrying == true {
-            note("Couldn't download yet - tap to retry")
+            note(String(localized: "Couldn't download yet - tap to retry"))
         }
     }
 

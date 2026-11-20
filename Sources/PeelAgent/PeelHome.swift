@@ -396,13 +396,13 @@ public struct PeelHomeMove {
                 return .unchanged("That home server already holds a Peel Home, so it can't take this one. " + Self.stillHere)
             }
         } catch {
-            return .unchanged(PeelError.noted(error, couldNot: "move Peel Home") + " " + Self.stillHere)
+            return .unchanged(PeelError.noted(error, couldNot: String(localized: "move Peel Home", table: "Shared")) + " " + Self.stillHere)
         }
         let home = MovedHome(host: link.host, date: now())
         do {
             try local.keep(.moved(home))
         } catch {
-            return .unchanged(PeelError.noted(error, couldNot: "move Peel Home") + " " + Self.stillHere)
+            return .unchanged(PeelError.noted(error, couldNot: String(localized: "move Peel Home", table: "Shared")) + " " + Self.stillHere)
         }
         progress(.sending)
         let callbacks = await local.stopHome()
@@ -410,7 +410,7 @@ public struct PeelHomeMove {
         do {
             peer = try await mover.send(link, parts, callbacks: callbacks)
         } catch {
-            let why = PeelError.noted(error, couldNot: "send Peel Home")
+            let why = PeelError.noted(error, couldNot: String(localized: "send Peel Home", table: "Shared"))
             // Only a box that refused it, and still waits, has none of it: one
             // still saying "receive" may be unpacking an upload whose answer was lost.
             guard error is HomeMoveRefused, (try? await mover.check(link, parts)) == .receive,
@@ -463,7 +463,7 @@ public struct PeelHomeMove {
             env = try await mover.fetch(link, parts)
         } catch {
             local.startClient()
-            return .stillAway(PeelError.noted(error, couldNot: "bring Peel Home back") + " It's still on your home server.")
+            return .stillAway(PeelError.noted(error, couldNot: String(localized: "bring Peel Home back", table: "Shared")) + " It's still on your home server.")
         }
         // The key strut's secrets are encrypted with now; the same one unless the box made its own.
         // This Mac's is put back if Peel Home can't start here, for this Mac's copy to read.
@@ -471,7 +471,7 @@ public struct PeelHomeMove {
         let restoreKey = { if let previousKey { try? parts.secretKey.write(previousKey) } }
         if let key = env["STRUT_SECRET_KEY"], key.count == 64, (try? BundledStrut.secretKey(in: parts.secretKey)) != key {
             do { try parts.secretKey.write(Data(key.utf8)) } catch {
-                return .stillAway(PeelError.noted(error, couldNot: "keep Peel Home's key")
+                return .stillAway(PeelError.noted(error, couldNot: String(localized: "keep Peel Home's key", table: "Shared"))
                     + " Its folders are on this Mac, but Peel won't start them until it can.")
             }
         }
@@ -484,7 +484,7 @@ public struct PeelHomeMove {
             try local.keep(.thisMac)
         } catch {
             restoreKey()
-            return .stillAway(PeelError.noted(error, couldNot: "finish bringing Peel Home back")
+            return .stillAway(PeelError.noted(error, couldNot: String(localized: "finish bringing Peel Home back", table: "Shared"))
                 + " Its folders are on this Mac, but Peel won't start them until it can record that.")
         }
         local.startHome()

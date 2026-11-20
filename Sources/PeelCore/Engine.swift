@@ -2044,7 +2044,7 @@ public actor Engine {
             do {
                 try await answerPurchase(purchase)
             } catch {
-                emit.yield(.conversationError(chat: purchase.chat, message: "A purchase could not be answered: \(PeelError.readable(error))"))
+                emit.yield(.conversationError(chat: purchase.chat, message: String(localized: "A purchase could not be answered: \(PeelError.readable(error))", table: "Shared")))
             }
         }
         if let (agent, messages) = followUps.deviceRequests {
@@ -2221,7 +2221,7 @@ public actor Engine {
 
     private func report(_ error: any Error, kind: String, expectedSender: String?) {
         if let expectedSender {
-            emit.yield(.conversationError(chat: expectedSender, message: "A message could not be read: \(PeelError.readable(error))"))
+            emit.yield(.conversationError(chat: expectedSender, message: String(localized: "A message could not be read: \(PeelError.readable(error))", table: "Shared")))
         } else {
             emit.yield(.coreError("\(kind): \(PeelError.readable(error))"))
         }

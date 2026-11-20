@@ -61,7 +61,7 @@ struct PaymentsLink: View {
 
     var body: some View {
         let msat = money.recentMsat
-        SidebarLink("Payments", to: .payments, unread: msat > 0) {
+        SidebarLink(String(localized: "Payments"), to: .payments, unread: msat > 0) {
             Image(systemName: "bolt").font(.system(size: 13))
         } accessory: {
             if msat > 0 {

@@ -117,7 +117,7 @@ private struct AgentChatColumn: View {
                 } else {
                     // Files and voice notes go to the agent contact too (`AttachmentText` reads them); Stop sends it a `cancel`.
                     ChatFooter(conversation: conversation, tribe: nil, composer: composer,
-                               placeholder: "Message \(agent.name)", stop: stop)
+                               placeholder: String(localized: "Message \(agent.name)"), stop: stop)
                 }
             } else {
                 // No DM yet: setting up the agent's own account, never the local loop.
@@ -150,11 +150,11 @@ private struct AgentChatColumn: View {
 
     private var header: some View {
         let subtitle = agent.connection.map { "\($0.provider.modelName($0.model)) · \($0.provider.name)" }
-        return DetailHeader(title: agent.name, subtitle: subtitle ?? "No model connected", showsAgentTag: true) {
+        return DetailHeader(title: agent.name, subtitle: subtitle ?? String(localized: "No model connected"), showsAgentTag: true) {
             PeelLogo(size: 28)
         } trailing: {
             if agent.connection != nil {
-                IconButton("gearshape", help: "Agent settings") { model.openAccount(.assistant) }
+                IconButton("gearshape", help: String(localized: "Agent settings")) { model.openAccount(.assistant) }
             }
         }
     }
@@ -253,7 +253,7 @@ private struct AgentJobLine: View {
             Image(systemName: "briefcase")
                 .font(.system(size: 11))
                 .accessibilityHidden(true)
-            Text(job.title.map { "Task · \($0)" } ?? "Task")
+            Text(job.title.map { String(localized: "Task · \($0)") } ?? String(localized: "Task"))
                 .lineLimit(1)
                 .truncationMode(.tail)
             switch job.state {
@@ -346,8 +346,8 @@ struct AgentArtifactLine: View {
                 openWindow(id: MainWindow.id, value: MainWindow.Key.main)
             }
             if artifact.asksBeforeOpening(inTribe: inTribe) {
-                InlineConfirm(trigger: "Open", prompt: artifact.tribeAppQuestion(on: model.stadeum.workspaceName(handle.peer ?? "")),
-                              confirm: "Open app", confirmKind: .primary, style: .text) { openIt() }
+                InlineConfirm(trigger: String(localized: "Open"), prompt: artifact.tribeAppQuestion(on: model.stadeum.workspaceName(handle.peer ?? "")),
+                              confirm: String(localized: "Open app"), confirmKind: .primary, style: .text) { openIt() }
                     .foregroundStyle(Theme.link)
                     .help(StrutPage.name(artifact.title, on: handle.peer))
             } else {
@@ -413,7 +413,7 @@ struct AgentIntro: View {
 
     var body: some View {
         AgentRow(author: .agent, name: agent.name) {
-            Text("Hi, I'm \(agent.name == AgentSession.defaultName ? "Peel's agent" : agent.name). I can catch you up on chats and send messages for you.")
+            Text(agent.name == AgentSession.defaultName ? String(localized: "Hi, I'm Peel's agent. I can catch you up on chats and send messages for you.") : String(localized: "Hi, I'm \(agent.name). I can catch you up on chats and send messages for you."))
                 .font(Theme.font(14))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -423,7 +423,7 @@ struct AgentIntro: View {
                     Text("Connect a model to start")
                         .font(Theme.font(14, .semibold))
                     Spacer(minLength: 8)
-                    AgentConnectButton(source: .chat, title: "Connect", variant: .primary)
+                    AgentConnectButton(source: .chat, title: String(localized: "Connect"), variant: .primary)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -479,11 +479,11 @@ struct AgentTurnRow: View {
 
     static func words(for ending: AgentTurn.Ending) -> String {
         switch ending {
-        case .stopped: "Stopped"
-        case .cutOff: "Reply cut off."
-        case .declined: "The model declined to answer."
-        case .stepLimit: "Stopped: too many steps."
-        case .failed: "Didn't finish. Ask again."
+        case .stopped: String(localized: "Stopped")
+        case .cutOff: String(localized: "Reply cut off.")
+        case .declined: String(localized: "The model declined to answer.")
+        case .stepLimit: String(localized: "Stopped: too many steps.")
+        case .failed: String(localized: "Didn't finish. Ask again.")
         }
     }
 }
@@ -623,7 +623,7 @@ private struct AgentToolRow: View {
                     .help(summary)
             }
             if let duration = tool.duration {
-                Text("· " + (tool.failed ? "failed · " : "") + AgentToolTitle.duration(duration))
+                Text(tool.failed ? String(localized: "· failed · \(AgentToolTitle.duration(duration))") : String(localized: "· \(AgentToolTitle.duration(duration))"))
                     .monospacedDigit()
                     .fixedSize()
             }
@@ -644,9 +644,9 @@ private struct AgentToolRow: View {
     /// What it was asked and answered, for a tool whose row keeps nothing more.
     private var facts: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let content = tool.approval?.intent.content { FactLine(label: "Content", text: content) }
+            if let content = tool.approval?.intent.content { FactLine(label: String(localized: "Content"), text: content) }
             FactLine(label: "Asked", text: tool.input == .object([:]) ? "Nothing" : tool.input.jsonString)
-            if let summary = tool.summary { FactLine(label: "Answered", text: AgentToolTitle.summary(summary)) }
+            if let summary = tool.summary { FactLine(label: String(localized: "Answered"), text: AgentToolTitle.summary(summary)) }
         }
     }
 
@@ -701,7 +701,7 @@ struct AgentApprovalCard: View {
                 HStack(spacing: Theme.Space.sm) {
                     Button("Allow once") { answer(.allowOnce) }
                         .buttonStyle(.peel(.primary, size: .sm))
-                        .help(intent.cost == nil ? "Return" : "Click to pay and send")
+                        .help(intent.cost == nil ? String(localized: "Return") : String(localized: "Click to pay and send"))
                     if intent.mayBeAlwaysAllowed {
                         Button(intent.alwaysLabel) {
                             answer(.alwaysAllow)
@@ -727,7 +727,7 @@ struct AgentApprovalCard: View {
     /// What else will happen, and what it costs.
     private var detail: String {
         let lines = intent.lines
-        return lines.isEmpty ? "Nothing is sent until you allow it." : lines.joined(separator: "\n")
+        return lines.isEmpty ? String(localized: "Nothing is sent until you allow it.") : lines.joined(separator: "\n")
     }
 }
 

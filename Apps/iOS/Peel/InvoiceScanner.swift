@@ -11,10 +11,10 @@ struct InvoiceScanner: View {
 
     var body: some View {
         CodeScanner(
-            title: "Scan an invoice", prompt: "Point the camera at an invoice's QR code.",
-            pasteInstead: "paste the invoice", cancel: cancel
+            title: String(localized: "Scan an invoice"), prompt: String(localized: "Point the camera at an invoice's QR code."),
+            pasteInstead: String(localized: "paste the invoice"), cancel: cancel
         ) { code in
-            guard (try? Invoice(code)) != nil else { return "That code isn't an invoice." }
+            guard (try? Invoice(code)) != nil else { return String(localized: "That code isn't an invoice.") }
             found(code)
             return nil
         }
@@ -97,8 +97,8 @@ struct CodeScanner: View {
                         Label("Can't scan here", systemImage: "camera")
                     } description: {
                         Text(DataScannerViewController.isSupported
-                             ? "Peel can't use the camera. Allow it in Settings, or \(pasteInstead)."
-                             : "This device has no camera Peel can scan with, so \(pasteInstead) instead.")
+                             ? String(localized: "Peel can't use the camera. Allow it in Settings, or \(pasteInstead).")
+                             : String(localized: "This device has no camera Peel can scan with, so \(pasteInstead) instead."))
                     } actions: {
                         if DataScannerViewController.isSupported,
                            let settings = URL(string: UIApplication.openSettingsURLString) {

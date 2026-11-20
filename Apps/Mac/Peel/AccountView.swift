@@ -45,9 +45,9 @@ struct AccountView: View {
                 NameRow()
                 TimeZoneRow()
                 AutoDownloadMediaRow()
-                Fact("Server") {
+                Fact(String(localized: "Server")) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(model.myServer ?? "None")
+                        Text(model.myServer ?? String(localized: "None"))
                             .textSelection(.enabled)
                         Text(model.connection.label)
                             .muted()
@@ -56,15 +56,15 @@ struct AccountView: View {
             }
         case .payments:
             SettingsSection {
-                Fact("Balance") {
+                Fact(String(localized: "Balance")) {
                     Text(model.balanceText ?? "–")
                         .monospacedDigit()
                         .foregroundStyle(model.balanceMsat == nil ? Theme.secondaryText : Theme.text)
                 }
-                Fact("Confirm payments") {
+                Fact(String(localized: "Confirm payments")) {
                     PaymentConfirmationRow()
                 }
-                Fact("Boost amount") {
+                Fact(String(localized: "Boost amount")) {
                     BoostAmountRow()
                 }
             }
@@ -92,11 +92,10 @@ struct AccountView: View {
                 WebsiteDataRow()
             }
             ForgetAccountControl(
-                trigger: "Forget this account on this Mac…",
+                trigger: String(localized: "Forget this account on this Mac…"),
                 explanation: model.brain?.moved != nil
-                    ? "Removes the account and its messages from this Mac. Your assistant still runs on your home server: "
-                        + "turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere."
-                    : "Removes the account and its messages from this Mac. You need your twelve words to sign back in.",
+                    ? String(localized: "Removes the account and its messages from this Mac. Your assistant still runs on your home server: turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere.")
+                    : String(localized: "Removes the account and its messages from this Mac. You need your twelve words to sign back in."),
                 section: true
             )
         }
@@ -108,14 +107,14 @@ typealias AccountPage = AppModel.AccountPage
 extension AccountPage {
     var title: String {
         switch self {
-        case .profile: "Profile"
-        case .payments: "Payments"
-        case .assistant: "Assistant"
-        case .brain: "Always on"
-        case .connections: "Connections"
-        case .dictation: "Dictation"
-        case .notifications: "Notifications"
-        case .security: "Privacy and security"
+        case .profile: String(localized: "Profile")
+        case .payments: String(localized: "Payments")
+        case .assistant: String(localized: "Assistant")
+        case .brain: String(localized: "Always on")
+        case .connections: String(localized: "Connections")
+        case .dictation: String(localized: "Dictation")
+        case .notifications: String(localized: "Notifications")
+        case .security: String(localized: "Privacy and security")
         }
     }
 
@@ -162,7 +161,7 @@ extension AccountPage {
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return listed(in: model).filter { $0 != .profile } }
         return listed(in: model).filter { page in
-            ([page.title] + page.keywords).contains { $0.localizedCaseInsensitiveContains(query) }
+            ([page.title] + page.keywords + page.keywords.map { String(localized: String.LocalizationValue($0)) }).contains { $0.localizedCaseInsensitiveContains(query) }
         }
     }
 
@@ -220,7 +219,7 @@ private struct IdentitySection: View {
         PictureField(
             picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.xxl, hue: model.myHue),
             upload: { try await model.uploadPhoto($0) },
-            remove: model.myPhotoURL == nil ? nil : .confirmed("Remove photo") { try await model.removePhoto() }
+            remove: model.myPhotoURL == nil ? nil : .confirmed(String(localized: "Remove photo")) { try await model.removePhoto() }
         ) {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(model.me.name)
@@ -246,7 +245,7 @@ private struct ContactInfoSection: View {
     var body: some View {
         Card {
             HStack(alignment: .center, spacing: Theme.Space.xl) {
-                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info")
+                QRCodeTile(text: model.myContactInfo, label: String(localized: "QR code of your contact info"))
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("Your contact info")
                         .font(Theme.font(15, .bold))
@@ -256,7 +255,7 @@ private struct ContactInfoSection: View {
                             .foregroundStyle(Theme.secondaryText)
                     }
                     if let info = model.myContactInfo {
-                        CopyButton("Copy contact info", text: info)
+                        CopyButton(String(localized: "Copy contact info"), text: info)
                             .buttonStyle(.peel(.outline))
                             .id(info)
                             .padding(.top, Theme.Space.xs)
@@ -281,8 +280,8 @@ private struct NameRow: View {
     var body: some View {
         if editing {
             VStack(alignment: .leading, spacing: 14) {
-                FormItem(label: "Name") {
-                    FormTextField(label: "Name", text: $draft)
+                FormItem(label: String(localized: "Name")) {
+                    FormTextField(label: String(localized: "Name"), text: $draft)
                         .onSubmit { Task { await save() } }
                         .disabled(working)
                 }
@@ -301,10 +300,10 @@ private struct NameRow: View {
                 .padding([.horizontal, .bottom], settingsRowPadding)
             }
         } else {
-            Fact("Name") {
+            Fact(String(localized: "Name")) {
                 // A restore settled before this Mac asked for a name can
                 // still leave it unset; the Composer disables Send for it.
-                Text(model.myAlias?.nilIfEmpty ?? "Not set")
+                Text(model.myAlias?.nilIfEmpty ?? String(localized: "Not set"))
                     .foregroundStyle(model.myAlias?.nilIfEmpty == nil ? Theme.secondaryText : Theme.text)
             } trailing: {
                 Button("Edit") {
@@ -325,7 +324,7 @@ private struct NameRow: View {
             try await model.setName(draft)
             editing = false
         } catch {
-            problem = PeelError.problem(error, couldNot: "save your name")
+            problem = PeelError.problem(error, couldNot: String(localized: "save your name"))
         }
     }
 }
@@ -388,9 +387,9 @@ private struct ChangePINRow: View {
     private var prompt: String {
         if let note { return note }
         return switch step {
-        case .old: "Enter your current PIN."
-        case .new: "Choose a new six-digit PIN."
-        default: "Enter the new PIN again."
+        case .old: String(localized: "Enter your current PIN.")
+        case .new: String(localized: "Choose a new six-digit PIN.")
+        default: String(localized: "Enter the new PIN again.")
         }
     }
 
@@ -409,11 +408,11 @@ private struct ChangePINRow: View {
         defer { working = false }
         do {
             try await model.changePIN(from: old, to: new, confirmation: confirmation)
-            reset(to: .closed, note: "PIN changed")
+            reset(to: .closed, note: String(localized: "PIN changed"))
         } catch let error as SecretStoreFailure where error == .wrongPIN {
             reset(to: .old, note: PIN.problem(error))
         } catch {
-            reset(to: .new, note: PeelError.problem(error, couldNot: "change the PIN") + " Choose the new PIN again.")
+            reset(to: .new, note: String(localized: "\(PeelError.problem(error, couldNot: String(localized: "change the PIN"))) Choose the new PIN again."))
         }
     }
 }
@@ -448,8 +447,8 @@ private struct WordsRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Fact("Twelve words") {
-                Text(model.wordsConfirmed ? "Checked" : "Not checked yet")
+            Fact(String(localized: "Twelve words")) {
+                Text(model.wordsConfirmed ? String(localized: "Checked") : String(localized: "Not checked yet"))
             } trailing: {
                 if words.isEmpty, !askingPIN {
                     HStack(spacing: 8) {
@@ -461,13 +460,13 @@ private struct WordsRow: View {
                             .buttonStyle(.peel(.outline))
                     }
                 } else {
-                    Button(words.isEmpty || checking ? "Cancel" : "Hide") { hide() }
+                    Button(words.isEmpty || checking ? String(localized: "Cancel") : String(localized: "Hide")) { hide() }
                         .buttonStyle(.peel(.outline))
                 }
             }
             if askingPIN {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    prompt("Enter your PIN")
+                    prompt(String(localized: "Enter your PIN"))
                     PinField(pin: $pin) { Task { await reveal() } }
                         .frame(maxWidth: 360)
                         .disabled(working)
@@ -502,18 +501,18 @@ private struct WordsRow: View {
             }
             .privacySensitive()
             HStack(spacing: Theme.Space.sm) {
-                Button(visible ? "Mask" : "Reveal") { visible.toggle() }
+                Button(visible ? String(localized: "Mask") : String(localized: "Reveal")) { visible.toggle() }
                     .buttonStyle(.peel(.outline))
                 // Not a loss, so the second click is the commit button, not red.
                 InlineConfirm(
-                    prompt: "Other apps can see the clipboard.", confirm: "Copy words",
+                    prompt: String(localized: "Other apps can see the clipboard."), confirm: String(localized: "Copy words"),
                     confirmKind: .primary, confirming: $confirmingCopy
                 ) {
                     Clipboard.copySecret(words.joined(separator: " "), clearAfter: .seconds(60))
                     copiedAt = .now
                     CopyFeedback.announce()
                 } trigger: {
-                    CopyLabel("Copy", copiedAt: copiedAt)
+                    CopyLabel(String(localized: "Copy"), copiedAt: copiedAt)
                 }
                 Spacer(minLength: 8)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -533,7 +532,7 @@ private struct WordsRow: View {
     /// Three words typed back; the words themselves stay off the screen.
     private var boxes: some View {
         VStack(alignment: .leading, spacing: 14) {
-            prompt("Type these three words from your paper")
+            prompt(String(localized: "Type these three words from your paper"))
             WordCheckGrid(check: $check) { Task { await confirm() } }
             FormFooter(problem: nil) {
                 Button { Task { await confirm() } } label: { Text("Check").buttonProgress(working) }
@@ -628,7 +627,7 @@ private struct TimeZoneRow: View {
     private var zone: TimeZone { chosen.flatMap(TimeZoneOffset.zone) ?? .autoupdatingCurrent }
 
     var body: some View {
-        Fact("Time zone") {
+        Fact(String(localized: "Time zone")) {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Button { picking = true } label: {
                     HStack(spacing: Theme.Space.sm) {
@@ -665,7 +664,7 @@ private struct TimeZoneRow: View {
             chosen = identifier
             problem = nil
         } catch {
-            problem = PeelError.problem(error, couldNot: "change the time zone")
+            problem = PeelError.problem(error, couldNot: String(localized: "change the time zone"))
         }
     }
 }
@@ -699,9 +698,9 @@ struct ZonePicker: View {
     var body: some View {
         let query = query.trimmed.lowercased()
         let matches = query.isEmpty ? zones : zones.filter { $0.searched.contains(query) }
-        Panel("Time zone", compact: true, close: close) {
+        Panel(String(localized: "Time zone"), compact: true, close: close) {
             FormTextField(
-                label: "Search time zones", prompt: "Search cities or GMT+…", text: $query,
+                label: String(localized: "Search time zones"), prompt: String(localized: "Search cities or GMT+…"), text: $query,
                 systemImage: "magnifyingglass", focusOnAppear: true
             )
             .onSubmit { if !query.isEmpty, let first = matches.first { choose(first.id) } }
@@ -711,7 +710,7 @@ struct ZonePicker: View {
                         ZoneRow(title: "Automatic", detail: "\(TimeZone.current.identifier) · \(TimeZoneOffset.format(.current))",
                                 checked: chosen == nil) { choose(nil) }
                         Theme.divider.frame(height: 1).padding(.vertical, Theme.Space.xs)
-                        SectionHeader("All time zones")
+                        SectionHeader(String(localized: "All time zones"))
                             .padding(.horizontal, Theme.Space.sm)
                             .padding(.vertical, 2)
                     }
@@ -719,7 +718,7 @@ struct ZonePicker: View {
                         ZoneRow(title: zone.label, detail: zone.offset, checked: zone.id == chosen) { choose(zone.id) }
                     }
                     if matches.isEmpty {
-                        EmptyState("No time zone matches.", size: .sm)
+                        EmptyState(String(localized: "No time zone matches."), size: .sm)
                     }
                 }
             }
@@ -772,7 +771,7 @@ private struct NotificationsRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Fact("Notifications") {
+        Fact(String(localized: "Notifications")) {
             Text(state)
         } trailing: {
             switch model.notifier.permission {
@@ -790,10 +789,10 @@ private struct NotificationsRow: View {
 
     private var state: String {
         switch model.notifier.permission {
-        case .allowed: "On"
-        case .notAsked: "Off"
-        case .denied: "Off in System Settings"
-        case .unavailable: "Unavailable"
+        case .allowed: String(localized: "On")
+        case .notAsked: String(localized: "Off")
+        case .denied: String(localized: "Off in System Settings")
+        case .unavailable: String(localized: "Unavailable")
         }
     }
 }
@@ -802,11 +801,11 @@ private struct AutoDownloadMediaRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Fact("Auto download media") {
+        Fact(String(localized: "Auto download media")) {
             VStack(alignment: .leading, spacing: 2) {
                 SettingDropdown(
                     selection: model.autoDownloadsMedia,
-                    options: [(true, "On"), (false, "Off")]
+                    options: [(true, String(localized: "On")), (false, String(localized: "Off"))]
                 ) { try await model.setAutoDownloadsMedia($0) }
                 Text("Off: images, videos, voice messages and files wait for a tap.")
                     .muted()
@@ -819,10 +818,10 @@ private struct NotificationTextRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Fact("Message text") {
+        Fact(String(localized: "Message text")) {
             SettingDropdown(
                 selection: model.notifier.showsText,
-                options: [(true, "Show"), (false, "Hide")]
+                options: [(true, String(localized: "Show")), (false, String(localized: "Hide"))]
             ) { try await model.setNotificationShowsText($0) }
         }
     }
@@ -832,11 +831,11 @@ private struct NotificationStyleRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Fact("Notification Type") {
+        Fact(String(localized: "Notification Type")) {
             SettingDropdown(
                 selection: model.notifier.style,
-                options: [(.banner, "Banner only"), (.bannerAndSound, "Banner + Sound"),
-                          (.soundOnly, "Sound only"), (.none, "None")]
+                options: [(.banner, String(localized: "Banner only")), (.bannerAndSound, String(localized: "Banner + Sound")),
+                          (.soundOnly, String(localized: "Sound only")), (.none, String(localized: "None"))]
             ) { try await model.setNotificationStyle($0) }
         }
     }
@@ -850,10 +849,10 @@ private struct NotificationSoundRow: View {
     var body: some View {
         let sounds = Self.available()
         let chosen = sounds.contains(model.notifier.sound) ? model.notifier.sound : ""
-        Fact("Notification Sound") {
+        Fact(String(localized: "Notification Sound")) {
             SettingDropdown(
                 selection: chosen,
-                options: [("", "Default")] + sounds.map { ($0, $0) }
+                options: [("", String(localized: "Default"))] + sounds.map { ($0, $0) }
             ) {
                 try await model.setNotificationSound($0)
                 if !$0.isEmpty { NSSound(named: $0)?.play() } else { NSSound.beep() }
@@ -882,11 +881,11 @@ private struct WebsiteDataRow: View {
     @State private var cleared = false
 
     var body: some View {
-        Fact("Website data") {
-            Text(cleared ? "Cleared" : "Sign-ins from pages opened in Peel")
+        Fact(String(localized: "Website data")) {
+            Text(cleared ? String(localized: "Cleared") : String(localized: "Sign-ins from pages opened in Peel"))
                 .muted()
         } trailing: {
-            InlineConfirm(trigger: "Clear…", prompt: "Sign out of every site?", confirm: "Clear") {
+            InlineConfirm(trigger: String(localized: "Clear…"), prompt: String(localized: "Sign out of every site?"), confirm: String(localized: "Clear")) {
                 await model.web.clearWebsiteData()
                 cleared = true
             }

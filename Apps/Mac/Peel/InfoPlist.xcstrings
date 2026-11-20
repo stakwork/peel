@@ -1,0 +1,22 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSLocalNetworkUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel reaches your home server on this network, to move Peel Home there and keep dictation's vocabulary in step with it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel se comunica con tu servidor de casa en esta red, para mover Peel Home allí y mantener sincronizado el vocabulario del dictado."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

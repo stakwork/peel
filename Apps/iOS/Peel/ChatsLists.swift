@@ -135,11 +135,11 @@ private struct ThreadListRow: View {
     /// "2 new, 4 replies, 5 minutes ago, latest from Ann: on my way".
     private var spoken: String {
         var parts: [String] = []
-        if summary.unread > 0 { parts.append("\(summary.unread) new") }
+        if summary.unread > 0 { parts.append(String(localized: "\(summary.unread) new")) }
         parts.append(Formatting.replies(summary.count))
         if let lastDate = summary.lastDate { parts.append(Formatting.relative(lastDate)) }
         if let latest = summary.latest {
-            parts.append("latest from \(model.sender(of: latest).label): \(latest.threadReplyPreview)")
+            parts.append(String(localized: "latest from \(String(model.sender(of: latest).label)): \(String(latest.threadReplyPreview))"))
         }
         return parts.joined(separator: ", ")
     }
@@ -193,7 +193,7 @@ struct MentionsScreen: View {
                     problem = nil
                 }
             } catch {
-                problem = PeelError.problem(error, couldNot: "load mentions")
+                problem = PeelError.problem(error, couldNot: String(localized: "load mentions"))
             }
         }
     }

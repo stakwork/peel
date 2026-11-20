@@ -21,9 +21,9 @@ struct JoinTribeForm: View {
     var body: some View {
         @Bindable var lookup = lookup
         // The compact form (one field): the link, then the tribe.
-        Panel("Join a tribe", compact: true, close: done) {
-            FormItem(label: "Tribe link") {
-                FormTextField(label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $lookup.link, axis: .vertical)
+        Panel(String(localized: "Join a tribe"), compact: true, close: done) {
+            FormItem(label: String(localized: "Tribe link")) {
+                FormTextField(label: String(localized: "Tribe link"), prompt: "sphinx.chat://?action=tribeV2…", text: $lookup.link, axis: .vertical)
             }
             // Return looks up, then joins once the preview is up, as the buttons would.
             .onSubmit { Task { await submit() } }
@@ -63,7 +63,7 @@ struct JoinTribeForm: View {
                 if let info = lookup.info {
                     // Over the threshold the price is confirmed in place, as any payment.
                     PayButton(
-                        verb: "Join", totalMsat: info.joinAmountMsat, attempt: attempt, send: join, sent: done,
+                        verb: String(localized: "Join"), totalMsat: info.joinAmountMsat, attempt: attempt, send: join, sent: done,
                         namesAmount: false
                     )
                 } else {

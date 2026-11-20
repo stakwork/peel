@@ -26,7 +26,7 @@ extension AppModel {
     /// Turns Face ID on once a face matches; false when none did.
     public func turnOnBiometrics() async -> Bool {
         guard let biometrics = profile?.biometrics, let name = biometryName else { return false }
-        guard await biometrics.turnOn(reason: "Turn on \(name) for Peel") else { return false }
+        guard await biometrics.turnOn(reason: String(localized: "Turn on \(name) for Peel", table: "Shared")) else { return false }
         biometricsOffered = false
         // The person's choice: it follows the account (iOS only;
         // `Engine.setBiometricEnabled` does nothing elsewhere). A sync never
@@ -46,7 +46,7 @@ extension AppModel {
     /// no face matched, or the kept PIN is gone or wrong: the PIN is typed then.
     public func unlockWithBiometrics() async throws -> Bool {
         guard lockOffersBiometrics, let profile, let biometrics = profile.biometrics else { return false }
-        guard await biometrics.check(reason: "Unlock Peel") else { return false }
+        guard await biometrics.check(reason: String(localized: "Unlock Peel", table: "Shared")) else { return false }
         if engine == nil {
             guard let pin = profile.rememberedPIN?.pin() else {
                 lockOffersBiometrics = false

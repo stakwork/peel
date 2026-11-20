@@ -32,7 +32,7 @@ struct ChatDetailsScreen: View {
             }
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle(conversation?.isTribe == true ? "Tribe details" : "Details")
+        .navigationTitle(conversation?.isTribe == true ? Text("Tribe details") : Text("Details"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -88,15 +88,15 @@ private struct ContactDetailsView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    PhoneSectionHeader("Public key", centered: true)
-                    ShareableCode(text: conversation.chat, label: "QR code of their public key",
-                                  copyTitle: "Copy key", showsText: true)
+                    PhoneSectionHeader(String(localized: "Public key"), centered: true)
+                    ShareableCode(text: conversation.chat, label: String(localized: "QR code of their public key"),
+                                  copyTitle: String(localized: "Copy key"), showsText: true)
                 }
                 TimeZoneSwitch(conversation: conversation, tribe: nil)
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     ConfirmInPlace(
-                        trigger: "Remove contact", explanation: "Remove \(conversation.name) and delete your chat?",
-                        confirm: "Remove"
+                        trigger: String(localized: "Remove contact"), explanation: String(localized: "Remove \(conversation.name) and delete your chat?"),
+                        confirm: String(localized: "Remove")
                     ) { await remove() }
                     if let problem { ProblemText(problem) }
                 }
@@ -148,8 +148,8 @@ private struct TribeDetailsView: View {
                 facts
                 if let link = tribe.link {
                     VStack(alignment: .leading, spacing: Theme.Space.md) {
-                        PhoneSectionHeader("Tribe link", centered: true)
-                        ShareableCode(text: link, label: "QR code of the tribe link", copyTitle: "Copy link")
+                        PhoneSectionHeader(String(localized: "Tribe link"), centered: true)
+                        ShareableCode(text: link, label: String(localized: "QR code of the tribe link"), copyTitle: String(localized: "Copy link"))
                     }
                 }
                 if model.offersJamie(in: tribe) {
@@ -211,10 +211,10 @@ private struct TribeDetailsView: View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             PhoneCard {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    FactRow("Owner") { owner }
-                    FactRow("To join") { known(info?.joinPrice.described) }
-                    FactRow("Each message", tribe.messagePrice.described)
-                    FactRow("Escrow", tribe.escrowLine(millis: info?.escrowMillis))
+                    FactRow(String(localized: "Owner")) { owner }
+                    FactRow(String(localized: "To join")) { known(info?.joinPrice.described) }
+                    FactRow(String(localized: "Each message"), tribe.messagePrice.described)
+                    FactRow(String(localized: "Escrow"), tribe.escrowLine(millis: info?.escrowMillis))
                 }
                 .padding(Theme.Space.md)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -228,7 +228,7 @@ private struct TribeDetailsView: View {
                             Image(systemName: "person.2")
                                 .frame(width: 30)
                                 .accessibilityHidden(true)
-                            Text(list?.complete == false ? "Seen here" : "Members").phoneFont(.row)
+                            Text(list?.complete == false ? String(localized: "Seen here") : String(localized: "Members")).phoneFont(.row)
                             Spacer(minLength: Theme.Space.sm)
                             Text(list?.countLabel ?? "")
                                 .phoneFont(.row)
@@ -264,7 +264,7 @@ private struct TribeDetailsView: View {
                 Text(alias).lineLimit(1)
             }
         } else {
-            known(info == nil ? nil : "Not given")
+            known(info == nil ? nil : String(localized: "Not given"))
         }
     }
 
@@ -302,7 +302,7 @@ private struct TribeDetailsView: View {
             details = try await model.tribeDetails(tribe.pubkey)
             problem = nil
         } catch {
-            problem = PeelError.problem(error, couldNot: "load tribe details")
+            problem = PeelError.problem(error, couldNot: String(localized: "load tribe details"))
         }
     }
 }
@@ -326,9 +326,9 @@ private struct TribeJamie: View {
             PhoneSectionHeader("Jamie")
             switch stadeum.status {
             case .off, .needsPairing:
-                note("Connect Stadeum to let one of your orgs answer @jamie here.")
+                note(String(localized: "Connect Stadeum to let one of your orgs answer @jamie here."))
                 Button { stadeum.connect(as: UIDevice.current.name) } label: {
-                    Text(stadeum.status == .off ? "Connect Stadeum" : "Connect again").frame(maxWidth: .infinity)
+                    Text(stadeum.status == .off ? String(localized: "Connect Stadeum") : String(localized: "Connect again")).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.peel(.outline, size: .touch))
                 if let problem = stadeum.problem { ProblemText(problem) }
@@ -380,7 +380,7 @@ private struct TribeJamie: View {
                     Button { Task { await stadeum.readJamieLinks() } } label: { Text("Try again").frame(maxWidth: .infinity) }
                         .buttonStyle(.peel(.outline, size: .touch))
                 } else {
-                    note("Asking Stadeum…")
+                    note(String(localized: "Asking Stadeum…"))
                 }
             }
         }
@@ -414,13 +414,13 @@ private struct TribeIdentity: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
-            PhoneSectionHeader("How you appear in #\(tribe.displayName)")
+            PhoneSectionHeader(String(localized: "How you appear in #\(tribe.displayName)"))
             HStack(spacing: Theme.Space.md) {
                 Avatar(name: draft.alias.trimmed.nilIfEmpty ?? accountName, url: draft.photoURL ?? model.myPhotoURL,
                        size: 56, hue: model.myHue)
                     .accessibilityHidden(true)
                 PhotosPicker(selection: $photo, matching: .images) {
-                    Text(draft.uploading ? "Uploading…" : "Photo")
+                    Text(draft.uploading ? String(localized: "Uploading…") : String(localized: "Photo"))
                 }
                 .buttonStyle(.peel(.outline, size: .touch))
                 .disabled(draft.uploading)
@@ -431,8 +431,8 @@ private struct TribeIdentity: View {
                         .accessibilityHint("Uses your account's photo here")
                 }
             }
-            FieldLabel("Name") {
-                NoteInput(label: "Name", prompt: accountName, text: Bindable(draft).alias)
+            FieldLabel(String(localized: "Name")) {
+                NoteInput(label: String(localized: "Name"), prompt: accountName, text: Bindable(draft).alias)
                 if let note = draft.problem ?? draft.note {
                     ProblemText(note)
                 }
@@ -482,9 +482,9 @@ private struct TimeZoneSwitch: View {
     var body: some View {
         if conversation.offersTimeZoneSwitch(tribe: tribe) {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
-                PhoneSectionHeader("Time zone")
+                PhoneSectionHeader(String(localized: "Time zone"))
                 if let sharing = zone.sharing {
-                    SwitchRow(label: "Share my time zone with \(conversation.title)",
+                    SwitchRow(label: String(localized: "Share my time zone with \(conversation.title)"),
                               isOn: Binding { sharing } set: { on in
                                   Task { await zone.set(on, in: conversation.chat, with: model) }
                               })
@@ -531,7 +531,7 @@ private struct TimeZoneSwitch: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Time zone")
-        .accessibilityValue(identifier.map(TimeZoneList.label) ?? "Automatic")
+        .accessibilityValue(identifier.map(TimeZoneList.label) ?? String(localized: "Automatic"))
     }
 }
 
@@ -576,12 +576,12 @@ private struct TimeZoneList: View {
                     row(zone.label, detail: zone.offset, checked: zone.id == chosen, pick: zone.id)
                 }
             } header: {
-                if search.isEmpty { PhoneSectionHeader("All time zones") }
+                if search.isEmpty { PhoneSectionHeader(String(localized: "All time zones")) }
             }
             .phoneRows()
         }
         .phoneList()
-        .searchable(text: $query, prompt: "Search cities or GMT+…")
+        .searchable(text: $query, prompt: Text("Search cities or GMT+…"))
         .overlay {
             if !zones.isEmpty, matches.isEmpty { ContentUnavailableView.search(text: search) }
         }
@@ -655,7 +655,7 @@ struct TribeMembersScreen: View {
                 let canManage = tribe?.canManage == true
                 if !pending.isEmpty {
                     Section {
-                        PhoneSectionHeader("Waiting for approval").listRowSeparator(.hidden)
+                        PhoneSectionHeader(String(localized: "Waiting for approval")).listRowSeparator(.hidden)
                         ForEach(pending) { member in
                             MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member)) {
                                 if canManage { requestButtons(member) }
@@ -666,7 +666,7 @@ struct TribeMembersScreen: View {
                 }
                 Section {
                     if !pending.isEmpty {
-                        PhoneSectionHeader(members.complete ? "Members" : "Seen here").listRowSeparator(.hidden)
+                        PhoneSectionHeader(members.complete ? String(localized: "Members") : String(localized: "Seen here")).listRowSeparator(.hidden)
                     }
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
@@ -686,7 +686,7 @@ struct TribeMembersScreen: View {
             if members == nil, problem == nil { ProgressView() }
         }
         .refreshable { await load() }
-        .navigationTitle(members?.complete == false ? "Seen in #\(name)" : "Members")
+        .navigationTitle(members?.complete == false ? Text("Seen in #\(name)") : Text("Members"))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: chat) { await load() }
     }
@@ -696,9 +696,9 @@ struct TribeMembersScreen: View {
         let removable = canManage && !isMe && member.pubkey != nil
         VStack(alignment: .leading, spacing: 0) {
             MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member),
-                      note: isMe ? "you, owner" : nil) { EmptyView() }
+                      note: isMe ? String(localized: "you, owner") : nil) { EmptyView() }
             if removing == member.id, let pubkey = member.pubkey {
-                ConfirmPair(confirm: "Remove \(member.alias)", working: kicking,
+                ConfirmPair(confirm: String(localized: "Remove \(member.alias)"), working: kicking,
                             cancel: { removing = nil }, run: { Task { await kick(pubkey) } })
                     .padding(.bottom, Theme.Space.sm)
             }
@@ -735,7 +735,7 @@ struct TribeMembersScreen: View {
             members = try await model.tribeMembers(chat)
             problem = nil
         } catch {
-            problem = PeelError.problem(error, couldNot: "load the members")
+            problem = PeelError.problem(error, couldNot: String(localized: "load the members"))
         }
     }
 
@@ -763,7 +763,7 @@ struct TribeMembersScreen: View {
             removing = nil
             await load()
         } catch {
-            problem = PeelError.problem(error, couldNot: "remove the member")
+            problem = PeelError.problem(error, couldNot: String(localized: "remove the member"))
         }
     }
 }

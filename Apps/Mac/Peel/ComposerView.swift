@@ -271,7 +271,7 @@ struct Composer: View {
         .disabled(!canSend)
         // No Cmd-Return here: with a thread open two composers share the
         // window, and Return in the field already sends from the right one.
-        .help(hasName ? "Send (Return). Shift-Return for a new line." : "Set your name in Profile first")
+        .help(hasName ? Text("Send (Return). Shift-Return for a new line.") : Text("Set your name in Profile first"))
         .accessibilityLabel("Send")
     }
 }
@@ -308,9 +308,9 @@ private struct ReplyBar: View {
                 .allowsHitTesting(false)
             VStack(alignment: .leading, spacing: 1) {
                 let sender = model.sender(of: message)
-                (Text("Replying to ") + Text(message.fromMe ? "yourself" : sender.name).font(Theme.font(12, .bold))
-                    .foregroundColor(sender.hue.name))
+                Text(message.fromMe ? String(localized: "Replying to yourself") : String(localized: "Replying to \(sender.name)"))
                     .font(Theme.font(12))
+                    .foregroundColor(sender.hue.name)
                 Text(message.preview)
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)
@@ -370,7 +370,7 @@ struct ComposerSuggestion: Identifiable, Equatable {
 
     /// The commands the agent's bridge takes in its DM.
     static let commands = [
-        ComposerSuggestion(id: "/new", insert: "/new", title: "/new", detail: "Start a fresh conversation", names: ["new"], kind: .command),
+        ComposerSuggestion(id: "/new", insert: "/new", title: "/new", detail: String(localized: "Start a fresh conversation"), names: ["new"], kind: .command),
     ]
 }
 

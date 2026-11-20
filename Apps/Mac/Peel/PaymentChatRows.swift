@@ -23,10 +23,10 @@ struct BoostLine: View {
                 BoostChip(boosts: boosts, chat: chat, inTribe: inTribe, source: source)
             }
             if let since = boosts.pendingSince {
-                WaitingForServer(since: since, what: "Boost", person: inTribe ? nil : chat)
+                WaitingForServer(since: since, what: String(localized: "Boost"), person: inTribe ? nil : chat)
             }
             ForEach(Array(boosts.unsettled.enumerated()), id: \.offset) { _, boost in
-                NotSettled(what: "Boost of \(Sats.format(msat: boost.amountMsat))")
+                NotSettled(what: String(localized: "Boost of \(Sats.format(msat: boost.amountMsat))"))
             }
             ForEach(boosts.failed, id: \.id) { boost in
                 UndeliveredActions(message: boost)
@@ -76,9 +76,8 @@ private struct BoostChip: View {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.attention.opacity(pending ? 0.5 : 1))
-                (Text(Sats.number(msat: boosts.totalMsat)).font(Theme.font(11, .semibold))
+                Text(String(localized: "\(Sats.number(msat: boosts.totalMsat)) sats")).font(Theme.font(11, .semibold))
                     .foregroundColor(mine ? Theme.boostMineText : Theme.text)
-                    + Text(" sats").font(Theme.font(11)).foregroundColor(Theme.secondaryText))
                 HStack(spacing: -Self.overlap) {
                     ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
@@ -102,7 +101,7 @@ private struct BoostChip: View {
             .padding(.trailing, people.count > Self.shownBoosters ? 7 : 2)
             .padding(.vertical, 1)
         }
-        .accessibilityLabel(boosts.summaryLine + (boosts.boostedByMe ? ", yours among them" : ""))
+        .accessibilityLabel(boosts.boostedByMe ? String(localized: "\(boosts.summaryLine), yours among them") : boosts.summaryLine)
         .peelHoverCard(source) {
             BoostersPanel(boosts: boosts, chat: chat, inTribe: inTribe)
         }
@@ -112,7 +111,7 @@ private struct BoostChip: View {
 private extension BoostSummary {
     /// "1,210 sats from 3 boosts".
     var summaryLine: String {
-        "\(Sats.format(msat: totalMsat)) from \(Formatting.count(count, "boost"))"
+        "\(Sats.format(msat: totalMsat)) from \(Formatting.count(count, .boost))"
     }
 }
 
@@ -145,7 +144,7 @@ private struct BoostersPanel: View {
                         } trailing: {
                             HStack(spacing: Theme.Space.sm) {
                                 if boost.pendingSince != nil || boost.unsettled {
-                                    Text(boost.unsettled ? "not settled" : "sending")
+                                    Text(boost.unsettled ? String(localized: "not settled") : String(localized: "sending"))
                                         .font(Theme.font(12))
                                         .foregroundStyle(Theme.secondaryText)
                                         .fixedSize()
@@ -188,10 +187,10 @@ struct WaitingForServer: View {
             if context.date.timeIntervalSince(since) >= Message.confirmationTimeout {
                 let words = person.map { person in
                     let name = model.contactName(person)
-                    return (label: "\(what) waiting for \(name ?? "them") to come online · can't be cancelled",
-                            help: "It pays when \(name.map { "\($0) next opens" } ?? "they next open") Sphinx.")
-                } ?? (label: "\(what) waiting for the server…",
-                      help: "It may have paid already, so it can't be resent.")
+                    return (label: String(localized: "\(what) waiting for \(name ?? String(localized: "them")) to come online · can't be cancelled"),
+                            help: name.map { String(localized: "It pays when \($0) next opens Sphinx.") } ?? String(localized: "It pays when they next open Sphinx."))
+                } ?? (label: String(localized: "\(what) waiting for the server…"),
+                      help: String(localized: "It may have paid already, so it can't be resent."))
                 Text(words.label)
                     .font(Theme.font(11, .medium))
                     .foregroundStyle(Theme.secondaryText)
@@ -255,8 +254,8 @@ struct PaymentRow: View {
                 }
                 if message.fromMe, !message.deleted {
                     switch message.delivery {
-                    case .pending: WaitingForServer(since: message.date, what: "Payment", person: message.chat)
-                    case .unsettled: NotSettled(what: "Payment")
+                    case .pending: WaitingForServer(since: message.date, what: String(localized: "Payment"), person: message.chat)
+                    case .unsettled: NotSettled(what: String(localized: "Payment"))
                     case .failed: UndeliveredActions(message: message)
                     case .delivered, nil: EmptyView()
                     }
@@ -290,15 +289,15 @@ struct PaymentRow: View {
                 .italic()
                 .foregroundStyle(Theme.secondaryText)
         } else if let msat = message.amountMsat, msat > 0 {
-            let amount = Text(Sats.format(msat: msat)).font(Theme.font(14, .semibold))
-            return (message.fromMe ? Text("You sent ") + amount : Text("\(who) sent you ") + amount)
+            let amount = Sats.format(msat: msat)
+            return Text(message.fromMe ? String(localized: "You sent \(amount)") : String(localized: "\(who) sent you \(amount)"))
                 .font(Theme.font(14))
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
         } else {
             // A contact's type 5 that carried no sats: whatever it declared
             // is not money received.
-            return Text(message.fromMe ? "You sent a payment" : "\(who) sent a payment with no sats")
+            return Text(message.fromMe ? String(localized: "You sent a payment") : String(localized: "\(who) sent a payment with no sats"))
                 .font(Theme.font(14))
                 .foregroundStyle(Theme.secondaryText)
         }
@@ -387,14 +386,16 @@ struct PaymentRequestRow: View {
     @ViewBuilder private func footer(_ invoice: Invoice) -> some View {
         switch request?.state ?? .open {
         case .underpaid(let msat):
-            Text("Partly paid: \(msat.map { Sats.format(msat: $0, of: invoice.amountMsat) } ?? "an unknown amount"). This invoice can't take the rest.")
+            let shown = msat.map { Sats.format(msat: $0, of: invoice.amountMsat) } ?? String(localized: "an unknown amount")
+            Text(String(localized: "Partly paid: \(shown). This invoice can't take the rest."))
                 .font(Theme.font(12))
                 .monospacedDigit()
                 .foregroundStyle(Theme.attention)
                 .fixedSize(horizontal: false, vertical: true)
         case .paid(let at):
-            Text(message.fromMe ? "Paid\(at.map { " · \(Formatting.when($0))" } ?? "")"
-                 : "You paid\(at.map { " · \(Formatting.when($0))" } ?? "")")
+            Text(message.fromMe
+                 ? (at.map { String(localized: "Paid · \(Formatting.when($0))") } ?? String(localized: "Paid"))
+                 : (at.map { String(localized: "You paid · \(Formatting.when($0))") } ?? String(localized: "You paid")))
                 .monospacedDigit()
                 .muted()
         case .paying:
@@ -410,16 +411,16 @@ struct PaymentRequestRow: View {
                         .monospacedDigit()
                         .muted()
                 } else if message.fromMe {
-                    Text("Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? "never")")
+                    Text("Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? String(localized: "never"))")
                         .monospacedDigit()
                         .muted()
                 } else {
                     VStack(alignment: .leading, spacing: Theme.Space.xs) {
                         if case .failed(let reason) = request?.state {
-                            Text("Not paid\(reason.map { ": \($0)" } ?? ""). Nothing was sent.")
+                            Text(reason.map { String(localized: "Not paid: \($0). Nothing was sent.") } ?? String(localized: "Not paid. Nothing was sent."))
                                 .muted()
                         }
-                        PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
+                        PayButton(verb: String(localized: "Pay"), totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                             await model.payRequest(message, invoice: invoice, confirmedMsat: confirmed)
                         }, sent: {}, isDefault: false, namesAmount: false)
                         if let problem = attempt.problem { ProblemText(problem) }

@@ -27,10 +27,10 @@ struct PhoneChatSearchBar: View {
         VStack(spacing: 0) {
             HStack(spacing: Theme.Space.xs) {
                 field
-                stepButton("chevron.up", label: "Newer match", enabled: search.canStepNewer) { model.stepSearch(by: -1) }
-                stepButton("chevron.down", label: "Older match", enabled: search.canStepOlder) { model.stepSearch(by: 1) }
-                stepButton("list.bullet", label: "Search results", enabled: !search.matches.isEmpty) { listing = true }
-                stepButton("xmark", label: "Close search", enabled: true) { model.closeSearch(refocusComposer: false) }
+                stepButton("chevron.up", label: String(localized: "Newer match"), enabled: search.canStepNewer) { model.stepSearch(by: -1) }
+                stepButton("chevron.down", label: String(localized: "Older match"), enabled: search.canStepOlder) { model.stepSearch(by: 1) }
+                stepButton("list.bullet", label: String(localized: "Search results"), enabled: !search.matches.isEmpty) { listing = true }
+                stepButton("xmark", label: String(localized: "Close search"), enabled: true) { model.closeSearch(refocusComposer: false) }
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.vertical, Theme.Space.xs)
@@ -123,7 +123,7 @@ struct PhoneChatSearchBar: View {
     private var hint: String {
         if let status = search.status { return status }
         let typed = MessageQuery(search.text)
-        return typed.isEmpty && typed.hasShortTerms ? "\(MessageQuery.minimum) or more characters" : ""
+        return typed.isEmpty && typed.hasShortTerms ? String(localized: "\(MessageQuery.minimum) or more characters") : ""
     }
 }
 

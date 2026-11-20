@@ -22,19 +22,22 @@ public struct AutomationReply: Sendable, Equatable, Codable {
 /// (`AutomationRunRecord.failure`): a whole sentence, so the view adds no
 /// "Didn't finish" before it.
 public enum AutomationFailure {
-    public static let noModel = "Didn't run: no model is connected. Connect one in Account."
+    public static let noModel = String(localized: "Didn't run: no model is connected. Connect one in Account.", table: "Shared")
     /// A run on `peel-automation` that found no Peel to hand it to: nothing
     /// listens for it since PR 11, so it waits to move to the assistant,
     /// which happens once its own account is set up.
-    public static let notMoved = "Didn't run: it runs once your assistant is set up. Set it up in the agent chat."
+    public static let notMoved = String(localized: "Didn't run: it runs once your assistant is set up. Set it up in the agent chat.", table: "Shared")
 
     /// The provider refused the key (HTTP 401): an expired or revoked one.
     public static func keyRejected(by provider: AgentProvider?) -> String {
-        "Didn't run: \(name(of: provider)) rejected the key. Replace it in Account."
+        String(localized: "Didn't run: \(name(of: provider)) rejected the key. Replace it in Account.", table: "Shared")
     }
 
-    private static func name(of provider: AgentProvider?) -> String { provider?.name ?? "the model's provider" }
+    private static func name(of provider: AgentProvider?) -> String { provider?.name ?? String(localized: "the model's provider", table: "Shared") }
 
     /// Already a sentence of its own, not a reason to put after "Didn't finish".
-    static func isSentence(_ text: String) -> Bool { text.hasPrefix("Didn't ") }
+    static func isSentence(_ text: String) -> Bool { text.hasPrefix("Didn't ")
+        || text.hasPrefix(String(localized: "Didn't run:", table: "Shared"))
+        || text.hasPrefix(String(localized: "Didn't finish:", table: "Shared"))
+    }
 }

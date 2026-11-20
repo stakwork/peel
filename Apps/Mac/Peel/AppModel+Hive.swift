@@ -124,7 +124,7 @@ extension AppModel {
         do {
             try await bridge.usePeers(actor: link.actor, tokens: Dictionary(stadeum.live.map { ($0.id, $0.token) }) { _, last in last })
         } catch {
-            stadeum.problem = PeelError.noted(error, couldNot: "give the agent's bridge your Stadeum workspaces")
+            stadeum.problem = PeelError.noted(error, couldNot: String(localized: "give the agent's bridge your Stadeum workspaces"))
         }
     }
 
@@ -135,7 +135,7 @@ extension AppModel {
         do {
             try await AutomationsClient(server: server).syncPeers(stadeum.live)
         } catch {
-            stadeum.problem = PeelError.noted(error, couldNot: "give the agent your Stadeum workspaces")
+            stadeum.problem = PeelError.noted(error, couldNot: String(localized: "give the agent your Stadeum workspaces"))
         }
         // Not waited for: a slow workspace never holds up the bridge.
         refreshApps()
@@ -179,7 +179,7 @@ extension AppModel {
             refreshApps(workspaces: false)
             return true
         } catch {
-            presenter?.showToast(PeelError.problem(error, couldNot: "change the live version"))
+            presenter?.showToast(PeelError.problem(error, couldNot: String(localized: "change the live version")))
             return false
         }
     }
@@ -204,7 +204,7 @@ extension AppModel {
             destination = .app(peer: listed.peer, name: listed.name)
             return true
         case .connectFirst(let slug):
-            notice = "Connect @\(slug) first"
+            notice = String(localized: "Connect @\(slug) first")
             return false
         }
     }
@@ -220,7 +220,7 @@ extension AppModel {
     /// with none).
     @discardableResult
     func open(_ link: StrutAppLink) -> Bool {
-        open(link.app, title: link.app.app?.name ?? "App", link: link)
+        open(link.app, title: link.app.app?.name ?? String(localized: "App"), link: link)
     }
 
     /// One the Apps list has opens where its sidebar row opens it, when the

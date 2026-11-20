@@ -76,7 +76,7 @@ struct PaymentDetailPane: View {
     let close: () -> Void
 
     var body: some View {
-        PaneFrame(title: "Payment", close: close) {
+        PaneFrame(title: String(localized: "Payment"), close: close) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.headline)
                     .muted()
@@ -95,7 +95,7 @@ struct PaymentDetailPane: View {
                 }
             } else if let note = item.note {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(item.kind == .invoice ? "Memo" : "Note")
+                    Text(item.kind == .invoice ? String(localized: "Memo") : String(localized: "Note"))
                         .muted()
                     Text(note)
                         .font(Theme.font(13))
@@ -107,7 +107,7 @@ struct PaymentDetailPane: View {
                     model.destination = .chat(chat)
                 } label: {
                     HStack(spacing: Theme.Space.xs) {
-                        Text(item.isTribe ? "Open in #\(item.chatName ?? "")" : "Open chat with \(item.chatName ?? "them")")
+                        Text(item.isTribe ? String(localized: "Open in #\(item.chatName ?? "")") : String(localized: "Open chat with \(item.chatName ?? String(localized: "them"))"))
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                     }
                 }
@@ -134,21 +134,21 @@ struct PaymentDetailPane: View {
     private var facts: some View {
         FactList {
             let status = item.statusFact
-            Fact("Status", text: status.text, symbol: status.symbol, tint: status.settled ? Theme.confirmed : nil)
-            Fact("When", text: Formatting.moment(item.date, seconds: true))
-            Fact("Amount", text: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat")
+            Fact(String(localized: "Status"), text: status.text, symbol: status.symbol, tint: status.settled ? Theme.confirmed : nil)
+            Fact(String(localized: "When"), text: Formatting.moment(item.date, seconds: true))
+            Fact(String(localized: "Amount"), text: String(localized: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat"))
             if let fee = item.feeMsat {
-                Fact("Routing fee", text: fee == 0 ? "None" : Sats.format(msat: fee))
+                Fact(String(localized: "Routing fee"), text: fee == 0 ? String(localized: "None") : Sats.format(msat: fee))
             }
             if let why = item.keyExchangeNote {
-                Fact("Why", text: why)
+                Fact(String(localized: "Why"), text: why)
             }
             if let ping = item.pingMsat {
-                Fact("Ping", text: Sats.format(msat: ping))
+                Fact(String(localized: "Ping"), text: Sats.format(msat: ping))
             }
             if let hash = item.paymentHash {
-                Fact("Payment hash", text: Formatting.shortKey(hash), monospaced: true) {
-                    CopyButton("Copy", text: hash).buttonStyle(.peel(.outline, size: .sm))
+                Fact(String(localized: "Payment hash"), text: Formatting.shortKey(hash), monospaced: true) {
+                    CopyButton(String(localized: "Copy"), text: hash).buttonStyle(.peel(.outline, size: .sm))
                 }
             }
         }

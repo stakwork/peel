@@ -52,6 +52,8 @@ public enum PageLocation {
 
     /// The site's line in Site location.
     public static func summary(_ grant: SiteLocationGrant) -> String {
-        grant.allowed ? (grant.precise ? "Allowed · precise" : "Allowed · approximate") : "Blocked"
+        grant.allowed
+            ? (grant.precise ? String(localized: "Allowed · precise", table: "Shared") : String(localized: "Allowed · approximate", table: "Shared"))
+            : String(localized: "Blocked", table: "Shared")
     }
 }

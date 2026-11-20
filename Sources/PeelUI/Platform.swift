@@ -182,7 +182,7 @@ extension CallProvider {
     public var unavailable: String? { nil }
 
     public func talk(_ ticket: TalkTicket, home: TalkHome) throws -> any TalkMedia {
-        throw PeelError("Talk is not on this device.")
+        throw PeelError(String(localized: "Talk is not on this device.", table: "Shared"))
     }
 }
 

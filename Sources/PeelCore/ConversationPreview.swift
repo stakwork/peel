@@ -10,13 +10,13 @@ extension Conversation {
     public var previewLine: String? {
         guard let lastType else { return nil }
         if lastType == MessageType.boost {
-            if lastDeleted == true { return "Message deleted" }  // no prefix, like the other boost lines
+            if lastDeleted == true { return String(localized: "Message deleted", table: "Shared") }  // no prefix, like the other boost lines
             return Self.boostLine(fromMe: lastFromMe == true, onMine: lastBoostOnMine == true, by: boosterName, msat: lastMsat)
         }
         let line = Self.previewLine(
             type: lastType, content: lastContent, mediaType: lastMediaType, deleted: lastDeleted ?? false)
         guard !line.isEmpty else { return nil }
-        if lastFromMe == true { return "You: " + line }
+        if lastFromMe == true { return String(localized: "You: \(line)", table: "Shared") }
         // In a tribe, who said it; a contact's row is theirs alone.
         if isTribe, let name = lastSenderAlias?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
             return "\(name): " + line
@@ -35,29 +35,33 @@ extension Conversation {
 
     static func boostLine(fromMe: Bool, onMine: Bool, by name: String?, msat: Int64?) -> String {
         let amount = msat.map { ": " + Sats.format(msat: $0) } ?? ""
-        if fromMe { return "You boosted a message" + amount }
-        return "\(name ?? "Someone") boosted \(onMine ? "your" : "a") message" + amount
+        if fromMe { return String(localized: "You boosted a message", table: "Shared") + amount }
+        let who = name ?? String(localized: "Someone", table: "Shared")
+        let line = onMine
+            ? String(localized: "\(who) boosted your message", table: "Shared")
+            : String(localized: "\(who) boosted a message", table: "Shared")
+        return line + amount
     }
 
     static func previewLine(type: Int, content: String?, mediaType: String?, deleted: Bool) -> String {
-        if deleted { return "Message deleted" }
+        if deleted { return String(localized: "Message deleted", table: "Shared") }
         if type == MessageType.text, let giphy = Giphy(content: content) {
             let caption = MessageMarkup.plainText(giphy.text)
-            return caption.isEmpty ? "GIF" : "GIF: \(caption)"
+            return caption.isEmpty ? "GIF" : String(localized: "GIF: \(caption)", table: "Shared")
         }
         switch type {
-        case MessageType.directPayment, MessageType.boost: return "Payment"  // a boost goes through `boostLine`
-        case MessageType.invoice: return "Payment request"
-        case MessageType.call: return "Call"
+        case MessageType.directPayment, MessageType.boost: return String(localized: "Payment", table: "Shared")  // a boost goes through `boostLine`
+        case MessageType.invoice: return String(localized: "Payment request", table: "Shared")
+        case MessageType.call: return String(localized: "Call", table: "Shared")
         default: break
         }
         if let text = content.map(MessageMarkup.plainText), !text.isEmpty { return text }
         guard type == MessageType.attachment else { return "" }
         switch AttachmentKind(mediaType: mediaType) {
-        case .image: return "Photo"
-        case .video: return "Video"
-        case .audio: return "Voice message"
-        case .pdf, .text, .file: return "File"
+        case .image: return String(localized: "Photo", table: "Shared")
+        case .video: return String(localized: "Video", table: "Shared")
+        case .audio: return String(localized: "Voice message", table: "Shared")
+        case .pdf, .text, .file: return String(localized: "File", table: "Shared")
         }
     }
 }

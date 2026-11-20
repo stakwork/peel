@@ -24,9 +24,9 @@ public enum AgentProvider: String, Codable, CaseIterable, Sendable, Hashable {
     /// One line under the name in the provider list.
     public var detail: String {
         switch self {
-        case .anthropic: "Claude models · API key"
-        case .openAI: "GPT models · API key"
-        case .openRouter: "Many providers, one account · API key"
+        case .anthropic: String(localized: "Claude models · API key", table: "Shared")
+        case .openAI: String(localized: "GPT models · API key", table: "Shared")
+        case .openRouter: String(localized: "Many providers, one account · API key", table: "Shared")
         }
     }
 

@@ -7,27 +7,53 @@ extension String {
 
 public enum Formatting {
     public static func dayHeading(_ date: Date) -> String {
-        if Calendar.current.isDateInToday(date) { return "Today" }
-        if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
+        if Calendar.current.isDateInToday(date) { return String(localized: "Today", table: "Shared") }
+        if Calendar.current.isDateInYesterday(date) { return String(localized: "Yesterday", table: "Shared") }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
     }
 
-    /// A count and its noun: "1 reply", "5 replies", "1,200 members". The
-    /// plural is the noun with an "s" unless given; `shown` replaces the
-    /// number ("99+ new messages", "500+ matches").
-    public static func count(_ count: Int, _ one: String, _ many: String? = nil, shown: String? = nil) -> String {
-        "\(shown ?? count.formatted()) \(count == 1 ? one : many ?? one + "s")"
+    /// What `count` counts. The words are String Catalog plurals (table
+    /// "Shared"), so each language writes its own forms.
+    public enum Noun {
+        case payment, match, member, minute, reply, person, newMessage, boost, word, model, fact, time, app
+    }
+
+    /// A count and its noun: "1 reply", "5 replies", "1,200 members".
+    /// `shown` replaces the number ("99+ new messages", "500+ matches") for
+    /// the nouns that are capped.
+    public static func count(_ count: Int, _ noun: Noun, shown: String? = nil) -> String {
+        if let shown {
+            switch noun {
+            case .newMessage: return String(localized: "\(shown) new messages", table: "Shared")
+            case .match: return String(localized: "\(shown) matches", table: "Shared")
+            default: break
+            }
+        }
+        // One key for one and one for many, chosen here (not a catalog plural): the English
+        // reads right wherever no catalog is loaded (tests, the command line).
+        let one = count == 1
+        switch noun {
+        case .payment: return one ? String(localized: "\(count) payment", table: "Shared") : String(localized: "\(count) payments", table: "Shared")
+        case .match: return one ? String(localized: "\(count) match", table: "Shared") : String(localized: "\(count) matches", table: "Shared")
+        case .member: return one ? String(localized: "\(count) member", table: "Shared") : String(localized: "\(count) members", table: "Shared")
+        case .minute: return one ? String(localized: "\(count) minute", table: "Shared") : String(localized: "\(count) minutes", table: "Shared")
+        case .reply: return one ? String(localized: "\(count) reply", table: "Shared") : String(localized: "\(count) replies", table: "Shared")
+        case .person: return one ? String(localized: "\(count) person", table: "Shared") : String(localized: "\(count) people", table: "Shared")
+        case .newMessage: return one ? String(localized: "\(count) new message", table: "Shared") : String(localized: "\(count) new messages", table: "Shared")
+        case .boost: return one ? String(localized: "\(count) boost", table: "Shared") : String(localized: "\(count) boosts", table: "Shared")
+        case .word: return one ? String(localized: "\(count) word", table: "Shared") : String(localized: "\(count) words", table: "Shared")
+        case .model: return one ? String(localized: "\(count) model", table: "Shared") : String(localized: "\(count) models", table: "Shared")
+        case .fact: return one ? String(localized: "\(count) fact", table: "Shared") : String(localized: "\(count) facts", table: "Shared")
+        case .time: return one ? String(localized: "\(count) time", table: "Shared") : String(localized: "\(count) times", table: "Shared")
+        case .app: return one ? String(localized: "\(count) app", table: "Shared") : String(localized: "\(count) apps", table: "Shared")
+        }
     }
 
     /// "1 reply", "5 replies".
-    public static func replies(_ count: Int) -> String {
-        Self.count(count, "reply", "replies")
-    }
+    public static func replies(_ count: Int) -> String { Self.count(count, .reply) }
 
     /// "1 person", "5 people".
-    public static func people(_ count: Int) -> String {
-        Self.count(count, "person", "people")
-    }
+    public static func people(_ count: Int) -> String { Self.count(count, .person) }
 
     /// A time of day, "14:32" (or "14:32:05"), in the user's format; in
     /// `zone` for someone else's local time.
@@ -66,15 +92,15 @@ public enum Formatting {
         let seconds = now.timeIntervalSince(date)
         // A few minutes of clock skew between devices reads as now; further
         // ahead, the time or date it claims.
-        if seconds > -300 && seconds < 60 { return "just now" }
-        if seconds >= 60 && seconds < 3600 { return "\(Int(seconds / 60)) min ago" }
+        if seconds > -300 && seconds < 60 { return String(localized: "just now", table: "Shared") }
+        if seconds >= 60 && seconds < 3600 { return String(localized: "\(Int(seconds / 60)) min ago", table: "Shared") }
         let calendar = Calendar.current
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
                                            to: calendar.startOfDay(for: now)).day ?? 0
         switch days {
-        case 0: return "today at \(time(date))"
-        case 1: return "yesterday at \(time(date))"
-        case 2..<7: return "\(days) days ago"
+        case 0: return String(localized: "today at \(time(date))", table: "Shared")
+        case 1: return String(localized: "yesterday at \(time(date))", table: "Shared")
+        case 2..<7: return String(localized: "\(days) days ago", table: "Shared")
         default:
             let style = Date.FormatStyle.dateTime.day().month(.abbreviated)
             let sameYear = calendar.isDate(date, equalTo: now, toGranularity: .year)
@@ -113,7 +139,14 @@ public enum Formatting {
         let minutes = abs(seconds) / 60
         guard minutes > 0 else { return nil }
         let (hours, rest) = (minutes / 60, minutes % 60)
-        let amount = [hours > 0 ? "\(hours) h" : nil, rest > 0 ? "\(rest) min" : nil].compactMap { $0 }.joined(separator: " ")
-        return "\(amount) \(seconds > 0 ? "ahead" : "behind")"
+        let hm = hours > 0 && rest > 0
+        if seconds > 0 {
+            return hm ? String(localized: "\(hours) h \(rest) min ahead", table: "Shared")
+                : hours > 0 ? String(localized: "\(hours) h ahead", table: "Shared")
+                : String(localized: "\(rest) min ahead", table: "Shared")
+        }
+        return hm ? String(localized: "\(hours) h \(rest) min behind", table: "Shared")
+            : hours > 0 ? String(localized: "\(hours) h behind", table: "Shared")
+            : String(localized: "\(rest) min behind", table: "Shared")
     }
 }

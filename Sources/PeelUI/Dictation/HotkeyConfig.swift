@@ -54,7 +54,7 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
     /// when it has no name of its own.
     public static func key(code: UInt16, character: String? = nil) -> HotkeyConfig {
         if let modifier = modifiers[code] { return HotkeyConfig(keyCode: code, label: modifier.name) }
-        let label = functionKeys[code].map { "F\($0)" } ?? named[code] ?? character?.uppercased().nilIfEmpty ?? "Key \(code)"
+        let label = functionKeys[code].map { "F\($0)" } ?? named[code] ?? character?.uppercased().nilIfEmpty ?? String(localized: "Key \(Int(code))", table: "Shared")
         return HotkeyConfig(keyCode: code, label: label)
     }
 
@@ -77,10 +77,11 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
     /// Why the key can't be the hotkey, in Settings' words; nil when it can.
     public var refusal: String? {
         if canBeHotkey { return nil }
-        let why = if keyCode == Self.capsLockCode { "it sends no release" }
-            else if Self.steeringCodes.contains(keyCode) || keyCode == Self.escapeCode { "it steers a recording" }
-            else { "it types in every app" }
-        return "\(label) can't be the key: \(why)."
+        if keyCode == Self.capsLockCode { return String(localized: "\(label) can't be the key: it sends no release.", table: "Shared") }
+        if Self.steeringCodes.contains(keyCode) || keyCode == Self.escapeCode {
+            return String(localized: "\(label) can't be the key: it steers a recording.", table: "Shared")
+        }
+        return String(localized: "\(label) can't be the key: it types in every app.", table: "Shared")
     }
 
     /// What else on the Mac the key does, when that is known; nil when nothing.
@@ -89,19 +90,17 @@ public struct HotkeyConfig: Codable, Equatable, Hashable, Sendable {
     public func conflict(fnKeyUsage: Int?) -> String? {
         if keyCode == Self.fnCode {
             return fnKeyUsage == 0 ? nil
-                : "Fn also does what System Settings › Keyboard › Press 🌐 key says: set it to Do Nothing."
+                : String(localized: "Fn also does what System Settings › Keyboard › Press 🌐 key says: set it to Do Nothing.", table: "Shared")
         }
         if let number = Self.functionKeys[keyCode] {
             return number > 12 ? nil
-                : "On a Mac keyboard F1–F12 are brightness, volume and so on unless Fn is held, "
-                + "or System Settings › Keyboard › Use F1, F2, etc. keys as standard function keys is on."
+                : String(localized: "On a Mac keyboard F1–F12 are brightness, volume and so on unless Fn is held, or System Settings › Keyboard › Use F1, F2, etc. keys as standard function keys is on.", table: "Shared")
         }
         let name = Self.modifiers[keyCode]?.name ?? ""
         if name.contains("Command") || name.contains("Control") {
-            return "Held alone it dictates; with another key it is still a shortcut. "
-                + "If macOS Dictation's shortcut uses it (System Settings › Keyboard › Dictation), choose another there."
+            return String(localized: "Held alone it dictates; with another key it is still a shortcut. If macOS Dictation's shortcut uses it (System Settings › Keyboard › Dictation), choose another there.", table: "Shared")
         }
-        if name.contains("Shift") { return "Shift is held for capitals: a slow Shift-letter may start dictating." }
+        if name.contains("Shift") { return String(localized: "Shift is held for capitals: a slow Shift-letter may start dictating.", table: "Shared") }
         return nil
     }
 

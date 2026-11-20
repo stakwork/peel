@@ -25,7 +25,7 @@ struct TalkView: View {
                 Text(talk.home?.name ?? "")
                     .talkFont(16, .semibold, .headline)
                     .lineLimit(1)
-                Text("Talking to Jamie")
+                Text("Talking to Jamie", tableName: "Shared")
                     .talkFont(13, .regular, .footnote)
                     .foregroundStyle(Theme.secondaryText)
             }
@@ -38,13 +38,13 @@ struct TalkView: View {
                     Image(systemName: "chevron.down")
                         .frame(width: Theme.touchTarget, height: Theme.touchTarget)
                 }
-                .accessibilityLabel("Back to the app")
-                .accessibilityHint("The call with Jamie goes on")
+                .accessibilityLabel(Text("Back to the app", tableName: "Shared"))
+                .accessibilityHint(Text("The call with Jamie goes on", tableName: "Shared"))
             }
             #endif
             switch talk.state {
             case .starting:
-                TalkPhaseView(words: "Calling Jamie…", mode: .breathing)
+                TalkPhaseView(words: String(localized: "Calling Jamie…", table: "Shared"), mode: .breathing)
                 Spacer()
                 TalkControls(session: nil)
             case .failed(let problem):
@@ -125,7 +125,7 @@ private struct TalkArtifactRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
             #if os(iOS)
-            .accessibilityLabel("\(artifact.title), \(artifact.label ?? "Artifact")")
+            .accessibilityLabel(String(localized: "\(artifact.title), \(artifact.label ?? String(localized: "Artifact", table: "Shared"))", table: "Shared"))
             #endif
     }
 
@@ -274,7 +274,7 @@ private struct TalkLines: View {
                 ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                     ForEach(placed[index] ?? []) { TalkArtifactRow(artifact: $0.artifact) }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(line.speaker == .you ? "You" : "Jamie")
+                        Text(line.speaker == .you ? String(localized: "You", table: "Shared") : String(localized: "Jamie", table: "Shared"))
                             .talkFont(13, .semibold, .footnote)
                             .foregroundStyle(Theme.secondaryText)
                         Text(line.text)
@@ -315,7 +315,7 @@ private struct TalkControls: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!session.micReady)
-                    .accessibilityLabel(session.micOn ? "Mute" : "Unmute")
+                    .accessibilityLabel(session.micOn ? Text("Mute", tableName: "Shared") : Text("Unmute", tableName: "Shared"))
                 }
                 Button { model.talk.hangUp() } label: {
                     Image(systemName: "phone.down.fill")
@@ -326,7 +326,7 @@ private struct TalkControls: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
-                .accessibilityLabel("Hang up")
+                .accessibilityLabel(Text("Hang up", tableName: "Shared"))
             }
             if let note = session.flatMap(Self.note) {
                 Text(note)
@@ -341,9 +341,9 @@ private struct TalkControls: View {
 
     private static func note(_ session: TalkSession) -> String? {
         if let failed = session.encryptionNotice { return failed }
-        if session.micRefused { return "Peel can't use the microphone, so Jamie can't hear you. Allow it in Settings, then unmute." }
+        if session.micRefused { return String(localized: "Peel can't use the microphone, so Jamie can't hear you. Allow it in Settings, then unmute.", table: "Shared") }
         if let notice = session.notice { return notice }
-        return session.micOn || !session.micReady ? nil : "Muted: Jamie can't hear you."
+        return session.micOn || !session.micReady ? nil : String(localized: "Muted: Jamie can't hear you.", table: "Shared")
     }
 }
 
@@ -364,7 +364,7 @@ private struct TalkVoiceToggle: View {
         .buttonStyle(.plain)
         .help(voice.accessibilityLabel)
         .accessibilityLabel(voice.accessibilityLabel)
-        .accessibilityHint("Switches Jamie's voice")
+        .accessibilityHint(Text("Switches Jamie's voice", tableName: "Shared"))
     }
 }
 
@@ -382,10 +382,10 @@ private struct TalkEnded: View {
             .padding(.horizontal, Theme.Space.xl)
             .textSelection(.enabled)
         HStack(spacing: Theme.Space.md) {
-            Button("Close") { model.talk.hangUp() }
+            Button { model.talk.hangUp() } label: { Text("Close", tableName: "Shared") }
                 .buttonStyle(.peel(.ghost, size: Self.size))
                 .keyboardShortcut(.cancelAction)
-            Button("Try again") { model.talk.tryAgain() }
+            Button { model.talk.tryAgain() } label: { Text("Try again", tableName: "Shared") }
                 .buttonStyle(.peel(.primary, size: Self.size))
         }
         .padding(.top, Theme.Space.lg)
@@ -423,7 +423,7 @@ struct TalkWindow: View {
     var body: some View {
         TalkView()
             .frame(minWidth: 360, minHeight: 480)
-            .navigationTitle("Talk to Jamie")
+            .navigationTitle(Text("Talk to Jamie", tableName: "Shared"))
             .onAppear { if model.talk.home == nil { dismissWindow(id: Self.id) } }
             .onChange(of: model.talk.home == nil) { _, gone in if gone { dismissWindow(id: Self.id) } }
             .onDisappear { model.talk.hangUp() }

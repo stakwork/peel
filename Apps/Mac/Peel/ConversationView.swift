@@ -259,7 +259,7 @@ private struct ChatColumn: View {
                     .id(conversation.chat)
             }
             if let search = model.search, search.chat == conversation.chat {
-                ChatSearchBar(search: search, placeholder: "Search in \(conversation.title)")
+                ChatSearchBar(search: search, placeholder: String(localized: "Search in \(conversation.title)"))
             }
             // Made once per chat, with its messages: reusing one scroll view
             // across chats left the lazy stack blank at the bottom anchor
@@ -273,7 +273,7 @@ private struct ChatColumn: View {
             }
             ChatFooter(
                 conversation: conversation, tribe: tribe, composer: composer,
-                placeholder: conversation.isTribe ? "Message #\(conversation.name)" : "Message \(conversation.name)",
+                placeholder: conversation.isTribe ? String(localized: "Message #\(conversation.name)") : String(localized: "Message \(conversation.name)"),
                 paysTo: conversation.isTribe ? nil : conversation.name
             )
         }
@@ -338,8 +338,8 @@ struct TribeHeader: View {
     private var subtitle: String? {
         guard let tribe else { return nil }
         return [
-            tribe.isPrivate ? "Private" : nil, tribe.summary?.trimmed.nilIfEmpty,
-            "\(tribe.messagePrice.text) a message",
+            tribe.isPrivate ? String(localized: "Private") : nil, tribe.summary?.trimmed.nilIfEmpty,
+            String(localized: "\(tribe.messagePrice.text) a message"),
         ].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -352,7 +352,7 @@ struct TribeHeader: View {
                 if tribe?.canPost != false {
                     CallHeaderButton(chat: conversation.chat)
                 }
-                HeaderMoreButton(chat: conversation.chat, detailsTitle: "Tribe details", entries: entries)
+                HeaderMoreButton(chat: conversation.chat, detailsTitle: String(localized: "Tribe details"), entries: entries)
                 .peelPopover(isPresented: shows(.members)) {
                     TribeMembersPanel(conversation: conversation, tribe: tribe) { panel = nil }
                 }
@@ -398,7 +398,7 @@ struct HeaderMoreButton: View {
     @Environment(AppModel.self) private var model
     let chat: String
     /// "Details" for a contact, "Tribe details" for a tribe.
-    var detailsTitle = "Details"
+    var detailsTitle = String(localized: "Details")
     /// The menu, given its Details entry.
     let entries: @MainActor (_ details: MenuEntry) -> [MenuEntry]
 
@@ -422,7 +422,7 @@ struct TribeMembersPanel: View {
     @State private var problem: String?
 
     var body: some View {
-        Panel(members?.complete == false ? "Seen in #\(conversation.name)" : "Members", compact: true, close: done) {
+        Panel(members?.complete == false ? String(localized: "Seen in #\(conversation.name)") : String(localized: "Members"), compact: true, close: done) {
             memberList
         } actions: {
             if let link = tribe?.link {
@@ -484,14 +484,14 @@ struct TribeMembersPanel: View {
                     // The server's list includes this account; the seen list does not.
                     if !members.complete {
                         let me = model.me(in: conversation.chat)
-                        MemberRow(alias: me.name, photoURL: me.photoURL, hue: me.hue, note: "you")
+                        MemberRow(alias: me.name, photoURL: me.photoURL, hue: me.hue, note: String(localized: "you"))
                     }
                     ForEach(confirmed) { member in
                         let isMe = member.pubkey != nil && member.pubkey == me
                         MemberRow(alias: member.alias, photoURL: member.photoURL, hue: model.hue(of: member),
-                                  note: isMe ? "you, owner" : nil) {
+                                  note: isMe ? String(localized: "you, owner") : nil) {
                             if let pubkey = member.pubkey, !isMe, canManage {
-                                InlineConfirm(trigger: "Remove", confirm: "Remove \(member.alias)", style: .text) {
+                                InlineConfirm(trigger: "Remove", confirm: String(localized: "Remove \(member.alias)"), style: .text) {
                                     await kick(pubkey)
                                 }
                                 .font(Theme.font(12, .medium))
@@ -502,7 +502,7 @@ struct TribeMembersPanel: View {
                             var remove: [MenuEntry] = []
                             if let pubkey = member.pubkey, !isMe, canManage {
                                 remove.append(.destructive("Remove from tribe", systemImage: "person.badge.minus",
-                                                           confirm: "Remove \(member.alias)") { Task { await kick(pubkey) } })
+                                                           confirm: String(localized: "Remove \(member.alias)")) { Task { await kick(pubkey) } })
                             }
                             return .sections(
                                 [.copy("Copy name", text: member.alias)], remove
@@ -525,7 +525,7 @@ struct TribeMembersPanel: View {
         do {
             members = try await model.tribeMembers(conversation.chat)
         } catch {
-            problem = PeelError.problem(error, couldNot: "load the members")
+            problem = PeelError.problem(error, couldNot: String(localized: "load the members"))
         }
     }
 
@@ -550,7 +550,7 @@ struct TribeMembersPanel: View {
             try await model.kick(pubkey, from: conversation.chat)
             await load()
         } catch {
-            problem = PeelError.problem(error, couldNot: "remove the member")
+            problem = PeelError.problem(error, couldNot: String(localized: "remove the member"))
         }
     }
 }
@@ -652,16 +652,17 @@ struct UndeliveredActions: View {
     @State private var attempt = PaymentAttempt()
 
     private var isPayment: Bool { MessageType.payments.contains(message.type) }
-    private var what: String {
-        message.type == MessageType.boost ? "boost" : message.type == MessageType.directPayment ? "payment"
-            : message.type == MessageType.invoice ? "request" : "message"
+    private var discardPrompt: String {
+        message.type == MessageType.boost ? String(localized: "Discard this boost?")
+            : message.type == MessageType.directPayment ? String(localized: "Discard this payment?")
+            : message.type == MessageType.invoice ? String(localized: "Discard this request?") : String(localized: "Discard this message?")
     }
 
     var body: some View {
         HStack(spacing: 10) {
             if let armed = attempt.armed {
                 Button { Task { await retry() } } label: {
-                    Text("\(message.type == MessageType.boost ? "Boost" : "Send") \(Sats.format(msat: armed))")
+                    Text(message.type == MessageType.boost ? String(localized: "Boost \(Sats.format(msat: armed))") : String(localized: "Send \(Sats.format(msat: armed))"))
                         .buttonProgress(attempt.working, size: .mini)
                 }
                 .monospacedDigit()
@@ -684,7 +685,7 @@ struct UndeliveredActions: View {
                 }
                 if message.isDiscardable {
                     InlineConfirm(
-                        trigger: "Discard", prompt: "Discard this \(what)?", confirm: "Discard", style: .text,
+                        trigger: "Discard", prompt: discardPrompt, confirm: "Discard", style: .text,
                         confirming: $confirmingDiscard
                     ) {
                         await model.discard(message)

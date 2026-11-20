@@ -25,11 +25,11 @@ struct JoinTribeSheet: View {
 
     var body: some View {
         @Bindable var lookup = lookup
-        SheetPage(title: "Join a tribe") {
+        SheetPage(title: String(localized: "Join a tribe")) {
             CodeEntry(
-                label: "Tribe link", prompt: "sphinx.chat://?action=tribeV2…", text: $lookup.link,
-                scanTitle: "Scan a tribe's code", scanPrompt: "Point the camera at a tribe's QR code.",
-                accept: { TribeLink($0) == nil ? "That code isn't a tribe link." : nil },
+                label: String(localized: "Tribe link"), prompt: "sphinx.chat://?action=tribeV2…", text: $lookup.link,
+                scanTitle: String(localized: "Scan a tribe's code"), scanPrompt: String(localized: "Point the camera at a tribe's QR code."),
+                accept: { TribeLink($0) == nil ? String(localized: "That code isn't a tribe link.") : nil },
                 choose: { $0.first { TribeLink($0) != nil } },
                 // A link that arrives whole is looked up at once.
                 picked: { _ in Task { await lookup.lookUp(with: model) } }
@@ -40,7 +40,7 @@ struct JoinTribeSheet: View {
             if let problem = lookup.problem { ProblemText(problem) }
         } actions: {
             if let info = lookup.info {
-                TouchPayButton(verb: "Join", totalMsat: info.joinAmountMsat, attempt: attempt, send: { confirmed in
+                TouchPayButton(verb: String(localized: "Join"), totalMsat: info.joinAmountMsat, attempt: attempt, send: { confirmed in
                     await lookup.join(with: model, confirmedMsat: confirmed)
                 }, sent: dismiss)
             } else {
@@ -116,12 +116,12 @@ struct TribeSettingsSheet: View {
     private var loaded: Bool { editing == nil || draft.original != nil }
 
     var body: some View {
-        SheetPage(title: editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe") {
+        SheetPage(title: editing.map { String(localized: "Edit #\($0.displayName)") } ?? String(localized: "Create a tribe")) {
             if loaded {
                 fields
                 if let editing {
-                    ConfirmInPlace(trigger: "Delete tribe", explanation: "Delete #\(editing.displayName) for everyone?",
-                                   confirm: "Delete") { await delete(editing) }
+                    ConfirmInPlace(trigger: String(localized: "Delete tribe"), explanation: String(localized: "Delete #\(editing.displayName) for everyone?"),
+                                   confirm: String(localized: "Delete")) { await delete(editing) }
                         .disabled(saving)
                         .padding(.top, Theme.Space.lg)
                 }
@@ -131,7 +131,7 @@ struct TribeSettingsSheet: View {
             if let problem { ProblemText(problem) }
         } actions: {
             Button { Task { await save() } } label: {
-                Text(editing == nil ? "Create" : "Save").frame(maxWidth: .infinity).buttonProgress(saving)
+                Text(editing == nil ? String(localized: "Create") : String(localized: "Save")).frame(maxWidth: .infinity).buttonProgress(saving)
             }
             .buttonStyle(.peel(.primary, size: .touch))
             .disabled(!loaded || draft.name.trimmed.isEmpty || uploadingImage)
@@ -149,29 +149,29 @@ struct TribeSettingsSheet: View {
 
     @ViewBuilder private var fields: some View {
         VStack(alignment: .leading, spacing: Theme.Space.lg) {
-            PhoneSectionHeader("Basics")
-            field("Name", .name) {
-                NoteInput(label: "Name", prompt: "Required", text: $draft.name)
+            PhoneSectionHeader(String(localized: "Basics"))
+            field(String(localized: "Name"), .name) {
+                NoteInput(label: String(localized: "Name"), prompt: String(localized: "Required"), text: $draft.name)
             }
-            FieldLabel("What it is about") {
-                NoteInput(label: "What it is about", prompt: "Optional", text: $draft.summary)
+            FieldLabel(String(localized: "What it is about")) {
+                NoteInput(label: String(localized: "What it is about"), prompt: String(localized: "Optional"), text: $draft.summary)
             }
-            field("Image", .photo) { image }
-            FieldLabel("Tags") { TagToggles(choices: draft.tagChoices, selection: $draft.tags) }
+            field(String(localized: "Image"), .photo) { image }
+            FieldLabel(String(localized: "Tags")) { TagToggles(choices: draft.tagChoices, selection: $draft.tags) }
         }
         VStack(alignment: .leading, spacing: Theme.Space.lg) {
-            PhoneSectionHeader("Pricing")
+            PhoneSectionHeader(String(localized: "Pricing"))
             let pay = draft.membersPay
-            amount("Price to join", helper: pay.toJoin, text: $draft.priceToJoin, unit: "sats", field: .priceToJoin)
-            amount("Price per message", helper: pay.perMessage, text: $draft.pricePerMessage, unit: "sats",
+            amount(String(localized: "Price to join"), helper: pay.toJoin, text: $draft.priceToJoin, unit: String(localized: "sats"), field: .priceToJoin)
+            amount(String(localized: "Price per message"), helper: pay.perMessage, text: $draft.pricePerMessage, unit: String(localized: "sats"),
                    field: .pricePerMessage)
-            amount("Escrow per message", helper: "Held, then paid back", text: $draft.escrow, unit: "sats", field: .escrow)
-            amount("Paid back after", text: $draft.escrowHours, unit: "hours", field: .escrowHours)
+            amount(String(localized: "Escrow per message"), helper: String(localized: "Held, then paid back"), text: $draft.escrow, unit: String(localized: "sats"), field: .escrow)
+            amount(String(localized: "Paid back after"), text: $draft.escrowHours, unit: String(localized: "hours"), field: .escrowHours)
         }
         VStack(alignment: .leading, spacing: Theme.Space.md) {
-            PhoneSectionHeader("Access")
-            SwitchRow(label: "Private", detail: "You approve who joins.", isOn: $draft.isPrivate)
-            SwitchRow(label: "Unlisted", detail: "Only people with the link can join.", isOn: $draft.unlisted)
+            PhoneSectionHeader(String(localized: "Access"))
+            SwitchRow(label: String(localized: "Private"), detail: String(localized: "You approve who joins."), isOn: $draft.isPrivate)
+            SwitchRow(label: String(localized: "Unlisted"), detail: String(localized: "Only people with the link can join."), isOn: $draft.unlisted)
         }
     }
 
@@ -182,7 +182,7 @@ struct TribeSettingsSheet: View {
                       pubkey: editing?.pubkey ?? "", size: 56)
                 .accessibilityHidden(true)
             PhotosPicker(selection: $photo, matching: .images) {
-                Text(uploadingImage ? "Uploading…" : draft.photoURL.isEmpty ? "Choose" : "Change")
+                Text(uploadingImage ? String(localized: "Uploading…") : draft.photoURL.isEmpty ? String(localized: "Choose") : String(localized: "Change"))
             }
             .buttonStyle(.peel(.outline, size: .touch))
             .disabled(uploadingImage)
@@ -224,7 +224,7 @@ struct TribeSettingsSheet: View {
         do {
             draft = TribeSettingsDraft(try await model.tribeSettings(editing.pubkey))
         } catch {
-            problem = PeelError.problem(error, couldNot: "load the tribe")
+            problem = PeelError.problem(error, couldNot: String(localized: "load the tribe"))
         }
     }
 
@@ -234,7 +234,7 @@ struct TribeSettingsSheet: View {
         do {
             draft.photoURL = try await model.uploadPicture(item)
         } catch {
-            fieldProblem = .init(field: .photo, text: PeelError.problem(error, couldNot: "upload the image"))
+            fieldProblem = .init(field: .photo, text: PeelError.problem(error, couldNot: String(localized: "upload the image")))
         }
     }
 
@@ -265,7 +265,7 @@ struct TribeSettingsSheet: View {
             try await model.deleteTribe(tribe.pubkey)
             dismiss()
         } catch {
-            problem = PeelError.problem(error, couldNot: "delete the tribe")
+            problem = PeelError.problem(error, couldNot: String(localized: "delete the tribe"))
         }
     }
 }

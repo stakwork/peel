@@ -72,7 +72,7 @@ struct PaymentsTab: View {
     @ViewBuilder private var history: some View {
         if items.isEmpty {
             Section {
-                Text(feed.problem ?? (model.connection == .connected ? "No payments yet." : "Not connected."))
+                Text(feed.problem ?? (model.connection == .connected ? String(localized: "No payments yet.") : String(localized: "Not connected.")))
                     .phoneFont(.row)
                     .foregroundStyle(Theme.tertiaryText)
                     .padding(.vertical, Theme.Space.lg)
@@ -98,7 +98,7 @@ struct PaymentsTab: View {
                 Section {
                     HStack(spacing: Theme.Space.sm) {
                         if feed.loadingOlder { ProgressView() }
-                        Text(feed.loadingOlder ? "Loading older payments" : feed.problem ?? "")
+                        Text(feed.loadingOlder ? String(localized: "Loading older payments") : feed.problem ?? "")
                             .phoneFont(.secondary)
                             .foregroundStyle(Theme.tertiaryText)
                     }
@@ -141,7 +141,7 @@ struct BalanceHeader: View {
                     .foregroundStyle(Theme.text)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Balance")
-                    .accessibilityValue(model.balanceMsat.map { Sats.format(msat: $0) } ?? "not known yet")
+                    .accessibilityValue(model.balanceMsat.map { Sats.format(msat: $0) } ?? String(localized: "not known yet"))
                 if model.waitingMsat > 0 {
                     Text("\(Sats.format(msat: model.waitingMsat)) waiting for people to come online")
                         .phoneFont(.secondary)

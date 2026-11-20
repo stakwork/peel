@@ -29,12 +29,12 @@ struct TribeSettingsForm: View {
 
     var body: some View {
         // Its own buttons do not close it while a save or delete runs.
-        Panel(editing.map { "Edit #\($0.displayName)" } ?? "Create a tribe", close: { if working == nil { done() } }) {
+        Panel(editing.map { String(localized: "Edit #\($0.displayName)") } ?? String(localized: "Create a tribe"), close: { if working == nil { done() } }) {
             if loaded {
                 fields
                 if let editing {
                     FormDestructiveSection(
-                        trigger: "Delete tribe…", prompt: "Delete #\(editing.displayName) for everyone?", confirm: "Delete"
+                        trigger: String(localized: "Delete tribe…"), prompt: String(localized: "Delete #\(editing.displayName) for everyone?"), confirm: String(localized: "Delete")
                     ) {
                         await delete()
                     }
@@ -49,7 +49,7 @@ struct TribeSettingsForm: View {
                     .buttonStyle(.peel(.outline))
                     .disabled(working != nil)
                 Button { Task { await save() } } label: {
-                    Text(editing == nil ? "Create" : "Save").buttonProgress(working == .save)
+                    Text(editing == nil ? String(localized: "Create") : String(localized: "Save")).buttonProgress(working == .save)
                 }
                 .buttonStyle(.peel(.primary))
                 .keyboardShortcut(.defaultAction)
@@ -65,14 +65,14 @@ struct TribeSettingsForm: View {
     }
 
     @ViewBuilder private var fields: some View {
-        FormSection("Basics") {
-            FormItem(label: "Name", problem: problem(.name)) {
-                FormTextField(label: "Name", prompt: "Required", text: $draft.name, problem: problem(.name) != nil)
+        FormSection(String(localized: "Basics")) {
+            FormItem(label: String(localized: "Name"), problem: problem(.name)) {
+                FormTextField(label: String(localized: "Name"), prompt: String(localized: "Required"), text: $draft.name, problem: problem(.name) != nil)
             }
-            FormItem(label: "What it is about") {
-                FormTextField(label: "What it is about", text: $draft.summary, axis: .vertical)
+            FormItem(label: String(localized: "What it is about")) {
+                FormTextField(label: String(localized: "What it is about"), text: $draft.summary, axis: .vertical)
             }
-            FormItem(label: "Image", problem: problem(.photo)) {
+            FormItem(label: String(localized: "Image"), problem: problem(.photo)) {
                 PictureField(
                     picture: TribeIcon(
                         name: draft.name.trimmed.nilIfEmpty ?? "?", url: draft.photoURL.nilIfEmpty,
@@ -83,26 +83,26 @@ struct TribeSettingsForm: View {
                     uploading: $uploadingImage
                 )
             }
-            FormItem(label: "Tags") {
+            FormItem(label: String(localized: "Tags")) {
                 TagChips(tags: draft.tagChoices, selection: $draft.tags)
             }
         }
-        FormSection("Pricing") {
+        FormSection(String(localized: "Pricing")) {
             // Two to a line. Under a price, what members actually pay when it is more.
             let pay = draft.membersPay
             HStack(alignment: .top, spacing: Theme.Space.md) {
-                amountItem("Price to join", helper: pay.toJoin, text: $draft.priceToJoin, unit: "sats", field: .priceToJoin)
-                amountItem("Price per message", helper: pay.perMessage, text: $draft.pricePerMessage, unit: "sats",
+                amountItem(String(localized: "Price to join"), helper: pay.toJoin, text: $draft.priceToJoin, unit: "sats", field: .priceToJoin)
+                amountItem(String(localized: "Price per message"), helper: pay.perMessage, text: $draft.pricePerMessage, unit: "sats",
                            field: .pricePerMessage)
             }
             HStack(alignment: .top, spacing: Theme.Space.md) {
-                amountItem("Escrow per message", helper: "Held, then paid back", text: $draft.escrow, unit: "sats", field: .escrow)
-                amountItem("Paid back after", text: $draft.escrowHours, unit: "hours", field: .escrowHours)
+                amountItem(String(localized: "Escrow per message"), helper: String(localized: "Held, then paid back"), text: $draft.escrow, unit: "sats", field: .escrow)
+                amountItem(String(localized: "Paid back after"), text: $draft.escrowHours, unit: "hours", field: .escrowHours)
             }
         }
-        FormSection("Access") {
-            FormSwitchRow(label: "Private", detail: "You approve who joins.", isOn: $draft.isPrivate)
-            FormSwitchRow(label: "Unlisted", detail: "Only people with the link can join.", isOn: $draft.unlisted)
+        FormSection(String(localized: "Access")) {
+            FormSwitchRow(label: String(localized: "Private"), detail: String(localized: "You approve who joins."), isOn: $draft.isPrivate)
+            FormSwitchRow(label: String(localized: "Unlisted"), detail: String(localized: "Only people with the link can join."), isOn: $draft.unlisted)
         }
     }
 
@@ -124,7 +124,7 @@ struct TribeSettingsForm: View {
         do {
             draft = TribeSettingsDraft(try await model.tribeSettings(editing.pubkey))
         } catch {
-            problem = PeelError.problem(error, couldNot: "load the tribe")
+            problem = PeelError.problem(error, couldNot: String(localized: "load the tribe"))
         }
     }
 
@@ -157,7 +157,7 @@ struct TribeSettingsForm: View {
             try await model.deleteTribe(editing.pubkey)
             done()
         } catch {
-            problem = PeelError.problem(error, couldNot: "delete the tribe")
+            problem = PeelError.problem(error, couldNot: String(localized: "delete the tribe"))
         }
     }
 }
@@ -187,7 +187,7 @@ struct JoinRequestButtons: View {
     var body: some View {
         HStack(spacing: 10) {
             if let sent {
-                Text(sent ? "Approving…" : "Declining…")
+                Text(sent ? String(localized: "Approving…") : String(localized: "Declining…"))
                     .foregroundStyle(Theme.secondaryText)
             } else {
                 Button { run(false) } label: { Text("Decline").buttonProgress(sending == false, size: .mini) }
@@ -225,7 +225,7 @@ struct JoinRequestNote: View {
         HStack(spacing: Theme.Space.sm) {
             Text("\(sender.name) wants to join")
             if let approved {
-                Text(approved ? "· Approved" : "· Declined")
+                Text(approved ? String(localized: "· Approved") : String(localized: "· Declined"))
             } else if canAnswer {
                 JoinRequestButtons { approve in await model.answerJoinRequest(message, approve: approve) }
             }
@@ -297,11 +297,11 @@ struct TribeStatusBar: View {
 
     private var text: String {
         switch tribe.status {
-        case .pending: "Waiting for the owner to approve you."
-        case .rejected: "The owner declined your request."
-        case .removed: "The owner removed you."
-        case .deleted: "The owner deleted this tribe."
-        case .active: "You are not in this tribe."
+        case .pending: String(localized: "Waiting for the owner to approve you.")
+        case .rejected: String(localized: "The owner declined your request.")
+        case .removed: String(localized: "The owner removed you.")
+        case .deleted: String(localized: "The owner deleted this tribe.")
+        case .active: String(localized: "You are not in this tribe.")
         }
     }
 
@@ -328,9 +328,9 @@ struct MentionsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: "Mentions")
+            DetailHeader(title: String(localized: "Mentions"))
             if mentions.isEmpty {
-                EmptyState(problem ?? "No mentions yet.")
+                EmptyState(problem ?? String(localized: "No mentions yet."))
             } else {
                 let names = Dictionary(model.conversations.map { ($0.chat, $0.name) }, uniquingKeysWith: { $1 })
                 ScrollView {
@@ -349,7 +349,7 @@ struct MentionsView: View {
                 guard let updates = model.mentionUpdates() else { return }
                 for try await rows in updates { mentions = rows }
             } catch {
-                problem = PeelError.problem(error, couldNot: "load mentions")
+                problem = PeelError.problem(error, couldNot: String(localized: "load mentions"))
             }
         }
     }

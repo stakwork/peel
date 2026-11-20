@@ -18,7 +18,7 @@ struct TouchPayButton: View {
     let send: (_ confirmedMsat: UInt64?) async -> PaymentOutcome
     var sent: () -> Void = {}
     /// What the armed button says above it.
-    var armedNote = "That's over your confirmation amount. Check it, then confirm."
+    var armedNote = String(localized: "That's over your confirmation amount. Check it, then confirm.")
 
     /// The armed button takes taps only once this has passed.
     static let settle: Duration = .milliseconds(700)
@@ -149,7 +149,7 @@ struct BalanceLine: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Text(model.balanceText.map { "Balance \($0)" } ?? "Balance known once connected")
+        Text(model.balanceText.map { String(localized: "Balance \($0)") } ?? String(localized: "Balance known once connected"))
             .phoneFont(.secondary)
             .monospacedDigit()
             .foregroundStyle(Theme.tertiaryText)

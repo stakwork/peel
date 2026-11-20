@@ -64,7 +64,7 @@ struct BalanceLine: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Text(model.balanceText.map { "Balance \($0)" } ?? "Balance known once connected")
+        Text(model.balanceText.map { String(localized: "Balance \($0)") } ?? String(localized: "Balance known once connected"))
             .monospacedDigit()
             .muted()
     }
@@ -106,13 +106,13 @@ struct SendSatsPanel: View {
 
     var body: some View {
         let amountMsat = Sats.msat(amount)
-        Panel(mode == .send ? "Send sats to \(name)" : "Request sats from \(name)", close: done) {
-            SegmentedChoice(selection: $mode, options: [(.send, "Send"), (.request, "Request")])
+        Panel(mode == .send ? String(localized: "Send sats to \(name)") : String(localized: "Request sats from \(name)"), close: done) {
+            SegmentedChoice(selection: $mode, options: [(.send, String(localized: "Send")), (.request, String(localized: "Request"))])
                 .padding(.top, Theme.Space.sm)
             FormSection {
-                FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
-                FormItem(label: mode == .send ? "Note" : "What it's for") {
-                    FormTextField(label: mode == .send ? "Note" : "What it's for", prompt: "Optional", text: $note)
+                FormItem(label: String(localized: "Amount")) { SatsField(label: String(localized: "Amount"), text: $amount) }
+                FormItem(label: mode == .send ? String(localized: "Note") : String(localized: "What it's for")) {
+                    FormTextField(label: mode == .send ? String(localized: "Note") : String(localized: "What it's for"), prompt: String(localized: "Optional"), text: $note)
                 }
                 if mode == .send {
                     TemplatePicker(selection: $template)
@@ -129,8 +129,8 @@ struct SendSatsPanel: View {
                     Button("Cancel", action: done)
                         .buttonStyle(.peel(.outline))
                         .disabled(attempt.working)
-                    PayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
-                        guard let amountMsat else { return .refused("Enter an amount.") }
+                    PayButton(verb: String(localized: "Send"), totalMsat: amountMsat, attempt: attempt, send: { confirmed in
+                        guard let amountMsat else { return .refused(String(localized: "Enter an amount.")) }
                         return await model.sendPayment(
                             to: chat, amountMsat: amountMsat, note: note, template: template, confirmedMsat: confirmed
                         )
@@ -189,7 +189,7 @@ struct TemplatePicker: View {
     static let tile: CGFloat = 48
 
     var body: some View {
-        FormItem(label: "Picture", helper: helper) {
+        FormItem(label: String(localized: "Picture"), helper: helper) {
             switch loading {
             case .loaded(let templates) where !templates.isEmpty:
                 row([nil] + templates.map(\.muid))
@@ -203,7 +203,7 @@ struct TemplatePicker: View {
             do {
                 loading = .loaded(try await model.paymentTemplates())
             } catch {
-                loading = .failed(PeelError.problem(error, couldNot: "load the pictures"))
+                loading = .failed(PeelError.problem(error, couldNot: String(localized: "load the pictures")))
             }
         }
     }
@@ -211,7 +211,7 @@ struct TemplatePicker: View {
     private var helper: String? {
         switch loading {
         case .loading: nil
-        case .loaded(let templates): templates.isEmpty ? "No pictures available." : nil
+        case .loaded(let templates): templates.isEmpty ? String(localized: "No pictures available.") : nil
         case .failed(let problem): problem
         }
     }
@@ -224,7 +224,7 @@ struct TemplatePicker: View {
                         Button { selection = muid } label: { tile(muid) }
                             .buttonStyle(.plain)
                             .id(muid)
-                            .accessibilityLabel(muid == nil ? "No picture" : "Picture")
+                            .accessibilityLabel(muid == nil ? String(localized: "No picture") : String(localized: "Picture"))
                             .accessibilityAddTraits(selection == muid ? .isSelected : [])
                     }
                 }
@@ -371,7 +371,7 @@ struct BoostAmountRow: View {
                 PeelDropdown(
                     selection: custom == nil ? current : Self.other,
                     options: presets(Self.choices, including: current).map { ($0, Sats.format(msat: $0)) }
-                        + [(Self.other, "Custom…")]
+                        + [(Self.other, String(localized: "Custom…"))]
                 ) { msat in
                     attempt.armed = nil
                     if msat == Self.other {
@@ -385,10 +385,10 @@ struct BoostAmountRow: View {
                 .fixedSize()
                 if let custom {
                     let typed = Sats.msat(custom)
-                    SatsField(label: "Boost amount", text: Binding(get: { custom }, set: { self.custom = $0 }))
+                    SatsField(label: String(localized: "Boost amount"), text: Binding(get: { custom }, set: { self.custom = $0 }))
                         .frame(width: 120)
-                    PayButton(verb: "Save", totalMsat: typed, attempt: attempt, send: { confirmed in
-                        guard let typed else { return .refused("Enter an amount.") }
+                    PayButton(verb: String(localized: "Save"), totalMsat: typed, attempt: attempt, send: { confirmed in
+                        guard let typed else { return .refused(String(localized: "Enter an amount.")) }
                         return await model.setBoostAmount(msat: typed, confirmedMsat: confirmed)
                     }, sent: { self.custom = nil })
                 }
@@ -410,7 +410,7 @@ struct PaymentConfirmationRow: View {
         SettingDropdown(
             selection: current,
             options: presets(Self.choices, including: current)
-                .map { ($0, $0 == 0 ? "Always confirm" : "Over \(Sats.format(msat: $0))") }
+                .map { ($0, $0 == 0 ? String(localized: "Always confirm") : String(localized: "Over \(Sats.format(msat: $0))")) }
         ) { try await model.setPaymentConfirmation(msat: $0) }
     }
 }

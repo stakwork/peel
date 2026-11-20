@@ -102,7 +102,7 @@ struct ChatList: View {
                     // (or a development profile names a home, docs/talk.md).
                     if !model.stadeum.live.isEmpty || model.talk.developmentHome != nil {
                         NavigationLink(value: ChatsRoute.apps) {
-                            NavRow(title: "Apps", icon: WorkspaceAppIcon(nil, size: 20))
+                            NavRow(title: String(localized: "Apps"), icon: WorkspaceAppIcon(nil, size: 20))
                         }
                         .overlay(alignment: .trailing) {
                             if hasPins { AppsFoldButton(open: $model.sidebarLayout.appsOpen) }
@@ -111,10 +111,10 @@ struct ChatList: View {
                     }
                     // Automations is Mac-only for now; hidden on iOS until ready.
                     NavigationLink(value: ChatsRoute.threads) {
-                        NavRow(title: "Threads", systemImage: "bubble.left", count: model.unreadThreads)
+                        NavRow(title: String(localized: "Threads"), systemImage: "bubble.left", count: model.unreadThreads)
                     }
                     NavigationLink(value: ChatsRoute.mentions) {
-                        NavRow(title: "Mentions", systemImage: "at", count: model.unreadMentions)
+                        NavRow(title: String(localized: "Mentions"), systemImage: "at", count: model.unreadMentions)
                     }
                 }
                 .phoneRows()
@@ -139,7 +139,7 @@ struct ChatList: View {
                     .listRowBackground(Color.clear)
             }
             if !sections.unread.isEmpty {
-                ChatsSection(title: "Unread") {
+                ChatsSection(title: String(localized: "Unread")) {
                     ForEach(sections.unread) {
                         ChatLink(conversation: $0, state: states[$0.chat], isAgent: $0.chat == model.agentChat)
                     }
@@ -158,21 +158,21 @@ struct ChatList: View {
                 .phoneRows()
             }
             if recent {
-                ChatsSection(title: "Recent") {
+                ChatsSection(title: String(localized: "Recent")) {
                     if let agent {
                         ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
                     }
                     ForEach(sections.combined) { ChatLink(conversation: $0, state: states[$0.chat]) }
                     if let all = sections.allCombined {
-                        ShowAll(what: "\(all) chats", fewer: "chats", all: $model.sidebarLayout.allRecent)
+                        ShowAll(kind: .chats(all), all: $model.sidebarLayout.allRecent)
                     }
-                    ActionRow(title: "Join a tribe") { sheet = .joinTribe }
-                    ActionRow(title: "Create a tribe") { sheet = .createTribe }
+                    ActionRow(title: String(localized: "Join a tribe")) { sheet = .joinTribe }
+                    ActionRow(title: String(localized: "Create a tribe")) { sheet = .createTribe }
                     ForEach(model.pendingInvites) { invite in
                         PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
                     }
-                    ActionRow(title: "Add contact") { sheet = .addContact }
-                    ActionRow(title: "Invite someone") { sheet = .inviteSomeone }
+                    ActionRow(title: String(localized: "Add contact")) { sheet = .addContact }
+                    ActionRow(title: String(localized: "Invite someone")) { sheet = .inviteSomeone }
                 }
             } else {
                 // Searching shows every match, a section only with matches,
@@ -180,34 +180,34 @@ struct ChatList: View {
                 // layout, and no actions. Otherwise a section is always there,
                 // for its actions.
                 if !sections.searching || !sections.tribes.isEmpty {
-                    ChatsSection(title: "Tribes",
+                    ChatsSection(title: String(localized: "Tribes"),
                                  expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
                         ForEach(sections.tribes) { ChatLink(conversation: $0, state: states[$0.chat]) }
                         if let all = sections.allTribes {
-                            ShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
+                            ShowAll(kind: .tribes(all), all: $model.sidebarLayout.allTribes)
                         }
                         if sections.tribesOpen, !sections.searching {
-                            ActionRow(title: "Join a tribe") { sheet = .joinTribe }
-                            ActionRow(title: "Create a tribe") { sheet = .createTribe }
+                            ActionRow(title: String(localized: "Join a tribe")) { sheet = .joinTribe }
+                            ActionRow(title: String(localized: "Create a tribe")) { sheet = .createTribe }
                         }
                     }
                 }
                 if !sections.searching || !sections.direct.isEmpty || agent != nil {
-                    ChatsSection(title: "Direct messages",
+                    ChatsSection(title: String(localized: "Direct messages"),
                                  expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
                         if let agent {
                             ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
                         }
                         ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }
                         if let all = sections.allDirect {
-                            ShowAll(what: Formatting.people(all), fewer: "people", all: $model.sidebarLayout.allDirect)
+                            ShowAll(kind: .people(all), all: $model.sidebarLayout.allDirect)
                         }
                         if sections.directOpen, !sections.searching {
                             ForEach(model.pendingInvites) { invite in
                                 PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
                             }
-                            ActionRow(title: "Add contact") { sheet = .addContact }
-                            ActionRow(title: "Invite someone") { sheet = .inviteSomeone }
+                            ActionRow(title: String(localized: "Add contact")) { sheet = .addContact }
+                            ActionRow(title: String(localized: "Invite someone")) { sheet = .inviteSomeone }
                         }
                     }
                 }
@@ -253,7 +253,7 @@ private struct AppsFoldButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Pinned apps")
-        .accessibilityValue(open ? "Expanded" : "Collapsed")
+        .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
     }
 }
 
@@ -287,7 +287,7 @@ private struct PinToggle: View {
 
     var body: some View {
         let pinned = model.isPinned(app)
-        Button(pinned ? "Unpin" : "Pin to Chats", systemImage: pinned ? "pin.slash" : "pin") {
+        Button(pinned ? String(localized: "Unpin") : String(localized: "Pin to Chats"), systemImage: pinned ? "pin.slash" : "pin") {
             model.setPinned(app, !pinned)
         }
     }
@@ -360,7 +360,7 @@ private struct ChatLink: View {
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             let muted = level == .muted
-            Button(muted ? "Unmute" : "Mute", systemImage: muted ? "bell" : "bell.slash") {
+            Button(muted ? String(localized: "Unmute") : String(localized: "Mute"), systemImage: muted ? "bell" : "bell.slash") {
                 setLevel(muted ? .all : .muted)
             }
             .tint(Theme.secondaryText)
@@ -382,8 +382,8 @@ private struct ChatLink: View {
     private var readAction: (title: String, systemImage: String, run: () -> Void)? {
         let chat = conversation.chat
         return switch model.readToggle(for: chat) {
-        case .markRead: ("Mark read", "checkmark.circle", { Task { await model.markRead(chat) } })
-        case .markUnread: ("Mark unread", "envelope.badge", { Task { await model.markUnread(chat) } })
+        case .markRead: (String(localized: "Mark read"), "checkmark.circle", { Task { await model.markRead(chat) } })
+        case .markUnread: (String(localized: "Mark unread"), "envelope.badge", { Task { await model.markUnread(chat) } })
         case nil: nil
         }
     }
@@ -397,23 +397,40 @@ private struct ChatLink: View {
 /// "Show all 14 tribes", then "Show fewer" ("Show fewer tribes" to
 /// VoiceOver); kept with the account, as the Mac's sidebar keeps it.
 private struct ShowAll: View {
-    /// "14 tribes", "10 people".
-    let what: String
-    /// "tribes", "people".
-    let fewer: String
+    enum Kind {
+        case chats(Int), tribes(Int), people(Int)
+
+        var showAll: String {
+            switch self {
+            case .chats(let n): String(localized: "Show all \(n) chats")
+            case .tribes(let n): String(localized: "Show all \(n) tribes")
+            case .people(let n): String(localized: "Show all \(n) people")
+            }
+        }
+
+        var showFewer: String {
+            switch self {
+            case .chats: String(localized: "Show fewer chats")
+            case .tribes: String(localized: "Show fewer tribes")
+            case .people: String(localized: "Show fewer people")
+            }
+        }
+    }
+
+    let kind: Kind
     @Binding var all: Bool
 
     var body: some View {
         Button {
             all.toggle()
         } label: {
-            Text(all ? "Show fewer" : "Show all \(what)")
+            Text(all ? String(localized: "Show fewer") : kind.showAll)
                 .phoneFont(.row)
                 .foregroundStyle(Theme.link)
                 .frame(maxWidth: .infinity, minHeight: Theme.touchTarget, alignment: .leading)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(all ? "Show fewer \(fewer)" : "Show all \(what)")
+        .accessibilityLabel(all ? kind.showFewer : kind.showAll)
     }
 }

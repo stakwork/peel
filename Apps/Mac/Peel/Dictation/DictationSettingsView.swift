@@ -23,7 +23,7 @@ struct DictationSettingsSection: View {
 
     private var section: some View {
         SettingsSection {
-            Fact("Dictation") {
+            Fact(String(localized: "Dictation")) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stateText)
                     if let note { Text(note).muted() }
@@ -32,21 +32,21 @@ struct DictationSettingsSection: View {
                 PeelSwitch(isOn: Binding(get: { dictation.isEnabled }, set: { dictation.setEnabled($0) }))
                     .accessibilityLabel("Dictation")
             }
-            Fact("Key") {
+            Fact(String(localized: "Key")) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(dictation.choosingKey ? "Press the key you want, or Esc" : dictation.hotkey.label)
+                    Text(dictation.choosingKey ? String(localized: "Press the key you want, or Esc") : dictation.hotkey.label)
                     ForEach(keyNotes, id: \.self) { Text($0).muted() }
                 }
                 .fixedSize(horizontal: false, vertical: true)
             } trailing: {
-                Button(dictation.choosingKey ? "Cancel" : "Change") {
+                Button(dictation.choosingKey ? String(localized: "Cancel") : String(localized: "Change")) {
                     dictation.choosingKey ? dictation.stopChoosingKey() : dictation.chooseKey()
                 }
                 .buttonStyle(.peel(.outline))
                 // Secure input hides every key from the tap.
                 .disabled(!dictation.isListening || dictation.secureInput)
             }
-            Fact("Vocabulary") {
+            Fact(String(localized: "Vocabulary")) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(vocabularyText)
                     Text("Names and words dictation puts right, kept in your memory. Fix a word after dictating and it's learned.").muted()
@@ -55,9 +55,9 @@ struct DictationSettingsSection: View {
                 Button("Open") { openWindow(id: DictationVocabularyView.id) }
                     .buttonStyle(.peel(.outline))
             }
-            Fact("History") {
+            Fact(String(localized: "History")) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(dictation.historyOn ? "Kept for 30 days" : "Off: earlier ones stay until cleared or 30 days old")
+                    Text(dictation.historyOn ? String(localized: "Kept for 30 days") : String(localized: "Off: earlier ones stay until cleared or 30 days old"))
                     Text("What you dictate, kept on this Mac so you can copy it again. Nothing is sent anywhere.").muted()
                 }
             } trailing: {
@@ -77,30 +77,30 @@ struct DictationSettingsSection: View {
     /// and why it can't be changed now.
     private var keyNotes: [String] {
         let notes: [String?] = dictation.choosingKey
-            ? [dictation.keyProblem, "A modifier on its own, such as Right Option, Right ⌘ or Fn, or a function key.",
-               dictation.canSwallow ? nil : "Without Accessibility, the keys you press also reach the app you're in."]
-            : ["Hold to dictate, let go to finish. Press Space while holding to keep going hands-free.",
-               dictation.keyConflict, dictation.isListening ? nil : "Turn Dictation on to change the key."]
+            ? [dictation.keyProblem, String(localized: "A modifier on its own, such as Right Option, Right ⌘ or Fn, or a function key."),
+               dictation.canSwallow ? nil : String(localized: "Without Accessibility, the keys you press also reach the app you're in.")]
+            : [String(localized: "Hold to dictate, let go to finish. Press Space while holding to keep going hands-free."),
+               dictation.keyConflict, dictation.isListening ? nil : String(localized: "Turn Dictation on to change the key.")]
         return notes.compactMap { $0 }
     }
 
     private var vocabularyText: String {
-        if dictation.lingo.problem != nil { return "Not available: Peel's strut can't read it" }
+        if dictation.lingo.problem != nil { return String(localized: "Not available: Peel's strut can't read it") }
         let count = dictation.lingo.lexicon.wordCount
-        return count == 0 ? "No words yet" : Formatting.count(count, "word")
+        return count == 0 ? String(localized: "No words yet") : Formatting.count(count, .word)
     }
 
     private var stateText: String {
-        if !dictation.isEnabled { return "Off" }
-        if !dictation.permissions.requiredGranted { return "Waiting for permissions" }
-        if dictation.needsRestart { return "Restart Peel to finish" }
-        return dictation.isListening ? "On" : "Starting…"
+        if !dictation.isEnabled { return String(localized: "Off") }
+        if !dictation.permissions.requiredGranted { return String(localized: "Waiting for permissions") }
+        if dictation.needsRestart { return String(localized: "Restart Peel to finish") }
+        return dictation.isListening ? String(localized: "On") : String(localized: "Starting…")
     }
 
     private var note: String? {
-        if dictation.secureInput { return "Another app is blocking keyboard shortcuts (secure input), so the key may not work." }
+        if dictation.secureInput { return String(localized: "Another app is blocking keyboard shortcuts (secure input), so the key may not work.") }
         if dictation.isListening && !dictation.canSwallow {
-            return "Without Accessibility, the Space that keeps dictation going also types a space."
+            return String(localized: "Without Accessibility, the Space that keeps dictation going also types a space.")
         }
         return nil
     }
@@ -113,7 +113,7 @@ struct DictationOffer: View {
 
     var body: some View {
         OfferBar(
-            icon: "mic", text: "Dictation that works everywhere and stays local and private. Turning it on asks for the microphone; Input Monitoring and Accessibility are enabled with their own Allow buttons.", action: "Set up",
+            icon: "mic", text: String(localized: "Dictation that works everywhere and stays local and private. Turning it on asks for the microphone; Input Monitoring and Accessibility are enabled with their own Allow buttons."), action: String(localized: "Set up"),
             dismiss: { DictationController.shared.dismissOffer() },
             accept: {
                 DictationController.shared.dismissOffer()
@@ -130,11 +130,11 @@ struct DictationMenuItem: View {
 
     var body: some View {
         let dictation = DictationController.shared
-        Button(dictation.isEnabled ? "Turn Dictation Off" : "Turn Dictation On") {
+        Button(dictation.isEnabled ? String(localized: "Turn Dictation Off") : String(localized: "Turn Dictation On")) {
             dictation.setEnabled(!dictation.isEnabled)
         }
         Button("Dictation History…") { openWindow(id: DictationHistoryView.id) }
-        Text("Dictation: " + (dictation.isListening ? "On (\(dictation.hotkey.label))" : "Off"))
+        Text(dictation.isListening ? String(localized: "Dictation: On (\(dictation.hotkey.label))") : String(localized: "Dictation: Off"))
     }
 }
 
@@ -150,21 +150,21 @@ private struct DictationModelsSection: View {
         let speech = models.models.filter { $0.kind == .speech }
         let fixers = models.models.filter { $0.kind == .fixer }
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection("Speech to text") {
+            SettingsSection(String(localized: "Speech to text")) {
                 if speech.isEmpty {
                     // Strut not up yet, or its list not read: what dictation's own model is doing.
-                    Fact("Speech") { Text(speechText) }
+                    Fact(String(localized: "Speech")) { Text(speechText) }
                 } else {
                     DictationModelSummary(models: models, kind: .speech, choices: speech, learned: nil)
                 }
             }
             if !fixers.isEmpty {
-                SettingsSection("Clean-up and learning") {
+                SettingsSection(String(localized: "Clean-up and learning")) {
                     DictationModelSummary(models: models, kind: .fixer, choices: fixers, learned: dictation.lingo.lexicon.wordCount)
                 }
             }
             if !models.installed.isEmpty {
-                SettingsSection("On this Mac") { DictationModelStorage(models: models) }
+                SettingsSection(String(localized: "On this Mac")) { DictationModelStorage(models: models) }
             }
             Group {
                 if let problem = models.problem {
@@ -181,10 +181,10 @@ private struct DictationModelsSection: View {
 
     private var speechText: String {
         switch dictation.speech.model {
-        case .waiting: "Waiting for Peel's strut to start"
-        case .checking: dictation.isEnabled ? "Getting the speech model ready…" : "The speech model (\(StrutSpeech.modelSize)) downloads when dictation is on"
-        case .downloading: "Downloading the speech model (\(StrutSpeech.modelSize))…"
-        case .installed: "Ready"
+        case .waiting: String(localized: "Waiting for Peel's strut to start")
+        case .checking: dictation.isEnabled ? String(localized: "Getting the speech model ready…") : String(localized: "The speech model (\(StrutSpeech.modelSize)) downloads when dictation is on")
+        case .downloading: String(localized: "Downloading the speech model (\(StrutSpeech.modelSize))…")
+        case .installed: String(localized: "Ready")
         case .failed(let why): why
         }
     }
@@ -214,7 +214,7 @@ private struct DictationModelSummary: View {
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: 18)
         } title: {
-            Text(active?.name ?? (kind == .fixer ? "Off" : "Default"))
+            Text(active?.name ?? (kind == .fixer ? String(localized: "Off") : String(localized: "Default")))
         } detail: {
             VStack(alignment: .leading, spacing: 3) {
                 Text(summary).fixedSize(horizontal: false, vertical: true)
@@ -229,10 +229,10 @@ private struct DictationModelSummary: View {
     }
 
     private var summary: String {
-        guard let active else { return kind == .fixer ? Self.offText : "Strut's default speech model." }
+        guard let active else { return kind == .fixer ? Self.offText : String(localized: "Strut's default speech model.") }
         var parts = [active.summary]
         if let size = AttachmentFormat.size(active.bytes) { parts.append(size) }
-        if let learned { parts.append(Formatting.count(learned, "word") + " learned") }
+        if let learned { parts.append(String(localized: "\(Formatting.count(learned, .word)) learned")) }
         return parts.joined(separator: " · ")
     }
 
@@ -246,7 +246,7 @@ private struct DictationModelSummary: View {
             }
             .padding(.top, 2)
         } else if let failed = choices.first(where: { $0.error != nil }), let error = failed.error {
-            ProblemText("\(failed.name) didn't download: \(error)")
+            ProblemText(String(localized: "\(failed.name) didn't download: \(error)"))
                 .help(error)
         } else if kind == .speech, case .failed(let why) = DictationController.shared.speech.model {
             // The default model dictation fetches itself, failed: say so here, with a retry.
@@ -267,9 +267,10 @@ private struct DictationModelSummary: View {
             })
         }
         for model in choices {
-            let lead = model.recommended ? "Recommended. " : ""
-            let later = model.state == .installed ? "" : " Downloads first."
-            picks.append(.button(model.name, subtitle: lead + model.summary + later, detail: AttachmentFormat.size(model.bytes),
+            var blurb = model.summary
+            if model.recommended { blurb = String(localized: "Recommended. \(blurb)") }
+            if model.state != .installed { blurb = String(localized: "\(blurb) Downloads first.") }
+            picks.append(.button(model.name, subtitle: blurb, detail: AttachmentFormat.size(model.bytes),
                                  checked: model.selected) {
                 Task { await models.select(model) }
             })
@@ -277,13 +278,13 @@ private struct DictationModelSummary: View {
         return picks
     }
 
-    static let offText = "No clean-up, nothing learned."
+    static var offText: String { String(localized: "No clean-up, nothing learned.") }
 
     /// "Downloading Parakeet: 202.6 of 482.5 MB…", from what strut says has come.
     static func downloadText(_ model: DictationModel) -> String {
         let done = (model.downloaded ?? model.progress.map { Int64(Double(model.bytes) * $0) })
             .map { ": " + AttachmentFormat.progress($0, of: model.bytes) } ?? ""
-        return "Downloading \(model.name)\(done)… Switches over when it's done."
+        return String(localized: "Downloading \(model.name)\(done)… Switches over when it's done.")
     }
 }
 
@@ -329,9 +330,9 @@ private struct DictationModelStorage: View {
         } title: {
             Text(AttachmentFormat.size(total) ?? "")
         } detail: {
-            Text("\(Formatting.count(installed.count, "model")), \(inUse) in use")
+            Text("\(Formatting.count(installed.count, .model)), \(inUse) in use")
         } trailing: {
-            Button(managing ? "Done" : "Manage") { managing.toggle() }
+            Button(managing ? String(localized: "Done") : String(localized: "Manage")) { managing.toggle() }
                 .buttonStyle(.peel(.outline))
         }
         if managing {
@@ -344,7 +345,7 @@ private struct DictationModelStorage: View {
                     Text([AttachmentFormat.size(model.bytes), Self.role(model)].compactMap { $0 }.joined(separator: " · "))
                 } trailing: {
                     if model.removable {
-                        InlineConfirm(trigger: "Remove", prompt: "Remove \(model.name)?", confirm: "Remove", alignment: .trailing) {
+                        InlineConfirm(trigger: "Remove", prompt: String(localized: "Remove \(model.name)?"), confirm: "Remove", alignment: .trailing) {
                             await models.remove(model)
                         }
                     }
@@ -355,7 +356,7 @@ private struct DictationModelStorage: View {
 
     /// Why one can't go: in use, or the speech model dictation falls back on.
     private static func role(_ model: DictationModel) -> String? {
-        if model.active { return "In use" }
-        return model.removable ? nil : "Dictation's fallback"
+        if model.active { return String(localized: "In use") }
+        return model.removable ? nil : String(localized: "Dictation's fallback")
     }
 }

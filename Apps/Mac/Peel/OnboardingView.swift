@@ -77,52 +77,52 @@ struct OnboardingView: View {
     }
 
     private var inviteStep: some View {
-        StepBody(title: "Paste your invite",
-                 detail: "The link or code someone sent you.") {
-            FormItem(label: "Invite") {
-                FormTextField(label: "Invite", prompt: "sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
+        StepBody(title: String(localized: "Paste your invite"),
+                 detail: String(localized: "The link or code someone sent you.")) {
+            FormItem(label: String(localized: "Invite")) {
+                FormTextField(label: String(localized: "Invite"), prompt: "sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
             }
         } footer: {
-            footer(next: "Continue", enabled: !invite.trimmed.isEmpty) { go(.name) }
+            footer(next: String(localized: "Continue"), enabled: !invite.trimmed.isEmpty) { go(.name) }
         }
     }
 
     private var enterWordsStep: some View {
-        StepBody(title: "Restore with recovery words",
-                 detail: "Type them in order, or paste all twelve.",
+        StepBody(title: String(localized: "Restore with recovery words"),
+                 detail: String(localized: "Type them in order, or paste all twelve."),
                  width: 520) {
             WordEntryGrid(words: $words)
         } footer: {
-            footer(next: "Continue", enabled: words.allSatisfy { !$0.isEmpty }) {
+            footer(next: String(localized: "Continue"), enabled: words.allSatisfy { !$0.isEmpty }) {
                 // Catch a mistyped word here, not after the PIN.
                 do {
                     _ = try Engine.validate(mnemonic: words.joined(separator: " "))
                     go(.pin)
                 } catch {
-                    problem = "Those twelve words don't make a valid account. Check each one."
+                    problem = String(localized: "Those twelve words don't make a valid account. Check each one.")
                 }
             }
         }
     }
 
     private var nameStep: some View {
-        StepBody(title: "What should people call you?") {
-            FormItem(label: "Name") {
-                FormTextField(label: "Name", prompt: "Required", text: $name)
+        StepBody(title: String(localized: "What should people call you?")) {
+            FormItem(label: String(localized: "Name")) {
+                FormTextField(label: String(localized: "Name"), prompt: String(localized: "Required"), text: $name)
                     .onSubmit { if !name.trimmed.isEmpty { go(.pin) } }
             }
         } footer: {
-            footer(next: "Continue", enabled: !name.trimmed.isEmpty) { go(.pin) }
+            footer(next: String(localized: "Continue"), enabled: !name.trimmed.isEmpty) { go(.pin) }
         }
     }
 
     /// Asked only when the restore's own history carried no name: a restored
     /// account with messages to recover it from never reaches this step.
     private var restoreNameStep: some View {
-        StepBody(title: "What should people call you?",
-                 detail: "We couldn't find a name in your account's history.") {
-            FormItem(label: "Name") {
-                FormTextField(label: "Name", prompt: "Required", text: $name)
+        StepBody(title: String(localized: "What should people call you?"),
+                 detail: String(localized: "We couldn't find a name in your account's history.")) {
+            FormItem(label: String(localized: "Name")) {
+                FormTextField(label: String(localized: "Name"), prompt: String(localized: "Required"), text: $name)
                     .onSubmit { if !name.trimmed.isEmpty { Task { await finishRestore() } } }
                     .disabled(working)
             }
@@ -138,25 +138,25 @@ struct OnboardingView: View {
     }
 
     private var pinStep: some View {
-        StepBody(title: "Set a PIN") {
+        StepBody(title: String(localized: "Set a PIN")) {
             PinField(pin: $pin) { go(.confirmPin) }
         } footer: {
-            footer(next: "Continue", enabled: pin.count == PIN.length) { go(.confirmPin) }
+            footer(next: String(localized: "Continue"), enabled: pin.count == PIN.length) { go(.confirmPin) }
         }
     }
 
     private var confirmPinStep: some View {
-        StepBody(title: "Enter your PIN again") {
+        StepBody(title: String(localized: "Enter your PIN again")) {
             PinField(pin: $confirmation) { Task { await confirmPin() } }
         } footer: {
-            footer(next: path == .newAccount ? "Create account" : "Restore",
+            footer(next: path == .newAccount ? String(localized: "Create account") : String(localized: "Restore"),
                    enabled: confirmation.count == PIN.length && !working) { Task { await confirmPin() } }
         }
     }
 
     private var showWordsStep: some View {
-        StepBody(title: "Write down your twelve words",
-                 detail: "Anyone with these words controls your account.",
+        StepBody(title: String(localized: "Write down your twelve words"),
+                 detail: String(localized: "Anyone with these words controls your account."),
                  width: 520) {
             VStack(alignment: .leading, spacing: 18) {
                 NumberedWordGrid(places: Array(shownWords.indices)) { index in
@@ -185,12 +185,12 @@ struct OnboardingView: View {
     /// Three of the words typed back from paper, so a copy with a word
     /// missed or misspelt is caught while the words can still be read here.
     private var checkWordsStep: some View {
-        StepBody(title: "Check what you wrote",
-                 detail: "Type these three words from your paper.",
+        StepBody(title: String(localized: "Check what you wrote"),
+                 detail: String(localized: "Type these three words from your paper."),
                  width: 520) {
             WordCheckGrid(check: $check) { Task { await checkWords() } }
         } footer: {
-            footer(next: "Open Peel", enabled: check.isFilled && !working) { Task { await checkWords() } }
+            footer(next: String(localized: "Open Peel"), enabled: check.isFilled && !working) { Task { await checkWords() } }
         }
     }
 
@@ -240,7 +240,7 @@ struct OnboardingView: View {
             pin = ""
             confirmation = ""
             go(.pin)
-            problem = "The PINs don't match. Set it again."
+            problem = String(localized: "The PINs don't match. Set it again.")
             return
         }
         working = true
@@ -297,7 +297,7 @@ struct OnboardingView: View {
             try await model.setName(name.trimmed)
             model.enterApp()
         } catch {
-            problem = PeelError.problem(error, couldNot: "save your name")
+            problem = PeelError.problem(error, couldNot: String(localized: "save your name"))
         }
     }
 
@@ -323,8 +323,8 @@ struct RestoreProgressView: View {
 
     var body: some View {
         let progress = model.restoreProgress
-        StepBody(title: "Restoring your account",
-                 detail: "You can start now while older messages arrive.",
+        StepBody(title: String(localized: "Restoring your account"),
+                 detail: String(localized: "You can start now while older messages arrive."),
                  width: 460) {
             Card {
                 VStack(spacing: 0) {
@@ -437,10 +437,10 @@ struct StepBody<Fields: View, Footer: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(Theme.font(24, .bold))
                 if let detail {
-                    Text(detail)
+                    Text(LocalizedStringKey(detail))
                         .font(Theme.font(14))
                         .lineSpacing(3)
                         .foregroundStyle(Theme.secondaryText)

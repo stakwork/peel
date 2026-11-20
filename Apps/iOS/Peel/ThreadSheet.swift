@@ -49,7 +49,7 @@ struct ThreadSheet: View {
                     }
                     if canPost {
                         PhoneComposer(
-                            composer: composer, placeholder: "Reply",
+                            composer: composer, placeholder: String(localized: "Reply"),
                             loadMentionable: conversation?.isTribe == true ? model.mentionLoader(thread.chat) : nil
                         )
                     }
@@ -78,7 +78,7 @@ struct ThreadSheet: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
-            GlassButton("xmark", label: "Close thread") { dismiss() }
+            GlassButton("xmark", label: String(localized: "Close thread")) { dismiss() }
         }
         .padding(.horizontal, Theme.phoneGutter)
         .padding(.top, 20)

@@ -48,12 +48,12 @@ struct AppVersionsControl: View {
             }
             .menuAnchor(anchor)
             .help(versions.held
-                  ? "Everyone opens \(versions.active), held at release \(versions.release ?? ""): new versions wait for you"
-                  : "Everyone opens \(versions.active): every new version goes live")
-            .accessibilityLabel("Versions, \(versions.active) live")
-            .accessibilityValue([versions.held ? "held at release \(versions.release ?? "")" : "following latest",
-                                 versions.newestWaiting.map { "\($0) waiting" },
-                                 versions.behind.isEmpty ? nil : "workflows changed"].compactMap { $0 }.joined(separator: ", "))
+                  ? String(localized: "Everyone opens \(versions.active), held at release \(versions.release ?? ""): new versions wait for you")
+                  : String(localized: "Everyone opens \(versions.active): every new version goes live"))
+            .accessibilityLabel(String(localized: "Versions, \(versions.active) live"))
+            .accessibilityValue([versions.held ? String(localized: "held at release \(versions.release ?? "")") : String(localized: "following latest"),
+                                 versions.newestWaiting.map { String(localized: "\($0) waiting") },
+                                 versions.behind.isEmpty ? nil : String(localized: "workflows changed")].compactMap { $0 }.joined(separator: ", "))
             .onDisappear { presenter?.menuTriggerGone(source) }
             if let offer {
                 Button("Make \(offer) live") { confirming = true }
@@ -64,7 +64,7 @@ struct AppVersionsControl: View {
                             confirming = false
                         } confirm: {
                             confirming = false
-                            change(.version(offer), "\(offer) is live")
+                            change(.version(offer), String(localized: "\(offer) is live"))
                         }
                     }
             }
@@ -86,9 +86,9 @@ struct AppVersionsControl: View {
     /// History, and Follow latest.
     static func menu(_ versions: AppVersions, shown: String, preview: @escaping @MainActor (String?) -> Void,
                      change: @escaping (AppLiveTarget, _ done: String) -> Void) -> [MenuEntry] {
-        let following = "Every version Peel builds goes live"
-        let header = versions.release.map { "Everyone opens \(versions.active) · release \($0)" }
-            ?? "Everyone opens \(versions.active) · \(following.lowercased())"
+        let following = String(localized: "Every version Peel builds goes live")
+        let header = versions.release.map { String(localized: "Everyone opens \(versions.active) · release \($0)") }
+            ?? String(localized: "Everyone opens \(versions.active) · \(following.lowercased())")
         // The newest, and the live and shown ones however far down.
         let listedVersions = versions.versions.enumerated()
             .filter { $0.offset < listed || [versions.active, shown].contains($0.element.label) }.map(\.element)
@@ -99,16 +99,16 @@ struct AppVersionsControl: View {
         }
         var more: [MenuEntry] = []
         if !versions.releases.isEmpty {
-            more.append(.submenu("History", detail: versions.behind.isEmpty ? nil : "changed", history(versions, change: change)))
+            more.append(.submenu(String(localized: "History"), detail: versions.behind.isEmpty ? nil : "changed", history(versions, change: change)))
         }
         if versions.held {
             let newest = versions.versions.first?.label ?? versions.active
-            more.append(.item(MenuItem(title: "Follow latest", subtitle: following, confirm: "Everyone opens \(newest)") {
-                change(.latest, "Following latest: \(newest) is live")
+            more.append(.item(MenuItem(title: String(localized: "Follow latest"), subtitle: following, confirm: String(localized: "Everyone opens \(newest)")) {
+                change(.latest, String(localized: "Following latest: \(newest) is live"))
                 return true
             }))
         } else {
-            more.append(.button("Follow latest", subtitle: following, checked: true) {})
+            more.append(.button(String(localized: "Follow latest"), subtitle: following, checked: true) {})
         }
         return .sections([.header(header)] + list, more)
     }
@@ -122,8 +122,8 @@ struct AppVersionsControl: View {
             if release.id == versions.release {
                 return .button(title, detail: "live", checked: true) {}
             }
-            return .item(MenuItem(title: title, confirm: "Everyone opens \(release.version)", detail: when) {
-                change(.release(release.id), "\(release.id) is live: everyone opens \(release.version)")
+            return .item(MenuItem(title: title, confirm: String(localized: "Everyone opens \(release.version)"), detail: when) {
+                change(.release(release.id), String(localized: "\(release.id) is live: everyone opens \(release.version)"))
                 return true
             })
         }
@@ -131,12 +131,12 @@ struct AppVersionsControl: View {
         let changed: [MenuEntry] = versions.behind.map { drift in
             .view(AnyView(DriftLine(drift: drift)))
         }
-        let take = MenuEntry.item(MenuItem(title: "Use these with \(versions.active)",
-                                           confirm: "Everyone gets them with \(versions.active)") {
-            change(.version(versions.active), "\(versions.active) uses the workflows as they are now")
+        let take = MenuEntry.item(MenuItem(title: String(localized: "Use these with \(versions.active)"),
+                                           confirm: String(localized: "Everyone gets them with \(versions.active)")) {
+            change(.version(versions.active), String(localized: "\(versions.active) uses the workflows as they are now"))
             return true
         })
-        return .sections([.header("Releases")] + releases, [.header("Changed since \(release)")] + changed + [take])
+        return .sections([.header("Releases")] + releases, [.header(String(localized: "Changed since \(release)"))] + changed + [take])
     }
 
     private static func detail(_ version: AppVersions.Version, in versions: AppVersions) -> String? {
@@ -183,7 +183,7 @@ private struct MakeLivePanel: View {
     let confirm: () -> Void
 
     var body: some View {
-        Panel("Make \(version) live?", compact: true, close: cancel) {
+        Panel(String(localized: "Make \(version) live?"), compact: true, close: cancel) {
             Text("Everyone who opens \(title) gets \(version) instead of \(versions.active): its tab, links to it, and apps that import it.")
                 .fixedSize(horizontal: false, vertical: true)
             // Any pick holds the app (strut's plans/app-releases.md §1.2).
@@ -218,8 +218,8 @@ struct AppPreviewBar: View {
     let back: () -> Void
 
     var body: some View {
-        Callout(.attention, "Only you see \(shown). Everyone else opens \(live).",
-                detail: "Runs you start here use the workflows as they are now.",
+        Callout(.attention, String(localized: "Only you see \(shown). Everyone else opens \(live)."),
+                detail: String(localized: "Runs you start here use the workflows as they are now."),
                 icon: .symbol("eye", Theme.attention)) {
             Button("Back to \(live)", action: back).buttonStyle(.peel(.outline, size: .sm))
         }

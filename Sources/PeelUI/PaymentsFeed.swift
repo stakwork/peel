@@ -38,7 +38,7 @@ public final class PaymentsFeed {
                 lightArrived()
             }
         } catch {
-            problem = PeelError.noted(error, couldNot: "load payments")
+            problem = PeelError.noted(error, couldNot: String(localized: "load payments", table: "Shared"))
         }
     }
 
@@ -86,7 +86,7 @@ public final class PaymentsFeed {
         do {
             paging.fetched(try await model.fetchOlderPayments())
         } catch {
-            problem = PeelError.noted(error, couldNot: "load older payments")
+            problem = PeelError.noted(error, couldNot: String(localized: "load older payments", table: "Shared"))
         }
     }
 

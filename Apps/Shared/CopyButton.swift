@@ -89,7 +89,7 @@ struct CopyLabel: View {
                     Text(title)
                         .opacity(copied ? 0 : 1)
                         .offset(y: copied && !reduceMotion ? -4 : 0)
-                    Text("Copied")
+                    Text("Copied", tableName: "Shared")
                         .opacity(copied ? 1 : 0)
                         .offset(y: copied || reduceMotion ? 0 : 4)
                 }

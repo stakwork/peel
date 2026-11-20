@@ -41,7 +41,7 @@ public enum Account {
         allowUntrustedCertificate: Bool = false
     ) async throws -> Created {
         guard let address = try server ?? invite.server.map(ServerAddress.named) else {
-            throw PeelError("the invite does not say which server to use")
+            throw PeelError(String(localized: "the invite does not say which server to use", table: "Shared"))
         }
         var tribeHost = tribeHost
         if tribeHost == nil, server == nil, !ServerAddress.isLoopback(host: address.host) {

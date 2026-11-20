@@ -27,10 +27,10 @@ struct SignedAmount: View {
     private var label: String {
         let amount = Sats.format(msat: msat)
         switch status {
-        case .complete: return "\(incoming ? "Received" : "Sent") \(amount)"
-        case .pending: return "\(incoming ? "Receiving" : "Sending") \(amount), pending"
-        case .unsettled: return "\(incoming ? "Receiving" : "Sending") \(amount), not settled"
-        case .failed: return "\(incoming ? "Receipt" : "Send") of \(amount) failed"
+        case .complete: return incoming ? String(localized: "Received \(amount)", table: "Shared") : String(localized: "Sent \(amount)", table: "Shared")
+        case .pending: return incoming ? String(localized: "Receiving \(amount), pending", table: "Shared") : String(localized: "Sending \(amount), pending", table: "Shared")
+        case .unsettled: return incoming ? String(localized: "Receiving \(amount), not settled", table: "Shared") : String(localized: "Sending \(amount), not settled", table: "Shared")
+        case .failed: return incoming ? String(localized: "Receiving \(amount) failed", table: "Shared") : String(localized: "Sending \(amount) failed", table: "Shared")
         }
     }
 }
@@ -52,7 +52,7 @@ struct BigAmount: View {
                 .font(Theme.font(size, .bold))
                 .strikethrough(struck)
                 .foregroundStyle(color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.foreground))
-            Text("sats").font(Theme.font(unitSize)).foregroundStyle(Theme.secondaryText)
+            Text("sats", tableName: "Shared").font(Theme.font(unitSize)).foregroundStyle(Theme.secondaryText)
         }
         .monospacedDigit()
     }

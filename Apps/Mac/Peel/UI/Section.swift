@@ -12,7 +12,7 @@ struct SectionHeader: View {
     init(_ title: String) { self.title = title }
 
     var body: some View {
-        Text(title)
+        Text(LocalizedStringKey(title))
             .font(Theme.font(12, .semibold))
             .foregroundStyle(Theme.secondaryText)
     }

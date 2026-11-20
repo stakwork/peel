@@ -48,7 +48,7 @@ struct AppsScreen: View {
                             }
                     }
                 } header: {
-                    PhoneSectionHeader("Talk to Jamie")
+                    PhoneSectionHeader(String(localized: "Talk to Jamie"))
                 }
                 .phoneRows()
             }
@@ -62,7 +62,7 @@ struct AppsScreen: View {
                     .buttonStyle(.plain)
                     .swipeActions(edge: .trailing) {
                         let pinned = model.isPinned(app)
-                        Button(pinned ? "Unpin" : "Pin to Chats", systemImage: pinned ? "pin.slash" : "pin") {
+                        Button(pinned ? String(localized: "Unpin") : String(localized: "Pin to Chats"), systemImage: pinned ? "pin.slash" : "pin") {
                             model.setPinned(app, !pinned)
                         }
                         .tint(Theme.accent)
@@ -71,7 +71,7 @@ struct AppsScreen: View {
                     // here only for someone with that workspace connected.
                     .contextMenu {
                         let pinned = model.isPinned(app)
-                        Button(pinned ? "Unpin from Chats" : "Pin to Chats",
+                        Button(pinned ? String(localized: "Unpin from Chats") : String(localized: "Pin to Chats"),
                                systemImage: pinned ? "pin.slash" : "pin") {
                             model.setPinned(app, !pinned)
                         }
@@ -79,7 +79,7 @@ struct AppsScreen: View {
                             Button("Share link", systemImage: "link") {
                                 Clipboard.copy(link.absoluteString)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                CopyFeedback.announce("Link copied")
+                                CopyFeedback.announce(String(localized: "Link copied"))
                             }
                         }
                     }
@@ -89,9 +89,9 @@ struct AppsScreen: View {
                     UnreadNote(names: unread)
                 } else if apps.isEmpty, !homes.isEmpty, !stadeum.readingApps {
                     // Under the Talk rows rather than over the screen.
-                    Text(stadeum.live.isEmpty ? "Connect Stadeum under You to open the apps your workspaces pin."
-                         : unread.isEmpty ? "Apps your Stadeum workspaces pin show here."
-                         : "\(unread.joined(separator: ", ")) did not answer. Pull to try again.")
+                    Text(stadeum.live.isEmpty ? String(localized: "Connect Stadeum under You to open the apps your workspaces pin.")
+                         : unread.isEmpty ? String(localized: "Apps your Stadeum workspaces pin show here.")
+                         : String(localized: "\(unread.joined(separator: ", ")) did not answer. Pull to try again."))
                         .phoneFont(.secondary)
                         .foregroundStyle(Theme.tertiaryText)
                 }
@@ -100,7 +100,7 @@ struct AppsScreen: View {
         }
         .phoneList()
         .scrollEdges()
-        .searchable(text: $query, prompt: "Search apps")
+        .searchable(text: $query, prompt: Text("Search apps"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 // Off while a read is under way: another would cut it short.
@@ -207,7 +207,7 @@ private struct AppRow: View {
         .frame(minHeight: Theme.touchTarget)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityValue(pinned ? "Pinned to Chats" : "")
+        .accessibilityValue(pinned ? Text("Pinned to Chats") : Text(verbatim: ""))
         .accessibilityHint("Opens it")
     }
 }

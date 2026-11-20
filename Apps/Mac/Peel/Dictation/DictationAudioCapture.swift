@@ -193,7 +193,7 @@ final class DictationAudioCapture: @unchecked Sendable {
             try install()
         } catch {
             stop()
-            onProblem?("The microphone is not available")
+            onProblem?(String(localized: "The microphone is not available"))
         }
     }
 

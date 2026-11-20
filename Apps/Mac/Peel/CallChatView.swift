@@ -144,7 +144,7 @@ private struct ChatRowView: View {
         let jamie = row.message.isFromJamie
         VStack(alignment: row.isMine ? .trailing : .leading, spacing: 2) {
             HStack(spacing: Theme.Space.xs) {
-                if row.isMine { Text("You") } else if jamie { Text("Jamie") } else { Text(message.sender ?? "") }
+                Text(row.isMine ? String(localized: "You") : jamie ? String(localized: "Jamie") : message.sender ?? "")
                     .font(Theme.font(12, .bold))
                     .foregroundStyle(jamie ? Theme.accent : Theme.secondaryText)
                 if message.isVoice {

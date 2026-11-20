@@ -2361,6 +2361,22 @@
         }
       }
     },
+    "Copy contact info" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy contact info"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar información de contacto"
+          }
+        }
+      }
+    },
     "Copy invite" : {
       "localizations" : {
         "en" : {
@@ -5193,6 +5209,22 @@
         }
       }
     },
+    "Not ready yet" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not ready yet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no está listo"
+          }
+        }
+      }
+    },
     "Not received" : {
       "localizations" : {
         "en" : {
@@ -6629,6 +6661,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Código QR de su clave pública"
+          }
+        }
+      }
+    },
+    "QR code of your contact info" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR code of your contact info"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código QR de tu información de contacto"
           }
         }
       }
@@ -9853,6 +9901,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tu cuenta volvió, pero no su conexión con Stadeum. Conecta Stadeum de nuevo."
+          }
+        }
+      }
+    },
+    "Your contact info" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your contact info"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu información de contacto"
           }
         }
       }

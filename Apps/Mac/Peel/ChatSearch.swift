@@ -65,7 +65,7 @@ struct ChatSearchBar: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.secondaryText)
-                TextField("Search", text: $search.text, prompt: Text(placeholder).foregroundStyle(Theme.tertiaryText))
+                TextField("Search", text: $search.text, prompt: Text(LocalizedStringKey(placeholder)).foregroundStyle(Theme.tertiaryText))
                     .textFieldStyle(.plain)
                     .font(Theme.font(13))
                     .focused($focused)

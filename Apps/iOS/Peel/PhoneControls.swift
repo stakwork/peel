@@ -22,11 +22,11 @@ struct StepPage<Content: View, Actions: View>: View {
             VStack(alignment: .leading, spacing: 24) {
                 if let progress { StepProgress(step: progress.step, of: progress.of) }
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text(title)
+                    Text(LocalizedStringKey(title))
                         .font(Theme.font(28, .bold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let detail {
-                        Text(detail)
+                        Text(LocalizedStringKey(detail))
                             .font(Theme.font(16))
                             .foregroundStyle(Theme.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -129,7 +129,7 @@ struct ActionLabel: View {
 
     var body: some View {
         ZStack {
-            Text(title).opacity(working ? 0 : 1)
+            Text(LocalizedStringKey(title)).opacity(working ? 0 : 1)
             if working { ProgressView() }
         }
         .frame(maxWidth: .infinity)

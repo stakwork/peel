@@ -117,7 +117,7 @@ private struct AgentChatColumn: View {
                 } else {
                     // Files and voice notes go to the agent contact too (`AttachmentText` reads them); Stop sends it a `cancel`.
                     ChatFooter(conversation: conversation, tribe: nil, composer: composer,
-                               placeholder: "Message \(agent.name)", stop: stop)
+                               placeholder: String(localized: "Message \(agent.name)"), stop: stop)
                 }
             } else {
                 // No DM yet: setting up the agent's own account, never the local loop.

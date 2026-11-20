@@ -27,7 +27,7 @@ struct AttachmentBlock: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(row.images.count) images")
         } else if message.attachmentPriceMsat != nil, !message.fromMe {
-            FileMark(message: message, note: "Paid. Buy it on the Mac for now.")
+            FileMark(message: message, note: String(localized: "Paid. Buy it on the Mac for now."))
         } else {
             // What the bytes turned out to be once downloaded: a fake video is a file.
             switch model.attachmentKind(of: message) {

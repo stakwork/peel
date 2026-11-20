@@ -40,9 +40,9 @@ struct AgentConnectPanel: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    FormItem(label: "\(provider.name) API key", problem: problem) {
+                    FormItem(label: String(localized: "\(provider.name) API key"), problem: problem) {
                         HStack(spacing: 8) {
-                            FormTextField(label: "\(provider.name) API key", text: $key, problem: problem != nil,
+                            FormTextField(label: String(localized: "\(provider.name) API key"), text: $key, problem: problem != nil,
                                           focusOnAppear: true, secure: true)
                                 .onSubmit { connect() }
                             Button("Paste") {

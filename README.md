@@ -78,5 +78,32 @@ Or from the command line:
 Accounts live under `~/Library/Application Support/Peel/dev/<profile>`; pick one
 with `--profile` (required; `default` is reserved for the app's own account).
 
+## Localization
+
+The apps are in English and Spanish (`es`). Text lives in String Catalogs:
+
+- `Apps/Shared/Shared.xcstrings`: strings in shared code (table `Shared`, so
+  it does not clash with the app catalogs; read it with `tableName: "Shared"`
+  or `String(localized:table: "Shared")`)
+- `Apps/Mac/Peel/Localizable.xcstrings`: the Mac app
+- `Apps/iOS/Peel/Localizable.xcstrings`: the iPhone app
+- `Apps/Mac/Peel/InfoPlist.xcstrings`, `Apps/iOS/Peel/InfoPlist.xcstrings`:
+  the permission descriptions (`NS*UsageDescription`)
+
+**Add a language.** In Xcode, open a `.xcstrings`, click **+** and pick the
+language (Project > Info > Localizations adds it to `knownRegions` in
+`project.pbxproj`). By hand: add the locale code under each string's
+`localizations` in the JSON, and the code to `knownRegions`.
+
+**Add a string.** Use a literal where SwiftUI takes a `LocalizedStringKey`
+(`Text("Save")`, `Button`, `Label`, `Toggle`, `navigationTitle`), and
+`String(localized: "…")` anywhere else (a `String` property, an alert, an
+AppKit title). Building in Xcode adds the key to the catalog; give it its
+translations. Never localize what is compared, stored or sent. Strings in
+`Sources/` packages are not localized yet.
+
+**Test.** Edit the scheme, Options > App Language > Spanish, or launch with
+`-AppleLanguages '(es)'`.
+
 See `AGENTS.md` for how the code is organised, `docs/PLAN.md` for the
 architecture, and `docs/phases/` for what is done and what comes next.

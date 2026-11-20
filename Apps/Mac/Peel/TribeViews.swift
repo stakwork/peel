@@ -34,7 +34,7 @@ struct TribeSettingsForm: View {
                 fields
                 if let editing {
                     FormDestructiveSection(
-                        trigger: "Delete tribe…", prompt: "Delete #\(editing.displayName) for everyone?", confirm: "Delete"
+                        trigger: "Delete tribe…", prompt: String(localized: "Delete #\(editing.displayName) for everyone?"), confirm: "Delete"
                     ) {
                         await delete()
                     }

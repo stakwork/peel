@@ -156,10 +156,10 @@ final class DictationController {
         askedRestart = true
         Task {
             let alert = NSAlert()
-            alert.messageText = "Restart Peel to enable Dictation"
-            alert.informativeText = "macOS only lets Peel see the dictation key after it restarts."
-            alert.addButton(withTitle: "Restart")
-            alert.addButton(withTitle: "Later")
+            alert.messageText = String(localized: "Restart Peel to enable Dictation")
+            alert.informativeText = String(localized: "macOS only lets Peel see the dictation key after it restarts.")
+            alert.addButton(withTitle: String(localized: "Restart"))
+            alert.addButton(withTitle: String(localized: "Later"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             let relaunch = Process()
             relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")

@@ -496,13 +496,13 @@ struct RequestRowView: View {
     /// Where it stands, as the Mac's footer words it (paying it waits for F2c).
     private func status(_ invoice: Invoice) -> String {
         switch row.paymentRequest?.state ?? .open {
-        case .underpaid: return "Partly paid. This invoice can't take the rest."
-        case .paid(let at): return (row.message.fromMe ? "Paid" : "You paid") + (at.map { " · \(Formatting.when($0))" } ?? "")
-        case .paying: return "Paying…"
+        case .underpaid: return String(localized: "Partly paid. This invoice can't take the rest.")
+        case .paid(let at): return (row.message.fromMe ? String(localized: "Paid") : String(localized: "You paid")) + (at.map { " · \(Formatting.when($0))" } ?? "")
+        case .paying: return String(localized: "Paying…")
         case .open, .failed:
-            if invoice.isExpired() { return "Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")" }
-            if row.message.fromMe { return "Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? "never")" }
-            return "Pay it from the Mac for now"
+            if invoice.isExpired() { return String(localized: "Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")") }
+            if row.message.fromMe { return String(localized: "Waiting to be paid · expires \(invoice.expiresAt.map(Formatting.expiry) ?? String(localized: "never"))") }
+            return String(localized: "Pay it from the Mac for now")
         }
     }
 }

@@ -86,7 +86,7 @@ extension Badge.Style {
 /// "AGENT" beside an agent's name: its sidebar row, header and messages.
 struct AgentTag: View {
     var body: some View {
-        Text("AGENT")
+        Text("AGENT", tableName: "Shared")
             .font(Theme.font(10, .semibold))
             .tracking(0.4)
             .foregroundStyle(Theme.secondaryText)

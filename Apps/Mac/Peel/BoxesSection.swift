@@ -84,7 +84,7 @@ private struct BoxRow: View {
                         .buttonStyle(.peel(.outline))
                         .disabled(opening)
                 }
-                InlineConfirm(trigger: "Forget", prompt: "Forget \(box.host)?",
+                InlineConfirm(trigger: "Forget", prompt: String(localized: "Forget \(box.host)?"),
                               explanation: "Peel stops opening it as \(box.person). The box keeps the link until you remove it in Connect there.",
                               confirm: "Forget", alignment: .trailing, confirming: $forgetting) {
                     model.boxes.forget(box)

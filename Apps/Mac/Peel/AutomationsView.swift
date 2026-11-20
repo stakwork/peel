@@ -173,7 +173,7 @@ private struct AutomationRow: View {
                 Task { await model.runAutomationNow(automation) }
             },
             .divider,
-            .destructive("Delete", systemImage: "trash", confirm: "Delete \u{201C}\(automation.name)\u{201D}") {
+            .destructive("Delete", systemImage: "trash", confirm: String(localized: "Delete \u{201C}\(automation.name)\u{201D}")) {
                 Task { await model.deleteAutomation(automation) }
             },
         ]

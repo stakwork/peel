@@ -259,7 +259,7 @@ private struct ChatColumn: View {
                     .id(conversation.chat)
             }
             if let search = model.search, search.chat == conversation.chat {
-                ChatSearchBar(search: search, placeholder: "Search in \(conversation.title)")
+                ChatSearchBar(search: search, placeholder: String(localized: "Search in \(conversation.title)"))
             }
             // Made once per chat, with its messages: reusing one scroll view
             // across chats left the lazy stack blank at the bottom anchor

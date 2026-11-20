@@ -18,7 +18,7 @@ struct RecordingIndicator: View {
                 .fill(Theme.destructive)
                 .frame(width: 8, height: 8)
                 .opacity(faded && !reduceMotion ? 0.3 : 1)
-            Text("Recording")
+            Text("Recording", tableName: "Shared")
                 .font(Theme.font(12, .medium))
                 .foregroundStyle(Theme.destructive)
                 .lineLimit(1)

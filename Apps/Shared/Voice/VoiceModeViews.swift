@@ -123,18 +123,18 @@ struct VoicePanel: View {
             }
             HStack(spacing: 10) {
                 Button(role: .destructive) { voice.stop() } label: {
-                    Label("End voice mode", systemImage: "xmark.circle.fill")
+                    Label { Text("End voice mode", tableName: "Shared") } icon: { Image(systemName: "xmark.circle.fill") }
                         .frame(maxWidth: .infinity, minHeight: 36)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityLabel("End voice mode")
+                .accessibilityLabel(Text("End voice mode", tableName: "Shared"))
                 if phase == .speaking {
                     Button { voice.stopSpeaking() } label: {
-                        Label("Stop speaking", systemImage: "speaker.slash.fill")
+                        Label { Text("Stop speaking", tableName: "Shared") } icon: { Image(systemName: "speaker.slash.fill") }
                             .frame(maxWidth: .infinity, minHeight: 36)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("Stop speaking")
+                    .accessibilityLabel(Text("Stop speaking", tableName: "Shared"))
                 }
                 Button { voice.toggleMute() } label: {
                     Label(muted ? "Unmute" : "Mute", systemImage: muted ? "mic.fill" : "mic.slash.fill")
@@ -144,11 +144,11 @@ struct VoicePanel: View {
                 .accessibilityLabel(muted ? "Unmute the microphone" : "Mute the microphone")
                 if phase == .hearing, !muted {
                     Button { voice.sendNow() } label: {
-                        Label("Send", systemImage: "arrow.up.circle.fill")
+                        Label { Text("Send", tableName: "Shared") } icon: { Image(systemName: "arrow.up.circle.fill") }
                             .frame(maxWidth: .infinity, minHeight: 36)
                     }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityLabel("Send")
+                    .accessibilityLabel(Text("Send", tableName: "Shared"))
                 }
             }
         }
@@ -195,20 +195,20 @@ struct VoiceModeSettingsFields: View {
     @AppStorage(VoiceDefaults.speechRateKey) private var rate = VoiceDefaults.speechRate
 
     var body: some View {
-        Toggle("Spoken replies", isOn: $spokenReplies)
-        Toggle("Send after a pause", isOn: $autoSend)
+        Toggle(isOn: $spokenReplies) { Text("Spoken replies", tableName: "Shared") }
+        Toggle(isOn: $autoSend) { Text("Send after a pause", tableName: "Shared") }
         if autoSend {
             Stepper(value: $seconds, in: VoiceDefaults.autoSendRange, step: 1) {
-                Text("Pause: \(seconds.formatted(.number.precision(.fractionLength(0)))) s")
+                Text("Pause: \(seconds.formatted(.number.precision(.fractionLength(0)))) s", tableName: "Shared")
             }
         }
-        Toggle("Listen for \"Hey Peel\" while this chat is open", isOn: $wakeListen)
+        Toggle(isOn: $wakeListen) { Text("Listen for \"Hey Peel\" while this chat is open", tableName: "Shared") }
         #if os(iOS)
         // The Mac has no app audio session to pause other apps with.
-        Toggle("Pause music while voice mode is on", isOn: $pauseOtherAudio)
+        Toggle(isOn: $pauseOtherAudio) { Text("Pause music while voice mode is on", tableName: "Shared") }
         #endif
         Stepper(value: $rate, in: VoiceDefaults.speechRateRange, step: 0.1) {
-            Text("Speaking speed: \(rate.formatted(.number.precision(.fractionLength(1))))×")
+            Text("Speaking speed: \(rate.formatted(.number.precision(.fractionLength(1))))×", tableName: "Shared")
         }
         let quality = VoiceSpeaker.installedQuality()
         VStack(alignment: .leading, spacing: 2) {

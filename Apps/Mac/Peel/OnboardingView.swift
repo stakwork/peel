@@ -437,10 +437,10 @@ struct StepBody<Fields: View, Footer: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(Theme.font(24, .bold))
                 if let detail {
-                    Text(detail)
+                    Text(LocalizedStringKey(detail))
                         .font(Theme.font(14))
                         .lineSpacing(3)
                         .foregroundStyle(Theme.secondaryText)

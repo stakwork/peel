@@ -805,7 +805,7 @@ struct ConnectionBolt: View {
 
     var body: some View {
         @Bindable var model = model
-        IconButton(help: model.showingConnection ? "" : "Connection: \(model.connection.label)",
+        IconButton(help: model.showingConnection ? "" : String(localized: "Connection: \(model.connection.label)"),
                    size: .sm, lit: model.showingConnection) {
             model.showingConnection.toggle()
         } label: {
@@ -818,7 +818,7 @@ struct ConnectionBolt: View {
         .peelPopover(isPresented: $model.showingConnection, edge: .trailing) {
             ConnectionCard()
         }
-        .accessibilityLabel("Connection: \(model.connection.label)")
+        .accessibilityLabel(String(localized: "Connection: \(model.connection.label)"))
     }
 }
 

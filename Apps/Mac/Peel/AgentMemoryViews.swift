@@ -301,7 +301,7 @@ struct MemoryPanelView: View {
             }
             MemorySection("What it knows") {
                 if entity.facts.isEmpty {
-                    EmptyState("Nothing about \(entity.ref.name) yet.", size: .sm)
+                    EmptyState(String(localized: "Nothing about \(entity.ref.name) yet."), size: .sm)
                 } else {
                     FactRows(facts: entity.facts.map { ($0.fact, $0.since) })
                 }

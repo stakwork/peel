@@ -63,7 +63,7 @@ struct AppsView: View {
         .padding(.top, Theme.Space.md)
         if shown.isEmpty {
             // Only a search empties it: the choice lists no source without apps.
-            EmptyState("No apps match “\(query.trimmingCharacters(in: .whitespaces))”.")
+            EmptyState(String(localized: "No apps match “\(query.trimmingCharacters(in: .whitespaces))”."))
         } else {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Theme.Space.md, alignment: .top)],

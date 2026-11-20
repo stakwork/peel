@@ -233,7 +233,7 @@ struct ChatTimeZoneSection: View {
                 SectionHeader("Time zone")
                 if let sharing = zone.sharing {
                     FormSwitchRow(
-                        label: "Share my time zone with \(target)",
+                        label: String(localized: "Share my time zone with \(target)"),
                         isOn: Binding(get: { sharing }, set: { on in
                             Task { await zone.set(on, in: conversation.chat, with: model) }
                         })

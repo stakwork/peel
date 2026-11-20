@@ -37,11 +37,11 @@ struct EmptyState<Actions: View>: View {
     var body: some View {
         VStack(spacing: 10) {
             if let title {
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(Theme.font(15, .semibold))
                     .multilineTextAlignment(.center)
             }
-            Text(message)
+            Text(LocalizedStringKey(message))
                 .font(Theme.font(messageSize))
                 .foregroundStyle(Theme.secondaryText)
                 .multilineTextAlignment(.center)

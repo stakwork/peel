@@ -428,7 +428,7 @@ private struct MenuPanel: View {
                     case .view(let view):
                         view
                     case .header(let title):
-                        Text(title)
+                        Text(LocalizedStringKey(title))
                             .font(Theme.font(11, .medium))
                             .foregroundStyle(Theme.secondaryText)
                             .padding(.horizontal, 10)
@@ -475,12 +475,12 @@ private struct MenuRow: View {
             .font(.system(size: 12, weight: confirming ? .bold : .regular))
             .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
-                Text(confirming ? item.confirm ?? item.title : item.title)
+                Text(LocalizedStringKey(confirming ? item.confirm ?? item.title : item.title))
                     .font(Theme.font(13, confirming ? .bold : .regular))
                     .lineLimit(1)
                 if let subtitle = item.subtitle {
                     // Kept, unseen, while confirming: the row keeps its height.
-                    Text(subtitle)
+                    Text(LocalizedStringKey(subtitle))
                         .font(Theme.font(12))
                         .foregroundStyle(highlighted ? Theme.text : Theme.secondaryText)
                         .lineLimit(1)
@@ -530,7 +530,7 @@ private struct MenuBackRow: View {
             Image(systemName: "chevron.left")
                 .font(.system(size: 11, weight: .semibold))
                 .frame(width: 16)
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(Theme.font(13, .medium))
             Spacer(minLength: 16)
         }

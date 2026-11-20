@@ -80,7 +80,7 @@ private struct MCPServerRow: View {
                             .buttonStyle(.peel(.outline))
                             .disabled(connections.testing.contains(server.name))
                     }
-                    InlineConfirm(trigger: "Remove", prompt: "Remove \(server.name)?",
+                    InlineConfirm(trigger: "Remove", prompt: String(localized: "Remove \(server.name)?"),
                                   explanation: "Your assistant stops using it, and its key is deleted from your memory.",
                                   confirm: "Remove", alignment: .leading, confirming: $removing) {
                         Task { await model.removeMCPServer(server.name) }

@@ -53,8 +53,8 @@ struct IconButton<Label: View>: View {
             label().buttonProgress(working)
         }
         .buttonStyle(Style(variant: variant, side: size.side, lit: lit))
-        .help(help)
-        .accessibilityLabel(help)
+        .help(LocalizedStringKey(help))
+        .accessibilityLabel(LocalizedStringKey(help))
     }
 
     private struct Style: ButtonStyle {

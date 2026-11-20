@@ -103,7 +103,7 @@ struct AppVersionsControl: View {
         }
         if versions.held {
             let newest = versions.versions.first?.label ?? versions.active
-            more.append(.item(MenuItem(title: "Follow latest", subtitle: following, confirm: "Everyone opens \(newest)") {
+            more.append(.item(MenuItem(title: "Follow latest", subtitle: following, confirm: String(localized: "Everyone opens \(newest)")) {
                 change(.latest, "Following latest: \(newest) is live")
                 return true
             }))
@@ -122,7 +122,7 @@ struct AppVersionsControl: View {
             if release.id == versions.release {
                 return .button(title, detail: "live", checked: true) {}
             }
-            return .item(MenuItem(title: title, confirm: "Everyone opens \(release.version)", detail: when) {
+            return .item(MenuItem(title: title, confirm: String(localized: "Everyone opens \(release.version)"), detail: when) {
                 change(.release(release.id), "\(release.id) is live: everyone opens \(release.version)")
                 return true
             })
@@ -131,12 +131,12 @@ struct AppVersionsControl: View {
         let changed: [MenuEntry] = versions.behind.map { drift in
             .view(AnyView(DriftLine(drift: drift)))
         }
-        let take = MenuEntry.item(MenuItem(title: "Use these with \(versions.active)",
-                                           confirm: "Everyone gets them with \(versions.active)") {
+        let take = MenuEntry.item(MenuItem(title: String(localized: "Use these with \(versions.active)"),
+                                           confirm: String(localized: "Everyone gets them with \(versions.active)")) {
             change(.version(versions.active), "\(versions.active) uses the workflows as they are now")
             return true
         })
-        return .sections([.header("Releases")] + releases, [.header("Changed since \(release)")] + changed + [take])
+        return .sections([.header("Releases")] + releases, [.header(String(localized: "Changed since \(release)"))] + changed + [take])
     }
 
     private static func detail(_ version: AppVersions.Version, in versions: AppVersions) -> String? {

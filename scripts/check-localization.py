@@ -76,6 +76,9 @@ def validate():
             where = f"{path}: {key!r}"
             if key != key.strip() or not key:
                 errs.append(f"{where}: key has leading/trailing whitespace")
+            if not info and any(p for p, _ in specs(key)):
+                # Text("\(a) \(b)") and String(localized:) look up "%@ %@": positions go in the values only.
+                errs.append(f"{where}: key has positional specifiers (%1$@ ...), so it never matches; use %@ / %lld in the key")
             if entry.get("shouldTranslate") is False:
                 continue
             locs = entry.get("localizations") or {}
@@ -216,7 +219,9 @@ KEY_FUNCS = ("Text Button Label Toggle Section Picker TextField SecureField Text
              "ProgressView Stepper DatePicker LabeledContent GroupBox DisclosureGroup ContentUnavailableView Tab "
              "navigationTitle navigationSubtitle help accessibilityLabel accessibilityHint accessibilityValue "
              "confirmationDialog alert LocalizedStringKey ShareLink TabItem keyboardShortcut_ Gauge "
-             "accessibilityAddTraits_ badge sheetTitle_ ControlGroup SignInWithAppleButton_ Form_").split()
+             "accessibilityAddTraits_ badge sheetTitle_ ControlGroup SignInWithAppleButton_ Form_ "
+            # The Mac's MenuEntry titles: MenuPresenter shows them with Text(LocalizedStringKey(title)).
+            "button destructive submenu copy header").split()
 KEY_RE = re.compile(r"(?<![\w])(" + "|".join(KEY_FUNCS) + r")\s*\(\s*(?=\")")
 LOC_RE = re.compile(r"String\s*\(\s*localized\s*:\s*(?=\")|NSLocalizedString\s*\(\s*(?=\")|LocalizedStringResource\s*\(\s*(?=\")")
 LABELED = re.compile(r"\b(title|message|prompt|placeholder|subtitle|label|detail|hint|header|footer|caption)\s*:\s*(?=\")")

@@ -17,7 +17,7 @@
         }
       }
     },
-    "%1$@, up to %2$lld sats a message" : {
+    "%@, up to %lld sats a message" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -33,7 +33,7 @@
         }
       }
     },
-    "%1$@: %2$@" : {
+    "%@: %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4241,7 +4241,7 @@
         }
       }
     },
-    "Lets %1$@ post as you to %2$@ without asking, each message starting with “%3$@”" : {
+    "Lets %@ post as you to %@ without asking, each message starting with “%@”" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {

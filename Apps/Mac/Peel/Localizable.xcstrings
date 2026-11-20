@@ -3489,6 +3489,22 @@
         }
       }
     },
+    "Clear website data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear website data"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrar datos de sitios web"
+          }
+        }
+      }
+    },
     "Cleared" : {
       "localizations" : {
         "en" : {
@@ -4129,6 +4145,22 @@
         }
       }
     },
+    "Copy call link" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy call link"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar enlace de la llamada"
+          }
+        }
+      }
+    },
     "Copy contact info" : {
       "localizations" : {
         "en" : {
@@ -4269,6 +4301,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copiar texto"
+          }
+        }
+      }
+    },
+    "Copy tribe link" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy tribe link"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar enlace de la tribu"
           }
         }
       }
@@ -4481,22 +4529,6 @@
         }
       }
     },
-    "Couldn't reach your home server when this Mac last tried, %1$@. Dictation keeps what it last synced, %2$@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn't reach your home server when this Mac last tried, %1$@. Dictation keeps what it last synced, %2$@."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo conectar con tu servidor doméstico la última vez que este Mac lo intentó, %1$@. El dictado conserva lo que sincronizó por última vez, %2$@."
-          }
-        }
-      }
-    },
     "Couldn't reach your home server when this Mac last tried, %@. Dictation keeps what it knew at the move." : {
       "localizations" : {
         "en" : {
@@ -4509,6 +4541,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No se pudo conectar con tu servidor doméstico la última vez que este Mac lo intentó, %@. El dictado conserva lo que sabía en el traslado."
+          }
+        }
+      }
+    },
+    "Couldn't reach your home server when this Mac last tried, %@. Dictation keeps what it last synced, %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't reach your home server when this Mac last tried, %1$@. Dictation keeps what it last synced, %2$@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar con tu servidor doméstico la última vez que este Mac lo intentó, %1$@. El dictado conserva lo que sincronizó por última vez, %2$@."
           }
         }
       }
@@ -12817,6 +12865,22 @@
         }
       }
     },
+    "Remove from tribe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from tribe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar de la tribu"
+          }
+        }
+      }
+    },
     "Remove photo" : {
       "localizations" : {
         "en" : {
@@ -13601,7 +13665,7 @@
         }
       }
     },
-    "Runs on your connected model (%1$@). Sends parts of your memory to %2$@." : {
+    "Runs on your connected model (%@). Sends parts of your memory to %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {

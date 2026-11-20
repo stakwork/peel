@@ -260,11 +260,12 @@ public final class TribeIdentityDraft {
 }
 
 /// A tribe's Jamie row, on the Mac and the iPhone (docs/hive-tribes.md):
-/// which of the owner's Stadeum orgs answers `@jamie` in the tribe, or
-/// none, and whether Jamie knows who is speaking there. What is linked is
-/// Hive's, read through Stadeum (`jamiePick`), so the owner's devices
-/// agree; a pick links or unlinks at once (`AppModel.setJamie`, which
-/// marks Jamie once it is in), and Hive's refusal is said in place.
+/// which of the owner's Stadeum orgs or linked boxes answers `@jamie` in
+/// the tribe, or none, and whether Jamie knows who is speaking there. What
+/// is linked is Hive's and each box's, read through Stadeum and `Boxes`
+/// (`AppModel.jamieChoices`), so the owner's devices agree; a pick links or
+/// unlinks at once (`AppModel.setJamie`, which marks Jamie once it is in),
+/// and a refusal is said in place.
 @MainActor @Observable
 public final class TribeJamiePicker {
     public private(set) var working = false
@@ -272,19 +273,21 @@ public final class TribeJamiePicker {
 
     public init() {}
 
-    /// `id` picked: a live workspace's peer id, or "" for No Jamie.
+    /// `id` picked (a `JamieSource.id`: an org's peer id, a box's, or ""
+    /// for No Jamie). Nothing to do when it is already all there is; a
+    /// pick of what the row shows also takes out any other source that
+    /// still has Jamie in the tribe.
     public func pick(_ id: String, for tribe: Tribe, with model: AppModel) async {
-        let stadeum = model.stadeum
-        guard !working, id != stadeum.jamiePick(of: tribe.pubkey) else { return }
+        let source = JamieSource(id: id)
+        guard !working, let plan = model.jamieChoices.plan(source, in: tribe.pubkey),
+              plan.add != nil || !plan.remove.isEmpty else { return }
         working = true
         problem = nil
         defer { working = false }
         do {
-            let peer = stadeum.live.first { $0.id == id }
-            if !id.isEmpty, peer == nil {
-                throw PeelError(String(localized: "Connect Stadeum to add Jamie from \(stadeum.workspaceName(id)).", table: "Shared"))
-            }
-            try await model.setJamie(peer, for: tribe)
+            try await model.setJamie(source, for: tribe)
+        } catch let still as JamieStillIn {
+            problem = PeelError.noted(still.error, couldNot: String(localized: "remove Jamie from \(still.name)", table: "Shared"))
         } catch {
             problem = PeelError.noted(error, couldNot: id.isEmpty ? String(localized: "remove Jamie", table: "Shared") : String(localized: "add Jamie", table: "Shared"))
         }
@@ -304,16 +307,24 @@ public final class TribeJamiePicker {
         }
     }
 
-    /// The line under the row: which org Jamie answers `@jamie` from here,
-    /// and whose access its turns use: the person asking, when the tribe
-    /// tells Jamie who is speaking (`seesSenders`) and Stadeum knows them,
+    /// The line under the row: where Jamie answers `@jamie` from here, and
+    /// whose access its turns use: the person asking, when the tribe tells
+    /// Jamie who is speaking (`seesSenders`) and the org or box knows them,
     /// else the person who linked it; or what a pick does. Jamie itself
     /// always posts the reply.
-    public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum, seesSenders: Bool?) -> String {
-        guard !pick.isEmpty else {
-            return String(localized: "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it.", table: "Shared")
+    public static func helper(pick: JamieSource, in tribe: Tribe, choices: JamieChoices, seesSenders: Bool?) -> String {
+        guard pick != .noJamie else {
+            let boxes = choices.options(for: tribe.pubkey).contains { JamieSource(id: $0.id).isBox }
+            switch (choices.orgs != nil, boxes) {
+            case (true, true):
+                return String(localized: "Pick one of your orgs or boxes: Jamie joins #\(tribe.displayName) and answers @jamie there from it, using your access to it.", table: "Shared")
+            case (false, true):
+                return String(localized: "Pick one of your boxes: Jamie joins #\(tribe.displayName) and answers @jamie there from that box, using your access to it.", table: "Shared")
+            default:
+                return String(localized: "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it.", table: "Shared")
+            }
         }
-        let org = stadeum.workspaceName(pick)
+        let org = choices.name(of: pick)
         guard seesSenders == true else {
             return String(localized: "Anyone in #\(tribe.displayName) can ask @jamie. Jamie answers from \(org), using your access to it.", table: "Shared")
         }

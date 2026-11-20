@@ -143,11 +143,69 @@ struct BoxesTests {
         #expect(!boxes.shows(page))
     }
 
+    /// A box's places (docs/hive-tribes.md, "From a box") are read, added
+    /// to and removed from as its member, with the token kept; one the box
+    /// no longer takes (401) is renewed once and the call made again with
+    /// the new token. A read that fails says why and keeps what was read;
+    /// a box forgotten takes its places with it. Only a tribe added here
+    /// names its box's Jamie for approval, never one the box's list names.
+    @Test func aBoxsPlacesAreReadAndChangedAsItsMember() async throws {
+        let tribe = String(repeating: "ab", count: 33), jamie = String(repeating: "0c", count: 33)
+        let theirs = String(repeating: "cd", count: 33)
+        let held = OSAllocatedUnfairLock<Set<String>>(initialState: [theirs])
+        let failing = OSAllocatedUnfairLock(initialState: false)
+        let stub = try await Self.strut(token: { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }, places: { request in
+            guard request.contains("Bearer strut-person.renewed") else { return (401, #"{"error":"unauthorized"}"#) }
+            if failing.withLock({ $0 }) { return (500, #"{"error":"the box is restarting"}"#) }
+            if request.hasPrefix("POST ") {
+                held.withLock { _ = $0.insert(HTTPStub.jsonBody(of: request)?["key"] ?? "") }
+                return (200, #"{"place":{"host":"sphinx","key":"\#(tribe)","link":"l","account":"sphinx:02ab","at":1},"account":"sphinx:\#(jamie)"}"#)
+            }
+            if request.hasPrefix("DELETE ") { return (200, #"{"removed":\#(held.withLock { $0.remove(tribe) != nil })}"#) }
+            let places = held.withLock { $0 }.map { #"{"host":"sphinx","key":"\#($0)","link":"l","account":"sphinx:02ab","at":1}"# }
+            return (200, #"{"hosts":[{"host":"sphinx","account":"sphinx:\#(jamie)"}],"places":[\#(places.joined(separator: ","))]}"#)
+        })
+        defer { stub.stop() }
+        let profile = try profile()
+        try BoxLink.write([BoxFixture.box("http://127.0.0.1:\(stub.port)", renewedAt: Date(), exp: Date().addingTimeInterval(7 * 86_400))],
+                          to: profile.boxes)
+        let signed = OSAllocatedUnfairLock(initialState: 0)
+        let boxes = boxes(on: profile, signed: signed)
+        defer { boxes.close() }
+        let box = try #require(boxes.links.first)
+
+        await boxes.readPlaces()
+        #expect(boxes.places[box.url] == BoxPlaces(jamie: jamie, tribes: [theirs]))
+        #expect(boxes.links.first?.token == "strut-person.renewed" && signed.withLock { $0 } == 1)
+        // A tribe the box's own list names, but not added here: its Jamie is never approved unasked.
+        #expect(boxes.jamiesAdded(in: theirs).isEmpty)
+
+        let record = Tribe(pubkey: tribe, name: "Builders", host: "tribes.example.com", isOwner: true)
+        #expect(try await boxes.addJamie(to: record, from: box) == jamie)
+        #expect(boxes.places[box.url]?.tribes == [theirs, tribe] && boxes.jamiesAdded(in: tribe) == [jamie])
+        let posted = try #require(stub.requests.last { $0.hasPrefix("POST /people/places ") })
+        #expect(HTTPStub.jsonBody(of: posted) == ["host": "sphinx", "key": tribe, "link": try #require(record.link), "name": "Builders"])
+        #expect(try await boxes.removeJamie(from: tribe, on: box) == jamie)
+        #expect(boxes.places[box.url]?.tribes == [theirs] && held.withLock { $0 } == [theirs])
+        #expect(boxes.jamiesAdded(in: tribe).isEmpty)
+        #expect(try await boxes.removeJamie(from: tribe, on: box) == nil)
+        #expect(signed.withLock { $0 } == 1)
+
+        failing.withLock { $0 = true }
+        await boxes.readPlaces()
+        #expect(boxes.placesProblems[box.url]?.contains("restarting") == true)
+        #expect(boxes.places[box.url] == BoxPlaces(jamie: jamie, tribes: [theirs]))
+        boxes.forget(box)
+        #expect(boxes.places.isEmpty && boxes.placesProblems.isEmpty)
+    }
+
     /// A stand-in strut: a renewal's challenge for 127.0.0.1, `token`'s
-    /// answer to `POST /people/token`, and `apps`' to `GET /apps`.
+    /// answer to `POST /people/token`, `apps`' to `GET /apps`, and `places`'
+    /// to `/people/places`.
     private static func strut(
         token: @escaping @Sendable (String) -> (Int, String),
-        apps: @escaping @Sendable (String) -> (Int, String) = { _ in (200, #"{"apps":[]}"#) }
+        apps: @escaping @Sendable (String) -> (Int, String) = { _ in (200, #"{"apps":[]}"#) },
+        places: @escaping @Sendable (String) -> (Int, String) = { _ in (404, #"{"error":"not here"}"#) }
     ) async throws -> HTTPStub {
         try await HTTPStub(respond: { _, request in
             let line = request.prefix(while: { $0 != "\r" })
@@ -156,6 +214,7 @@ struct BoxesTests {
                 return (200, #"{"challenge":"\#(challenge)","exp":1}"#)
             }
             if line.contains("/people/token") { return token(request) }
+            if line.contains("/people/places") { return places(request) }
             if line.contains("/apps") { return apps(request) }
             return (404, #"{"error":"not here"}"#)
         })

@@ -217,6 +217,14 @@ is a short plan. Update the status and the journal when you finish something.
     /people/link`, the renewal's challenge and `POST /people/token`, a
     token's check on use; refusals in words); the engine signs with
     `signBoxLink`, the visitor `.root` path (Engine+Wallet.swift)
+  - `BoxPlaces.swift` — a box's own Jamie in tribes (docs/hive-tribes.md,
+    "From a box"; strut's specs/API.md §13.6, "Places"): `BoxPlaces` (the
+    box's Jamie key and the person's tribes), `BoxClient.places`,
+    `addPlace`, `removePlace` as the person (a 401 is `TokenRefused`;
+    refusals in words), `JamieSource` (an org, a box or none, as the row's
+    id) and `JamieChoices`, a tribe's Jamie row from Stadeum's orgs and the
+    boxes: options, pick, what a pick adds and removes (`plan`), the one-tap
+    suggestion (tested)
   - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
     server for a visitor's page (strut's specs/WALLET.md §1.2) and its
     `problems` (a port of strut's `creditPurchaseProblems`, held to its
@@ -476,8 +484,9 @@ is a short plan. Update the status and the journal when you finish something.
   avatars and its chat's title), `AppModel+Payments` (`PaymentOutcome`, boosts,
   sends, history, invoices and `invoiceBlocker`, buying an attachment),
   `AppModel+Biometrics` (Face ID: on, off, unlock and the words), `AppModel+Jamie`
-  (Jamie in tribes: who sees the row, the one-tap org, and approving
-  Jamie's request to join unasked, docs/hive-tribes.md),
+  (Jamie in tribes: who sees the row, its choices from Stadeum and the
+  boxes (`jamieChoices`), a pick (`setJamie`), and approving each of the
+  person's Jamies' request to join unasked, docs/hive-tribes.md),
   `AppModel+Wallet` (the app wallet's host, open with the account, its
   notifications handed to the pages that listen, Connected apps:
   `walletConnections`, the limit, over the limit, revoke; `WalletWords`, its
@@ -511,7 +520,9 @@ is a short plan. Update the status and the journal when you finish something.
   docs/box-link.md: a link held for the person's yes (`take`, `accept`,
   `decline`), renewed when due while the account is open, let go on `403
   not_linked`; `page(of:)`, the box's own strut UI as its member, a 401
-  renewed once; `BoxWords`, the question for both apps);
+  renewed once (`asMember`, every call as the member); a box's places,
+  the tribes its own Jamie answers in (`places`, `readPlaces`, `addJamie`,
+  `removeJamie`); `BoxWords`, the question for both apps);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
   the iPhone), Connect (Hive's device flow; `cameToFront`, from
@@ -1194,7 +1205,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ServerAddressTests`, `BiometricUnlockTests`, `PeelErrorTests`, `WebTests`, `WebPageTests`, `GiphyTests`,
   `BoxLinkTests` (a box's link as strut writes it, what Peel won't take or
   sign, the signature as strut's `ln-message` checks it, the list beside
-  Hive's pairing, the three routes on a stand-in),
+  Hive's pairing, the three routes on a stand-in), `BoxPlacesTests` (a
+  box's places as the person on a stand-in, and a tribe's Jamie row from
+  orgs and boxes: pick, options, plan, suggestion),
   `ProposalTests` (strut's record and card read, each status, a record
   without a card, the words cleaned, the store, a workspace's strut asked
   with the person's token, a tribe post's proposals and outcomes);
@@ -1219,7 +1232,8 @@ is a short plan. Update the status and the journal when you finish something.
   busiest watched call, the call you are on, locking stops the watches),
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store), `BoxesTests` (a box linked only on the yes, renewed,
-  let go when unlinked, a refused token renewed once before it opens),
+  let go when unlinked, a refused token renewed once before it opens, its
+  places read and changed as the member),
   `ChatSearchTests` (Return before a search's
   matches waits for the first of them), `ProposalWatchTests` (what the
   watch keeps, reads again and decides, on a stand-in strut; a proposal on

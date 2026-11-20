@@ -1,0 +1,132 @@
+# Peel Home: your agent's strut and bridge on an always-on box
+# (docs/always-on.md, README.md).
+#
+#   docker compose up -d       then open http://<this box>:8090 and move Peel Home from the Mac
+#
+# setup's port answers only while a move is under way. strut and the bridge
+# listen on 127.0.0.1 in strut's network, and need only outbound internet:
+# devices reach the agent over Sphinx. The one other port is the peer port,
+# where the Mac's strut makes the home sync calls and nothing else
+# (Caddyfile). Everything worth keeping is in ./data.
+#
+# strut and the bridge start once Peel Home is here, and stop when it is sent
+# back: gate.sh waits for the files setup writes, rather than depends_on
+# (service_completed_successfully would hold `up -d` until the upload, and
+# Docker ignores depends_on when it starts containers after a reboot).
+name: peel-home
+
+services:
+  setup:
+    # strut's image, running `strut move serve` (setup.sh): the move is
+    # strut's own (its AGENTS.md, "Moving strut to another host").
+    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:133e61e@sha256:7049af75b46f48712934763ecb53bdde0751974ba359eeb09788824dfc814bf3}
+    restart: unless-stopped
+    entrypoint: ["sh", "/setup.sh"]
+    # The image's check is strut's /health, which setup doesn't serve.
+    healthcheck:
+      disable: true
+    ports:
+      # HOME_SETUP_BIND=127.0.0.1 on a VPS, reached through an SSH tunnel.
+      - "${HOME_SETUP_BIND:-0.0.0.0}:${HOME_SETUP_PORT:-8090}:8090"
+    environment:
+      # The address the pairing link names, when the page can't tell
+      # (it is opened on the box itself, or the send-back command prints it).
+      STRUT_MOVE_HOST: ${HOME_SETUP_HOST:-}
+      STRUT_MOVE_LINK: peel://home-setup
+      # The bridge below (its ROCKET_PORT), where moved callbacks are pointed.
+      BRIDGE_URL: http://127.0.0.1:8000
+      # A send-back opens the graphs to checkpoint them: strut's cache, not the image's default.
+      STRUT_CACHE_DIR: /data/cache/strut
+      STRUT_MODEL_DIR: /data/cache/models
+      # The peer record a move in answers with (README.md, "The peer port"):
+      # where the Mac's strut reaches this one, `{host}` the address the move
+      # came in on, the peer port's CA, and the name its certificate is for
+      # (Caddyfile). Its token is signed with strut's STRUT_API_KEY, which
+      # setup.sh gives serve.
+      STRUT_MOVE_PEER_URL: https://{host}:${HOME_PEER_PORT:-8443}
+      STRUT_MOVE_PEER_CA: /data/peer/caddy/pki/authorities/local/root.crt
+      STRUT_MOVE_PEER_SERVERNAME: peel-home
+    volumes:
+      - ./data:/data
+      - ./setup.sh:/setup.sh:ro
+      # For its env-file parser (`gate.sh get`).
+      - ./gate.sh:/gate.sh:ro
+
+  strut:
+    # Must be the strut commit Peel ships (Vendor/strut.lock): a move refuses
+    # two different struts (`strut move check`). The image carries Ladybug's
+    # extensions, so strut starts with no download.
+    image: ${STRUT_IMAGE:-ghcr.io/stakwork/strut:133e61e@sha256:7049af75b46f48712934763ecb53bdde0751974ba359eeb09788824dfc814bf3}
+    restart: unless-stopped
+    entrypoint: ["sh", "/gate.sh", "strut", "docker-entrypoint.sh"]
+    command: ["node", "--import", "tsx", "build/server.js"]
+    environment:
+      # As Peel's bundled strut (BundledStrut.environment): no Neo4j, the
+      # workspace and memory as Ladybug files under the workspace.
+      STRUT_WORKSPACE_BACKEND: ladybug
+      STRUT_WORKSPACE: /data/strut/workspace
+      STRUT_HOST_CONFIG: /data/strut/host-config.json
+      # Rebuilt, so outside the folder that moves.
+      STRUT_CACHE_DIR: /data/cache/strut
+      STRUT_MODEL_DIR: /data/cache/models
+      STRUT_HOST: 127.0.0.1
+      STRUT_PORT: "3000"
+      # Opens POST /home/pull and /home/push to a person token, the calls the
+      # Mac's strut makes over the peer port.
+      STRUT_HOME_SYNC: box
+      # The keys, from /data/env/strut: set by gate.sh.
+    ports:
+      # The peer port, served by `peer` in this network (README.md, "The peer port").
+      - "${HOME_PEER_BIND:-0.0.0.0}:${HOME_PEER_PORT:-8443}:8443"
+    # Time to close the Ladybug graphs cleanly before Docker kills it.
+    stop_grace_period: 60s
+    # Only its own: the bridge's store and values are not here.
+    volumes:
+      - ./data/strut:/data/strut
+      - ./data/cache:/data/cache
+      - ./data/env/strut:/data/env/strut:ro
+      - ./data/gate:/data/gate
+      - ./gate.sh:/gate.sh:ro
+
+  bridge:
+    # Should be the runner commit Peel ships (Vendor/runner.lock).
+    image: ${BRIDGE_IMAGE:-ghcr.io/stakwork/sphinx-runner:9bf7079@sha256:0da8270f1820e2d35d1c461a821930da870a3eac44cd084fe52eb49aa1fd0cfe}
+    restart: unless-stopped
+    network_mode: service:strut
+    entrypoint: ["sh", "/gate.sh", "bridge", "/usr/src/sphinx-runner"]
+    environment:
+      # As Peel's bridge (BundledBridge.environment). The moved values and
+      # the keys, from /data/env/bridge: set by gate.sh.
+      BRIDGE_WORKFLOW: orchestrator
+      RUNNER_ALIAS: Agent
+      ROCKET_PORT: "8000"
+      BRIDGE_STRUT_URL: http://127.0.0.1:3000
+      # strut move's `bridge` sidecar, a level below the mount (README.md, "data/").
+      DB_PATH: /data/bridge/store/db
+      ROCKET_ADDRESS: 127.0.0.1
+      # Rocket looks for Rocket.toml up from where it starts: none is read.
+      ROCKET_CONFIG: /data/bridge/Rocket.toml
+    stop_grace_period: 60s
+    # Only its own: strut's folder and secret key are not here.
+    volumes:
+      - ./data/bridge:/data/bridge
+      - ./data/env/bridge:/data/env/bridge:ro
+      - ./data/gate:/data/gate
+      - ./gate.sh:/gate.sh:ro
+
+  peer:
+    # The peer port's TLS and allowlist (Caddyfile), in strut's network.
+    image: ${PEER_IMAGE:-caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f}
+    restart: unless-stopped
+    network_mode: service:strut
+    entrypoint: ["sh", "/gate.sh", "peer", "caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    environment:
+      # Its CA and certificates, kept across restarts; this box's own, never moved.
+      XDG_DATA_HOME: /data/peer
+      XDG_CONFIG_HOME: /data/peer/config
+    volumes:
+      - ./data/peer:/data/peer
+      # Read only: it faces the network (gate.sh).
+      - ./data/gate:/data/gate:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./gate.sh:/gate.sh:ro

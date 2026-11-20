@@ -20,6 +20,9 @@ struct YouTab: View {
                 Section { Identity { editingName = true } }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
+                Section { ContactInfoCard() }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 Section {
                     AgentRow()
                 } header: {
@@ -147,6 +150,44 @@ private struct Identity: View {
                 .accessibilityLabel("Balance, \(model.balanceText ?? "not known yet")")
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// The QR code and contact info someone needs to add this account: the full
+/// `<pubkey>_<lsp>_<scid>` (`AppModel.myContactInfo`), never the bare public
+/// key, which Peel's own Add contact refuses. As the Mac's `ContactInfoSection`.
+private struct ContactInfoCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        // Side by side, or stacked at accessibility sizes rather than clipped.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.lg))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Space.lg))
+        PhoneCard {
+            layout {
+                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info", size: 120)
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    Text("Your contact info")
+                        .phoneFont(.row)
+                        .fontWeight(.bold)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    if let info = model.myContactInfo {
+                        CopyButton("Copy contact info", text: info)
+                            .buttonStyle(.peel(.outline, size: .touch))
+                            .id(info)
+                    } else {
+                        Text("Not ready yet")
+                            .phoneFont(.secondary)
+                            .foregroundStyle(Theme.quietText(on: .raised))
+                    }
+                }
+                if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
+            }
+            .padding(Theme.Space.lg)
+        }
     }
 }
 

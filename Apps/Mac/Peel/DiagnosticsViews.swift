@@ -9,7 +9,7 @@ struct DiagnosticsNotice: View {
 
     var body: some View {
         Callout(
-            detail: "Peel had a problem in its last run.",
+            detail: String(localized: "Peel had a problem in its last run."),
             icon: .problem, dismiss: { model.diagnosticsNotice = false }
         ) {
             Button("Show record") { Task { await model.showDiagnosticRecord() } }
@@ -42,7 +42,7 @@ struct DiagnosticRecordSheet: View {
             .background(Theme.panel, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.divider))
             HStack {
-                CopyButton("Copy", text: record.text)
+                CopyButton(String(localized: "Copy"), text: record.text)
                     .buttonStyle(.peel(.outline))
                 Button("Delete") { model.deleteDiagnosticRecord() }
                     .buttonStyle(.peel(.outline))

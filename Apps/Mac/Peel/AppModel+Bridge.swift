@@ -67,11 +67,8 @@ struct AgentSetUp: Equatable {
 
     /// What the first set-up shows before anything is paid.
     static let offer = AgentSetUp(
-        line: "Your assistant gets its own Sphinx account, made from your words, and becomes a contact you message from this Mac or your phone. "
-            + "Setting it up costs up to \(Sats.format(msat: BundledBridge.setUpMsat)) from your balance: "
-            + "\(Sats.format(msat: BundledBridge.inviteMsat)) to open its account and "
-            + "\(Sats.format(msat: Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false))) to add it as a contact.",
-        action: "Set up"
+        line: String(localized: "Your assistant gets its own Sphinx account, made from your words, and becomes a contact you message from this Mac or your phone. Setting it up costs up to \(Sats.format(msat: BundledBridge.setUpMsat)) from your balance: \(Sats.format(msat: BundledBridge.inviteMsat)) to open its account and \(Sats.format(msat: Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false))) to add it as a contact."),
+        action: String(localized: "Set up")
     )
 }
 
@@ -86,30 +83,30 @@ extension AppModel {
     var agentSetUp: AgentSetUp {
         // Needed first only to set it up: an account it has already stays.
         guard agent?.connection != nil || agentContact != nil else {
-            return AgentSetUp(line: "Connect a model first: your assistant answers with it.")
+            return AgentSetUp(line: String(localized: "Connect a model first: your assistant answers with it."))
         }
         if brain?.moved != nil {
-            return AgentSetUp(line: "Your assistant runs on your home server. Message it in Direct messages.")
+            return AgentSetUp(line: String(localized: "Your assistant runs on your home server. Message it in Direct messages."))
         }
         guard brain == .thisMac else {
-            return AgentSetUp(line: "Peel couldn't tell where your assistant runs. Choose Use this Mac under Always on to use it.")
+            return AgentSetUp(line: String(localized: "Peel couldn't tell where your assistant runs. Choose Use this Mac under Always on to use it."))
         }
         guard hasOwnStrut else {
             return AgentSetUp(line: profile?.kind == .development
-                ? "This development profile runs your assistant only when Peel is started with -strut YES."
-                : "This copy of Peel has no memory of its own to run your assistant.")
+                ? String(localized: "This development profile runs your assistant only when Peel is started with -strut YES.")
+                : String(localized: "This copy of Peel has no memory of its own to run your assistant."))
         }
         switch agentBridge.status {
-        case .off: return AgentSetUp(line: "Starting Peel's memory…", busy: true)
+        case .off: return AgentSetUp(line: String(localized: "Starting Peel's memory…"), busy: true)
         case .notSetUp: return .offer
         case .starting:
-            return AgentSetUp(line: agentBridge.pairing ? "Setting up your assistant's account. This can take a minute." : "Starting your assistant…",
+            return AgentSetUp(line: agentBridge.pairing ? String(localized: "Setting up your assistant's account. This can take a minute.") : String(localized: "Starting your assistant…"),
                               busy: true)
         case .running:
             return AgentSetUp(line: agent?.connection == nil
-                ? "Your assistant is a contact in Direct messages. It answers once you connect a model."
-                : "Your assistant is a contact in Direct messages.")
-        case .failed(let problem): return AgentSetUp(line: problem, problem: true, action: "Try again")
+                ? String(localized: "Your assistant is a contact in Direct messages. It answers once you connect a model.")
+                : String(localized: "Your assistant is a contact in Direct messages."))
+        case .failed(let problem): return AgentSetUp(line: problem, problem: true, action: String(localized: "Try again"))
         }
     }
 
@@ -149,7 +146,7 @@ extension AppModel {
             do {
                 _ = try await engine.sendControl(ControlEnvelope(op: .cancel), text: "Stop", to: agentChat)
             } catch {
-                conversationNotices[agentChat] = PeelError.noted(error, couldNot: "stop the agent")
+                conversationNotices[agentChat] = PeelError.noted(error, couldNot: String(localized: "stop the agent"))
             }
         }
     }
@@ -200,7 +197,7 @@ extension AppModel {
               let server = strut?.server else {
             // Peel's strut stopped under it: said, with Try again, since nothing else starts it again now.
             if bridgeRunsHere, bridge.status != .off {
-                bridge.fail("Peel's memory on this Mac stopped.")
+                bridge.fail(String(localized: "Peel's memory on this Mac stopped."))
             } else if bridge.status != .off {
                 bridge.stop()
             }
@@ -223,7 +220,7 @@ extension AppModel {
             } catch {
                 guard !Task.isCancelled else { return }
                 bridge.bridge?.stop(quietly: true)
-                bridge.status = .failed(PeelError.noted(error, couldNot: "start the agent's bridge"))
+                bridge.status = .failed(PeelError.noted(error, couldNot: String(localized: "start the agent's bridge")))
             }
         }
     }
@@ -231,7 +228,7 @@ extension AppModel {
     /// The bridge for `profile`, set up for the agent's account (`BundledBridge.setUp`).
     private func startBridge(_ bridge: AgentBridge, for profile: Profile, engine: Engine, beside server: MemoryServer) async throws {
         guard let running = bridge.bridge ?? BundledBridge(data: BundledBridge.dataFolder(for: profile)) else {
-            throw PeelError("This build of Peel has no bridge (scripts/stage-bridge.sh).")
+            throw PeelError(String(localized: "This build of Peel has no bridge (scripts/stage-bridge.sh)."))
         }
         bridge.bridge = running
         // Who the owner is on their orgs, for runner's calls to strut.
@@ -241,7 +238,7 @@ extension AppModel {
             guard let bridge, let running, running.server == nil, bridge.bridge === running,
                   bridge.status != .off else { return }
             bridge.strut = nil
-            bridge.status = .failed("The agent's bridge stopped.")
+            bridge.status = .failed(String(localized: "The agent's bridge stopped."))
             // No step posts to its port again.
             Task { try? await AutomationsClient(server: server).forgetBridge() }
         }
@@ -250,13 +247,13 @@ extension AppModel {
         try await client.installOrchestrator()
         // Its orgs, before a turn can name one.
         await syncHive(on: server)
-        let account = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? "Agent", pair: bridge.pairing)
+        let account = try await running.setUp(on: engine, beside: server, alias: agent?.name ?? String(localized: "Agent"), pair: bridge.pairing)
         try Task.checkCancellation()
         // Only now does this Mac answer the agent's requests: its reads and cards.
         try await engine.setDeviceAgent(account.pubkey)
         agentContact = account.pubkey
         // Where the steps reach the bridge now.
-        guard let reached = running.server else { throw PeelError("The agent's bridge stopped.") }
+        guard let reached = running.server else { throw PeelError(String(localized: "The agent's bridge stopped.")) }
         try await client.useBridge(reached)
         try Task.checkCancellation()
         bridge.status = .running

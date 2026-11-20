@@ -277,9 +277,9 @@ public struct TribePrice: Sendable, Equatable {
     /// for the owner's price.
     public var note: String? {
         switch reason {
-        case .minimum: "the minimum"
-        case .escrow(let msat): "including \(Sats.exact(msat: msat)) escrow"
-        case .allEscrow: "all of it escrow"
+        case .minimum: String(localized: "the minimum", table: "Shared")
+        case .escrow(let msat): String(localized: "including \(Sats.exact(msat: msat)) escrow", table: "Shared")
+        case .allEscrow: String(localized: "all of it escrow", table: "Shared")
         case nil: nil
         }
     }
@@ -658,7 +658,7 @@ extension String {
 /// as the official apps send them.
 public func tribeAlias(_ alias: String) -> String {
     let fixed = String(alias.replacingOccurrences(of: " ", with: "_").filter(isAliasCharacter))
-    return fixed.isEmpty ? "Unknown" : fixed
+    return fixed.isEmpty ? String(localized: "Unknown", table: "Shared") : fixed
 }
 
 extension MentionScan {

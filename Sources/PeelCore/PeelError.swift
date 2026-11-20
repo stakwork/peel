@@ -26,7 +26,9 @@ public struct PeelError: Error, CustomStringConvertible, Sendable {
     public static func problem(_ words: String, couldNot action: String? = nil) -> String {
         let sentence = sentence(words)
         guard let action else { return sentence }
-        return sentence.isEmpty ? "Could not \(action)." : "Could not \(action). \(sentence)"
+        return sentence.isEmpty
+            ? String(localized: "Could not \(action).", table: "Shared")
+            : String(localized: "Could not \(action). \(sentence)", table: "Shared")
     }
 
     /// Words as a sentence: a capital first letter, unless the first word is
@@ -56,66 +58,66 @@ public struct PeelError: Error, CustomStringConvertible, Sendable {
         switch error {
         case let error as DatabaseError:
             switch error.resultCode {
-            case .SQLITE_FULL: return "the disk is full"
-            case .SQLITE_BUSY, .SQLITE_LOCKED: return "the local database is busy; try again"
-            case .SQLITE_CORRUPT, .SQLITE_NOTADB: return "the local database is damaged"
+            case .SQLITE_FULL: return String(localized: "the disk is full", table: "Shared")
+            case .SQLITE_BUSY, .SQLITE_LOCKED: return String(localized: "the local database is busy; try again", table: "Shared")
+            case .SQLITE_CORRUPT, .SQLITE_NOTADB: return String(localized: "the local database is damaged", table: "Shared")
             case .SQLITE_CANTOPEN, .SQLITE_PERM, .SQLITE_READONLY, .SQLITE_IOERR:
-                return "the local database could not be opened or written"
-            default: return "the local database failed (SQLite error \(error.resultCode.rawValue))"
+                return String(localized: "the local database could not be opened or written", table: "Shared")
+            default: return String(localized: "the local database failed (SQLite error \(Int(error.resultCode.rawValue)))", table: "Shared")
             }
-        case is RowDecodingError, is PersistenceError: return "the local database failed"
+        case is RowDecodingError, is PersistenceError: return String(localized: "the local database failed", table: "Shared")
         case let error as URLError:
             switch error.code {
             case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff:
-                return "not connected to the internet"
-            case .cannotFindHost, .dnsLookupFailed: return "the server's address could not be found"
-            case .cannotConnectToHost: return "the server could not be reached"
-            case .networkConnectionLost: return "the connection was lost"
-            case .timedOut: return "the server took too long to answer"
+                return String(localized: "not connected to the internet", table: "Shared")
+            case .cannotFindHost, .dnsLookupFailed: return String(localized: "the server's address could not be found", table: "Shared")
+            case .cannotConnectToHost: return String(localized: "the server could not be reached", table: "Shared")
+            case .networkConnectionLost: return String(localized: "the connection was lost", table: "Shared")
+            case .timedOut: return String(localized: "the server took too long to answer", table: "Shared")
             case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
                  .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid,
                  .clientCertificateRejected, .clientCertificateRequired:
-                return "a secure connection to the server could not be made"
+                return String(localized: "a secure connection to the server could not be made", table: "Shared")
             case .badServerResponse, .cannotParseResponse, .cannotDecodeRawData, .cannotDecodeContentData,
                  .zeroByteResource:
-                return "the server's answer could not be read"
+                return String(localized: "the server's answer could not be read", table: "Shared")
             case .badURL, .unsupportedURL, .appTransportSecurityRequiresSecureConnection:
-                return "the address is not one Peel can open"
-            case .cancelled: return "it was cancelled"
+                return String(localized: "the address is not one Peel can open", table: "Shared")
+            case .cancelled: return String(localized: "it was cancelled", table: "Shared")
             default: return described(error)
             }
         case let error as CocoaError:
             switch error.code {
-            case .fileNoSuchFile, .fileReadNoSuchFile: return "the file was not found"
-            case .fileReadNoPermission, .fileWriteNoPermission: return "Peel is not allowed to use the file"
-            case .fileWriteOutOfSpace: return "the disk is full"
-            case .fileWriteVolumeReadOnly: return "the disk is read-only"
-            case .fileWriteFileExists: return "a file with that name is already there"
-            case .fileReadCorruptFile: return "the file could not be read"
-            case .userCancelled: return "it was cancelled"
+            case .fileNoSuchFile, .fileReadNoSuchFile: return String(localized: "the file was not found", table: "Shared")
+            case .fileReadNoPermission, .fileWriteNoPermission: return String(localized: "Peel is not allowed to use the file", table: "Shared")
+            case .fileWriteOutOfSpace: return String(localized: "the disk is full", table: "Shared")
+            case .fileWriteVolumeReadOnly: return String(localized: "the disk is read-only", table: "Shared")
+            case .fileWriteFileExists: return String(localized: "a file with that name is already there", table: "Shared")
+            case .fileReadCorruptFile: return String(localized: "the file could not be read", table: "Shared")
+            case .userCancelled: return String(localized: "it was cancelled", table: "Shared")
             default: return described(error)
             }
         case let error as POSIXError: return words(error.code)
         case let error as NWError:
             switch error {
             case .posix(let code): return words(code)
-            case .dns: return "the server's address could not be found"
-            case .tls: return "a secure connection to the server could not be made"
-            default: return "the connection to the server failed"
+            case .dns: return String(localized: "the server's address could not be found", table: "Shared")
+            case .tls: return String(localized: "a secure connection to the server could not be made", table: "Shared")
+            default: return String(localized: "the connection to the server failed", table: "Shared")
             }
         case let error as MQTTError:
             switch error {
-            case .timeout: return "the server took too long to answer"
-            case .connectionError(.serverUnavailable): return "the server is not available"
-            case .connectionError: return "the server refused the connection"
-            case .noConnection, .serverClosedConnection, .serverDisconnection: return "the connection was lost"
-            default: return "the connection to the server failed"
+            case .timeout: return String(localized: "the server took too long to answer", table: "Shared")
+            case .connectionError(.serverUnavailable): return String(localized: "the server is not available", table: "Shared")
+            case .connectionError: return String(localized: "the server refused the connection", table: "Shared")
+            case .noConnection, .serverClosedConnection, .serverDisconnection: return String(localized: "the connection was lost", table: "Shared")
+            default: return String(localized: "the connection to the server failed", table: "Shared")
             }
         case let error as ChannelError:
-            if case .connectTimeout = error { return "the server took too long to answer" }
-            return "the connection to the server failed"
-        case is DecodingError: return "the data could not be read"
-        case is CancellationError: return "it was cancelled"
+            if case .connectTimeout = error { return String(localized: "the server took too long to answer", table: "Shared") }
+            return String(localized: "the connection to the server failed", table: "Shared")
+        case is DecodingError: return String(localized: "the data could not be read", table: "Shared")
+        case is CancellationError: return String(localized: "it was cancelled", table: "Shared")
         // The core's own words, as they have always been shown.
         case is SphinxError: return "\(error)"
         default:
@@ -140,19 +142,19 @@ public struct PeelError: Error, CustomStringConvertible, Sendable {
         let hosts = failing.compactMap { URL(string: $0)?.host() }.filter { !$0.isEmpty }
         let namesAddress = text.contains("://") || (failing + hosts).contains { text.contains($0) }
         return namesAddress || text.isEmpty
-            ? "something went wrong (\(nsError.domain) error \(nsError.code))" : text
+            ? String(localized: "something went wrong (\(nsError.domain) error \(nsError.code))", table: "Shared") : text
     }
 
     /// A POSIX error code in words.
     static func words(_ code: POSIXErrorCode) -> String {
         switch code {
-        case .ENOENT: return "the file was not found"
-        case .EACCES: return "Peel is not allowed to use the file"
-        case .ENOSPC: return "the disk is full"
+        case .ENOENT: return String(localized: "the file was not found", table: "Shared")
+        case .EACCES: return String(localized: "Peel is not allowed to use the file", table: "Shared")
+        case .ENOSPC: return String(localized: "the disk is full", table: "Shared")
         case .ECONNREFUSED, .EHOSTUNREACH, .ENETUNREACH, .EHOSTDOWN, .ENETDOWN:
-            return "the server could not be reached"
-        case .ETIMEDOUT: return "the server took too long to answer"
-        case .ECONNRESET, .ECONNABORTED, .EPIPE, .ENOTCONN: return "the connection was lost"
+            return String(localized: "the server could not be reached", table: "Shared")
+        case .ETIMEDOUT: return String(localized: "the server took too long to answer", table: "Shared")
+        case .ECONNRESET, .ECONNABORTED, .EPIPE, .ENOTCONN: return String(localized: "the connection was lost", table: "Shared")
         default: return String(cString: strerror(code.rawValue))
         }
     }

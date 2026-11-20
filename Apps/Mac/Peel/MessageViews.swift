@@ -147,7 +147,7 @@ private struct JumpToNewestButton: View {
     }
 
     private var newMessages: String {
-        Formatting.count(count, "new message", shown: Badge.text(count))
+        Formatting.count(count, .newMessage, shown: Badge.text(count))
     }
 
     var body: some View {
@@ -178,7 +178,7 @@ private struct JumpToNewestButton: View {
         }
         .buttonStyle(.plain)
         .help("Jump to newest (End)")
-        .accessibilityLabel(count > 0 ? "Jump to newest, \(newMessages)" : "Jump to newest")
+        .accessibilityLabel(count > 0 ? String(localized: "Jump to newest, \(newMessages)") : String(localized: "Jump to newest"))
         // Shortcuts, only while the button shows.
         .hiddenShortcut(KeyboardShortcut(.end, modifiers: []), enabled: shortcuts, action: action)
         .hiddenShortcut(KeyboardShortcut(.downArrow, modifiers: .command), enabled: shortcuts, action: action)
@@ -201,7 +201,7 @@ struct RepliesDivider: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(count == 0 ? "No replies yet" : Formatting.replies(count))
+            Text(count == 0 ? String(localized: "No replies yet") : Formatting.replies(count))
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize()
@@ -309,7 +309,7 @@ struct MessageRow: View, Equatable {
                 if retryable {
                     UndeliveredActions(message: message)
                 } else if message.delivery == .pending, message.mayHavePaid {
-                    WaitingForServer(since: message.date, what: message.type == MessageType.call ? "Call" : "Message")
+                    WaitingForServer(since: message.date, what: message.type == MessageType.call ? String(localized: "Call") : String(localized: "Message"))
                 }
             }
             .frame(maxWidth: Self.textWidth, alignment: .leading)
@@ -459,7 +459,7 @@ struct HoverBar: View {
         let message = row.message
         HStack(spacing: 0) {
             if message.isLinkable(inTribe: row.inTribe) {
-                IconButton("arrowshape.turn.up.left", help: "Reply (R)") {
+                IconButton("arrowshape.turn.up.left", help: String(localized: "Reply (R)")) {
                     withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
                 }
             }
@@ -470,7 +470,7 @@ struct HoverBar: View {
                 }
             }
             if !message.deleted {
-                MenuButton(systemImage: "ellipsis", help: "More", source: row.id) {
+                MenuButton(systemImage: "ellipsis", help: String(localized: "More"), source: row.id) {
                     MessageMenu.entries(for: row, composer: composer, model: model, offersBoost: row.canBoost)
                 }
             }
@@ -496,7 +496,7 @@ enum MessageMenu {
         } else if let text = message.shownText.nilIfEmpty {
             copy.append(.copyText(text))
             if !message.deleted, let link = MessageMarkup.firstLink(in: text) {
-                copy.append(.copy("Copy link", text: link.absoluteString, systemImage: "link"))
+                copy.append(.copy(String(localized: "Copy link"), text: link.absoluteString, systemImage: "link"))
             }
         }
         // A run of images: what acts on one image is on that tile's own menu.
@@ -504,16 +504,16 @@ enum MessageMenu {
         var file: [MenuEntry] = []
         if oneMessage, message.attachmentKind != nil, message.uploadState != .pending {
             if message.attachmentKind == .image, let id = message.id, model.attachment(id).file != nil {
-                file.append(.copy("Copy image", systemImage: "photo") { model.copyImage(message) })
+                file.append(.copy(String(localized: "Copy image"), systemImage: "photo") { model.copyImage(message) })
             }
-            file.append(.button("Save as…", systemImage: "square.and.arrow.down") { Task { await model.save(message) } })
+            file.append(.button(String(localized: "Save as…"), systemImage: "square.and.arrow.down") { Task { await model.save(message) } })
         }
         if message.isRetryable() {
             return .sections(
                 [
-                    .button(message.uploadState == .failed ? "Retry upload" : "Retry sending",
+                    .button(message.uploadState == .failed ? String(localized: "Retry upload") : String(localized: "Retry sending"),
                             systemImage: "arrow.clockwise") { Task { await model.resend(message) } },
-                    .destructive("Discard", systemImage: "xmark", confirm: "Discard, never sent") {
+                    .destructive(String(localized: "Discard"), systemImage: "xmark", confirm: String(localized: "Discard, never sent")) {
                         Task { await model.discard(message) }
                     },
                 ],
@@ -522,7 +522,7 @@ enum MessageMenu {
         }
         var reply: [MenuEntry] = []
         if message.isLinkable(inTribe: row.inTribe) {
-            reply.append(.button("Reply", systemImage: "arrowshape.turn.up.left", shortcut: .key("r")) {
+            reply.append(.button(String(localized: "Reply"), systemImage: "arrowshape.turn.up.left", shortcut: .key("r")) {
                 withAnimation(.easeOut(duration: 0.2)) { model.startReply(to: message, from: composer) }
             })
         }
@@ -533,11 +533,11 @@ enum MessageMenu {
         var pin: [MenuEntry] = []
         if let tribe = model.tribes[message.chat], tribe.canManage, message.isPinnable {
             if tribe.pin == message.uuid {
-                pin.append(.button("Unpin from top of tribe", systemImage: "pin.slash") {
+                pin.append(.button(String(localized: "Unpin from top of tribe"), systemImage: "pin.slash") {
                     Task { await model.pin(nil, in: tribe.pubkey) }
                 })
             } else {
-                pin.append(.button("Pin to top of tribe", systemImage: "pin") {
+                pin.append(.button(String(localized: "Pin to top of tribe"), systemImage: "pin") {
                     Task { await model.pin(message.uuid, in: tribe.pubkey) }
                 })
             }
@@ -546,13 +546,13 @@ enum MessageMenu {
         if !message.fromMe, message.isSaid, !message.deleted, message.serverIndex != nil {
             // A run of images: from its first.
             let first = row.images.first ?? message
-            unread.append(.button("Mark unread from here", systemImage: "envelope.badge") {
+            unread.append(.button(String(localized: "Mark unread from here"), systemImage: "envelope.badge") {
                 Task { await model.markUnread(first.chat, from: first) }
             })
         }
         var delete: [MenuEntry] = []
         if oneMessage, model.canDelete(message, inTribe: row.inTribe) {
-            delete.append(.destructive("Delete", systemImage: "trash", confirm: "Delete for everyone") {
+            delete.append(.destructive(String(localized: "Delete"), systemImage: "trash", confirm: String(localized: "Delete for everyone")) {
                 Task { await model.delete(message) }
             })
         }

@@ -351,9 +351,9 @@ public enum TribeDecider: Sendable, Equatable {
     /// The line under the card for everyone it is not.
     public var line: String {
         switch self {
-        case .you, .owner: "The tribe's owner decides this."
-        case .someone(let name?): "\(name)'s to decide."
-        case .someone(nil): "The person who asked decides this."
+        case .you, .owner: String(localized: "The tribe's owner decides this.", table: "Shared")
+        case .someone(let name?): String(localized: "\(name) decides this.", table: "Shared")
+        case .someone(nil): String(localized: "The person who asked decides this.", table: "Shared")
         }
     }
 }

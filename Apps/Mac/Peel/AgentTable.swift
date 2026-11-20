@@ -134,7 +134,7 @@ struct AgentListRow: TableRow {
 
     /// What the chat Peel's own loop kept is called, over its turns and in
     /// Account › Peel agent.
-    static let oldChatsTitle = "Old assistant chats (this Mac only)"
+    static let oldChatsTitle = String(localized: "Old assistant chats (this Mac only)")
 
     /// An earlier turn's row id.
     static func id(of turn: AgentTurn) -> String { "turn-" + turn.id }

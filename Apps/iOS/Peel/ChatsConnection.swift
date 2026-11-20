@@ -41,7 +41,7 @@ struct ConnectionBolt: View {
         .onChange(of: syncing, initial: true) { _, now in dimmed = now && !reduceMotion }
         // Colour is never the only signal: the label says the state.
         .accessibilityLabel(model.connection == .connected ? health.label : model.connection.label)
-        .accessibilityHint(model.connection == .connected ? "Shows the connection" : "Shows the connection and Reconnect now")
+        .accessibilityHint(model.connection == .connected ? Text("Shows the connection") : Text("Shows the connection and Reconnect now"))
         .popover(isPresented: $shown) {
             ConnectionPanel()
                 .presentationCompactAdaptation(.popover)
@@ -64,7 +64,7 @@ struct ConnectionPanel: View {
                 Image(systemName: "bolt.fill")
                     .foregroundStyle(health == .synced ? Theme.confirmed : Theme.attention)
                     .accessibilityHidden(true)
-                Text(connected ? health.label : model.connection == .connecting ? "Connecting" : "Not connected")
+                Text(connected ? health.label : model.connection == .connecting ? String(localized: "Connecting") : String(localized: "Not connected"))
                     .phoneFont(.headline)
                     .foregroundStyle(Theme.text)
                     .accessibilityAddTraits(.isHeader)
@@ -80,8 +80,8 @@ struct ConnectionPanel: View {
                     .foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
             } else if connected {
-                Text(model.myServer.map { "New messages arrive as they're sent, through \($0)." }
-                     ?? "New messages arrive as they're sent.")
+                Text(model.myServer.map { String(localized: "New messages arrive as they're sent, through \($0).") }
+                     ?? String(localized: "New messages arrive as they're sent."))
                     .phoneFont(.row)
                     .foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)

@@ -13,8 +13,8 @@ import AppKit
 struct ContactsSidebarRows: View {
     var body: some View {
         PendingInviteRows()
-        SidebarActionLink(title: "Add contact") { AddContactForm(done: $0) }
-        SidebarActionLink(title: "Invite someone") { InviteForm(done: $0) }
+        SidebarActionLink(title: String(localized: "Add contact")) { AddContactForm(done: $0) }
+        SidebarActionLink(title: String(localized: "Invite someone")) { InviteForm(done: $0) }
     }
 }
 
@@ -41,7 +41,7 @@ private struct InviteRow: View {
             HStack(spacing: 9) {
                 InviteIcon(size: Theme.AvatarSize.sm)
                     .frame(width: Theme.AvatarSize.sm)
-                Text(invite.nickname ?? "Invite")
+                Text(invite.nickname ?? String(localized: "Invite"))
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 Text(invite.shortStatus)
@@ -89,7 +89,7 @@ struct AddContactForm: View {
     }
 
     var body: some View {
-        Panel("Add contact", close: done) {
+        Panel(String(localized: "Add contact"), close: done) {
             if let sentTo {
                 Text("Sent to \(sentTo). They appear once they accept.")
                     .font(Theme.font(13))
@@ -113,7 +113,7 @@ struct AddContactForm: View {
                         .disabled(attempt.working)
                     // Over the threshold the 5 sats are confirmed in place, as any payment.
                     PayButton(
-                        verb: "Add", totalMsat: reading || text.trimmed.isEmpty ? nil : Engine.keyExchangeMsat, attempt: attempt
+                        verb: String(localized: "Add"), totalMsat: reading || text.trimmed.isEmpty ? nil : Engine.keyExchangeMsat, attempt: attempt
                     ) { confirmed in
                         let (outcome, added) = await model.addContact(code: text, alias: name, confirmedMsat: confirmed)
                         if added == false { done() }
@@ -133,7 +133,7 @@ struct AddContactForm: View {
     @ViewBuilder private var form: some View {
         FormSection {
             FormItem(label: "Code") {
-                FormTextField(label: "Code", prompt: "Contact info, invite or Sphinx link", text: $text, axis: .vertical)
+                FormTextField(label: String(localized: "Code"), prompt: "Contact info, invite or Sphinx link", text: $text, axis: .vertical)
             }
             if let code, let pubkey = code.pubkey {
                 CodePreview(code: code, pubkey: pubkey)
@@ -149,7 +149,7 @@ struct AddContactForm: View {
             .padding(.top, 10)
         FormSection {
             FormItem(label: "Name") {
-                FormTextField(label: "Name", prompt: code.flatMap(\.inviterName) ?? "Optional", text: $name)
+                FormTextField(label: String(localized: "Name"), prompt: code.flatMap(\.inviterName) ?? "Optional", text: $name)
             }
         }
     }
@@ -161,7 +161,7 @@ struct AddContactForm: View {
                 .font(.system(size: 20))
                 .foregroundStyle(dropTargeted ? Theme.accent : Theme.secondaryText)
             VStack(alignment: .leading, spacing: 2) {
-                Text(reading ? "Reading the picture…" : "Drop a picture of their QR code here")
+                Text(reading ? String(localized: "Reading the picture…") : String(localized: "Drop a picture of their QR code here"))
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.text)
                 HStack(spacing: 10) {
@@ -195,7 +195,7 @@ struct AddContactForm: View {
         do {
             let found = try await codes()
             guard let chosen = ContactCode.likeliest(in: found) else {
-                problem = "No QR code found in that picture."
+                problem = String(localized: "No QR code found in that picture.")
                 return
             }
             scannedText = chosen
@@ -314,16 +314,16 @@ struct InviteForm: View {
         if let made {
             InviteDetail(code: made.code, done: done)
         } else {
-            Panel("Invite someone", close: done) {
+            Panel(String(localized: "Invite someone"), close: done) {
                 FormSection {
-                    FormItem(label: "Amount") { SatsField(label: "Amount", text: $amount) }
+                    FormItem(label: "Amount") { SatsField(label: String(localized: "Amount"), text: $amount) }
                 }
-                FormSection("Only you see these") {
+                FormSection(String(localized: "Only you see these")) {
                     FormItem(label: "Nickname") {
-                        FormTextField(label: "Nickname", prompt: "Optional", text: $nickname)
+                        FormTextField(label: String(localized: "Nickname"), prompt: "Optional", text: $nickname)
                     }
                     FormItem(label: "Message") {
-                        FormTextField(label: "Message", prompt: "Optional", text: $message, axis: .vertical)
+                        FormTextField(label: String(localized: "Message"), prompt: "Optional", text: $message, axis: .vertical)
                     }
                 }
                 Text("The sats leave your balance now. Cancel to get them back.").muted()
@@ -338,8 +338,8 @@ struct InviteForm: View {
                     Button("Cancel", action: done)
                         .buttonStyle(.peel(.outline))
                         .disabled(attempt.working)
-                    PayButton(verb: "Invite", totalMsat: Sats.msat(amount), attempt: attempt) { confirmed in
-                        guard let msat = Sats.msat(amount) else { return .refused("Enter an amount in sats.") }
+                    PayButton(verb: String(localized: "Invite"), totalMsat: Sats.msat(amount), attempt: attempt) { confirmed in
+                        guard let msat = Sats.msat(amount) else { return .refused(String(localized: "Enter an amount in sats.")) }
                         let (outcome, invite) = await model.makeInvite(
                             amountMsat: msat, nickname: nickname, message: message, confirmedMsat: confirmed
                         )
@@ -365,7 +365,7 @@ private struct InviteDetail: View {
     private var invite: InviteRecord? { model.invites[code] }
 
     var body: some View {
-        Panel(invite?.nickname ?? "Invite", close: done) {
+        Panel(invite?.nickname ?? String(localized: "Invite"), close: done) {
             if let invite {
                 content(invite)
             } else {
@@ -379,7 +379,7 @@ private struct InviteDetail: View {
     @ViewBuilder private func content(_ invite: InviteRecord) -> some View {
         Card {
             HStack(alignment: .top, spacing: 14) {
-                QRCodeTile(text: invite.status == .ready ? invite.link : nil, label: "QR code of the invite")
+                QRCodeTile(text: invite.status == .ready ? invite.link : nil, label: String(localized: "QR code of the invite"))
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(Sats.format(msat: invite.amountMsat))
                         .font(Theme.font(15, .semibold))
@@ -404,7 +404,7 @@ private struct InviteDetail: View {
                 Text("Anyone with this invite can claim its sats.")
                     .muted()
                 HStack(spacing: Theme.Space.sm) {
-                    CopyButton("Copy invite", text: invite.link)
+                    CopyButton(String(localized: "Copy invite"), text: invite.link)
                     CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(invite.link) }
                     // The system's share menu would hand it to another app.
                     if !Offscreen.isOn {
@@ -440,7 +440,7 @@ private struct InviteDetail: View {
             }
             if invite.isPending {
                 InlineConfirm(
-                    trigger: invite.status == .cancelling ? "Ask again" : "Cancel invite",
+                    trigger: invite.status == .cancelling ? String(localized: "Ask again") : String(localized: "Cancel invite"),
                     prompt: "Get the sats back?", confirm: "Cancel invite"
                 ) {
                     do {

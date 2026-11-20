@@ -376,7 +376,7 @@ extension Engine {
             }
             emit.yield(.sendStatus(tag: sent?.tag, status: Message.Delivery.failed.rawValue))
             if !auto {
-                emit.yield(.conversationError(chat: pubkey, message: "Not delivered: \(PeelError.readable(failure))"))
+                emit.yield(.conversationError(chat: pubkey, message: String(localized: "Not delivered: \(PeelError.readable(failure))", table: "Shared")))
             }
             // Stored, so a retry or a reconnect's resend may still send it.
             if request != nil { throw SendUnconfirmed(error: failure) }

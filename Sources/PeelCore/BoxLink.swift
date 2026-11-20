@@ -105,16 +105,16 @@ public struct BoxLinkOffer: Sendable, Equatable, Identifiable {
     public func problem(at now: Date = Date(), allowsLoopback: Bool) -> String? {
         let host = host
         guard challenge.actor != nil else {
-            return "This link doesn't name anyone to link Peel to. Choose Link Peel in Connect on \(host) again."
+            return String(localized: "This link doesn't name anyone to link Peel to. Choose Link Peel in Connect on \(host) again.", table: "Shared")
         }
         guard challenge.host == host else {
-            return "This link is for \(TextLine.clean(challenge.host, max: 80)), not \(host), so Peel won't sign it."
+            return String(localized: "This link is for \(TextLine.clean(challenge.host, max: 80)), not \(host), so Peel won't sign it.", table: "Shared")
         }
         guard !challenge.expired(at: now) else {
-            return "This link ran out. Choose Link Peel in Connect on \(host) again."
+            return String(localized: "This link ran out. Choose Link Peel in Connect on \(host) again.", table: "Shared")
         }
         guard BoxLink.reachable(box, allowsLoopback: allowsLoopback) else {
-            return "Peel links only to a box at an https address, not \(host)."
+            return String(localized: "Peel links only to a box at an https address, not \(host).", table: "Shared")
         }
         return nil
     }
@@ -259,10 +259,10 @@ public struct BoxClient: Sendable {
         guard status == 200 else { throw failure(status, data, linking: false) }
         guard case .object(let fields)? = JSON.decode(JSONValue.self, from: String(decoding: data, as: UTF8.self)),
               let text = fields["challenge"]?.string, let challenge = BoxChallenge(text) else {
-            throw PeelError("\(host)'s answer for renewing Peel's link could not be read.")
+            throw PeelError(String(localized: "\(host)'s answer for renewing Peel's link could not be read.", table: "Shared"))
         }
         guard challenge.host == host else {
-            throw PeelError("\(host) gave a challenge for \(TextLine.clean(challenge.host, max: 80)), so Peel didn't sign it.")
+            throw PeelError(String(localized: "\(host) gave a challenge for \(TextLine.clean(challenge.host, max: 80)), so Peel didn't sign it.", table: "Shared"))
         }
         let signed = try await sign(challenge)
         let (renewedStatus, renewed) = try await request("POST", "people/token",
@@ -303,10 +303,10 @@ public struct BoxClient: Sendable {
               let token = a["token"]?.string, token.hasPrefix("strut-person."), token.utf8.count <= 4_096,
               !token.contains(where: { $0.isWhitespace || $0.isNewline }),
               let ms = WalletProtocol.integer(a["exp"]) else {
-            throw PeelError("\(host)'s answer could not be read.")
+            throw PeelError(String(localized: "\(host)'s answer could not be read.", table: "Shared"))
         }
         let exp = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
-        guard exp > now else { throw PeelError("\(host) answered a token that had already run out.") }
+        guard exp > now else { throw PeelError(String(localized: "\(host) answered a token that had already run out.", table: "Shared")) }
         return Answer(actor: actor, name: a["name"]?.string?.nilIfEmpty, token: token, exp: exp)
     }
 
@@ -317,15 +317,15 @@ public struct BoxClient: Sendable {
             .map { TextLine.clean($0, max: 200) }
         switch status {
         case 401 where linking:
-            return PeelError("\(host) didn't take the link: it ran out or was already used. Choose Link Peel in Connect there again.")
+            return PeelError(String(localized: "\(host) didn't take the link: it ran out or was already used. Choose Link Peel in Connect there again.", table: "Shared"))
         case 401:
-            return PeelError("\(host) didn't take Peel's signature.")
+            return PeelError(String(localized: "\(host) didn't take Peel's signature.", table: "Shared"))
         case 409:
-            return PeelError("Your Sphinx account is already linked to someone else on \(host). They remove it in Connect there first.")
+            return PeelError(String(localized: "Your Sphinx account is already linked to someone else on \(host). They remove it in Connect there first.", table: "Shared"))
         case 413:
-            return PeelError("\(host) refused the link as too large.")
+            return PeelError(String(localized: "\(host) refused the link as too large.", table: "Shared"))
         case 429:
-            return PeelError("\(host) is busy. Try again in a minute.")
+            return PeelError(String(localized: "\(host) is busy. Try again in a minute.", table: "Shared"))
         default:
             return PeelError("\(host) could not \(linking ? "link Peel" : "renew Peel's link"): \(said ?? "HTTP \(status)").")
         }

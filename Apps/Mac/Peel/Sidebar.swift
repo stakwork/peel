@@ -34,7 +34,7 @@ struct Sidebar: View {
                     VStack(alignment: .leading, spacing: Theme.Space.lg) {
                         // A–Z (Tom, 2026-10-26).
                         VStack(spacing: 1) {
-                            SidebarLink("Apps", to: .apps) {
+                            SidebarLink(String(localized: "Apps"), to: .apps) {
                                 WorkspaceAppIcon(nil, size: 14)
                             }
                             .overlay(alignment: .trailing) {
@@ -48,24 +48,24 @@ struct Sidebar: View {
                                 AppsUnderRow(apps: apps)
                             }
                             AutomationsLink()
-                            SidebarLink("Mentions", to: .mentions, unread: unreadMentions > 0) {
+                            SidebarLink(String(localized: "Mentions"), to: .mentions, unread: unreadMentions > 0) {
                                 Image(systemName: "at").font(.system(size: 13))
                             } accessory: {
                                 if unreadMentions > 0 { Badge(count: unreadMentions) }
                             }
                             PaymentsLink(money: model.money)
                             let unreadThreads = model.unreadThreads
-                            SidebarLink("Threads", to: .threads, unread: unreadThreads > 0) {
+                            SidebarLink(String(localized: "Threads"), to: .threads, unread: unreadThreads > 0) {
                                 Image(systemName: "bubble.left").font(.system(size: 13))
                             } accessory: {
                                 if unreadThreads > 0 { Badge(count: unreadThreads) }
                             }
-                            SidebarLink("Segments", to: .segments) {
+                            SidebarLink(String(localized: "Segments"), to: .segments) {
                                 Image(systemName: "record.circle").font(.system(size: 13))
                             }
                         }
                         if !sections.unread.isEmpty {
-                            SidebarSection("Unread") {
+                            SidebarSection(String(localized: "Unread")) {
                                 ForEach(sections.unread) { conversation in
                                     if conversation.chat == model.agentChat, let agent = model.agent {
                                         AgentLink(agent: agent, conversation: conversation)
@@ -79,7 +79,7 @@ struct Sidebar: View {
                             SidebarViewToggle(combined: $model.sidebarLayout.combinedView)
                         }
                         if model.sidebarLayout.combinedView && !sections.searching {
-                            SidebarSection("Recent") {
+                            SidebarSection(String(localized: "Recent")) {
                                 if let agent = shownAgent(sections) {
                                     AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
                                 }
@@ -87,28 +87,28 @@ struct Sidebar: View {
                                     ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                                 }
                                 if let all = sections.allCombined {
-                                    SidebarShowAll(what: "\(all) chats", fewer: "chats", all: $model.sidebarLayout.allRecent)
+                                    SidebarShowAll(kind: .chats, count: all, all: $model.sidebarLayout.allRecent)
                                 }
-                                SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
-                                SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
+                                SidebarActionLink(title: String(localized: "Join a tribe")) { JoinTribeForm(done: $0) }
+                                SidebarActionLink(title: String(localized: "Create a tribe")) { TribeSettingsForm(editing: nil, done: $0) }
                                 ContactsSidebarRows()
                             }
                         } else {
                             // Searching shows every match: no chevron to say otherwise or
                             // to change the saved layout.
-                            SidebarSection("Tribes", expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
+                            SidebarSection(String(localized: "Tribes"), expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
                                 ForEach(sections.searching ? SidebarSearch.capped(sections.tribes) : sections.tribes) { conversation in
                                     ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                                 }
                                 if sections.tribesOpen {
                                     if let all = sections.allTribes {
-                                        SidebarShowAll(what: "\(all) tribes", fewer: "tribes", all: $model.sidebarLayout.allTribes)
+                                        SidebarShowAll(kind: .tribes, count: all, all: $model.sidebarLayout.allTribes)
                                     }
-                                    SidebarActionLink(title: "Join a tribe") { JoinTribeForm(done: $0) }
-                                    SidebarActionLink(title: "Create a tribe") { TribeSettingsForm(editing: nil, done: $0) }
+                                    SidebarActionLink(title: String(localized: "Join a tribe")) { JoinTribeForm(done: $0) }
+                                    SidebarActionLink(title: String(localized: "Create a tribe")) { TribeSettingsForm(editing: nil, done: $0) }
                                 }
                             }
-                            SidebarSection("Direct messages",
+                            SidebarSection(String(localized: "Direct messages"),
                                            expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
                                 if let agent = shownAgent(sections) {
                                     AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
@@ -118,7 +118,7 @@ struct Sidebar: View {
                                 }
                                 if sections.directOpen {
                                     if let all = sections.allDirect {
-                                        SidebarShowAll(what: Formatting.people(all), fewer: "people",
+                                        SidebarShowAll(kind: .people, count: all,
                                                        all: $model.sidebarLayout.allDirect)
                                     }
                                     ContactsSidebarRows()
@@ -197,7 +197,7 @@ struct Sidebar: View {
         // Built in typed steps: as one expression it is too much for the type checker.
         typealias Row = (destination: AppModel.Destination, title: String)
         let apps: [Row] = shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
-        let fixed: [Row] = [(.automations, "Automations"), (.mentions, "Mentions"), (.payments, "Payments"), (.threads, "Threads"), (.segments, "Segments")]
+        let fixed: [Row] = [(.automations, String(localized: "Automations")), (.mentions, String(localized: "Mentions")), (.payments, String(localized: "Payments")), (.threads, String(localized: "Threads")), (.segments, String(localized: "Segments"))]
         let chats: [Row]
         if combined {
             chats = (sections.unread + sections.combined).map { (.chat($0.chat), $0.name) } + agent
@@ -208,7 +208,7 @@ struct Sidebar: View {
                 .map { (.chat($0.chat), $0.name) }
             chats = tribes + agent + direct
         }
-        return [(.apps, "Apps")] + apps + fixed + chats
+        return [(.apps, String(localized: "Apps"))] + apps + fixed + chats
     }
 
     /// The apps under the Apps row, A–Z: those in the sidebar while it is
@@ -347,7 +347,7 @@ struct SidebarColumn: View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             SidebarHeader()
             SearchField(text: inAccount ? $settingsQuery : $model.searchQuery,
-                        prompt: inAccount ? "Search settings" : "Search", focusRequest: model.sidebarSearchFocus,
+                        prompt: inAccount ? String(localized: "Search settings") : String(localized: "Search"), focusRequest: model.sidebarSearchFocus,
                         // Account clears its own bound text; chats reset the search model too.
                         onClear: inAccount ? nil : { model.clearSidebarSearch() })
                 // Return: the first category found.
@@ -401,7 +401,7 @@ struct SidebarHeader: View {
     var body: some View {
         HStack(spacing: 6) {
             if inAccount {
-                IconButton("chevron.left", help: "Back to your chats (⌘[)", size: .sm, action: model.closeAccount)
+                IconButton("chevron.left", help: String(localized: "Back to your chats (⌘[)"), size: .sm, action: model.closeAccount)
                     .keyboardShortcut("[", modifiers: .command)
                     .transition(.offset(x: -16).combined(with: .opacity))
             }
@@ -428,7 +428,7 @@ struct SidebarHeader: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .help(inAccount ? "Profile" : "Account")
+            .help(inAccount ? String(localized: "Profile") : String(localized: "Account"))
             if !inAccount {
                 // In place: sliding, it would cross the column's edge and the divider.
                 ConnectionBolt()
@@ -440,7 +440,7 @@ struct SidebarHeader: View {
 
 struct SearchField: View {
     @Binding var text: String
-    var prompt = "Search"
+    var prompt = String(localized: "Search")
     var focusRequest = 0
     /// What the clear button does; without one it empties `text`.
     var onClear: (() -> Void)?
@@ -450,7 +450,7 @@ struct SearchField: View {
                       focusRequest: focusRequest)
             .overlay(alignment: .trailing) {
                 if !text.isEmpty {
-                    IconButton("xmark", help: "Clear search", size: .sm) {
+                    IconButton("xmark", help: String(localized: "Clear search"), size: .sm) {
                         if let onClear { onClear() } else { text = "" }
                     }
                     .padding(.trailing, Theme.Space.xs)
@@ -470,7 +470,7 @@ struct SidebarMessageResults: View {
 
     var body: some View {
         if search.searching && search.messages.isEmpty {
-            SidebarSection("Messages") {
+            SidebarSection(String(localized: "Messages")) {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.mini)
                     Text("Searching…")
@@ -480,7 +480,7 @@ struct SidebarMessageResults: View {
                 .padding(.horizontal, Theme.Space.md)
             }
         } else if search.failed {
-            SidebarSection("Messages") {
+            SidebarSection(String(localized: "Messages")) {
                 Text("Could not search messages")
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.attention)
@@ -488,7 +488,7 @@ struct SidebarMessageResults: View {
             }
         } else if !search.messages.isEmpty {
             let terms = search.query?.terms ?? []
-            SidebarSection("Messages") {
+            SidebarSection(String(localized: "Messages")) {
                 ForEach(Array(search.messages.enumerated()), id: \.offset) { _, message in
                     SidebarMessageRow(
                         message: message,
@@ -580,7 +580,7 @@ struct SidebarSection<Content: View>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(.isHeader)
-                .accessibilityValue(expanded.wrappedValue ? "Expanded" : "Collapsed")
+                .accessibilityValue(expanded.wrappedValue ? String(localized: "Expanded") : String(localized: "Collapsed"))
             } else {
                 header(open: nil)
                     .accessibilityAddTraits(.isHeader)
@@ -717,7 +717,7 @@ struct ConversationLink: View {
             } else if state?.isNew == true {
                 // Someone who added you: the core accepts them at once, so
                 // there is no request to answer; this only says they are new.
-                Badge("New")
+                Badge(String(localized: "New"))
                     .help("Added you as a contact")
             } else if level == .muted {
                 Image(systemName: "bell.slash")
@@ -838,7 +838,7 @@ struct ConnectionCard: View {
                     .foregroundStyle(model.connection == .connected ? Theme.confirmed : Theme.attention)
                     .accessibilityHidden(true)
                 if model.checkingConnection {
-                    label("Checking…")
+                    label(String(localized: "Checking…"))
                 } else if offline, model.reconnectAt != nil {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         label(model.connection.label(retryAt: model.reconnectAt, now: context.date))
@@ -847,7 +847,7 @@ struct ConnectionCard: View {
                     label(model.connection.label)
                 }
                 Spacer(minLength: Theme.Space.sm)
-                IconButton("arrow.clockwise", help: offline ? "Reconnect now" : "Check connection", size: .sm, working: busy) {
+                IconButton("arrow.clockwise", help: offline ? String(localized: "Reconnect now") : String(localized: "Check connection"), size: .sm, working: busy) {
                     Task { await model.checkConnection() }
                 }
                 .disabled(busy)
@@ -887,23 +887,38 @@ struct SidebarActionLink<Form: View>: View {
 /// "Show fewer" ("Show fewer tribes" to VoiceOver); which one is kept with
 /// the account (`AppModel.sidebarLayout`).
 struct SidebarShowAll: View {
-    /// "14 tribes", "10 people".
-    let what: String
-    /// "tribes", "people".
-    let fewer: String
+    enum Kind { case chats, tribes, people }
+    let kind: Kind
+    let count: Int
     @Binding var all: Bool
+
+    private var showAllTitle: String {
+        switch kind {
+        case .chats: String(localized: "Show all \(count) chats")
+        case .tribes: String(localized: "Show all \(count) tribes")
+        case .people: String(localized: "Show all \(count) people")
+        }
+    }
+
+    private var showFewerTitle: String {
+        switch kind {
+        case .chats: String(localized: "Show fewer chats")
+        case .tribes: String(localized: "Show fewer tribes")
+        case .people: String(localized: "Show fewer people")
+        }
+    }
 
     var body: some View {
         Button {
             all.toggle()
         } label: {
             // In the link color, as on the iPhone, so it stands apart from the actions.
-            SidebarActionLabel(title: all ? "Show fewer" : "Show all \(what)",
+            SidebarActionLabel(title: all ? String(localized: "Show fewer") : showAllTitle,
                                systemImage: all ? "chevron.up" : "chevron.down")
                 .foregroundStyle(Theme.link)
         }
         .buttonStyle(SidebarRowStyle(selected: false))
-        .accessibilityLabel(all ? "Show fewer \(fewer)" : "Show all \(what)")
+        .accessibilityLabel(all ? showFewerTitle : showAllTitle)
     }
 }
 
@@ -965,7 +980,7 @@ private struct AutomationsLink: View {
 
     var body: some View {
         let failed = model.automations.failed
-        SidebarLink("Automations", to: .automations) {
+        SidebarLink(String(localized: "Automations"), to: .automations) {
             Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
         } accessory: {
             if failed > 0 { Badge(count: failed, .outline) }
@@ -1027,9 +1042,9 @@ private struct AppsFoldButton: View {
         }
         .buttonStyle(.plain)
         .padding(.trailing, Theme.Space.xs)
-        .help(open ? "Hide pinned apps" : "Show pinned apps")
+        .help(open ? String(localized: "Hide pinned apps") : String(localized: "Show pinned apps"))
         .accessibilityLabel("Pinned apps")
-        .accessibilityValue(open ? "Expanded" : "Collapsed")
+        .accessibilityValue(open ? String(localized: "Expanded") : String(localized: "Collapsed"))
     }
 }
 
@@ -1062,8 +1077,8 @@ struct RestoreBar: View {
                 // A restore paused leaves the account incomplete; a catch-up's
                 // blocks nothing, so it stays quiet.
                 Callout(progress.restoring ? .attention : .neutral,
-                        progress.restoring ? "Restore paused" : "Catching up paused",
-                        detail: connected ? reason : reason + " It resumes when connected.",
+                        progress.restoring ? String(localized: "Restore paused") : String(localized: "Catching up paused"),
+                        detail: connected ? reason : String(localized: "\(reason) It resumes when connected."),
                         icon: progress.restoring ? nil : .symbol("pause.circle", Theme.secondaryText)) {
                     if connected {
                         Button("Resume") { Task { await model.resumeHistory() } }
@@ -1084,9 +1099,9 @@ struct RestoreBar: View {
         let onContacts = progress.messages == nil && (progress.contacts?.fraction ?? 0) < 1
         let fraction = connected ? (onContacts ? progress.contacts : progress.messages)?.fraction : nil
         let detail = connected
-            ? fraction.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "This can take a few minutes"
-            : "Waiting for a connection"
-        return Callout(.neutral, onContacts ? "Restoring contacts" : "Restoring messages", detail: detail,
+            ? fraction.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? String(localized: "This can take a few minutes")
+            : String(localized: "Waiting for a connection")
+        return Callout(.neutral, onContacts ? String(localized: "Restoring contacts") : String(localized: "Restoring messages"), detail: detail,
                        icon: connected ? .progress : .symbol("wifi.slash", Theme.secondaryText)) {
             if let fraction {
                 ProgressView(value: fraction)
@@ -1106,8 +1121,8 @@ struct SidebarViewToggle: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            option("Separated", selected: !combined) { combined = false }
-            option("Recent", selected: combined) { combined = true }
+            option(String(localized: "Separated"), selected: !combined) { combined = false }
+            option(String(localized: "Recent"), selected: combined) { combined = true }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, Theme.Space.xs)

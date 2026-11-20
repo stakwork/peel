@@ -20,10 +20,10 @@ public enum ConnectionHealth: Sendable, Equatable {
 
     public var label: String {
         switch self {
-        case .offline: "Offline"
-        case .syncing: "Syncing…"
-        case .synced: "Connected"
-        case .failing: "Reconnecting…"
+        case .offline: String(localized: "Offline", table: "Shared")
+        case .syncing: String(localized: "Syncing…", table: "Shared")
+        case .synced: String(localized: "Connected", table: "Shared")
+        case .failing: String(localized: "Reconnecting…", table: "Shared")
         }
     }
 }

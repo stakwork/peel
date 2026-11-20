@@ -33,7 +33,7 @@ struct LockView: View {
                     .opacity(working ? 1 : 0)
                 // For a lost PIN.
                 ForgetAccountControl(
-                    trigger: "Forgot your PIN? Forget this account on this Mac",
+                    trigger: String(localized: "Forgot your PIN? Forget this account on this Mac"),
                     explanation: AppModel.forgetWarning(holdsSats: holdsSats)
                 )
                 .frame(maxWidth: 360)
@@ -70,10 +70,10 @@ struct ForgetAccountControl: View {
     var body: some View {
         VStack(alignment: section ? .leading : .center, spacing: Theme.Space.sm) {
             if section {
-                FormDestructiveSection(trigger: trigger, explanation: explanation, confirm: "Forget account", action: forget)
+                FormDestructiveSection(trigger: trigger, explanation: explanation, confirm: String(localized: "Forget account"), action: forget)
             } else {
                 InlineConfirm(
-                    trigger: trigger, explanation: explanation, confirm: "Forget account", style: .text, alignment: .center,
+                    trigger: trigger, explanation: explanation, confirm: String(localized: "Forget account"), style: .text, alignment: .center,
                     action: forget
                 )
                 .font(Theme.font(13))
@@ -85,6 +85,6 @@ struct ForgetAccountControl: View {
 
     private func forget() async {
         problem = nil
-        do { try await model.forgetAccount() } catch { problem = PeelError.problem(error, couldNot: "forget the account") }
+        do { try await model.forgetAccount() } catch { problem = PeelError.problem(error, couldNot: String(localized: "forget the account")) }
     }
 }

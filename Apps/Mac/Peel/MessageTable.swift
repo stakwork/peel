@@ -173,7 +173,7 @@ final class MessageTableEngine<Row: TableRow>: NSObject, ChatListEngine, ListGeo
         table.allowsColumnResizing = false
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.autoresizingMask = [.width]
-        table.setAccessibilityLabel(composer == .agent ? "Agent chat" : composer.thread == nil ? "Messages" : "Thread")
+        table.setAccessibilityLabel(composer == .agent ? String(localized: "Agent chat") : composer.thread == nil ? String(localized: "Messages") : String(localized: "Thread"))
         table.dataSource = self
         table.delegate = self
         scroll.engine = self

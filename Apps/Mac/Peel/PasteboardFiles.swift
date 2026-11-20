@@ -161,7 +161,7 @@ extension AppModel {
             if !refused.isEmpty, let chat = composer.chat {
                 // The kind only: the refusals name files.
                 Diagnostics.note(errorKind: .refused)
-                conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
+                conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: String(localized: "attach"))
             }
         }
     }

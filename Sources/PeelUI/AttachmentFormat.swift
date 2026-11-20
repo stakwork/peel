@@ -9,7 +9,7 @@ public enum AttachmentFormat {
     /// to show" when it holds more pixels than are decoded
     /// (`ImageDecoding.isTooLarge`); nil otherwise. Read off the main actor.
     public static func notShown(_ file: URL) async -> String? {
-        await Task.detached(priority: .utility) { ImageDecoding.isTooLarge(file) ? "Too large to show" : nil }.value
+        await Task.detached(priority: .utility) { ImageDecoding.isTooLarge(file) ? String(localized: "Too large to show", table: "Shared") : nil }.value
     }
 
     /// "48 KB".

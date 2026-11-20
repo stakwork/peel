@@ -27,7 +27,7 @@ final class DeviceCards {
         // The proposals' records, read from Peel's strut as it runs now (its
         // port and key change as it starts again) and kept with the account.
         let strut: @Sendable () async throws -> AutomationsClient = { [weak self] in
-            guard let server = await self?.model?.memoryServer else { throw PeelError("Peel's strut is not running.") }
+            guard let server = await self?.model?.memoryServer else { throw PeelError(String(localized: "Peel's strut is not running.")) }
             return AutomationsClient(server: server)
         }
         let read: @Sendable (String) async throws -> ProposalRead = { id in try await strut().readProposal(id) }
@@ -215,7 +215,7 @@ private struct ChatLink: View {
     var body: some View {
         Button(chat.name) { model.destination = .chat(chat.chat) }
             .buttonStyle(.peel(.link))
-            .help("Open \(chat.isTribe ? "the tribe" : "the chat")")
+            .help(chat.isTribe ? Text("Open the tribe") : Text("Open the chat"))
     }
 }
 
@@ -309,7 +309,7 @@ private struct DeviceRequestDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let reason = request.reason {
-                FactLine(label: "Why", text: reason)
+                FactLine(label: String(localized: "Why"), text: reason)
             }
             // Outside the agent chat, one never answered was not this Mac's to do:
             // nothing of what its sender asked is shown.
@@ -317,7 +317,7 @@ private struct DeviceRequestDetail: View {
             case "":
                 Text("This Mac did not answer it.").foregroundStyle(Theme.secondaryText)
             case "send":
-                if let text = Self.string("text", in: request.args) { FactLine(label: "Text", text: text) }
+                if let text = Self.string("text", in: request.args) { FactLine(label: String(localized: "Text"), text: text) }
                 if let said = request.text {
                     HStack(spacing: 6) {
                         Text(AgentToolTitle.summary(said)).foregroundStyle(Theme.text)
@@ -329,17 +329,17 @@ private struct DeviceRequestDetail: View {
                 }
             case "approve":
                 if case .object(let args)? = request.args, let intent = args["intent"] {
-                    if let action = Self.string("action", in: intent) { FactLine(label: "Asked", text: action) }
-                    if let content = Self.string("content", in: intent) { FactLine(label: "Content", text: content) }
+                    if let action = Self.string("action", in: intent) { FactLine(label: String(localized: "Asked"), text: action) }
+                    if let content = Self.string("content", in: intent) { FactLine(label: String(localized: "Content"), text: content) }
                 }
-                if let said = request.text { FactLine(label: "Answer", text: said) }
+                if let said = request.text { FactLine(label: String(localized: "Answer"), text: said) }
             default:
                 if let text = request.text { reading(ChatDataReading(text)) }
             }
             if request.asker == nil, request.status == nil, request.reason == nil {
                 TimelineView(.redrawing(at: request.changesAt)) { context in
-                    Text(request.isExpired(at: context.date) ? "Your Mac did not answer in time. Nothing was done."
-                         : "Your Mac has not answered yet.").foregroundStyle(Theme.secondaryText)
+                    Text(request.isExpired(at: context.date) ? String(localized: "Your Mac did not answer in time. Nothing was done.")
+                         : String(localized: "Your Mac has not answered yet.")).foregroundStyle(Theme.secondaryText)
                 }
             }
         }

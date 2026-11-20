@@ -54,7 +54,7 @@ struct PhoneSectionHeader: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(.isHeader)
-            .accessibilityValue(expanded.wrappedValue ? "Expanded" : "Collapsed")
+            .accessibilityValue(expanded.wrappedValue ? String(localized: "Expanded") : String(localized: "Collapsed"))
         } else {
             label(open: nil)
                 .accessibilityAddTraits(.isHeader)
@@ -109,7 +109,7 @@ struct NavRow<Icon: View>: View {
         }
         .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(lit ? "\(count) new" : "")
+        .accessibilityValue(lit ? String(localized: "\(count) new") : "")
     }
 }
 
@@ -167,7 +167,7 @@ struct ChatListRow: View {
                 CountBadge(count: unread, style: mentionsYou ? .mention : .default)
             } else if state?.isNew == true {
                 // Someone who added you; nothing to answer.
-                Badge("New")
+                Badge(String(localized: "New"))
             } else if level == .muted {
                 Image(systemName: "bell.slash").foregroundStyle(Theme.secondaryText)
             } else if level == .mentionsOnly {
@@ -176,7 +176,7 @@ struct ChatListRow: View {
         }
         .opacity(level == .muted && !lit ? 0.6 : 1)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(conversation.name + (isAgent ? ", agent" : ""))
+        .accessibilityLabel(isAgent ? String(localized: "\(conversation.name), agent") : conversation.name)
         .accessibilityValue(spoken(unread: unread, mentionsYou: mentionsYou, level: level, onCall: onCall))
     }
 
@@ -190,13 +190,13 @@ struct ChatListRow: View {
 
     /// "3 unread, mentions you", "waiting on you", "muted".
     private func spoken(unread: Int, mentionsYou: Bool, level: MuteLevel, onCall: Int) -> String {
-        if waiting > 0 { return "waiting on you" }
+        if waiting > 0 { return String(localized: "waiting on you") }
         var parts: [String] = []
-        if onCall > 0 { parts.append("call in progress, \(Formatting.people(onCall))") }
-        if unread > 0 { parts.append("\(unread) unread") }
-        if mentionsYou, unread > 0 { parts.append("mentions you") }
-        if state?.isNew == true, unread == 0 { parts.append("new") }
-        if level == .muted { parts.append("muted") } else if level == .mentionsOnly { parts.append("mentions only") }
+        if onCall > 0 { parts.append(String(localized: "call in progress, \(Formatting.people(onCall))")) }
+        if unread > 0 { parts.append(String(localized: "\(unread) unread")) }
+        if mentionsYou, unread > 0 { parts.append(String(localized: "mentions you")) }
+        if state?.isNew == true, unread == 0 { parts.append(String(localized: "new")) }
+        if level == .muted { parts.append(String(localized: "muted")) } else if level == .mentionsOnly { parts.append(String(localized: "mentions only")) }
         return parts.joined(separator: ", ")
     }
 }

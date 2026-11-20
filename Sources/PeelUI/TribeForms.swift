@@ -56,6 +56,18 @@ public struct TribeSettingsDraft: Equatable {
         case name, photo = "image", priceToJoin = "price to join", pricePerMessage = "price per message"
         case escrow, escrowHours = "escrow time"
 
+        /// The field as a person reads it, in the sentence about its amount.
+        public var label: String {
+            switch self {
+            case .name: String(localized: "name", table: "Shared")
+            case .photo: String(localized: "image", table: "Shared")
+            case .priceToJoin: String(localized: "price to join", table: "Shared")
+            case .pricePerMessage: String(localized: "price per message", table: "Shared")
+            case .escrow: String(localized: "escrow", table: "Shared")
+            case .escrowHours: String(localized: "escrow time", table: "Shared")
+            }
+        }
+
         /// The field an engine refusal is about, if it is about one.
         public init?(_ failure: Engine.Failure) {
             switch failure {
@@ -91,7 +103,7 @@ public struct TribeSettingsDraft: Equatable {
         ) throws -> UInt64 {
             if let original, text == Sats.text(original[keyPath: stored], unit: unit) { return original[keyPath: stored] }
             do {
-                return try Sats.parse(text, unit: unit, of: field.rawValue)
+                return try Sats.parse(text, unit: unit, of: field.label)
             } catch {
                 throw FieldProblem(field: field, text: PeelError.problem(error))
             }
@@ -116,13 +128,13 @@ public struct TribeSettingsDraft: Equatable {
 
     private static func membersPay(_ price: TribePrice?) -> String? {
         guard let price, price.reason != nil else { return nil }
-        return "Members pay \(price.described)."
+        return String(localized: "Members pay \(price.described).", table: "Shared")
     }
 
     /// A failed save in the form's words: a field's own problem under it,
     /// else the form's.
     public static func saveProblem(_ error: any Error, creating: Bool) -> SaveProblem {
-        let couldNot = creating ? "create the tribe" : "save the tribe"
+        let couldNot = creating ? String(localized: "create the tribe", table: "Shared") : String(localized: "save the tribe", table: "Shared")
         // The kind only; a field's own problem is typed text's, never kept.
         Diagnostics.note(error: error)
         if let problem = error as? FieldProblem { return .field(problem) }
@@ -231,7 +243,7 @@ public final class TribeIdentityDraft {
         do {
             photoURL = try await picture()
         } catch {
-            problem = PeelError.problem(error, couldNot: "upload the photo")
+            problem = PeelError.problem(error, couldNot: String(localized: "upload the photo", table: "Shared"))
         }
     }
 
@@ -242,7 +254,7 @@ public final class TribeIdentityDraft {
         do {
             try await model.setTribeIdentity(tribe.pubkey, alias: alias, photoURL: photoURL)
         } catch {
-            problem = PeelError.problem(error, couldNot: "save how you appear")
+            problem = PeelError.problem(error, couldNot: String(localized: "save how you appear", table: "Shared"))
         }
     }
 }
@@ -270,11 +282,11 @@ public final class TribeJamiePicker {
         do {
             let peer = stadeum.live.first { $0.id == id }
             if !id.isEmpty, peer == nil {
-                throw PeelError("Connect Stadeum to add Jamie from \(stadeum.workspaceName(id)).")
+                throw PeelError(String(localized: "Connect Stadeum to add Jamie from \(stadeum.workspaceName(id)).", table: "Shared"))
             }
             try await model.setJamie(peer, for: tribe)
         } catch {
-            problem = PeelError.noted(error, couldNot: id.isEmpty ? "remove Jamie" : "add Jamie")
+            problem = PeelError.noted(error, couldNot: id.isEmpty ? String(localized: "remove Jamie", table: "Shared") : String(localized: "add Jamie", table: "Shared"))
         }
     }
 
@@ -288,7 +300,7 @@ public final class TribeJamiePicker {
         do {
             try await model.setJamieSeesSenders(on, in: tribe.pubkey)
         } catch {
-            problem = PeelError.noted(error, couldNot: on ? "tell Jamie who is speaking" : "stop telling Jamie who is speaking")
+            problem = PeelError.noted(error, couldNot: on ? String(localized: "tell Jamie who is speaking", table: "Shared") : String(localized: "stop telling Jamie who is speaking", table: "Shared"))
         }
     }
 
@@ -299,17 +311,17 @@ public final class TribeJamiePicker {
     /// always posts the reply.
     public static func helper(pick: String, in tribe: Tribe, stadeum: Stadeum, seesSenders: Bool?) -> String {
         guard !pick.isEmpty else {
-            return "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it."
+            return String(localized: "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it.", table: "Shared")
         }
         let org = stadeum.workspaceName(pick)
         guard seesSenders == true else {
-            return "Anyone in #\(tribe.displayName) can ask @jamie. Jamie answers from \(org), using your access to it."
+            return String(localized: "Anyone in #\(tribe.displayName) can ask @jamie. Jamie answers from \(org), using your access to it.", table: "Shared")
         }
-        return "Jamie knows who is speaking here. Anyone in #\(tribe.displayName) can ask @jamie: someone in \(org) asks as themself, anyone else with your access."
+        return String(localized: "Jamie knows who is speaking here. Anyone in #\(tribe.displayName) can ask @jamie: someone in \(org) asks as themself, anyone else with your access.", table: "Shared")
     }
 
     /// The switch's label in the Jamie row.
-    public static let showsSenders = "Knows who is speaking"
+    public static let showsSenders = String(localized: "Knows who is speaking", table: "Shared")
 }
 
 /// A chat's time zone switch and zone, on the Mac and the iPhone: whether
@@ -338,7 +350,7 @@ public final class TimeZoneSharingSwitch {
             try await model.setChatTimeZone(identifier, in: chat)
         } catch {
             self.identifier = was
-            problem = PeelError.problem(error, couldNot: "change the time zone")
+            problem = PeelError.problem(error, couldNot: String(localized: "change the time zone", table: "Shared"))
         }
     }
 
@@ -350,7 +362,7 @@ public final class TimeZoneSharingSwitch {
             try await model.setTimeZoneSharing(on, in: chat)
         } catch {
             sharing = was
-            problem = PeelError.problem(error, couldNot: "change time zone sharing")
+            problem = PeelError.problem(error, couldNot: String(localized: "change time zone sharing", table: "Shared"))
         }
     }
 }

@@ -66,7 +66,7 @@ extension AppModel {
         do {
             try engine?.storage.deleteWalletConnection(key: key)
         } catch {
-            notice = PeelError.noted(error, couldNot: "disconnect the app")
+            notice = PeelError.noted(error, couldNot: String(localized: "disconnect the app", table: "Shared"))
         }
     }
 
@@ -87,7 +87,7 @@ extension AppModel {
             change(&connection)
             try storage.saveWalletConnection(connection)
         } catch {
-            notice = PeelError.noted(error, couldNot: "change the app's spending limit")
+            notice = PeelError.noted(error, couldNot: String(localized: "change the app's spending limit", table: "Shared"))
         }
     }
 
@@ -104,15 +104,15 @@ public enum WalletWords {
     /// What a method lets the app do.
     public static func method(_ method: WalletMethod) -> String {
         switch method {
-        case .payInvoice: "Pay invoices"
-        case .payKeysend: "Send sats straight to people and nodes"
-        case .makeInvoice: "Make invoices for you to be paid"
-        case .lookupPayment, .lookupInvoice: "Look up its own payments"
-        case .listTransactions: "List its own payments"
-        case .getBudget: "See what is left of its spending limit"
-        case .getBalance: "See your balance"
-        case .payLightningAddress: "Pay Lightning addresses"
-        case .connect, .getInfo: "Ask to connect"
+        case .payInvoice: String(localized: "Pay invoices", table: "Shared")
+        case .payKeysend: String(localized: "Send sats straight to people and nodes", table: "Shared")
+        case .makeInvoice: String(localized: "Make invoices for you to be paid", table: "Shared")
+        case .lookupPayment, .lookupInvoice: String(localized: "Look up its own payments", table: "Shared")
+        case .listTransactions: String(localized: "List its own payments", table: "Shared")
+        case .getBudget: String(localized: "See what is left of its spending limit", table: "Shared")
+        case .getBalance: String(localized: "See your balance", table: "Shared")
+        case .payLightningAddress: String(localized: "Pay Lightning addresses", table: "Shared")
+        case .connect, .getInfo: String(localized: "Ask to connect", table: "Shared")
         }
     }
 
@@ -125,89 +125,89 @@ public enum WalletWords {
 
     /// "Up to 5,000 sats a week", or how every payment is asked.
     public static func limit(_ msat: Int64?, renewal: WalletRenewal) -> String {
-        guard let msat else { return "No spending limit: it asks you before every payment" }
+        guard let msat else { return String(localized: "No spending limit: it asks you before every payment", table: "Shared") }
         let amount = Sats.format(msat: UInt64(max(msat, 0)))
         switch renewal {
-        case .never: return "Up to \(amount) in all"
-        case .daily: return "Up to \(amount) a day"
-        case .weekly: return "Up to \(amount) a week"
-        case .monthly: return "Up to \(amount) a month"
-        case .yearly: return "Up to \(amount) a year"
+        case .never: return String(localized: "Up to \(amount) in all", table: "Shared")
+        case .daily: return String(localized: "Up to \(amount) a day", table: "Shared")
+        case .weekly: return String(localized: "Up to \(amount) a week", table: "Shared")
+        case .monthly: return String(localized: "Up to \(amount) a month", table: "Shared")
+        case .yearly: return String(localized: "Up to \(amount) a year", table: "Shared")
         }
     }
 
     public static func overLimit(_ choice: WalletConnection.OverBudget) -> String {
         switch choice {
-        case .ask: "Over the limit, ask me"
-        case .refuse: "Over the limit, refuse"
+        case .ask: String(localized: "Over the limit, ask me", table: "Shared")
+        case .refuse: String(localized: "Over the limit, refuse", table: "Shared")
         }
     }
 
     /// Who the person signs in as (strut's plans/app-payments.md §4.4).
     public static func signIn(_ key: SignInKey) -> String {
         switch key {
-        case .root: "As you"
-        case .domain: "As a new identity for this app"
+        case .root: String(localized: "As you", table: "Shared")
+        case .domain: String(localized: "As a new identity for this app", table: "Shared")
         }
     }
 
     /// What each choice means, under it.
     public static func signInNote(_ key: SignInKey) -> String {
         switch key {
-        case .root: "Your Sphinx account: every app you sign in to this way sees the same you."
-        case .domain: "A key for this app alone: no other app can tell it is you. Payments still come from your account."
+        case .root: String(localized: "Your Sphinx account: every app you sign in to this way sees the same you.", table: "Shared")
+        case .domain: String(localized: "A key for this app alone: no other app can tell it is you. Payments still come from your account.", table: "Shared")
         }
     }
 
     /// The connection sheet's title: connecting a wallet, signing in, or both.
     public static func connectTitle(_ sheet: WalletConnectSheet) -> String {
         switch (sheet.asksWallet, sheet.signIn) {
-        case (false, let offer?): "Sign in to \(offer.host)?"
-        case (true, let offer?): "Sign in to \(offer.host) and connect your wallet?"
-        case (_, nil): "Connect \(sheet.title) to your wallet?"
+        case (false, let offer?): String(localized: "Sign in to \(offer.host)?", table: "Shared")
+        case (true, let offer?): String(localized: "Sign in to \(offer.host) and connect your wallet?", table: "Shared")
+        case (_, nil): String(localized: "Connect \(sheet.title) to your wallet?", table: "Shared")
         }
     }
 
     /// Its yes and its no.
     public static func connectAnswers(_ sheet: WalletConnectSheet) -> (yes: String, no: String) {
         switch (sheet.asksWallet, sheet.signIn != nil) {
-        case (false, true): ("Sign in", "Don't sign in")
-        case (true, true): ("Sign in and connect", "Not now")
-        default: ("Connect", "Don't connect")
+        case (false, true): (String(localized: "Sign in", table: "Shared"), String(localized: "Don't sign in", table: "Shared"))
+        case (true, true): (String(localized: "Sign in and connect", table: "Shared"), String(localized: "Not now", table: "Shared"))
+        default: (String(localized: "Connect", table: "Shared"), String(localized: "Don't connect", table: "Shared"))
         }
     }
 
     /// The toast for a sign-in within a connection, with no sheet.
     public static func signedIn(to host: String, as key: SignInKey) -> String {
-        key == .root ? "Signed in to \(host) as you" : "Signed in to \(host) as its own identity"
+        key == .root ? String(localized: "Signed in to \(host) as you", table: "Shared") : String(localized: "Signed in to \(host) as its own identity", table: "Shared")
     }
 
     /// A connection's sign-in in Connected apps.
     public static func signsIn(_ key: SignInKey, to place: String) -> String {
-        key == .root ? "Signs you in to \(place) as you" : "Signs you in to \(place) as a new identity"
+        key == .root ? String(localized: "Signs you in to \(place) as you", table: "Shared") : String(localized: "Signs you in to \(place) as a new identity", table: "Shared")
     }
 
     /// The credit sheet's title (specs/WALLET.md §1.2).
-    public static func creditTitle(_ sheet: WalletCreditSheet) -> String { "Buy credit on \(sheet.host)?" }
+    public static func creditTitle(_ sheet: WalletCreditSheet) -> String { String(localized: "Buy credit on \(sheet.host)?", table: "Shared") }
 
     /// The app the launch is in, as the server names it.
     public static func creditApp(_ sheet: WalletCreditSheet) -> String {
-        "\(sheet.title) · \(sheet.app)@\(sheet.version), as \(sheet.host) names it"
+        String(localized: "\(sheet.title) · \(sheet.app)@\(sheet.version), as \(sheet.host) names it", table: "Shared")
     }
 
     /// What the server says the payment buys: its own figure, never the price.
     public static func creditBuys(_ sheet: WalletCreditSheet) -> String {
-        "\(sheet.usd.formatted(.currency(code: "USD"))) of credit, by the server's own figure"
+        String(localized: "\(sheet.usd.formatted(.currency(code: "USD"))) of credit, by the server's own figure", table: "Shared")
     }
 
     /// What credit is, under the sheet.
     public static func creditNote(_ sheet: WalletCreditSheet) -> String {
-        "This buys credit on \(sheet.host). Runs in this app spend it, and what a run does not use stays there."
+        String(localized: "This buys credit on \(sheet.host). Runs in this app spend it, and what a run does not use stays there.", table: "Shared")
     }
 
     /// Who is asking, from Peel's own record: the app on the Mac, the org
     /// on the iPhone (whose page names the app).
     public static func who(title: String, app: String, version: String, place: String, byOrg: Bool) -> String {
-        byOrg ? "An app on \(place), which calls itself \(title)" : "\(title) · \(app)@\(version) · \(place)"
+        byOrg ? String(localized: "An app on \(place), which calls itself \(title)", table: "Shared") : "\(title) · \(app)@\(version) · \(place)"
     }
 }

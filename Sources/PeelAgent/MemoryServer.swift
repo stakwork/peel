@@ -50,7 +50,7 @@ public struct MemoryServer: Sendable, Hashable, CustomStringConvertible, CustomD
         do {
             reply = try await Web.postToStrut(url, json: body, bearer: key, limit: Self.replyLimit, what: path, slow: slow)
         } catch {
-            throw PeelError(PeelError.problem(error, couldNot: "run \(path) on Peel's strut"))
+            throw PeelError(PeelError.problem(error, couldNot: String(localized: "run \(path) on Peel's strut", table: "Shared")))
         }
         return try Self.output(of: reply)
     }

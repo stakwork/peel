@@ -58,21 +58,21 @@ extension AppModel {
             connections.loaded = true
             connections.problem = nil
         } catch {
-            connections.problem = PeelError.noted(error, couldNot: "read the connected services")
+            connections.problem = PeelError.noted(error, couldNot: String(localized: "read the connected services"))
         }
     }
 
     /// Registers a server (its key kept in strut, never here), tests it,
     /// and gives it to the assistant and its jobs. Nil when done; else why not.
     func addMCPServer(name: String, url: URL, key: String) async -> String? {
-        guard let server = memoryServer else { return "Peel's memory is not running." }
+        guard let server = memoryServer else { return String(localized: "Peel's memory is not running.") }
         // The key goes with every call: never in the clear, but to a test server on this Mac.
         let local = url.scheme == "http" && url.host.map(ServerAddress.isLoopback) == true && strut?.allowsLocalMCP == true
         guard url.scheme == "https" || local else { return "Use an https address: your key goes with every call." }
         do {
             try await AutomationsClient(server: server).addMCPServer(name: name, url: url, key: key)
         } catch {
-            return PeelError.noted(error, couldNot: "add \(name)")
+            return PeelError.noted(error, couldNot: String(localized: "add \(name)"))
         }
         await loadConnections()
         await testMCPServer(name)
@@ -92,7 +92,7 @@ extension AppModel {
         do {
             connections.probes[name] = try await AutomationsClient(server: server).testMCPServer(name)
         } catch {
-            connections.probes[name] = MCPProbe(tools: [], error: PeelError.noted(error, couldNot: "reach \(name)"))
+            connections.probes[name] = MCPProbe(tools: [], error: PeelError.noted(error, couldNot: String(localized: "reach \(name)")))
         }
     }
 
@@ -106,7 +106,7 @@ extension AppModel {
             }
             await loadConnections()
         } catch {
-            connections.problem = PeelError.noted(error, couldNot: "remove \(name)")
+            connections.problem = PeelError.noted(error, couldNot: String(localized: "remove \(name)"))
         }
     }
 
@@ -126,7 +126,7 @@ extension AppModel {
             connections.grants = grants
             restartOwnStrut()
         } catch {
-            connections.problem = PeelError.noted(error, couldNot: "change which agents use it")
+            connections.problem = PeelError.noted(error, couldNot: String(localized: "change which agents use it"))
         }
     }
 

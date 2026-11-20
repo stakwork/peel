@@ -48,7 +48,7 @@ struct CallPeopleStack: View {
         .padding(-2)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(people.count == 1 ? "1 person on the call" : "\(people.count) people on the call")
+        .accessibilityLabel(String(localized: "\(people.count) people on the call", table: "Shared"))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { if !people.isEmpty { showing = true } }
         #if os(macOS)

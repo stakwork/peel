@@ -16,14 +16,14 @@ struct StadeumSection: View {
     var body: some View {
         let hive = model.stadeum
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection("Stadeum workspaces") {
+            SettingsSection(String(localized: "Stadeum workspaces")) {
                 switch hive.status {
                 case .off:
                     Fact("Stadeum") {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(model.brain?.moved != nil
-                                 ? "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
-                                 : "Let your assistant ask your team's workspaces and run their workflows.")
+                                 ? String(localized: "Your assistant runs on your home server. Turn off Always on to connect Stadeum.")
+                                 : String(localized: "Let your assistant ask your team's workspaces and run their workflows."))
                                 .muted()
                             if hive.reconnectHint {
                                 Text("Your account is back, but not its Stadeum connection. Connect Stadeum again.")
@@ -38,7 +38,7 @@ struct StadeumSection: View {
                         }
                     }
                 case .pairing(let pairing):
-                    Fact("Pair this Mac") {
+                    Fact(String(localized: "Pair this Mac")) {
                         StadeumPairingCode(pairing: pairing)
                     } trailing: {
                         Button("Cancel") { model.cancelHivePairing() }
@@ -68,11 +68,11 @@ struct StadeumSection: View {
                             EmptyView()
                         }
                     }
-                    Fact("This Mac") {
+                    Fact(String(localized: "This Mac")) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(hive.status == .needsPairing ? "Unpair to forget these workspaces."
-                                 : hive.link?.peers.isEmpty == true ? "Paired, but Stadeum gave no workspaces for this account."
-                                 : "Your assistant knows these workspaces from its next new conversation.")
+                            Text(hive.status == .needsPairing ? String(localized: "Unpair to forget these workspaces.")
+                                 : hive.link?.peers.isEmpty == true ? String(localized: "Paired, but Stadeum gave no workspaces for this account.")
+                                 : String(localized: "Your assistant knows these workspaces from its next new conversation."))
                             if hive.identified, hive.status == .connected {
                                 Text(Stadeum.identifiedLine)
                             }
@@ -80,9 +80,9 @@ struct StadeumSection: View {
                         .muted()
                         .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
-                        InlineConfirm(trigger: "Unpair", prompt: "Unpair this Mac?",
-                                      explanation: "Your assistant can no longer ask your workspaces. Revoke this Mac in Stadeum's settings too.",
-                                      confirm: "Unpair", alignment: .trailing, confirming: $unpairing) {
+                        InlineConfirm(trigger: String(localized: "Unpair"), prompt: String(localized: "Unpair this Mac?"),
+                                      explanation: String(localized: "Your assistant can no longer ask your workspaces. Revoke this Mac in Stadeum's settings too."),
+                                      confirm: String(localized: "Unpair"), alignment: .trailing, confirming: $unpairing) {
                             model.disconnectHive()
                         }
                     }
@@ -118,7 +118,7 @@ struct StadeumPairingCode: View {
                 .font(Theme.font(20, .semibold))
                 .monospaced()
                 .textSelection(.enabled)
-            QRCodeTile(text: pairing.verificationUriComplete.absoluteString, label: "QR code of Stadeum's pairing page")
+            QRCodeTile(text: pairing.verificationUriComplete.absoluteString, label: String(localized: "QR code of Stadeum's pairing page"))
             Link("Open in Stadeum", destination: pairing.verificationUriComplete)
                 .font(Theme.font(12))
         }
@@ -139,8 +139,8 @@ private struct WorkspaceRow: View {
         }
         Fact(peer.name) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("@\(peer.id) · \(renewing ? "Paired, renews daily" : "Paired")").muted()
-                Text(rule == nil ? "Asks you before each request" : "Sends without asking").muted()
+                Text(verbatim: "@\(peer.id) · \(renewing ? String(localized: "Paired, renews daily") : String(localized: "Paired"))").muted()
+                Text(rule == nil ? String(localized: "Asks you before each request") : String(localized: "Sends without asking")).muted()
             }
         } trailing: {
             HStack(spacing: Theme.Space.sm) {
@@ -152,7 +152,7 @@ private struct WorkspaceRow: View {
                         do {
                             try model.agent?.revoke(rule)
                         } catch {
-                            model.stadeum.problem = PeelError.problem(error, couldNot: "change how \(peer.name) is asked")
+                            model.stadeum.problem = PeelError.problem(error, couldNot: String(localized: "change how \(peer.name) is asked"))
                         }
                     }
                         .buttonStyle(.peel(.outline))

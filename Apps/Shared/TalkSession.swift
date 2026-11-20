@@ -231,7 +231,7 @@ final class TalkSession: TalkMedia {
             try await room.localParticipant.setMicrophone(enabled: on)
             notice = nil
         } catch {
-            if on { notice = "Could not turn the microphone on" }
+            if on { notice = String(localized: "Could not turn the microphone on", table: "Shared") }
         }
         refresh()
     }
@@ -243,7 +243,7 @@ final class TalkSession: TalkMedia {
         Task { await tellVoice() }
     }
 
-    private static let voiceNotice = "Could not switch Jamie's voice"
+    private static let voiceNotice = String(localized: "Could not switch Jamie's voice", table: "Shared")
 
     /// Sets the member's participant attribute `voice` to the voice wanted,
     /// once the room is connected (until then `connect` does it); the agent

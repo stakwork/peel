@@ -46,12 +46,12 @@ public struct AgentReads: Equatable, Sendable {
         var object: String? {
             let count = max(subjects.count, 1)
             switch kind {
-            case .unseen: return "your unread messages"
-            case .chats: return "your chats"
-            case .chat: return count == 1 ? "a chat" : "\(count) chats"
-            case .threads: return count == 1 ? "threads in a chat" : "threads in \(count) chats"
-            case .calendar: return "your calendar"
-            case .attachment: return requests.count == 1 ? "an attachment" : "\(requests.count) attachments"
+            case .unseen: return String(localized: "your unread messages", table: "Shared")
+            case .chats: return String(localized: "your chats", table: "Shared")
+            case .chat: return String(localized: "read \(count) chats", table: "Shared")
+            case .threads: return String(localized: "read threads in \(count) chats", table: "Shared")
+            case .calendar: return String(localized: "your calendar", table: "Shared")
+            case .attachment: return String(localized: "read \(requests.count) attachments", table: "Shared")
             case .search: return nil
             }
         }
@@ -61,9 +61,9 @@ public struct AgentReads: Equatable, Sendable {
 
         public var title: String {
             guard let object else {
-                return requests.count == 1 ? "Searched your messages" : "Searched your messages \(requests.count) times"
+                return String(localized: "Searched your messages \(requests.count) times", table: "Shared")
             }
-            return "Read " + object
+            return String(localized: "Read \(object)", table: "Shared")
         }
     }
 
@@ -94,18 +94,18 @@ public struct AgentReads: Equatable, Sendable {
         let items = steps.compactMap { step -> String? in
             let count = step.requests.count, chats = max(step.subjects.count, 1)
             switch step.kind {
-            case .unseen: return "unread messages"
-            case .chats: return steps.count == 1 ? "your chats" : nil
-            case .chat: return chats == 1 ? "a chat" : "\(chats) chats"
-            case .threads: return "threads"
-            case .search: return count == 1 ? "a search" : "\(count) searches"
-            case .calendar: return "your calendar"
-            case .attachment: return count == 1 ? "an attachment" : "\(count) attachments"
+            case .unseen: return String(localized: "unread messages", table: "Shared")
+            case .chats: return steps.count == 1 ? String(localized: "your chats", table: "Shared") : nil
+            case .chat: return String(localized: "checked \(chats) chats", table: "Shared")
+            case .threads: return String(localized: "threads", table: "Shared")
+            case .search: return String(localized: "checked \(count) searches", table: "Shared")
+            case .calendar: return String(localized: "your calendar", table: "Shared")
+            case .attachment: return String(localized: "checked \(count) attachments", table: "Shared")
             }
         }
         // In English as the rest of the row, whatever the Mac's language.
-        let list = items.count < 2 ? items.joined() : items.dropLast().joined(separator: ", ") + " and " + items[items.count - 1]
-        return "Checked " + list
+        let list = items.formatted(.list(type: .and))
+        return String(localized: "Checked \(list)", table: "Shared")
     }
 
     /// The first read not yet answered, whose outcome the line shows in

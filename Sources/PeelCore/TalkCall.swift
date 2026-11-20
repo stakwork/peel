@@ -55,7 +55,7 @@ public struct TalkHome: Sendable, Equatable, Identifiable, CustomStringConvertib
         guard let text, let url = URL(string: text), Web.isStrut(url),
               let token = token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty
         else { return nil }
-        return TalkHome(id: development, name: url.host ?? "This Mac", url: url, token: token)
+        return TalkHome(id: development, name: url.host ?? String(localized: "This Mac", table: "Shared"), url: url, token: token)
     }
 
     public var description: String { "TalkHome(\(id), \(url.absoluteString), token not shown)" }
@@ -126,7 +126,9 @@ public enum TalkVoice: String, Sendable, CaseIterable {
     public var glyph: String { self == .female ? "\u{2640}\u{FE0E}" : "\u{2642}\u{FE0E}" }
 
     /// What VoiceOver says of the toggle.
-    public var accessibilityLabel: String { "Jamie's voice: \(self == .female ? "female" : "male")" }
+    public var accessibilityLabel: String {
+        self == .female ? String(localized: "Jamie's voice: female", table: "Shared") : String(localized: "Jamie's voice: male", table: "Shared")
+    }
 }
 
 /// What a home answers to `POST /voice/calls`: the LiveKit room to join and
@@ -166,22 +168,22 @@ public struct TalkTicket: Sendable, Equatable, CustomStringConvertible, CustomRe
             let voice: String?
         }
         guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else {
-            throw PeelError("\(home)'s answer could not be read.")
+            throw PeelError(String(localized: "\(home)'s answer could not be read.", table: "Shared"))
         }
         guard let url = Self.mediaURL(reply.url) else {
-            throw PeelError("\(home) named a call server Peel can't use: only wss://, or ws:// on this device.")
+            throw PeelError(String(localized: "\(home) named a call server Peel can't use: only wss://, or ws:// on this device.", table: "Shared"))
         }
         // A home whose agent did not take the key (a voice service from
         // before step 2) answers without `encrypted: true`. Never a call in
         // the clear: refused.
         guard reply.encrypted == true else {
-            throw PeelError("\(home) can't make an encrypted call yet: its voice service needs an update.")
+            throw PeelError(String(localized: "\(home) can't make an encrypted call yet: its voice service needs an update.", table: "Shared"))
         }
         guard [reply.room, reply.identity, reply.agent].allSatisfy(CallServer.isIdentity) else {
-            throw PeelError("\(home)'s answer could not be read.")
+            throw PeelError(String(localized: "\(home)'s answer could not be read.", table: "Shared"))
         }
         guard (try? CallServer.claims(of: reply.token))?.video?.room == reply.room else {
-            throw PeelError("\(home)'s call token is not for the room it named.")
+            throw PeelError(String(localized: "\(home)'s call token is not for the room it named.", table: "Shared"))
         }
         self.url = url
         room = reply.room
@@ -235,14 +237,14 @@ public enum TalkRefusal: Error, Equatable, CustomStringConvertible, LocalizedErr
         switch self {
         case .balanceTooLow(let balance, let minimum):
             let sats = { (sats: Int) in Sats.format(msat: min(UInt64(clamping: sats), UInt64.max / 1000) * 1000) }
-            return "Not enough sats to talk: you have \(sats(balance)), and a call needs \(sats(minimum))."
+            return String(localized: "Not enough sats to talk: you have \(sats(balance)), and a call needs \(sats(minimum)).", table: "Shared")
         case .refused(let status, let words, let home):
             let lead = switch status {
-            case 400: "\(home) could not start the call"
-            case 401: "\(home) did not accept your sign-in"
-            case 403: "\(home) takes calls only from a person's sign-in"
-            case 503: "Jamie can't take calls on \(home) right now"
-            default: "\(home) could not start the call (HTTP \(status))"
+            case 400: String(localized: "\(home) could not start the call", table: "Shared")
+            case 401: String(localized: "\(home) did not accept your sign-in", table: "Shared")
+            case 403: String(localized: "\(home) takes calls only from a person's sign-in", table: "Shared")
+            case 503: String(localized: "Jamie can't take calls on \(home) right now", table: "Shared")
+            default: String(localized: "\(home) could not start the call (HTTP \(status))", table: "Shared")
             }
             return words.map { "\(lead): \($0)" } ?? "\(lead)."
         }

@@ -26,9 +26,9 @@ struct AgentConnectPanel: View {
     }
 
     var body: some View {
-        Panel("Connect a model", close: done) {
+        Panel(String(localized: "Connect a model"), close: done) {
             VStack(alignment: .leading, spacing: 16) {
-                FormItem(label: "Provider") {
+                FormItem(label: String(localized: "Provider")) {
                     PeelDropdown(
                         selection: provider,
                         options: AgentProvider.allCases.map { ($0, "\($0.name) · \($0.detail)") }
@@ -65,7 +65,7 @@ struct AgentConnectPanel: View {
                             .buttonStyle(.peel(.link, size: .sm))
                     }
                 }
-                FormItem(label: "Model") {
+                FormItem(label: String(localized: "Model")) {
                     PeelDropdown(
                         selection: modelID,
                         options: provider.models.map { model in
@@ -96,7 +96,7 @@ struct AgentConnectPanel: View {
             Task { try? await model.engine?.agentCredentialConnected() }
             done()
         } catch {
-            problem = PeelError.problem(error, couldNot: "keep the key")
+            problem = PeelError.problem(error, couldNot: String(localized: "keep the key"))
         }
     }
 
@@ -108,7 +108,7 @@ struct AgentConnectPanel: View {
                 try await model.adoptSyncedAgentKey()
                 done()
             } catch {
-                problem = PeelError.problem(error, couldNot: "take the key from your other device")
+                problem = PeelError.problem(error, couldNot: String(localized: "take the key from your other device"))
             }
         }
     }

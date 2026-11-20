@@ -196,7 +196,7 @@ private struct ButtonProgress: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(working ? 0 : 1)
-            .accessibilityValue(working ? "Working" : "")
+            .accessibilityValue(working ? String(localized: "Working", table: "Shared") : "")
             .overlay {
                 if working {
                     ProgressView()

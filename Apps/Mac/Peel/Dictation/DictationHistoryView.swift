@@ -42,14 +42,14 @@ struct DictationHistoryView: View {
     private var header: some View {
         HStack(spacing: Theme.Space.md) {
             Text(dictation.historyOn
-                 ? "Kept on this Mac for 30 days. Nothing is sent anywhere."
-                 : "History is off: new dictations aren't kept.")
+                 ? String(localized: "Kept on this Mac for 30 days. Nothing is sent anywhere.")
+                 : String(localized: "History is off: new dictations aren't kept."))
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if case .days(let days) = load, !days.isEmpty, let storage = model.unlockedStorage {
                 InlineConfirm(prompt: "Clear every dictation?", confirm: "Clear", alignment: .trailing) {
-                    do { try await storage.clearDictations() } catch { load = .failed("History couldn't be cleared") }
+                    do { try await storage.clearDictations() } catch { load = .failed(String(localized: "History couldn't be cleared")) }
                 } trigger: {
                     Text("Clear History")
                 }
@@ -102,7 +102,7 @@ struct DictationHistoryView: View {
                 load = .days(Self.byDay(records))
             }
         } catch {
-            load = .failed("History couldn't be read")
+            load = .failed(String(localized: "History couldn't be read"))
         }
     }
 
@@ -151,7 +151,7 @@ private struct DictationHistoryRow: View {
                     .foregroundStyle(Theme.secondaryText)
             }
             if let text = record.text {
-                CopyButton("Copy", text: text)
+                CopyButton(String(localized: "Copy"), text: text)
                     .buttonStyle(.peel(.outline, size: .sm))
             }
         }
@@ -162,13 +162,22 @@ private struct DictationHistoryRow: View {
     /// The app, then what was heard when clean-up changed it (in full when
     /// the row is open), then where the text went when it was not typed.
     private var detail: String {
-        let heard = record.heard.map { expanded ? " · heard “\($0)”" : " · Cleaned up" } ?? ""
-        let app = (record.appName ?? "Unknown app") + heard
+        let name = record.appName ?? String(localized: "Unknown app")
+        var app = name
+        if let heard = record.heard {
+            app = expanded ? String(localized: "\(name) · heard “\(heard)”") : String(localized: "\(name) · Cleaned up")
+        }
         switch record.outcome {
         case .typed: return app
-        case .copied: return "\(app) · Copied, not typed" + (record.note.map { ": \($0)" } ?? "")
-        case .blocked: return "\(app) · Not kept: " + (record.note ?? "a password field")
-        case .failed: return "\(app) · " + (record.note ?? "No text")
+        case .copied:
+            if let note = record.note { return String(localized: "\(app) · Copied, not typed: \(note)") }
+            return String(localized: "\(app) · Copied, not typed")
+        case .blocked:
+            let why = record.note ?? String(localized: "a password field")
+            return String(localized: "\(app) · Not kept: \(why)")
+        case .failed:
+            let why = record.note ?? String(localized: "No text")
+            return String(localized: "\(app) · \(why)")
         }
     }
 }

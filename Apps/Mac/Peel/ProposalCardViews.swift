@@ -30,7 +30,7 @@ struct ProposalCardView: View {
     }
 
     /// Under a tribe's card the owner answered that Jamie has not ended in time.
-    static let noAnswerYet = "No answer yet: the reply may not have reached Jamie. You can answer again."
+    static let noAnswerYet = String(localized: "No answer yet: the reply may not have reached Jamie. You can answer again.")
 
     let proposal: KeptProposal
     /// The workspace it is on, by name; nil for Peel's own strut.
@@ -90,7 +90,7 @@ struct ProposalCardView: View {
                     ProposalFullInput(record: proposal.record, disclosure: input)
                 }
                 if let rationale = proposal.record.rationale {
-                    (Text("The assistant's reason: ").foregroundStyle(Theme.secondaryText) + Text(rationale).italic())
+                    Text("The assistant's reason: \(rationale)").italic()
                         .font(Theme.font(12))
                         .foregroundStyle(Theme.text)
                         .textSelection(.enabled)
@@ -106,7 +106,7 @@ struct ProposalCardView: View {
                     HStack(spacing: Theme.Space.sm) {
                         Button(card.accept) { answer(true) }
                             .buttonStyle(.peel(.primary, size: .sm))
-                            .help(proposal.record.acceptsByKey ? "Return" : "Click to accept")
+                            .help(proposal.record.acceptsByKey ? String(localized: "Return") : String(localized: "Click to accept"))
                         Button(card.reject) { answer(false) }
                             .buttonStyle(.peel(.ghost, size: .sm))
                             .help("Escape")
@@ -130,7 +130,7 @@ struct ProposalCardView: View {
             answer?(false)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(waiting ? "Waiting on you: \(card.title)" : "\(card.title): \(shown.label?.lowercased() ?? "")")
+        .accessibilityLabel(waiting ? String(localized: "Waiting on you: \(card.title)") : String(localized: "\(card.title): \(shown.label?.lowercased() ?? "")"))
     }
 
     /// The title, where it is from and how it stands. With `details` a
@@ -155,7 +155,7 @@ struct ProposalCardView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 // A title that opens the card takes the click, not a selection.
                 if details == nil { title.textSelection(.enabled) } else { title }
-                Text([org.map { "From \($0)" }, proposal.record.step].compactMap { $0 }.joined(separator: " · "))
+                Text([org.map { String(localized: "From \($0)") }, proposal.record.step].compactMap { $0 }.joined(separator: " · "))
                     .muted()
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -174,8 +174,8 @@ struct ProposalCardView: View {
                 row.contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(open ? "Hide the details" : "Show the details")
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            .help(open ? String(localized: "Hide the details") : String(localized: "Show the details"))
+            .accessibilityValue(open ? String(localized: "Expanded") : String(localized: "Collapsed"))
         } else {
             row
         }
@@ -218,16 +218,16 @@ struct ProposalCardView: View {
         var label: String? {
             switch self {
             case .waiting: nil
-            case .pending, .theirs: "Pending"
-            case .telling(let accepted): accepted ? "Accepting…" : "Rejecting…"
-            case .running: "Running…"
-            case .applied: "Applied"
-            case .rejected: "Rejected"
-            case .failed: "Failed"
-            case .expired: "Expired"
-            case .gone: "Gone"
-            case .notYours: "Not yours"
-            case .unreadable: "Unread"
+            case .pending, .theirs: String(localized: "Pending")
+            case .telling(let accepted): accepted ? String(localized: "Accepting…") : String(localized: "Rejecting…")
+            case .running: String(localized: "Running…")
+            case .applied: String(localized: "Applied")
+            case .rejected: String(localized: "Rejected")
+            case .failed: String(localized: "Failed")
+            case .expired: String(localized: "Expired")
+            case .gone: String(localized: "Gone")
+            case .notYours: String(localized: "Not yours")
+            case .unreadable: String(localized: "Unread")
             }
         }
 
@@ -289,12 +289,12 @@ struct ProposalCardView: View {
     static func outcomeLine(_ state: State, record: ProposalRecord, decider: TribeDecider) -> String? {
         switch state {
         case .waiting, .telling, .running, .gone, .notYours, .unreadable: return nil
-        case .pending: return "Waiting for a decision."
+        case .pending: return String(localized: "Waiting for a decision.")
         case .theirs: return decider.line
-        case .applied: return "Done" + (record.result?.at.map { " at \(Formatting.time($0))" } ?? "") + "."
-        case .rejected: return "Not done" + (record.decision?.reason.map { ": \($0)" } ?? ".")
-        case .failed: return "The step did not work" + (record.result?.error.map { ": \($0)" } ?? ".")
-        case .expired: return "The card ran out before it was answered; nothing was done."
+        case .applied: return record.result?.at.map { String(localized: "Done at \(Formatting.time($0)).") } ?? String(localized: "Done.")
+        case .rejected: return record.decision?.reason.map { String(localized: "Not done: \($0)") } ?? String(localized: "Not done.")
+        case .failed: return record.result?.error.map { String(localized: "The step did not work: \($0)") } ?? String(localized: "The step did not work.")
+        case .expired: return String(localized: "The card ran out before it was answered; nothing was done.")
         }
     }
 }
@@ -356,7 +356,7 @@ private struct ProposalFullInput: View {
             HStack(spacing: 6) {
                 Text("Not everything is shown.").muted()
                 if text != nil {
-                    Button(disclosure.isOpen ? "Hide the full input" : "Show the full input") {
+                    Button(disclosure.isOpen ? String(localized: "Hide the full input") : String(localized: "Show the full input")) {
                         disclosure.toggle(expanding: expanding)
                     }
                     .buttonStyle(.peel(.link, size: .sm))

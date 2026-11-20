@@ -108,7 +108,7 @@ public struct CallLink: Sendable, Equatable {
               parts.percentEncodedPath.hasPrefix(roomsPath),
               isRoom(String(parts.percentEncodedPath.dropFirst(roomsPath.count))) else { return nil }
         let audio = parts.queryItems?.contains { $0.name == "startAudioOnly" && $0.value == "true" } == true
-        return audio ? "Audio call" : "Video call"
+        return audio ? String(localized: "Audio call", table: "Shared") : String(localized: "Video call", table: "Shared")
     }
 
     /// A link on `server` (`host[:port]`), checked as above.
@@ -162,7 +162,7 @@ public struct CallLink: Sendable, Equatable {
         guard let call = CallLink(link: link, server: server) else {
             let host = URLComponents(string: link)?.host?.lowercased()
             guard let host, host != TribeLink.baseURL(server)?.host?.lowercased() else {
-                throw PeelError("Stadeum's call link is not one Peel can join.")
+                throw PeelError(String(localized: "Stadeum's call link is not one Peel can join.", table: "Shared"))
             }
             throw PeelError("Stadeum's call is on \(TextLine.clean(host, max: 100)), not on this account's call server (\(server)).")
         }

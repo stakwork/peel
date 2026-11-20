@@ -32,7 +32,7 @@ struct RecordingBarView: View {
             Text("Up to \(controller.longest) min")
                 .font(Theme.font(12, .semibold))
                 .foregroundStyle(.white.opacity(0.62))
-            HUDButton(.text("Record"), label: "Start recording", filled: true, action: controller.record)
+            HUDButton(.text(String(localized: "Record")), label: String(localized: "Start recording"), filled: true, action: controller.record)
         }
         .padding(.horizontal, Theme.Space.xs)
     }
@@ -57,7 +57,7 @@ struct RecordingBarView: View {
                 .foregroundStyle(.white.opacity(paused ? 0.62 : 1))
                 // Room for "10:00", so the bar keeps its size.
                 .frame(minWidth: 36, alignment: .leading)
-                .accessibilityLabel("\(paused ? "Paused" : "Recording"), \(time)")
+                .accessibilityLabel(paused ? String(localized: "Paused, \(time)") : String(localized: "Recording, \(time)"))
             if let left = controller.timeLeft {
                 let shown = MediaInfo.format(duration: left.rounded(.up))
                 Text("\(shown) left")

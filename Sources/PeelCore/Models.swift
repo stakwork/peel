@@ -162,18 +162,18 @@ public enum MuteLevel: Int, Sendable {
     /// As a menu offers it, under "Notify me about".
     public var title: String {
         switch self {
-        case .all: "All messages"
-        case .mentionsOnly: "Mentions only"
-        case .muted: "Nothing (mute)"
+        case .all: String(localized: "All messages", table: "Shared")
+        case .mentionsOnly: String(localized: "Mentions only", table: "Shared")
+        case .muted: String(localized: "Nothing (mute)", table: "Shared")
         }
     }
 
     /// Beside "Notifications" once chosen.
     public var short: String {
         switch self {
-        case .all: "All"
-        case .mentionsOnly: "Mentions"
-        case .muted: "Muted"
+        case .all: String(localized: "All", table: "Shared")
+        case .mentionsOnly: String(localized: "Mentions", table: "Shared")
+        case .muted: String(localized: "Muted", table: "Shared")
         }
     }
 }

@@ -18,7 +18,7 @@ public enum CopyFeedback {
     /// Out a little faster than in.
     public static let exit: Animation = .easeOut(duration: 0.14)
 
-    @MainActor public static func announce(_ text: String = "Copied") {
+    @MainActor public static func announce(_ text: String = String(localized: "Copied", table: "Shared")) {
         AccessibilityNotification.Announcement(text).post()
     }
 }

@@ -25,19 +25,19 @@ enum VoiceQuality: Int, Comparable {
 
     var label: String {
         switch self {
-        case .none: "No voice installed"
-        case .standard: "Standard voice"
-        case .enhanced: "Enhanced voice installed"
-        case .premium: "Premium voice installed"
+        case .none: String(localized: "No voice installed", table: "Shared")
+        case .standard: String(localized: "Standard voice", table: "Shared")
+        case .enhanced: String(localized: "Enhanced voice installed", table: "Shared")
+        case .premium: String(localized: "Premium voice installed", table: "Shared")
         }
     }
 
     /// Where to get a better one.
     static var downloadHint: String {
         #if os(iOS)
-        "Download an Enhanced or Premium voice in Settings > Accessibility > Spoken Content > Voices."
+        String(localized: "Download an Enhanced or Premium voice in Settings > Accessibility > Spoken Content > Voices.", table: "Shared")
         #else
-        "Download an Enhanced or Premium voice in System Settings > Accessibility > Spoken Content."
+        String(localized: "Download an Enhanced or Premium voice in System Settings > Accessibility > Spoken Content.", table: "Shared")
         #endif
     }
 }

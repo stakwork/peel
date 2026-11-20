@@ -169,18 +169,18 @@ private struct CallFloatingBarView: View {
     var body: some View {
         HStack(spacing: Theme.Space.md) {
             handle
-            IconButton(help: call.micOn ? "Mute" : "Unmute", variant: .outline, action: call.toggleMicrophone) {
+            IconButton(help: call.micOn ? String(localized: "Mute") : String(localized: "Unmute"), variant: .outline, action: call.toggleMicrophone) {
                 Image(systemName: call.micOn ? "mic" : "mic.slash")
                     .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
             }
             .disabled(call.micAccess == .refused)
-            IconButton(help: call.cameraOn ? "Turn camera off" : "Turn camera on", variant: .outline, action: call.toggleCamera) {
+            IconButton(help: call.cameraOn ? String(localized: "Turn camera off") : String(localized: "Turn camera on"), variant: .outline, action: call.toggleCamera) {
                 Image(systemName: call.cameraOn ? "video" : "video.slash")
                     .foregroundStyle(call.cameraOn ? Theme.text : Theme.secondaryText)
             }
             .disabled(call.cameraAccess == .refused)
             share
-            IconButton("arrow.up.forward.square", help: "Return to call", variant: .outline, action: returnToCall)
+            IconButton("arrow.up.forward.square", help: String(localized: "Return to call"), variant: .outline, action: returnToCall)
             Button(action: leave) {
                 HStack(spacing: 6) {
                     Image(systemName: "phone.down.fill").font(.system(size: 12))
@@ -256,15 +256,15 @@ private struct CallFloatingBarView: View {
     /// Share the entire screen, or stop sharing.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
-            IconButton(call.sharePaused ? "play.fill" : "pause.fill", help: call.sharePaused ? "Resume sharing" : "Pause sharing", variant: .outline, lit: call.sharePaused) {
+            IconButton(call.sharePaused ? "play.fill" : "pause.fill", help: call.sharePaused ? String(localized: "Resume sharing") : String(localized: "Pause sharing"), variant: .outline, lit: call.sharePaused) {
                 call.toggleScreenSharePause()
             }
-            .accessibilityLabel(call.sharePaused ? "Resume sharing" : "Pause sharing")
-            IconButton("rectangle.inset.filled.and.person.filled", help: "Stop sharing", variant: .outline, lit: true) {
+            .accessibilityLabel(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
+            IconButton("rectangle.inset.filled.and.person.filled", help: String(localized: "Stop sharing"), variant: .outline, lit: true) {
                 call.stopScreenShare()
             }
         } else {
-            IconButton("rectangle.inset.filled.and.person.filled", help: "Share your entire screen", variant: .outline) {
+            IconButton("rectangle.inset.filled.and.person.filled", help: String(localized: "Share your entire screen"), variant: .outline) {
                 call.startScreenShare(.display)
             }
             .disabled(call.state != .connected)

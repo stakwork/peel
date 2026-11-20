@@ -56,7 +56,7 @@ final class DictationModels {
     var hasActiveFixer: Bool { models.contains { $0.kind == .fixer && $0.active } }
 
     func load() async {
-        await call("dictation/models", [:], couldNot: "read the models from Peel's strut")
+        await call("dictation/models", [:], couldNot: String(localized: "read the models from Peel's strut"))
     }
 
     /// The picker's: reads the list, then again every second while a model
@@ -73,18 +73,18 @@ final class DictationModels {
     /// Picks `model` for its kind; strut downloads it first if it has to.
     func select(_ model: DictationModel) async {
         noteSwitch(model.kind, to: model.id)
-        await call("dictation/use", [model.kind.rawValue: .string(model.id)], couldNot: "choose \(model.name)")
+        await call("dictation/use", [model.kind.rawValue: .string(model.id)], couldNot: String(localized: "choose \(model.name)"))
     }
 
     /// No fixer: dictation keeps to the vocabulary alone.
     func selectNoFixer() async {
         noteSwitch(.fixer, to: nil)
-        await call("dictation/use", ["fixer": .null], couldNot: "turn clean-up off")
+        await call("dictation/use", ["fixer": .null], couldNot: String(localized: "turn clean-up off"))
     }
 
     func remove(_ model: DictationModel) async {
         if replaced[model.kind] == model.id { replaced[model.kind] = nil }
-        await call("dictation/remove-model", ["id": .string(model.id)], couldNot: "remove \(model.name)")
+        await call("dictation/remove-model", ["id": .string(model.id)], couldNot: String(localized: "remove \(model.name)"))
     }
 
     /// The model in use for `kind` is about to be replaced by `id`.
@@ -98,7 +98,7 @@ final class DictationModels {
     /// Each step returns the whole list.
     private func call(_ step: String, _ input: AgentKit.JSONValue, couldNot action: String) async {
         guard let server else {
-            problem = PeelError.problem("Peel's strut isn't running", couldNot: action)
+            problem = PeelError.problem(String(localized: "Peel's strut isn't running"), couldNot: action)
             return
         }
         do {

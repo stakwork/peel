@@ -91,14 +91,14 @@ public enum IncomingFiles {
     static func png(fromTIFF data: Data) throws -> Data {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            throw PeelError("the pasted image could not be read")
+            throw PeelError(String(localized: "the pasted image could not be read", table: "Shared"))
         }
         let out = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(out, UTType.png.identifier as CFString, 1, nil)
-        else { throw PeelError("could not make a PNG") }
+        else { throw PeelError(String(localized: "could not make a PNG", table: "Shared")) }
         // Keep the orientation and resolution the TIFF declared.
         CGImageDestinationAddImage(destination, image, CGImageSourceCopyPropertiesAtIndex(source, 0, nil))
-        guard CGImageDestinationFinalize(destination) else { throw PeelError("could not make a PNG") }
+        guard CGImageDestinationFinalize(destination) else { throw PeelError(String(localized: "could not make a PNG", table: "Shared")) }
         return out as Data
     }
 
@@ -109,11 +109,11 @@ public enum IncomingFiles {
         let name = file.lastPathComponent
         let inside = file.deletingLastPathComponent().resolvingSymlinksInPath().path
             == folder.resolvingSymlinksInPath().path
-        guard inside else { throw PeelError("\(name) was not written where Peel asked") }
+        guard inside else { throw PeelError(String(localized: "\(name) was not written where Peel asked", table: "Shared")) }
         do {
             let values = try file.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey])
             guard values.isSymbolicLink != true, values.isRegularFile == true else {
-                throw PeelError("\(name) is not a file")
+                throw PeelError(String(localized: "\(name) is not a file", table: "Shared"))
             }
             try Engine.checkSendable(name, size: values.fileSize ?? 0)
             return file

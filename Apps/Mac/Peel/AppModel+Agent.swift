@@ -229,7 +229,7 @@ extension AppModel {
     func openAgentLink(_ url: URL) -> Bool {
         guard let link = AgentMessageLink(url) else { return false }
         guard let message = try? engine?.storage.message(uuid: link.uuid, in: link.chat) else {
-            agent?.notice = "That message is not on this Mac."
+            agent?.notice = String(localized: "That message is not on this Mac.")
             return true
         }
         focus(on: message)
@@ -250,13 +250,12 @@ extension AppModel {
                 brain = kept
                 // A home server kept the old way, by address and key: Peel Home is on this Mac now, said once.
                 if oldHomeServer, (try? profile.brain.delete()) != nil {
-                    notice = "Peel no longer connects to a home server by address. Your assistant runs on this Mac; "
-                        + "to keep it answering while this Mac sleeps, turn on Always on in Account."
+                    notice = String(localized: "Peel no longer connects to a home server by address. Your assistant runs on this Mac; to keep it answering while this Mac sleeps, turn on Always on in Account.")
                 }
             } catch {
                 // Not taken for "this Mac": no strut is started until it is set again.
                 brain = nil
-                notice = PeelError.noted(error, couldNot: "read where your assistant runs")
+                notice = PeelError.noted(error, couldNot: String(localized: "read where your assistant runs"))
             }
             let agent = AgentSession(store: store, credentials: KeptCredential(item: profile.agentCredential))
             agent.credentialChanged = { [weak self] in self?.modelChanged() }
@@ -270,7 +269,7 @@ extension AppModel {
             // A Peel Home link that came while the account was locked.
             if homeLink != nil { openAccount(.brain) }
         } catch {
-            notice = PeelError.noted(error, couldNot: "open the agent chat")
+            notice = PeelError.noted(error, couldNot: String(localized: "open the agent chat"))
         }
     }
 
@@ -299,10 +298,10 @@ extension AppModel {
     /// "Use this Mac" when where Peel Home is could not be read: kept as this
     /// Mac, and its strut and bridge started. Never while it moved, or is moving.
     func useThisMac() throws {
-        guard let profile else { throw PeelError("Peel's account is not open.") }
+        guard let profile else { throw PeelError(String(localized: "Peel's account is not open.")) }
         // Its mark is all that keeps this Mac's bridge stopped while the box's runs.
         guard brain?.moved == nil, macAgent.homeMove?.isRunning != true else {
-            throw PeelError("Your assistant is on your home server, or moving. Turn off Always on first.")
+            throw PeelError(String(localized: "Your assistant is on your home server, or moving. Turn off Always on first."))
         }
         try Brain.thisMac.keep(in: profile.brain)
         brain = .thisMac
@@ -325,18 +324,18 @@ extension AppModel {
                 // Why Peel won't sign it, beside the boxes.
                 if boxes.asking == nil, phase == .ready { openAccount(.connections) }
             } else {
-                notice = "That link to a box doesn't work. Choose Link Peel in Connect on the box again."
+                notice = String(localized: "That link to a box doesn't work. Choose Link Peel in Connect on the box again.")
             }
         } else if url.host?.lowercased() == "open" {
             if let link = PublicAppLink(peelLink: url) {
                 openPublicApp(link)
             } else {
-                notice = "That link doesn't name an app Peel can open: only https addresses open."
+                notice = String(localized: "That link doesn't name an app Peel can open: only https addresses open.")
             }
         } else if url.host?.lowercased() == "brain" {
-            notice = "That link is for the old home server, which Peel no longer uses. Set up Always on again and open the new link."
+            notice = String(localized: "That link is for the old home server, which Peel no longer uses. Set up Always on again and open the new link.")
         } else {
-            notice = "That home server link doesn't work. Open it again from your home server."
+            notice = String(localized: "That home server link doesn't work. Open it again from your home server.")
         }
         return true
     }
@@ -361,10 +360,10 @@ extension AppModel {
             do { _ = try await strut.start() } catch {
                 // Not said once the agent has closed (its account locked or
                 // forgotten), or Peel Home moved while it started.
-                if reporting, agent != nil, self.strut === strut { notice = PeelError.noted(error, couldNot: "start the agent's memory") }
+                if reporting, agent != nil, self.strut === strut { notice = PeelError.noted(error, couldNot: String(localized: "start the agent's memory")) }
                 // The agent needs it: said in the agent chat, with Try again.
                 if agent != nil, self.strut === strut, strut.server == nil {
-                    agentBridge.fail(PeelError.noted(error, couldNot: "start Peel's memory"))
+                    agentBridge.fail(PeelError.noted(error, couldNot: String(localized: "start Peel's memory")))
                 }
             }
         }
@@ -425,11 +424,11 @@ extension AgentToolTitle {
     /// How a tool that acts was answered: "Allowed once", "Declined".
     static func outcome(_ outcome: ApprovalOutcome, target: String?) -> String {
         switch outcome {
-        case .allowedOnce: "Allowed once"
-        case .alwaysAllowed: target.map { "Always allowed for \($0)" } ?? "Always allowed"
-        case .allowedByRule: target.map { "Allowed, always for \($0)" } ?? "Allowed, always"
-        case .denied: "Declined"
-        case .stopped: "Stopped"
+        case .allowedOnce: String(localized: "Allowed once")
+        case .alwaysAllowed: target.map { String(localized: "Always allowed for \($0)") } ?? String(localized: "Always allowed")
+        case .allowedByRule: target.map { String(localized: "Allowed, always for \($0)") } ?? String(localized: "Allowed, always")
+        case .denied: String(localized: "Declined")
+        case .stopped: String(localized: "Stopped")
         }
     }
 
@@ -489,7 +488,7 @@ final class MemoryPanel: Identifiable {
         guard let ref = current, read[ref.id] == nil else { return }
         // A row from before memory moved to the graph names the old database's nodes, which are gone.
         guard ref.graph else {
-            problem = "This is no longer in memory."
+            problem = String(localized: "This is no longer in memory.")
             return
         }
         loading = Task {
@@ -504,10 +503,10 @@ final class MemoryPanel: Identifiable {
                 }
                 // A fact a search found or a remember wrote opens the node it is about.
                 if read[ref.id] == nil, let got, ref.id != node { read[ref.id] = got.node }
-                if read[ref.id] == nil { problem = "This is no longer in memory." }
+                if read[ref.id] == nil { problem = String(localized: "This is no longer in memory.") }
             } catch {
                 guard !Task.isCancelled else { return }
-                problem = PeelError.noted(error, couldNot: "read this memory")
+                problem = PeelError.noted(error, couldNot: String(localized: "read this memory"))
             }
         }
     }

@@ -53,8 +53,8 @@ struct SendSheet: View {
     private var start: some View {
         let unreadable = !text.trimmed.isEmpty
         let contacts = model.conversations.filter { !$0.isTribe }
-        return SheetPage(title: "Send") {
-            FieldLabel("Pay an invoice") {
+        return SheetPage(title: String(localized: "Send")) {
+            FieldLabel(String(localized: "Pay an invoice")) {
                 TextField("Invoice", text: $text, prompt: Text("lnbc…"), axis: .vertical)
                     .font(.system(.body, design: .monospaced))
                     .textInputAutocapitalization(.never)
@@ -64,7 +64,7 @@ struct SendSheet: View {
                     .frame(minHeight: 48)
                     .fieldBox(focused: false)
                 if unreadable {
-                    ProblemText("That isn't an invoice.")
+                    ProblemText(String(localized: "That isn't an invoice."))
                 }
                 HStack(spacing: Theme.Space.md) {
                     PasteButton(payloadType: String.self) { texts in
@@ -80,7 +80,7 @@ struct SendSheet: View {
             }
             if !contacts.isEmpty {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    PhoneSectionHeader("Or send to a contact")
+                    PhoneSectionHeader(String(localized: "Or send to a contact"))
                     ForEach(contacts, id: \.chat) { conversation in
                         NavigationLink(value: Contact(chat: conversation.chat, name: conversation.name)) {
                             HStack(spacing: Theme.Space.md) {
@@ -135,7 +135,7 @@ private struct PayInvoiceForm: View {
             do {
                 for try await record in updates { payment = record }
             } catch {
-                attempt.problem = PeelError.problem(error, couldNot: "check the payment")
+                attempt.problem = PeelError.problem(error, couldNot: String(localized: "check the payment"))
             }
         }
     }
@@ -146,7 +146,7 @@ private struct PayInvoiceForm: View {
                                  paymentStatus: payment?.status, inHistory: sent != nil)
         // While a recheck runs, the last note for this invoice stays.
         let checked = verdict?.about(invoice)
-        return SheetPage(title: "Pay an invoice") {
+        return SheetPage(title: String(localized: "Pay an invoice")) {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text("Invoice for")
                     .phoneFont(.secondary)
@@ -163,7 +163,7 @@ private struct PayInvoiceForm: View {
             } else {
                 BalanceLine()
                 if let failed = payment?.error {
-                    ProblemText("Last try failed (\(failed)). Nothing was sent.")
+                    ProblemText(String(localized: "Last try failed (\(String(describing: failed))). Nothing was sent."))
                 }
             }
         } actions: {
@@ -172,7 +172,7 @@ private struct PayInvoiceForm: View {
                     .buttonStyle(.peel(.outline, size: .touch))
             } else if payment == nil || payment?.status == .failed {
                 if checked?.problem == nil {
-                    TouchPayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt) { confirmed in
+                    TouchPayButton(verb: String(localized: "Pay"), totalMsat: invoice.amountMsat, attempt: attempt) { confirmed in
                         await model.payInvoice(invoice, confirmedMsat: confirmed)
                     }
                     // Off until the engine's rules are checked for what is shown now.
@@ -194,17 +194,17 @@ private struct PayInvoiceForm: View {
     @ViewBuilder private func facts(expired: Bool) -> some View {
         let key = Formatting.shortKey(invoice.payee)
         VStack(alignment: .leading, spacing: Theme.Space.md) {
-            FactRow("To", model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? "\(key), not a contact")
-            if !invoice.memo.isEmpty { FactRow("Memo", invoice.memo) }
+            FactRow(String(localized: "To"), model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? String(localized: "\(key), not a contact"))
+            if !invoice.memo.isEmpty { FactRow(String(localized: "Memo"), invoice.memo) }
             if let expires = invoice.expiresAt {
-                FactRow("Expires") {
-                    Text(expired ? "Expired at \(Formatting.expiry(expires))"
-                         : "\(expires.formatted(.relative(presentation: .named))), at \(Formatting.expiry(expires))")
+                FactRow(String(localized: "Expires")) {
+                    Text(expired ? String(localized: "Expired at \(Formatting.expiry(expires))")
+                         : String(localized: "\(expires.formatted(.relative(presentation: .named))), at \(Formatting.expiry(expires))"))
                         .foregroundStyle(expired ? Theme.attention : Theme.text)
                 }
             }
             if payment == nil || payment?.status == .failed {
-                FactRow("Fee", "Added on top")
+                FactRow(String(localized: "Fee"), String(localized: "Added on top"))
             }
         }
         .padding(Theme.Space.md)
@@ -228,8 +228,8 @@ private struct PayInvoiceForm: View {
                     .phoneFont(PhoneFont.row.weight(.semibold))
                     .foregroundStyle(Theme.confirmed)
                     .monospacedDigit()
-                Text(item?.feeMsat.map { $0 == 0 ? "No routing fee." : "Routing fee \(Sats.format(msat: $0))." }
-                     ?? "Fee not known yet.")
+                Text(item?.feeMsat.map { $0 == 0 ? String(localized: "No routing fee.") : String(localized: "Routing fee \(Sats.format(msat: $0)).") }
+                     ?? String(localized: "Fee not known yet."))
                     .phoneFont(.secondary)
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
@@ -263,13 +263,13 @@ private struct SendToContactForm: View {
 
     var body: some View {
         let amountMsat = Sats.msat(amount)
-        SheetPage(title: "Send to \(name)") {
-            FieldLabel("Amount") { SatsInput(label: "Amount", text: $amount, focused: $amountFocused) }
-            FieldLabel("Note") { NoteInput(label: "Note", prompt: "Optional", text: $note) }
+        SheetPage(title: String(localized: "Send to \(name)")) {
+            FieldLabel(String(localized: "Amount")) { SatsInput(label: String(localized: "Amount"), text: $amount, focused: $amountFocused) }
+            FieldLabel(String(localized: "Note")) { NoteInput(label: String(localized: "Note"), prompt: String(localized: "Optional"), text: $note) }
             BalanceLine()
         } actions: {
-            TouchPayButton(verb: "Send", totalMsat: amountMsat, attempt: attempt, send: { confirmed in
-                guard let amountMsat else { return .refused("Enter an amount.") }
+            TouchPayButton(verb: String(localized: "Send"), totalMsat: amountMsat, attempt: attempt, send: { confirmed in
+                guard let amountMsat else { return .refused(String(localized: "Enter an amount.")) }
                 return await model.sendPayment(to: chat, amountMsat: amountMsat, note: note, template: nil, confirmedMsat: confirmed)
             }, sent: {
                 // The sheet closes; the payment shows in Payments and the chat.

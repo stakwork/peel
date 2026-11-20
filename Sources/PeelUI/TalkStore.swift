@@ -63,7 +63,7 @@ public final class TalkStore {
             return
         }
         if let other = otherCall() {
-            state = .failed("Leave the call in \(other) first, then talk to Jamie.")
+            state = .failed(String(localized: "Leave the call in \(other) first, then talk to Jamie.", table: "Shared"))
             return
         }
         state = .starting
@@ -89,7 +89,7 @@ public final class TalkStore {
             } catch {
                 guard !Task.isCancelled else { return }
                 Diagnostics.note(errorKind: .call)
-                state = .failed(PeelError.problem(error, couldNot: "start the call"))
+                state = .failed(PeelError.problem(error, couldNot: String(localized: "start the call", table: "Shared")))
             }
             self.state = state
         }
@@ -202,16 +202,16 @@ public enum TalkPhase: Equatable, Sendable {
 
     public var words: String {
         switch self {
-        case .connecting: "Connecting…"
-        case .reconnecting: "Reconnecting…"
-        case .waiting(left: false): "Waiting for Jamie…"
-        case .waiting(left: true): "Jamie left the call"
-        case .gettingReady: "Jamie is getting ready…"
-        case .listening: "Listening"
-        case .thinking: "Thinking…"
-        case .speaking: "Speaking"
-        case .ended(connected: true): "The call ended"
-        case .ended(connected: false): "Could not connect to the call"
+        case .connecting: String(localized: "Connecting…", table: "Shared")
+        case .reconnecting: String(localized: "Reconnecting…", table: "Shared")
+        case .waiting(left: false): String(localized: "Waiting for Jamie…", table: "Shared")
+        case .waiting(left: true): String(localized: "Jamie left the call", table: "Shared")
+        case .gettingReady: String(localized: "Jamie is getting ready…", table: "Shared")
+        case .listening: String(localized: "Listening", table: "Shared")
+        case .thinking: String(localized: "Thinking…", table: "Shared")
+        case .speaking: String(localized: "Speaking", table: "Shared")
+        case .ended(connected: true): String(localized: "The call ended", table: "Shared")
+        case .ended(connected: false): String(localized: "Could not connect to the call", table: "Shared")
         }
     }
 
@@ -225,7 +225,7 @@ public enum TalkPhase: Equatable, Sendable {
 /// says will not encrypt or decrypt, and whether a packet of the agent's text
 /// would not decrypt. The agent's state comes over LiveKit's signaling, which
 /// is not encrypted, so a call whose key does not match would otherwise say
-/// "Speaking" over silence. `notice` is what the call screen says instead.
+/// String(localized: "Speaking", table: "Shared") over silence. `notice` is what the call screen says instead.
 public struct TalkEncryption: Equatable, Sendable {
     /// The tracks failing now, by publication id: true for the member's own
     /// (it will not encrypt), false for the agent's (it will not decrypt).
@@ -233,8 +233,8 @@ public struct TalkEncryption: Equatable, Sendable {
     /// A text packet would not decrypt. No later state clears it.
     private var textFailed = false
 
-    public static let agentUnheard = "This call's encryption failed: Jamie can't be heard."
-    public static let youUnheard = "This call's encryption failed: Jamie can't hear you."
+    public static let agentUnheard = String(localized: "This call's encryption failed: Jamie can't be heard.", table: "Shared")
+    public static let youUnheard = String(localized: "This call's encryption failed: Jamie can't hear you.", table: "Shared")
 
     public init() {}
 

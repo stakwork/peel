@@ -62,7 +62,7 @@ public final class Notifier {
     private static let summaryAbove = 3
     /// Messages arriving this close together are shown together.
     private static let gathering: Duration = .milliseconds(400)
-    private static let hiddenText = "New message"
+    private static let hiddenText = String(localized: "New message", table: "Shared")
     /// The thread of money notifications; a click opens Payments.
     public static let paymentsThread = "payments"
     /// The thread an automation's result was notified under before strut
@@ -195,7 +195,7 @@ public final class Notifier {
                 single = shown.filter { $0.type == MessageType.call }
                 let (name, place) = names(chat, sender: others.last?.senderAlias)
                 post(center, id: "summary-\(chat)", chat: chat, message: others.first?.id, locked: locked,
-                     title: place ?? name, subtitle: nil, body: Formatting.count(others.count, "new message"))
+                     title: place ?? name, subtitle: nil, body: Formatting.count(others.count, .newMessage))
             }
             for message in single {
                 let member = Sender(member: message)
@@ -221,7 +221,7 @@ public final class Notifier {
         guard !policy.isQuiet(message.chat) else { return }
         let (name, _) = names(message.chat, sender: message.senderAlias)
         post(center, id: "contact-\(message.uuid ?? UUID().uuidString)", chat: message.chat, message: nil,
-             locked: locked, title: name, subtitle: nil, body: "Added you as a contact", hidden: "New contact")
+             locked: locked, title: name, subtitle: nil, body: String(localized: "Added you as a contact", table: "Shared"), hidden: String(localized: "New contact", table: "Shared"))
         chatsShown.insert(message.chat)
     }
 
@@ -244,9 +244,9 @@ public final class Notifier {
         var seen: Set<String> = []
         let sources = shown.map(source).filter { seen.insert($0).inserted }
         let body = shown.count == 1 ? describe(first, from: sources[0])
-            : "From \(ListFormatter.localizedString(byJoining: sources))"
+            : String(localized: "From \(ListFormatter.localizedString(byJoining: sources))", table: "Shared")
         post(center, id: "money-\(first.paymentHash ?? UUID().uuidString)", chat: Self.paymentsThread, message: nil, locked: locked,
-             title: Receipt.label(shown), subtitle: nil, body: body, hidden: "Sats received")
+             title: Receipt.label(shown), subtitle: nil, body: body, hidden: String(localized: "Sats received", table: "Shared"))
         chatsShown.insert(Self.paymentsThread)
     }
 
@@ -269,7 +269,7 @@ public final class Notifier {
     /// Who it came from: the contact, the tribe member and tribe, or an
     /// invoice (a request's chat names who paid it).
     private func source(_ receipt: Receipt) -> String {
-        guard let chat = receipt.chat else { return "an invoice" }
+        guard let chat = receipt.chat else { return String(localized: "an invoice", table: "Shared") }
         let (name, place) = names(chat, sender: receipt.member?.alias)
         guard let place else { return name }
         return "\(receipt.member?.name ?? Sender.unnamed) in \(place)"
@@ -278,9 +278,9 @@ public final class Notifier {
     private func describe(_ receipt: Receipt, from source: String) -> String {
         let note = self.note(receipt.note)
         switch receipt.kind {
-        case .payment: return "From \(source)\(note)"
-        case .boost: return "Boost from \(source)"
-        case .invoice: return receipt.chat == nil ? "Invoice paid\(note)" : "\(source) paid your request\(note)"
+        case .payment: return String(localized: "From \(source)\(note)", table: "Shared")
+        case .boost: return String(localized: "Boost from \(source)", table: "Shared")
+        case .invoice: return receipt.chat == nil ? String(localized: "Invoice paid\(note)", table: "Shared") : String(localized: "\(source) paid your request\(note)", table: "Shared")
         }
     }
 
@@ -292,13 +292,13 @@ public final class Notifier {
 
     private func body(of message: Message) -> String {
         if message.type == MessageType.memberRequest {
-            return "\(Sender(member: message).name) wants to join"
+            return String(localized: "\(Sender(member: message).name) wants to join", table: "Shared")
         }
         // The title names who, the subtitle the tribe.
-        if message.type == MessageType.call { return "Started a call" }
+        if message.type == MessageType.call { return String(localized: "Started a call", table: "Shared") }
         if message.type == MessageType.invoice {
-            guard let msat = message.amountMsat, msat > 0 else { return "Payment request\(note(message.preview))" }
-            return "Requested \(Sats.format(msat: msat))\(note(message.preview))"
+            guard let msat = message.amountMsat, msat > 0 else { return String(localized: "Payment request\(note(message.preview))", table: "Shared") }
+            return String(localized: "Requested \(Sats.format(msat: msat))\(note(message.preview))", table: "Shared")
         }
         // Text, or for an attachment what it is ("Image", "File: notes.pdf").
         guard showsText, let preview = message.preview.nilIfEmpty else { return Self.hiddenText }

@@ -31,7 +31,7 @@ struct ImageViewer: View {
             VStack(spacing: 14) {
                 header
                 HStack(spacing: 18) {
-                    arrow("chevron.left", help: "Previous (Left arrow)", enabled: state.index > 0) { model.stepViewer(-1) }
+                    arrow("chevron.left", help: String(localized: "Previous (Left arrow)"), enabled: state.index > 0) { model.stepViewer(-1) }
                     Group {
                         if isVideo, playback.current == current.id, let player = playback.player {
                             PlayerSurface(player: player, style: .floating)
@@ -50,7 +50,7 @@ struct ImageViewer: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    arrow("chevron.right", help: "Next (Right arrow)", enabled: state.index < state.messages.count - 1) {
+                    arrow("chevron.right", help: String(localized: "Next (Right arrow)"), enabled: state.index < state.messages.count - 1) {
                         model.stepViewer(1)
                     }
                 }

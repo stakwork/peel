@@ -106,10 +106,10 @@ extension Engine {
 
         public var label: String {
             switch self {
-            case .offline(let seconds?): "Offline, retrying in \(seconds)s"
-            case .offline(nil): "Offline"
-            case .connecting: "Connecting"
-            case .connected: "Connected"
+            case .offline(let seconds?): String(localized: "Offline, retrying in \(seconds)s", table: "Shared")
+            case .offline(nil): String(localized: "Offline", table: "Shared")
+            case .connecting: String(localized: "Connecting", table: "Shared")
+            case .connected: String(localized: "Connected", table: "Shared")
             }
         }
 
@@ -125,8 +125,8 @@ extension Engine {
         public func label(retryAt: Date?, now: Date) -> String {
             switch retrySeconds(retryAt: retryAt, now: now) {
             case nil: label
-            case 0: "Offline, retrying"
-            case let seconds?: "Offline, retrying in \(seconds)s"
+            case 0: String(localized: "Offline, retrying", table: "Shared")
+            case let seconds?: String(localized: "Offline, retrying in \(seconds)s", table: "Shared")
             }
         }
     }
@@ -138,7 +138,7 @@ extension Engine {
         public let error: any Error
 
         public var description: String {
-            "the connection failed while sending (\(PeelError.readable(error))); it is in the chat, not confirmed"
+            String(localized: "the connection failed while sending (\(PeelError.readable(error))); it is in the chat, not confirmed", table: "Shared")
         }
     }
 
@@ -291,123 +291,124 @@ extension Engine {
 
         public var description: String {
             switch self {
-            case .invoiceExpired: "that invoice has expired"
-            case .invoiceAlreadyPaid: "that invoice has already been paid"
-            case .invoicePending: "a payment of that invoice is still on its way"
-            case .ownInvoice: "that is this account's own invoice"
-            case .invoiceWithoutAmount: "that invoice names no amount; Peel only pays invoices that say how much"
-            case .serverTimedOut: "the server did not answer in time"
-            case .noInvoiceFromServer: "the server made no invoice (its Lightning node may be down); try again later"
+            case .invoiceExpired: String(localized: "that invoice has expired", table: "Shared")
+            case .invoiceAlreadyPaid: String(localized: "that invoice has already been paid", table: "Shared")
+            case .invoicePending: String(localized: "a payment of that invoice is still on its way", table: "Shared")
+            case .ownInvoice: String(localized: "that is this account's own invoice", table: "Shared")
+            case .invoiceWithoutAmount: String(localized: "that invoice names no amount; Peel only pays invoices that say how much", table: "Shared")
+            case .serverTimedOut: String(localized: "the server did not answer in time", table: "Shared")
+            case .noInvoiceFromServer: String(localized: "the server made no invoice (its Lightning node may be down); try again later", table: "Shared")
             case .unreadablePreferences:
                 "the preferences file on the memes server could not be read, so settings are not synced and the file is left as it is"
             case .preferencesMissing:
                 "the memes server did not return the preferences file this account has, so settings are not synced and nothing is written"
-            case .invalidAmount: "the amount must be more than nothing"
-            case .partSat: "a boost amount is a whole number of sats"
-            case .balanceUnknown: "the balance is not known yet; connect first"
-            case .insufficientBalance: "the balance is not enough for that"
-            case .needsConfirmation(let msat): "\(Sats.format(msat: msat)) needs confirming first"
-            case .notBoostable: "only someone else's delivered message can be boosted"
-            case .paymentToTribe: "a payment to a tribe goes to the tribes server; boost a message instead"
-            case .noteTooLong: "the note is too long to go with a payment"
-            case .nameTooLong: "your name is too long to go with a payment"
-            case .notRetryable: "only an undelivered message of ours can be sent again or discarded"
-            case .noServer: "this account has no server recorded"
-            case .notConnected: "not connected to the server"
-            case .connectionDropped: "the connection had stopped answering; reconnecting now"
-            case .coreReturnedNothing(let what): "the core returned no \(what); nothing was sent"
-            case .invalidContactInfo: "contact info must look like pubkey_lsp_scid"
-            case .registrationTimedOut: "the server did not confirm registration in time"
-            case .invalidTribeLink: "that is not a tribe link"
-            case .tribeDeleted: "this tribe has been deleted"
-            case .notInTribe: "this account is not in that tribe"
-            case .noTribeServer: "the server has not named a tribes server for this account"
-            case .tribeServerTimedOut: "the tribes server did not answer in time"
-            case .awaitingApproval: "the tribe's owner has not approved this account yet"
-            case .notTribeOwner: "only the tribe's owner can do that"
-            case .noSuchMessage: "there is no such message in this chat"
-            case .notDelivered: "that message has not been delivered yet; reply once it has"
-            case .notInThread: "that message is not in that thread"
-            case .notAChat: "that is neither a contact nor a tribe this account is in"
-            case .noMemesServer: "this account has no memes server for attachments"
-            case .noCallServer: "this account has no call server"
-            case .notAnAttachment: "that message is not an attachment"
-            case .attachmentWithoutKey: "this attachment is paid; it opens once bought"
-            case .notDownloaded: "this attachment is not downloaded yet"
-            case .largeAttachment: "this attachment is large; it downloads when asked"
-            case .untrustedMediaHost(let host): "the attachment is on \(host), not this account's memes server"
-            case .noPaymentTemplate: "that is not a payment picture"
-            case .uploadInProgress: "this attachment is still uploading"
-            case .notAnInvoice: "that is not a Lightning invoice"
-            case .unreadableInvoice: "that invoice cannot be read"
-            case .invoiceMismatch: "the server's invoice does not match what was asked for"
-            case .memoTooLong: "the memo is too long for an invoice"
-            case .requestToTribe: "payment requests go to a person, not a tribe"
-            case .requestExpired: "this request's invoice has expired; ask again with a new one"
-            case .notAPaymentRequest: "that is not someone's payment request"
-            case .notAContact: "that is not a contact"
-            case .requestClosed: "the agent's request is past its time, or already answered"
+            case .invalidAmount: String(localized: "the amount must be more than nothing", table: "Shared")
+            case .partSat: String(localized: "a boost amount is a whole number of sats", table: "Shared")
+            case .balanceUnknown: String(localized: "the balance is not known yet; connect first", table: "Shared")
+            case .insufficientBalance: String(localized: "the balance is not enough for that", table: "Shared")
+            case .needsConfirmation(let msat): String(localized: "\(Sats.format(msat: msat)) needs confirming first", table: "Shared")
+            case .notBoostable: String(localized: "only someone else's delivered message can be boosted", table: "Shared")
+            case .paymentToTribe: String(localized: "a payment to a tribe goes to the tribes server; boost a message instead", table: "Shared")
+            case .noteTooLong: String(localized: "the note is too long to go with a payment", table: "Shared")
+            case .nameTooLong: String(localized: "your name is too long to go with a payment", table: "Shared")
+            case .notRetryable: String(localized: "only an undelivered message of ours can be sent again or discarded", table: "Shared")
+            case .noServer: String(localized: "this account has no server recorded", table: "Shared")
+            case .notConnected: String(localized: "not connected to the server", table: "Shared")
+            case .connectionDropped: String(localized: "the connection had stopped answering; reconnecting now", table: "Shared")
+            case .coreReturnedNothing(let what): String(localized: "the core returned no \(what); nothing was sent", table: "Shared")
+            case .invalidContactInfo: String(localized: "contact info must look like pubkey_lsp_scid", table: "Shared")
+            case .registrationTimedOut: String(localized: "the server did not confirm registration in time", table: "Shared")
+            case .invalidTribeLink: String(localized: "that is not a tribe link", table: "Shared")
+            case .tribeDeleted: String(localized: "this tribe has been deleted", table: "Shared")
+            case .notInTribe: String(localized: "this account is not in that tribe", table: "Shared")
+            case .noTribeServer: String(localized: "the server has not named a tribes server for this account", table: "Shared")
+            case .tribeServerTimedOut: String(localized: "the tribes server did not answer in time", table: "Shared")
+            case .awaitingApproval: String(localized: "the tribe's owner has not approved this account yet", table: "Shared")
+            case .notTribeOwner: String(localized: "only the tribe's owner can do that", table: "Shared")
+            case .noSuchMessage: String(localized: "there is no such message in this chat", table: "Shared")
+            case .notDelivered: String(localized: "that message has not been delivered yet; reply once it has", table: "Shared")
+            case .notInThread: String(localized: "that message is not in that thread", table: "Shared")
+            case .notAChat: String(localized: "that is neither a contact nor a tribe this account is in", table: "Shared")
+            case .noMemesServer: String(localized: "this account has no memes server for attachments", table: "Shared")
+            case .noCallServer: String(localized: "this account has no call server", table: "Shared")
+            case .notAnAttachment: String(localized: "that message is not an attachment", table: "Shared")
+            case .attachmentWithoutKey: String(localized: "this attachment is paid; it opens once bought", table: "Shared")
+            case .notDownloaded: String(localized: "this attachment is not downloaded yet", table: "Shared")
+            case .largeAttachment: String(localized: "this attachment is large; it downloads when asked", table: "Shared")
+            case .untrustedMediaHost(let host): String(localized: "the attachment is on \(host), not this account's memes server", table: "Shared")
+            case .noPaymentTemplate: String(localized: "that is not a payment picture", table: "Shared")
+            case .uploadInProgress: String(localized: "this attachment is still uploading", table: "Shared")
+            case .notAnInvoice: String(localized: "that is not a Lightning invoice", table: "Shared")
+            case .unreadableInvoice: String(localized: "that invoice cannot be read", table: "Shared")
+            case .invoiceMismatch: String(localized: "the server's invoice does not match what was asked for", table: "Shared")
+            case .memoTooLong: String(localized: "the memo is too long for an invoice", table: "Shared")
+            case .requestToTribe: String(localized: "payment requests go to a person, not a tribe", table: "Shared")
+            case .requestExpired: String(localized: "this request's invoice has expired; ask again with a new one", table: "Shared")
+            case .notAPaymentRequest: String(localized: "that is not someone's payment request", table: "Shared")
+            case .notAContact: String(localized: "that is not a contact", table: "Shared")
+            case .requestClosed: String(localized: "the agent's request is past its time, or already answered", table: "Shared")
             case .paymentWithContactPending:
                 "a payment with this contact is still on its way; remove them once it has gone through or failed"
-            case .emptyName: "the name cannot be empty"
-            case .photoNotHTTPS: "a photo must be an https URL"
-            case .unreadableTribeHost(let host): "unreadable tribes host \(host)"
-            case .unreadableCallServer(let host): "unreadable call server \(host)"
-            case .callOnAnotherServer: "that call is not on this account's call server"
-            case .accountClosed: "this account is closed"
+            case .emptyName: String(localized: "the name cannot be empty", table: "Shared")
+            case .photoNotHTTPS: String(localized: "a photo must be an https URL", table: "Shared")
+            case .unreadableTribeHost(let host): String(localized: "unreadable tribes host \(host)", table: "Shared")
+            case .unreadableCallServer(let host): String(localized: "unreadable call server \(host)", table: "Shared")
+            case .callOnAnotherServer: String(localized: "that call is not on this account's call server", table: "Shared")
+            case .accountClosed: String(localized: "this account is closed", table: "Shared")
             case .notDeletable:
-                "only your own sent messages, or any in a tribe you own, can be deleted; "
-                    + "not a thread's first message while it has replies"
+                String(localized: "only your own sent messages, or any in a tribe you own, can be deleted; not a thread's first message while it has replies", table: "Shared")
             case .tribePriceRose(let boost):
-                "this tribe now charges more per message; \(boost ? "boost again as a new boost" : "send it as a new message")"
-            case .joinPriceChanged: "the price to join has changed; look the tribe up again"
-            case .noRouteToTribe: "the tribes server gave no route to this tribe"
-            case .ownerCannotLeave: "the owner cannot leave a tribe; delete it instead"
-            case .tribeChangeInProgress: "another change to this tribe is still being saved"
-            case .tribeServerMismatch: "the tribes server answered for a different tribe"
-            case .tribeNeedsName: "a tribe needs a name"
-            case .tribeImageNotHTTPS: "the image must be an https link"
-            case .amountTooLarge: "an amount is too large"
-            case .notAMemberKey: "that is not a member's key"
-            case .memberNotWaiting: "that member is not waiting for an answer"
-            case .sendersNotShown: "the tribes server did not confirm it; it may not tell a member who is speaking yet"
-            case .alreadyAnswered: "that request has already been answered"
-            case .notPinnable: "only a message the tribe has delivered can be pinned"
-            case .invalidPrice: "a price must be from 1 to \(Engine.maxAttachmentPriceSats.formatted()) sats"
-            case .notAFile(let path): "\(path) is not a file"
+                boost
+                    ? String(localized: "this tribe now charges more per message; boost again as a new boost", table: "Shared")
+                    : String(localized: "this tribe now charges more per message; send it as a new message", table: "Shared")
+            case .joinPriceChanged: String(localized: "the price to join has changed; look the tribe up again", table: "Shared")
+            case .noRouteToTribe: String(localized: "the tribes server gave no route to this tribe", table: "Shared")
+            case .ownerCannotLeave: String(localized: "the owner cannot leave a tribe; delete it instead", table: "Shared")
+            case .tribeChangeInProgress: String(localized: "another change to this tribe is still being saved", table: "Shared")
+            case .tribeServerMismatch: String(localized: "the tribes server answered for a different tribe", table: "Shared")
+            case .tribeNeedsName: String(localized: "a tribe needs a name", table: "Shared")
+            case .tribeImageNotHTTPS: String(localized: "the image must be an https link", table: "Shared")
+            case .amountTooLarge: String(localized: "an amount is too large", table: "Shared")
+            case .notAMemberKey: String(localized: "that is not a member's key", table: "Shared")
+            case .memberNotWaiting: String(localized: "that member is not waiting for an answer", table: "Shared")
+            case .sendersNotShown: String(localized: "the tribes server did not confirm it; it may not tell a member who is speaking yet", table: "Shared")
+            case .alreadyAnswered: String(localized: "that request has already been answered", table: "Shared")
+            case .notPinnable: String(localized: "only a message the tribe has delivered can be pinned", table: "Shared")
+            case .invalidPrice: String(localized: "a price must be from 1 to \(Engine.maxAttachmentPriceSats.formatted()) sats", table: "Shared")
+            case .notAFile(let path): String(localized: "\(path) is not a file", table: "Shared")
             case .tooLargeToSend(let name):
-                "\(name) is larger than \(ByteCountFormatter.string(fromByteCount: Int64(Engine.sendLimit), countStyle: .file)), the most Peel can send"
-            case .notAPaidAttachment: "that is not a paid attachment someone sent"
-            case .purchaseInProgress: "this attachment is already being bought"
-            case .alreadyBought: "this attachment is already bought"
+                String(localized: "\(name) is larger than \(ByteCountFormatter.string(fromByteCount: Int64(Engine.sendLimit), countStyle: .file)), the most Peel can send", table: "Shared")
+            case .notAPaidAttachment: String(localized: "that is not a paid attachment someone sent", table: "Shared")
+            case .purchaseInProgress: String(localized: "this attachment is already being bought", table: "Shared")
+            case .alreadyBought: String(localized: "this attachment is already bought", table: "Shared")
             case .unknownTimeZone(let identifier): "unknown time zone \(identifier); use a name like Europe/London"
-            case .publicTribeTimeZone: "your time zone is never sent in public tribes"
-            case .memberNeeded: "a tribe has a local time per member; name the member"
-            case .notAContactCode: "that is not contact info, an invite or a Sphinx link"
-            case .keyWithoutRoute: "that names only a key, not how to reach it; ask for their whole contact info"
-            case .inviteWithoutInviter: "that invite names nobody to add"
-            case .tribeLinkNotContact: "that is a tribe link; join it from Join a tribe"
-            case .overBudget: "that is over what this app may spend without asking"
-            case .notANodeKey: "that is not a node's key"
-            case .keysendToSelf: "that is this account's own key"
-            case .ownContactInfo: "that is this account's own contact info"
+            case .publicTribeTimeZone: String(localized: "your time zone is never sent in public tribes", table: "Shared")
+            case .memberNeeded: String(localized: "a tribe has a local time per member; name the member", table: "Shared")
+            case .notAContactCode: String(localized: "that is not contact info, an invite or a Sphinx link", table: "Shared")
+            case .keyWithoutRoute: String(localized: "that names only a key, not how to reach it; ask for their whole contact info", table: "Shared")
+            case .inviteWithoutInviter: String(localized: "that invite names nobody to add", table: "Shared")
+            case .tribeLinkNotContact: String(localized: "that is a tribe link; join it from Join a tribe", table: "Shared")
+            case .overBudget: String(localized: "that is over what this app may spend without asking", table: "Shared")
+            case .notANodeKey: String(localized: "that is not a node's key", table: "Shared")
+            case .keysendToSelf: String(localized: "that is this account's own key", table: "Shared")
+            case .ownContactInfo: String(localized: "that is this account's own contact info", table: "Shared")
             case .contactNeedsSats:
                 // The key exchange's sats and their ping.
-                "adding a contact needs \(Sats.format(msat: Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false)))"
-            case .noSuchInvite: "there is no such invite"
-            case .inviteNotPending: "that invite is no longer waiting to be used"
+                String(localized: "adding a contact needs \(Sats.format(msat: Engine.keyExchangeMsat + Engine.pingMsat(toTribe: false)))", table: "Shared")
+            case .noSuchInvite: String(localized: "there is no such invite", table: "Shared")
+            case .inviteNotPending: String(localized: "that invite is no longer waiting to be used", table: "Shared")
             case .inviteNotRefunded:
-                "the server has sent no sats back yet; the invite may have been used. Ask again, or remove it from the list"
-            case .inviteFailed: "the server refused the invite's payment; no sats moved"
-            case .inviteNotConfirmed: "the server has not confirmed the invite yet; it shows once it does"
-            case .nicknameTooLong: "the nickname is too long"
-            case .inviteMessageTooLong: "the message is too long"
-            case .cancelInProgress: "an invite is already being cancelled"
+                String(localized: "the server has sent no sats back yet; the invite may have been used. Ask again, or remove it from the list", table: "Shared")
+            case .inviteFailed: String(localized: "the server refused the invite's payment; no sats moved", table: "Shared")
+            case .inviteNotConfirmed: String(localized: "the server has not confirmed the invite yet; it shows once it does", table: "Shared")
+            case .nicknameTooLong: String(localized: "the nickname is too long", table: "Shared")
+            case .inviteMessageTooLong: String(localized: "the message is too long", table: "Shared")
+            case .cancelInProgress: String(localized: "an invite is already being cancelled", table: "Shared")
             case .wrongWords(let positions):
                 positions.count == 1
-                    ? "word \(positions[0]) does not match"
-                    : "words \(positions.map(String.init).formatted(.list(type: .and))) do not match"
-            case .notThisAccountsWords: "those are not this account's twelve words"
+                    ? String(localized: "word \(positions[0]) does not match", table: "Shared")
+                    : String(localized: "words \(positions.map(String.init).formatted(.list(type: .and))) do not match", table: "Shared")
+            case .notThisAccountsWords: String(localized: "those are not this account's twelve words", table: "Shared")
             }
         }
     }

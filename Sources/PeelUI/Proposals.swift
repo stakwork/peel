@@ -213,7 +213,7 @@ public final class ProposalWatch {
         if let note = notes[key] { return note }
         guard let proposal = kept[key], proposal.cardFromStrut, proposal.record.isStub, let id = key.source.peer,
               peer(id) == nil || unreadHere.contains(key) else { return nil }
-        return "This card opens for members of \(orgName(key.source) ?? id)."
+        return String(localized: "This card opens for members of \(orgName(key.source) ?? id).", table: "Shared")
     }
 
     /// Who answers the card on a tribe's post (`KeptProposal.tribeDecider`):
@@ -361,7 +361,7 @@ public final class ProposalWatch {
         await deciding(key, accept: accept) {
             try await sendReply(accept ? card.accept : card.reject, post.tribe, post.uuid)
         } failed: { error in
-            PeelError.noted(error, couldNot: "send your answer")
+            PeelError.noted(error, couldNot: String(localized: "send your answer", table: "Shared"))
         }
     }
 
@@ -498,7 +498,7 @@ public final class ProposalWatch {
             .map { proposal in
                 let id = proposal.source.peer ?? ""
                 let name = paired.first { $0.id == id }?.name ?? HivePeer.name(label: nil, id: id)
-                let silent = unreachable.contains(id) ? "\(name) is not answering; shown as last read." : nil
+                let silent = unreachable.contains(id) ? String(localized: "\(name) is not answering; shown as last read.", table: "Shared") : nil
                 return OrgCard(kept: proposal, org: name, deciding: deciding[proposal.key], note: notes[proposal.key] ?? refused[id] ?? silent)
             }
         if cards != orgCards { orgCards = cards }
@@ -517,7 +517,7 @@ public final class ProposalWatch {
         let went = await deciding(key, accept: accept) {
             outcome = try await peer.decide(key.id, accept: accept)
         } failed: { _ in
-            "\(peer.name) could not be reached, so nothing was decided. Try again in a moment."
+            String(localized: "\(peer.name) could not be reached, so nothing was decided. Try again in a moment.", table: "Shared")
         }
         guard went, let outcome, let proposal = kept[key] else { return }
         let now = now()
@@ -532,12 +532,12 @@ public final class ProposalWatch {
             readNow(key)
         case .notYours:
             notes[key] = oldStruts.contains(id)
-                ? "You can't decide this one here: \(peer.name)'s workspace runs an older strut, which needs an update first."
-                : "You can't decide this one here."
+                ? String(localized: "You can't decide this one here: \(peer.name)'s workspace runs an older strut, which needs an update first.", table: "Shared")
+                : String(localized: "You can't decide this one here.", table: "Shared")
         case .invalid(let words):
             notes[key] = "\(peer.name) refused: \(words)"
         case .gone:
-            notes[key] = "\(peer.name) no longer has this proposal."
+            notes[key] = String(localized: "\(peer.name) no longer has this proposal.", table: "Shared")
             finish(proposal, .gone(now), at: now)
         }
         refreshCards(at: now)
@@ -630,7 +630,7 @@ public final class ProposalWatch {
                 if unreachable.contains(peer) { unreachable.remove(peer) }
                 if refused[peer] != nil { refused[peer] = nil }
             case .failure(let refusal as StrutRefusal) where refusal.isAuth:
-                refused[peer] = "\(refusal.name) no longer takes this device's token; Stadeum renews it, or connect again."
+                refused[peer] = String(localized: "\(refusal.name) no longer takes this device's token; Stadeum renews it, or connect again.", table: "Shared")
                 if unreachable.contains(peer) { unreachable.remove(peer) }
                 continue
             case .failure:
@@ -685,10 +685,10 @@ public final class ProposalWatch {
             if notes[key] != nil { notes[key] = nil }
             keep(record, source: key.source)
         case .gone?:
-            notes[key] = "\(org?.name ?? "strut") no longer has this proposal."
+            notes[key] = String(localized: "\(org?.name ?? "strut") no longer has this proposal.", table: "Shared")
             finish(current, .gone(now), at: now)
         case .forbidden?:
-            notes[key] = "You can't see this one here."
+            notes[key] = String(localized: "You can't see this one here.", table: "Shared")
             finish(current, .forbidden(now), at: now)
         case nil:
             let failed = failures[key, default: 0] + 1
@@ -697,7 +697,7 @@ public final class ProposalWatch {
                 unreachable.insert(org.id)
                 // A workspace's record its list no longer shows and that never reads (a shape this Peel does not know).
                 if failed >= Self.givenUpAfter {
-                    notes[key] = "\(org.name)'s record of this could not be read."
+                    notes[key] = String(localized: "\(org.name)'s record of this could not be read.", table: "Shared")
                     finish(current, .unreadable(now), at: now)
                     return
                 }

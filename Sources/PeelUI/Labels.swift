@@ -14,9 +14,9 @@ extension TribeMembers {
     /// an edit or pin from the official apps drops it, a kick after that
     /// counts down from nothing to 0, and a leave never counts down.
     public var countLabel: String {
-        guard complete else { return "\((members.count + 1).formatted()) seen" }
+        guard complete else { return String(localized: "\((members.count + 1).formatted()) seen", table: "Shared") }
         let count = members.count { !$0.pending }
-        return Formatting.count(count, "member")
+        return Formatting.count(count, .member)
     }
 }
 
@@ -25,8 +25,8 @@ extension TribeMembers {
 extension Tribe.Exit {
     public var title: String {
         switch self {
-        case .leave: "Leave tribe"
-        case .remove: "Remove from Peel"
+        case .leave: String(localized: "Leave tribe", table: "Shared")
+        case .remove: String(localized: "Remove from Peel", table: "Shared")
         }
     }
 
@@ -40,16 +40,16 @@ extension Tribe.Exit {
     /// The second click's words.
     public func confirm(_ tribeName: String) -> String {
         switch self {
-        case .leave: "Leave #\(tribeName)"
-        case .remove: "Remove #\(tribeName)"
+        case .leave: String(localized: "Leave #\(tribeName)", table: "Shared")
+        case .remove: String(localized: "Remove #\(tribeName)", table: "Shared")
         }
     }
 
     /// What could not be done, after "Could not".
     public var failure: String {
         switch self {
-        case .leave: "leave the tribe"
-        case .remove: "remove the tribe"
+        case .leave: String(localized: "leave the tribe", table: "Shared")
+        case .remove: String(localized: "remove the tribe", table: "Shared")
         }
     }
 }
@@ -60,15 +60,15 @@ extension Message {
     public func membershipNote(by sender: Sender) -> String {
         let who = sender.label
         switch type {
-        case MessageType.groupLeave: return "\(who) left"
-        case MessageType.groupKick: return "The owner removed you from this tribe"
-        case MessageType.memberRequest: return "You asked to join"
+        case MessageType.groupLeave: return String(localized: "\(who) left", table: "Shared")
+        case MessageType.groupKick: return String(localized: "The owner removed you from this tribe", table: "Shared")
+        case MessageType.memberRequest: return String(localized: "You asked to join", table: "Shared")
         // The tribe names the approved member as the sender.
-        case MessageType.memberApprove: return "\(Sender(member: self).name) was approved"
+        case MessageType.memberApprove: return String(localized: "\(Sender(member: self).name) was approved", table: "Shared")
         case MessageType.memberReject:
-            return fromMe ? "You declined a request to join" : "The owner declined your request to join"
-        case MessageType.tribeDelete: return "The owner deleted this tribe"
-        default: return "\(who) joined"
+            return fromMe ? String(localized: "You declined a request to join", table: "Shared") : String(localized: "The owner declined your request to join", table: "Shared")
+        case MessageType.tribeDelete: return String(localized: "The owner deleted this tribe", table: "Shared")
+        default: return String(localized: "\(who) joined", table: "Shared")
         }
     }
 
@@ -103,7 +103,7 @@ extension PIN {
 
     /// What to show when a PIN was not accepted.
     public static func problem(_ error: any Error) -> String {
-        error as? SecretStoreFailure == .wrongPIN ? "Wrong PIN. Try again." : PeelError.problem(error)
+        error as? SecretStoreFailure == .wrongPIN ? String(localized: "Wrong PIN. Try again.", table: "Shared") : PeelError.problem(error)
     }
 }
 
@@ -115,8 +115,8 @@ extension AppModel {
     /// may predate sats received since.
     public static func forgetWarning(holdsSats: Bool) -> String {
         holdsSats
-            ? "It holds sats. Without your twelve words, they're lost for good."
-            : "Without your twelve words, it can't be brought back."
+            ? String(localized: "It holds sats. Without your twelve words, they're lost for good.", table: "Shared")
+            : String(localized: "Without your twelve words, it can't be brought back.", table: "Shared")
     }
 }
 
@@ -126,22 +126,22 @@ extension InviteRecord {
     /// Beside a pending invite's name: the amount once it can be shared.
     public var shortStatus: String {
         switch status {
-        case .sending: "Sending…"
-        case .cancelling: "Cancelling…"
+        case .sending: String(localized: "Sending…", table: "Shared")
+        case .cancelling: String(localized: "Cancelling…", table: "Shared")
         default: Sats.format(msat: amountMsat)
         }
     }
 
     /// "Made 3 Oct 2026 at 10:02 · waiting to be used".
     public var statusLine: String {
-        let made = "Made \(Formatting.dateAndTime(created))"
+        let made = String(localized: "Made \(Formatting.dateAndTime(created))", table: "Shared")
         return switch status {
-        case .sending: "Setting up…"
-        case .ready: "\(made) · waiting to be used"
-        case .cancelling: "Cancelling, sats not back yet"
-        case .cancelled: "Cancelled, sats returned"
-        case .used: "Used"
-        case .failed: "Payment failed"
+        case .sending: String(localized: "Setting up…", table: "Shared")
+        case .ready: String(localized: "\(made) · waiting to be used", table: "Shared")
+        case .cancelling: String(localized: "Cancelling, sats not back yet", table: "Shared")
+        case .cancelled: String(localized: "Cancelled, sats returned", table: "Shared")
+        case .used: String(localized: "Used", table: "Shared")
+        case .failed: String(localized: "Payment failed", table: "Shared")
         }
     }
 }
@@ -150,17 +150,19 @@ extension InviteRecord {
 extension Tribe {
     /// "Public tribe · Created 3 Oct 2026", the date once the registry answers.
     public func detailsSubtitle(created: Date?) -> String {
-        [isPrivate ? "Private tribe" : "Public tribe", created.map { "Created \(Formatting.date($0))" }]
+        [isPrivate ? String(localized: "Private tribe", table: "Shared") : String(localized: "Public tribe", table: "Shared"), created.map { String(localized: "Created \(Formatting.date($0))", table: "Shared") }]
             .compactMap { $0 }.joined(separator: " · ")
     }
 
     /// "5 sats, back after 2 hours", or None; the time once the registry answers.
     public func escrowLine(millis: Int64?) -> String {
-        guard escrowMsat > 0 else { return "None" }
+        guard escrowMsat > 0 else { return String(localized: "None", table: "Shared") }
         let amount = Sats.exact(msat: escrowMsat)
         guard let millis, millis > 0 else { return amount }
         let hours = Sats.text(UInt64(millis), unit: Sats.millisecondsPerHour)
-        return "\(amount), back after \(hours) \(hours == "1" ? "hour" : "hours")"
+        return hours == "1"
+            ? String(localized: "\(amount), back after \(hours) hour", table: "Shared")
+            : String(localized: "\(amount), back after \(hours) hours", table: "Shared")
     }
 
     /// What members will read for a name typed for a tribe, only when it
@@ -169,21 +171,21 @@ extension Tribe {
     public static func aliasNote(_ typed: String) -> String? {
         guard let typed = typed.trimmed.nilIfEmpty else { return nil }
         let sent = tribeAlias(typed)
-        return sent == typed ? nil : "Members see \u{201C}\(sent)\u{201D}."
+        return sent == typed ? nil : String(localized: "Members see “\(sent)”.", table: "Shared")
     }
 }
 
 extension TribeInfo {
     /// "Joining costs 10 sats · 3 sats a message", before joining.
     public var priceLine: String {
-        "Joining costs \(joinPrice.text) · \(messagePrice.text) a message"
+        String(localized: "Joining costs \(joinPrice.text) · \(messagePrice.text) a message", table: "Shared")
     }
 }
 
 extension ContactCode {
     /// Who the code adds, under its name: an invite adds its inviter.
     public var previewDetail: String {
-        if case .invite = self { "Adds whoever sent this invite." } else { "Contact info" }
+        if case .invite = self { String(localized: "Adds whoever sent this invite.", table: "Shared") } else { String(localized: "Contact info", table: "Shared") }
     }
 
     /// Why this code adds nobody though it reads: a tribe link is joined, not added.
@@ -211,7 +213,7 @@ extension AgentArtifact {
     /// What that asks: the app and version the link really opens (its
     /// title is the sender's words), and the workspace as the person reads it.
     public func tribeAppQuestion(on workspace: String) -> String {
-        let app = handle?.app.map { "“\($0.name)”" + ($0.version.map { " \($0)" } ?? "") } ?? "this app"
-        return "Open the app \(app) from \(workspace)? Anyone in the tribe could have sent this link."
+        let app = handle?.app.map { "“\($0.name)”" + ($0.version.map { " \($0)" } ?? "") } ?? String(localized: "this app", table: "Shared")
+        return String(localized: "Open the app \(app) from \(workspace)? Anyone in the tribe could have sent this link.", table: "Shared")
     }
 }

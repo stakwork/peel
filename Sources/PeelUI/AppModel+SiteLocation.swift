@@ -34,19 +34,19 @@ extension AppModel {
 
     public func removeSiteLocation(_ origin: String) {
         do { try engine?.storage.removeSiteLocationGrant(origin: origin) } catch {
-            notice = PeelError.noted(error, couldNot: "forget the site")
+            notice = PeelError.noted(error, couldNot: String(localized: "forget the site", table: "Shared"))
         }
     }
 
     public func forgetAllSiteLocations() {
         do { try engine?.storage.clearSiteLocationGrants() } catch {
-            notice = PeelError.noted(error, couldNot: "forget the sites")
+            notice = PeelError.noted(error, couldNot: String(localized: "forget the sites", table: "Shared"))
         }
     }
 
     private func save(_ grant: SiteLocationGrant) {
         do { try engine?.storage.putSiteLocationGrant(grant) } catch {
-            notice = PeelError.noted(error, couldNot: "keep the choice")
+            notice = PeelError.noted(error, couldNot: String(localized: "keep the choice", table: "Shared"))
         }
     }
 }

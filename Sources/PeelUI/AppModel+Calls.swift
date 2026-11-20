@@ -9,7 +9,7 @@ extension AppModel {
     /// as yourself.
     public func avatar(of person: CallParticipant) -> Sender {
         avatar(
-            fromMe: person.identity == calls.call?.identity, alias: person.nickname.isEmpty ? "Guest" : person.nickname,
+            fromMe: person.identity == calls.call?.identity, alias: person.nickname.isEmpty ? String(localized: "Guest", table: "Shared") : person.nickname,
             photoURL: person.avatarURL?.absoluteString, chat: person.identity, inTribe: true
         )
     }
@@ -26,6 +26,6 @@ extension AppModel {
 
     /// "#tribe" or the contact's name, for the call window.
     public func chatTitle(_ chat: String) -> String {
-        conversations.first { $0.chat == chat }?.title ?? "Call"
+        conversations.first { $0.chat == chat }?.title ?? String(localized: "Call", table: "Shared")
     }
 }

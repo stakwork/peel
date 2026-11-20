@@ -134,7 +134,7 @@ struct DictationHUDView: View {
                     .font(Theme.font(12))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                HUDButton(.text("Undo"), label: "Undo", filled: true, action: model.undo)
+                HUDButton(.text(String(localized: "Undo")), label: String(localized: "Undo"), filled: true, action: model.undo)
             }
             .padding(.leading, Theme.Space.md)
             .padding(.trailing, Theme.Space.xs)

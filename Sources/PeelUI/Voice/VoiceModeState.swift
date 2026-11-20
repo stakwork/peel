@@ -25,12 +25,12 @@ public enum VoicePhase: Equatable, Sendable {
     /// The words the panel shows.
     public var label: String {
         switch self {
-        case .idle: "Voice mode is off"
-        case .listening: "Listening…"
-        case .hearing: "Listening…"
-        case .sending: "Sending…"
-        case .waiting: "Thinking…"
-        case .speaking: "Speaking…"
+        case .idle: String(localized: "Voice mode is off", table: "Shared")
+        case .listening: String(localized: "Listening…", table: "Shared")
+        case .hearing: String(localized: "Listening…", table: "Shared")
+        case .sending: String(localized: "Sending…", table: "Shared")
+        case .waiting: String(localized: "Thinking…", table: "Shared")
+        case .speaking: String(localized: "Speaking…", table: "Shared")
         case .failed(let problem): problem
         }
     }

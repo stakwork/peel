@@ -41,8 +41,8 @@ public final class AppModel {
         /// A count's line on the restore screen: "120 of 300", "35 checked",
         /// or before any, "Waiting" ("None" once finished).
         public func label(_ count: Count?, noun: String) -> String {
-            guard let count else { return finished ? "None" : "Waiting" }
-            if let end = count.end { return "\(count.reached.formatted()) of \(end.formatted())" }
+            guard let count else { return finished ? String(localized: "None", table: "Shared") : String(localized: "Waiting", table: "Shared") }
+            if let end = count.end { return String(localized: "\(count.reached.formatted()) of \(end.formatted())", table: "Shared") }
             return "\(count.reached.formatted()) \(noun)"
         }
 
@@ -64,10 +64,10 @@ public final class AppModel {
                 done ? .done : started ? .active : .waiting
             }
             return [
-                Line(title: "Account", detail: connection.label, state: connection == .connected ? .done : .active),
-                Line(title: "Contacts & Tribes", detail: label(contacts, noun: "checked"),
+                Line(title: String(localized: "Account", table: "Shared"), detail: connection.label, state: connection == .connected ? .done : .active),
+                Line(title: String(localized: "Contacts & Tribes", table: "Shared"), detail: label(contacts, noun: String(localized: "checked", table: "Shared")),
                      state: state(started: contacts != nil, done: messages != nil || finished)),
-                Line(title: "Messages", detail: label(messages, noun: "received"),
+                Line(title: String(localized: "Messages", table: "Shared"), detail: label(messages, noun: String(localized: "received", table: "Shared")),
                      state: state(started: messages != nil, done: finished), fraction: messages?.fraction),
             ]
         }
@@ -503,7 +503,7 @@ public final class AppModel {
         // One call at a time: Talk and a group call each wait for the other.
         talk.otherCall = { [weak self] in self?.calls.call?.title }
         talk.groupCallsLeft = { [weak self] in await self?.calls.leaving?.value }
-        calls.busy = { [weak self] in self?.talk.isOn == true ? "Hang up the call with Jamie first." : nil }
+        calls.busy = { [weak self] in self?.talk.isOn == true ? String(localized: "Hang up the call with Jamie first.", table: "Shared") : nil }
         // The dev setting's `-talkAtLaunch YES`: the call starts as Peel opens,
         // with or without an account (docs/talk.md).
         if let home = talk.developmentHome, UserDefaults.standard.bool(forKey: "talkAtLaunch") { talk.talk(to: home) }
@@ -512,13 +512,13 @@ public final class AppModel {
         stadeum.sphinxProof = { [weak self] in try await self?.engine?.sphinxProof() }
         stadeum.opened = { [weak self] in self?.markLinkedJamies() }
         proposals.inFront = { [weak self] in self?.platform.presence.isFrontmost ?? false }
-        calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? "Call" }
+        calls.chatTitle = { [weak self] chat in self?.chatTitle(chat) ?? String(localized: "Call", table: "Shared") }
         calls.hiveCall = { [weak self] peer in
-            guard let self else { throw PeelError("Peel is closing.") }
+            guard let self else { throw PeelError(String(localized: "Peel is closing.", table: "Shared")) }
             return try await stadeum.callLink(on: peer)
         }
         calls.hiveTicket = { @MainActor [weak self] room, name, metadata in
-            guard let self else { throw PeelError("Peel is closing.") }
+            guard let self else { throw PeelError(String(localized: "Peel is closing.", table: "Shared")) }
             return try await stadeum.callTicket(room: room, participantName: name, metadata: metadata)
         }
         calls.chatNotice = { [weak self] chat, change in
@@ -531,7 +531,7 @@ public final class AppModel {
             guard let self else { return }
             notifier.moneyReceived(receipts)
             // Locked, nothing says how much, as the notification does not.
-            if phase == .ready, !isLockDue { CopyFeedback.announce("Received \(Receipt.label(receipts))") }
+            if phase == .ready, !isLockDue { CopyFeedback.announce(String(localized: "Received \(Receipt.label(receipts))", table: "Shared")) }
         }
     }
 
@@ -668,7 +668,7 @@ public final class AppModel {
             try await open(profile, pin: "")
             enterApp()
         } catch {
-            notice = PeelError.noted(error, couldNot: "open the account")
+            notice = PeelError.noted(error, couldNot: String(localized: "open the account", table: "Shared"))
             phase = .onboarding
         }
     }
@@ -800,7 +800,7 @@ public final class AppModel {
         } catch {
             phase = .loading
             await start()
-            notice = PeelError.noted(error, couldNot: "forget the account")
+            notice = PeelError.noted(error, couldNot: String(localized: "forget the account", table: "Shared"))
             throw error
         }
     }
@@ -896,7 +896,7 @@ public final class AppModel {
 
     /// Asks for a picture, beside the window.
     public func choosePicture() -> URL? {
-        platform.files.open(prompt: "Choose", multiple: false, directories: false, types: [.image])?.first
+        platform.files.open(prompt: String(localized: "Choose", table: "Shared"), multiple: false, directories: false, types: [.image])?.first
     }
 
     /// The twelve words, after the PIN. Nothing here keeps or logs them.
@@ -924,7 +924,7 @@ public final class AppModel {
     /// Reseals the words under a new PIN, typed twice.
     public func changePIN(from oldPIN: String, to newPIN: String, confirmation: String) async throws {
         guard let profile else { throw PeelError("no profile") }
-        guard newPIN == confirmation else { throw PeelError("The new PINs don't match.") }
+        guard newPIN == confirmation else { throw PeelError(String(localized: "The new PINs don't match.", table: "Shared")) }
         try await Task.detached { try profile.changePIN(from: oldPIN, to: newPIN) }.value
     }
 
@@ -1080,7 +1080,7 @@ public final class AppModel {
         guard let profile else { throw PeelError("no profile") }
         try PIN.validate(pin)
         guard let invite = try? Engine.parseInvite(input) else {
-            throw PeelError("That doesn't look like a Sphinx invite.")
+            throw PeelError(String(localized: "That doesn't look like a Sphinx invite.", table: "Shared"))
         }
         // Face ID and a kept PIN left by an account forgotten part-way.
         try? profile.biometrics?.turnOff()
@@ -1191,7 +1191,7 @@ public final class AppModel {
             if let id = message.id {
                 guard let stored = try storage.message(id: id), !stored.deleted else {
                     destination = .chat(chat)
-                    conversationNotices[chat] = "That message was deleted"
+                    conversationNotices[chat] = String(localized: "That message was deleted", table: "Shared")
                     return
                 }
                 current = stored
@@ -1288,18 +1288,18 @@ public final class AppModel {
 
     public func resend(_ message: Message) async {
         guard let id = message.id else { return }
-        await attempt("send again", in: message.chat) { try await $0.resend(messageID: id) }
+        await attempt(String(localized: "send again", table: "Shared"), in: message.chat) { try await $0.resend(messageID: id) }
     }
 
     /// Deletes a message for everyone; a refusal shows in its chat.
     public func delete(_ message: Message) async {
         guard let id = message.id else { return }
-        await attempt("delete", in: message.chat) { try await $0.deleteMessage(id: id) }
+        await attempt(String(localized: "delete", table: "Shared"), in: message.chat) { try await $0.deleteMessage(id: id) }
     }
 
     public func discard(_ message: Message) async {
         guard let id = message.id else { return }
-        await attempt("discard", in: message.chat) { try await $0.discard(messageID: id) }
+        await attempt(String(localized: "discard", table: "Shared"), in: message.chat) { try await $0.discard(messageID: id) }
     }
 
     /// Runs an action on one chat; a failure shows above that chat's
@@ -1323,7 +1323,7 @@ public final class AppModel {
     }
 
     public func setMute(_ chat: String, _ level: MuteLevel) async {
-        await attempt("change notifications", in: chat) { try await $0.setMute(chat, level: level) }
+        await attempt(String(localized: "change notifications", table: "Shared"), in: chat) { try await $0.setMute(chat, level: level) }
     }
 
     /// The connection panel's action: ping online, skip the retry wait offline.
@@ -1373,7 +1373,7 @@ public final class AppModel {
             do {
                 try await engine.markRead(chat)
             } catch {
-                conversationNotices[chat] = PeelError.noted(error, couldNot: "mark as read")
+                conversationNotices[chat] = PeelError.noted(error, couldNot: String(localized: "mark as read", table: "Shared"))
             }
         }
     }
@@ -1394,7 +1394,7 @@ public final class AppModel {
         let open = chat == selectedChat
         if open { keepsUnread = chat }
         var marker: Int64?
-        let done = await attempt("mark as unread", in: chat) { engine in
+        let done = await attempt(String(localized: "mark as unread", table: "Shared"), in: chat) { engine in
             marker = try await engine.markUnread(chat, fromServerIndex: message?.serverIndex)
         }
         // Left and came back meanwhile: the hold has ended, so has this.
@@ -1517,14 +1517,14 @@ public final class AppModel {
     /// composer. Returns whether the answer went out.
     public func answerJoinRequest(_ message: Message, approve: Bool) async -> Bool {
         guard let uuid = message.uuid else { return false }
-        return await attempt(approve ? "approve" : "decline", in: message.chat) {
+        return await attempt(approve ? String(localized: "approve", table: "Shared") : String(localized: "decline", table: "Shared"), in: message.chat) {
             try await $0.answerJoinRequest(in: message.chat, .message(uuid: uuid), approve: approve)
         }
     }
 
     /// Pins a message (by uuid) for every member, or unpins with nil.
     public func pin(_ uuid: String?, in pubkey: String) async {
-        await attempt(uuid == nil ? "unpin" : "pin", in: pubkey) { try await $0.pinMessage(uuid, in: pubkey) }
+        await attempt(uuid == nil ? String(localized: "unpin", table: "Shared") : String(localized: "pin", table: "Shared"), in: pubkey) { try await $0.pinMessage(uuid, in: pubkey) }
     }
 
     /// Who can be @mentioned in a tribe, read off the main thread.
@@ -1952,7 +1952,7 @@ public final class AppModel {
                 }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load the chats") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load the chats", table: "Shared")) }
         }
     }
 
@@ -1965,7 +1965,7 @@ public final class AppModel {
                 markSelectedChatRead()
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load unread counts") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load unread counts", table: "Shared")) }
         }
     }
 
@@ -1980,7 +1980,7 @@ public final class AppModel {
                 if selectedChat.map(me(in:)) != before { rebuildRows() }
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load tribes") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load tribes", table: "Shared")) }
         }
     }
 
@@ -1990,7 +1990,7 @@ public final class AppModel {
                 waitingMsat = msat
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load waiting payments") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load waiting payments", table: "Shared")) }
         }
     }
 
@@ -2001,7 +2001,7 @@ public final class AppModel {
                 pendingInvites = list.filter(\.isPending)
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load invites") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load invites", table: "Shared")) }
         }
     }
 
@@ -2036,7 +2036,7 @@ public final class AppModel {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                notice = PeelError.noted(error, couldNot: "load this chat's messages")
+                notice = PeelError.noted(error, couldNot: String(localized: "load this chat's messages", table: "Shared"))
                 // Its list shows, empty, rather than nothing at all.
                 if loadedChat != chat { loadedChat = chat }
             }
@@ -2049,7 +2049,7 @@ public final class AppModel {
                     pinnedMessage = pinned
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load the pinned message") }
+                if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load the pinned message", table: "Shared")) }
             }
         }
     }
@@ -2067,14 +2067,14 @@ public final class AppModel {
                     rebuildThreadRows()
                 }
             } catch {
-                if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load the thread") }
+                if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load the thread", table: "Shared")) }
             }
         }
     }
 
     private func observeRecentCalls(_ storage: Storage) async {
         do { try await calls.observeRecent(storage) } catch {
-            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load recent calls") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load recent calls", table: "Shared")) }
         }
     }
 
@@ -2084,7 +2084,7 @@ public final class AppModel {
                 threads = rows
             }
         } catch {
-            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: "load threads") }
+            if !Task.isCancelled { notice = PeelError.noted(error, couldNot: String(localized: "load threads", table: "Shared")) }
         }
     }
 }

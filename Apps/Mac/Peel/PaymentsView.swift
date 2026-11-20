@@ -31,14 +31,14 @@ struct PaymentsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                DetailHeader(title: "Payments",
+                DetailHeader(title: String(localized: "Payments"),
                              subtitle: model.waitingMsat > 0 ? "\(Sats.format(msat: model.waitingMsat)) waiting" : nil,
                              leading: { EmptyView() }) {
                     HStack(spacing: Theme.Space.sm) {
-                        HeaderAction(title: "Receive", systemImage: "arrow.down.left", active: pane == .receive) {
+                        HeaderAction(title: String(localized: "Receive"), systemImage: "arrow.down.left", active: pane == .receive) {
                             pane = pane == .receive ? nil : .receive
                         }
-                        HeaderAction(title: "Pay an invoice", systemImage: "arrow.up.right", active: pane == .pay) {
+                        HeaderAction(title: String(localized: "Pay an invoice"), systemImage: "arrow.up.right", active: pane == .pay) {
                             pane = pane == .pay ? nil : .pay
                         }
                     }
@@ -74,14 +74,14 @@ struct PaymentsView: View {
 
     @ViewBuilder private var list: some View {
         if items.isEmpty {
-            EmptyState(feed.problem ?? (model.connection == .connected ? "No payments yet." : "Not connected."))
+            EmptyState(feed.problem ?? (model.connection == .connected ? String(localized: "No payments yet.") : String(localized: "Not connected.")))
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     let sections = Dictionary(grouping: items) { PaymentSection($0.date) }
                     ForEach(PaymentSection.allCases, id: \.self) { section in
                         if let rows = sections[section] {
-                            SectionHeader(section.rawValue)
+                            SectionHeader(section.title)
                                 .padding(.horizontal, Theme.Space.md)
                                 .padding(.top, 18)
                                 .padding(.bottom, 6)
@@ -97,7 +97,7 @@ struct PaymentsView: View {
                     if feed.loadingOlder || (feed.problem != nil && feed.paging.hasMore) {
                         HStack(spacing: Theme.Space.sm) {
                             if feed.loadingOlder { ProgressView().controlSize(.small) }
-                            Text(feed.loadingOlder ? "Loading older payments" : feed.problem ?? "")
+                            Text(feed.loadingOlder ? String(localized: "Loading older payments") : feed.problem ?? "")
                                 .muted()
                         }
                         .padding(Theme.Space.md)
@@ -122,7 +122,7 @@ struct PaymentsView: View {
             if let item = items.first(where: { $0.id == id }) {
                 PaymentDetailPane(item: item) { self.pane = nil }
             } else {
-                PaneFrame(title: "Payment", close: { self.pane = nil }) {
+                PaneFrame(title: String(localized: "Payment"), close: { self.pane = nil }) {
                     Text("This payment is gone.")
                         .font(Theme.font(13))
                         .foregroundStyle(Theme.secondaryText)

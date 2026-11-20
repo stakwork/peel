@@ -60,7 +60,7 @@ struct Panel<Content: View, Actions: View, Footer: View>: View {
                     Text(title).font(Theme.font(15, .bold))
                     Spacer(minLength: 8)
                     actions
-                    IconButton("xmark", help: "Close", action: close)
+                    IconButton("xmark", help: String(localized: "Close"), action: close)
                 }
                 .padding(.leading, PanelMetrics.inset)
                 .padding(.trailing, PanelMetrics.actionInset)
@@ -149,7 +149,7 @@ struct DockedPanel<Content: View, Footer: View>: View {
             DetailHeader(title: title) {
                 EmptyView()
             } trailing: {
-                IconButton("xmark", help: "Close", action: close)
+                IconButton("xmark", help: String(localized: "Close"), action: close)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {

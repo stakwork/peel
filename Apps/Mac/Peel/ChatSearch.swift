@@ -103,7 +103,7 @@ struct ChatSearchBar: View {
     private var hint: String {
         if let status = search.status { return status }
         let typed = MessageQuery(search.text)
-        return typed.isEmpty && typed.hasShortTerms ? "\(MessageQuery.minimum) or more characters" : ""
+        return typed.isEmpty && typed.hasShortTerms ? String(localized: "\(MessageQuery.minimum) or more characters") : ""
     }
 
     #if os(macOS)

@@ -11,7 +11,7 @@ struct RecordingSettingsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection {
-                Fact("New segment") {
+                Fact(String(localized: "New segment")) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(stateText)
                         Text("Saved to Downloads. Recorded and captioned on this Mac, never uploaded.").muted()
@@ -19,11 +19,11 @@ struct RecordingSettingsSection: View {
                     }
                     .fixedSize(horizontal: false, vertical: true)
                 } trailing: {
-                    Button(recording.phase == .idle ? "New segment" : "Recording…", action: recording.start)
+                    Button(recording.phase == .idle ? String(localized: "New segment") : String(localized: "Recording…"), action: recording.start)
                         .buttonStyle(.peel(.primary))
                         .disabled(recording.phase != .idle)
                 }
-                Fact("Segment limit") {
+                Fact(String(localized: "Segment limit")) {
                     Text("Stops on its own after this long")
                 } trailing: {
                     SegmentedChoice(
@@ -32,7 +32,7 @@ struct RecordingSettingsSection: View {
                     )
                     .disabled(recording.phase != .idle)
                 }
-                Fact("Camera") {
+                Fact(String(localized: "Camera")) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Show your camera")
                         Text("A round bubble you can drag anywhere.").muted()
@@ -42,7 +42,7 @@ struct RecordingSettingsSection: View {
                         .accessibilityLabel("Camera")
                 }
             }
-            SettingsSection("Your segments") {
+            SettingsSection(String(localized: "Your segments")) {
                 if recording.recordings.isEmpty {
                     Text("No segments yet. Drag one into a chat to send it.").muted()
                         .padding(.horizontal, Theme.Space.md)
@@ -58,12 +58,12 @@ struct RecordingSettingsSection: View {
 
     private var stateText: String {
         switch recording.phase {
-        case .idle: "Record your screen, with captions"
-        case .starting: "Choose a screen to record"
-        case .ready: "Press Record on the bar at the bottom of the screen"
-        case .recording: "Recording: stop it from the bar at the bottom of the screen"
-        case .paused: "Paused: resume or stop it from the bar at the bottom of the screen"
-        case .stopping: "Saving…"
+        case .idle: String(localized: "Record your screen, with captions")
+        case .starting: String(localized: "Choose a screen to record")
+        case .ready: String(localized: "Press Record on the bar at the bottom of the screen")
+        case .recording: String(localized: "Recording: stop it from the bar at the bottom of the screen")
+        case .paused: String(localized: "Paused: resume or stop it from the bar at the bottom of the screen")
+        case .stopping: String(localized: "Saving…")
         }
     }
 }
@@ -83,10 +83,10 @@ private struct RecordingRow: View {
         } detail: {
             Text(detail).muted().lineLimit(1)
         } trailing: {
-            IconButton("folder", help: "Show in Finder", size: .sm) { controller.showInFinder(recording) }
+            IconButton("folder", help: String(localized: "Show in Finder"), size: .sm) { controller.showInFinder(recording) }
         }
         .onDrag { NSItemProvider(contentsOf: recording.url) ?? NSItemProvider() }
-        .help(sendable ? "Drag into a chat to send it" : "Too large to send in Peel: drag it to Drive or Dropbox, or share it from Finder")
+        .help(sendable ? String(localized: "Drag into a chat to send it") : String(localized: "Too large to send in Peel: drag it to Drive or Dropbox, or share it from Finder"))
     }
 
     private var sendable: Bool { recording.bytes <= Engine.sendLimit }
@@ -94,7 +94,7 @@ private struct RecordingRow: View {
     private var detail: String {
         let size = AttachmentFormat.size(Int64(recording.bytes))
         let captions = controller.captions[recording.url]
-        let fits = sendable ? nil : "Too large to send in Peel"
+        let fits = sendable ? nil : String(localized: "Too large to send in Peel")
         return [Formatting.dateAndTime(recording.created), size, captions, fits].compactMap { $0 }.joined(separator: " · ")
     }
 }
@@ -103,7 +103,7 @@ private struct RecordingRow: View {
 struct SegmentsView: View {
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: "Segments")
+            DetailHeader(title: String(localized: "Segments"))
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     RecordingSettingsSection()

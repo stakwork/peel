@@ -127,7 +127,7 @@ private struct MenuItems: View {
     var body: some View {
         let message = actions.row.message
         if actions.isRetryable {
-            Button(message.uploadState == .failed ? "Retry upload" : "Retry sending",
+            Button(message.uploadState == .failed ? String(localized: "Retry upload") : String(localized: "Retry sending"),
                    systemImage: "arrow.clockwise", action: actions.retry)
             if message.isDiscardable {
                 Button("Discard, never sent", systemImage: "xmark", role: .destructive, action: actions.discard)

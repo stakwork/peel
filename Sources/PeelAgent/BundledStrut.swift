@@ -238,7 +238,7 @@ public final class BundledStrut {
         }
         // Before anyone reads memory: what the old database held, on the graph.
         await importMemoryOnce(on: server)
-        guard self.process === process else { throw PeelError("Peel's strut stopped as it started.") }
+        guard self.process === process else { throw PeelError(String(localized: "Peel's strut stopped as it started.", table: "Shared")) }
         self.server = server
         onChange?()
         return server

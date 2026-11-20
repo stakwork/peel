@@ -322,20 +322,20 @@ public struct Message: Codable, Sendable, Identifiable, Equatable, FetchableReco
     /// for a GIF "GIF" and its caption, or for an attachment with no
     /// caption what it is ("Image", "File: notes.pdf").
     public var preview: String {
-        if deleted { return "Message deleted" }
+        if deleted { return String(localized: "Message deleted", table: "Shared") }
         if let giphy {
             let caption = MessageMarkup.plainText(giphy.text)
-            return caption.isEmpty ? "GIF" : "GIF: \(caption)"
+            return caption.isEmpty ? "GIF" : String(localized: "GIF: \(caption)", table: "Shared")
         }
         if type == MessageType.call, let link = content.flatMap(CallLink.linkText(in:)) {
             return CallLink.mode(ofLink: link) ?? MessageMarkup.plainText(link)
         }
         if let text = content.map(MessageMarkup.plainText), !text.isEmpty { return text }
         switch attachmentKind {
-        case .image: return "Image"
-        case .video: return "Video"
-        case .audio: return "Audio"
-        case .pdf, .text, .file: return "File: \(fileName ?? "file")"
+        case .image: return String(localized: "Image", table: "Shared")
+        case .video: return String(localized: "Video", table: "Shared")
+        case .audio: return String(localized: "Audio", table: "Shared")
+        case .pdf, .text, .file: return String(localized: "File: \(fileName ?? String(localized: "file", table: "Shared"))", table: "Shared")
         case nil: return ""
         }
     }
@@ -345,22 +345,22 @@ extension Message {
     /// The newest reply as a thread's row shows it: its complete text (the
     /// string itself is never cut; the row clamps it to two lines), or for a message with no words what it is ("Photo", "Video", "Voice message", "File", "Payment"…).
     public var threadReplyPreview: String {
-        if deleted { return "Message deleted" }
+        if deleted { return String(localized: "Message deleted", table: "Shared") }
         if giphy == nil, let text = content.map(MessageMarkup.plainText), !text.isEmpty {
             return text
         }
         switch type {
-        case MessageType.directPayment, MessageType.boost: return "Payment"
-        case MessageType.invoice: return "Payment request"
-        case MessageType.call: return "Call"
+        case MessageType.directPayment, MessageType.boost: return String(localized: "Payment", table: "Shared")
+        case MessageType.invoice: return String(localized: "Payment request", table: "Shared")
+        case MessageType.call: return String(localized: "Call", table: "Shared")
         default: break
         }
         if giphy != nil { return preview }
         switch attachmentKind {
-        case .image: return "Photo"
-        case .video: return "Video"
-        case .audio: return "Voice message"
-        case .pdf, .text, .file: return "File"
+        case .image: return String(localized: "Photo", table: "Shared")
+        case .video: return String(localized: "Video", table: "Shared")
+        case .audio: return String(localized: "Voice message", table: "Shared")
+        case .pdf, .text, .file: return String(localized: "File", table: "Shared")
         case nil: return preview
         }
     }

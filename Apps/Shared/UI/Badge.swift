@@ -94,7 +94,7 @@ struct AgentTag: View {
             .padding(.vertical, 1)
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.divider))
             .fixedSize()
-            .accessibilityLabel("Agent")
+            .accessibilityLabel(Text("Agent", tableName: "Shared"))
     }
 }
 

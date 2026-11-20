@@ -84,7 +84,7 @@ struct SettingDropdown<Value: Hashable>: View {
                         try await save(value)
                         problem = nil
                     } catch {
-                        problem = PeelError.problem(error, couldNot: "change the setting")
+                        problem = PeelError.problem(error, couldNot: String(localized: "change the setting"))
                     }
                 }
             }
@@ -164,6 +164,6 @@ struct DisclosureButton<Label: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityValue(open ? "Expanded" : "Collapsed")
+        .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
     }
 }

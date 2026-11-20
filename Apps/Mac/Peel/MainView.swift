@@ -146,7 +146,7 @@ private struct ResizeHandle: NSViewRepresentable {
 
     func makeNSView(context: Context) -> HandleView {
         let view = HandleView()
-        view.toolTip = "Drag to resize; double-click for the standard width"
+        view.toolTip = String(localized: "Drag to resize; double-click for the standard width")
         return view
     }
 
@@ -225,7 +225,7 @@ struct Detail: View {
                         ConversationView(conversation: conversation)
                     }
                 } else {
-                    start("Pick a conversation.")
+                    start(String(localized: "Pick a conversation."))
                 }
             case .threads:
                 ThreadsView()
@@ -243,7 +243,7 @@ struct Detail: View {
                 if let agent = model.agent {
                     AgentChatView(agent: agent)
                 } else {
-                    start("The agent chat could not be opened.")
+                    start(String(localized: "The agent chat could not be opened."))
                 }
             case .apps:
                 AppsView()
@@ -252,10 +252,10 @@ struct Detail: View {
                     // One view per app: a version picked or read in one is not another's.
                     WorkspaceAppView(app: app).id(app.id)
                 } else {
-                    start("This app is no longer listed.")
+                    start(String(localized: "This app is no longer listed."))
                 }
             case nil:
-                start("Pick a conversation, or add a contact.")
+                start(String(localized: "Pick a conversation, or add a contact."))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -269,7 +269,7 @@ struct Detail: View {
     /// No chat open: the app's name over what to do.
     private func start(_ message: String) -> some View {
         VStack(spacing: 0) {
-            DetailHeader(title: "Peel")
+            DetailHeader(title: String(localized: "Peel"))
             EmptyState(message)
         }
     }

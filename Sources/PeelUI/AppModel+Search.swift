@@ -36,18 +36,18 @@ public final class ChatSearch {
     /// "3 of 12", "12 matches", "No matches", or nothing while there is
     /// nothing to count.
     public var status: String? {
-        if failed { return "Could not search" }
+        if failed { return String(localized: "Could not search", table: "Shared") }
         guard query != nil, !searching || !matches.isEmpty else { return nil }
-        if matches.isEmpty { return "No matches" }
+        if matches.isEmpty { return String(localized: "No matches", table: "Shared") }
         let total = matches.count >= Self.limit ? "\(Self.limit.formatted())+" : matches.count.formatted()
-        guard let current else { return Formatting.count(matches.count, "match", "matches", shown: total) }
-        return "\(current + 1) of \(total)"
+        guard let current else { return Formatting.count(matches.count, .match, shown: total) }
+        return String(localized: "\(current + 1) of \(total)", table: "Shared")
     }
 
     /// "Still loading older messages" while history was syncing for the
     /// last search; nothing once a search has not run yet.
     public var historyNote: String? {
-        historySyncing && query != nil ? "Still loading older messages" : nil
+        historySyncing && query != nil ? String(localized: "Still loading older messages", table: "Shared") : nil
     }
 
     public var canStepOlder: Bool { (current ?? -1) + 1 < matches.count }

@@ -31,7 +31,7 @@ struct PaymentDetailScreen: View {
                                 .phoneFont(.row)
                                 .textSelection(.enabled)
                         } header: {
-                            PhoneSectionHeader(item.kind == .invoice ? "Memo" : "Note")
+                            PhoneSectionHeader(item.kind == .invoice ? String(localized: "Memo") : String(localized: "Note"))
                         }
                         .phoneRows(.grouped)
                     }
@@ -81,7 +81,8 @@ struct PaymentDetailScreen: View {
             }
             .accessibilityElement(children: .combine)
             if let chat = item.chat {
-                Button(item.isTribe ? "Open #\(item.chatName ?? "")" : "Open chat with \(item.chatName ?? "them")") {
+                Button(item.isTribe ? String(localized: "Open #\(item.chatName ?? "")")
+                : item.chatName.map { String(localized: "Open chat with \($0)") } ?? String(localized: "Open chat with them")) {
                     router.openChat(chat)
                 }
                 .buttonStyle(.peel(.outline, size: .touch))
@@ -92,30 +93,30 @@ struct PaymentDetailScreen: View {
 
     @ViewBuilder private func facts(_ item: PaymentItem) -> some View {
         let status = item.statusFact
-        FactRow("Status") {
+        FactRow(String(localized: "Status")) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: status.symbol).accessibilityHidden(true)
                 Text(status.text)
             }
             .foregroundStyle(status.settled ? Theme.confirmed : Theme.text)
         }
-        FactRow("When", Formatting.moment(item.date, seconds: true))
-        FactRow("Amount", "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat")
+        FactRow(String(localized: "When"), Formatting.moment(item.date, seconds: true))
+        FactRow(String(localized: "Amount"), String(localized: "\(Sats.format(msat: item.amountMsat)) · \(item.amountMsat.formatted()) msat"))
         if let fee = item.feeMsat {
-            FactRow("Routing fee", fee == 0 ? "None" : Sats.format(msat: fee))
+            FactRow(String(localized: "Routing fee"), fee == 0 ? String(localized: "None") : Sats.format(msat: fee))
         }
         if let why = item.keyExchangeNote {
-            FactRow("Why", why)
+            FactRow(String(localized: "Why"), why)
         }
         if let ping = item.pingMsat {
-            FactRow("Ping", Sats.format(msat: ping))
+            FactRow(String(localized: "Ping"), Sats.format(msat: ping))
         }
         if let hash = item.paymentHash {
-            FactRow("Payment hash") {
+            FactRow(String(localized: "Payment hash")) {
                 HStack {
                     Text(Formatting.shortKey(hash)).font(.system(.body, design: .monospaced))
                     Spacer(minLength: Theme.Space.sm)
-                    CopyButton("Copy", text: hash)
+                    CopyButton(String(localized: "Copy"), text: hash)
                         .buttonStyle(.peel(.outline, size: .touch))
                         .accessibilityLabel("Copy payment hash")
                 }

@@ -60,7 +60,7 @@ struct ConversationScreen: View {
         .background(Theme.background)
         .safeAreaInset(edge: .top, spacing: 0) {
             if let search = model.search, search.chat == chat {
-                PhoneChatSearchBar(search: search, placeholder: "Search in \(conversation?.title ?? "chat")")
+                PhoneChatSearchBar(search: search, placeholder: String(localized: "Search in \(conversation?.title ?? String(localized: "chat"))"))
             }
         }
         .floatingBar(.bottom) { footer(tribe: tribe) }
@@ -182,7 +182,7 @@ struct ConversationScreen: View {
 
     /// What tapping the header opens, by the chat's kind.
     private var detailsHint: String {
-        conversation?.isTribe == true ? "Tribe details" : "Contact details"
+        conversation?.isTribe == true ? String(localized: "Tribe details") : String(localized: "Contact details")
     }
 
     /// A tribe's member count as its details count it; a person's local time.
@@ -231,7 +231,7 @@ struct ConversationScreen: View {
                 NoticeBar(text: notice) { model.dismissNotice(in: chat) }
             }
             if let tribe, !tribe.canPost {
-                Text(tribe.exit == nil ? "You can't post in this tribe." : "You can't post in this tribe any more.")
+                Text(tribe.exit == nil ? String(localized: "You can't post in this tribe.") : String(localized: "You can't post in this tribe any more."))
                     .phoneFont(.secondary)
                     .foregroundStyle(Theme.secondaryText)
                     .frame(maxWidth: .infinity)
@@ -244,7 +244,7 @@ struct ConversationScreen: View {
                 HStack(alignment: .bottom, spacing: 0) {
                     PhoneComposer(
                         composer: .chat(chat),
-                        placeholder: isAgent ? "Ask Peel" : "Message \(conversation.title)",
+                        placeholder: isAgent ? String(localized: "Ask Peel") : String(localized: "Message \(conversation.title)"),
                         loadMentionable: conversation.isTribe ? model.mentionLoader(chat) : nil,
                         paysTo: conversation.isTribe || isAgent ? nil : conversation.name
                     )

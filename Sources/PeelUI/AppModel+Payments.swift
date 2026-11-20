@@ -65,15 +65,15 @@ extension AppModel {
         let asking = boostToConfirm.flatMap { $0.messageID == id && conversationNotices[message.chat] == $0.notice ? $0 : nil }
         let confirmed = asking?.msat
         switch await pay("boost \(id)", { try await $0.quickBoost(messageID: id, confirmedMsat: confirmed) }) {
-        case .refused(let reason): conversationNotices[message.chat] = PeelError.problem(reason, couldNot: "boost")
+        case .refused(let reason): conversationNotices[message.chat] = PeelError.problem(reason, couldNot: String(localized: "boost", table: "Shared"))
         case .sent:
             boostToConfirm = nil
             sent(in: message.chat)
-            if let notice = conversationNotices[message.chat], notice == asking?.notice || notice.hasPrefix("Could not boost") {
+            if let notice = conversationNotices[message.chat], notice == asking?.notice || notice.hasPrefix(PeelError.problem("", couldNot: String(localized: "boost", table: "Shared"))) {
                 conversationNotices[message.chat] = nil
             }
         case .needsConfirmation(let msat):
-            let notice = "Your boost amount, \(Sats.format(msat: msat)), was set on another device. Boost this message again to send it."
+            let notice = String(localized: "Your boost amount, \(Sats.format(msat: msat)), was set on another device. Boost this message again to send it.", table: "Shared")
             boostToConfirm = (id, msat, notice)
             conversationNotices[message.chat] = notice
         case .busy: break
@@ -83,11 +83,11 @@ extension AppModel {
     /// "Boost 100 sats": the boost amount only, as the hover bar and menu
     /// name it. Neither official app shows a tribe's price on a boost (the
     /// chip's total then includes it, as theirs does).
-    public var quickBoostLabel: String { "Boost \(Sats.format(msat: boostAmountMsat))" }
+    public var quickBoostLabel: String { String(localized: "Boost \(Sats.format(msat: boostAmountMsat))", table: "Shared") }
 
     /// Over the confirmation threshold the engine asks first, as for a payment.
     public func setBoostAmount(msat: UInt64, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        guard let engine else { return .refused("Not signed in.") }
+        guard let engine else { return .refused(String(localized: "Not signed in.", table: "Shared")) }
         do {
             try await engine.setBoostAmount(msat: msat, confirmedMsat: confirmedMsat)
             boostAmountMsat = msat
@@ -146,14 +146,14 @@ extension AppModel {
 
     /// Sends a failed payment or boost again, for the amount it was for.
     public func retryPayment(_ message: Message, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        guard let id = message.id else { return .refused("This payment cannot be sent again.") }
+        guard let id = message.id else { return .refused(String(localized: "This payment cannot be sent again.", table: "Shared")) }
         return await pay("retry \(id)") { try await $0.resend(messageID: id, confirmedMsat: confirmedMsat) }
     }
 
     /// One payment at a time per key, through the engine; its refusals in
     /// words, and the threshold's question as an outcome.
     public func pay(_ key: String, _ action: (Engine) async throws -> Void) async -> PaymentOutcome {
-        guard let engine else { return .refused("Not signed in.") }
+        guard let engine else { return .refused(String(localized: "Not signed in.", table: "Shared")) }
         guard moneyInFlight.insert(key).inserted else { return .busy }
         defer { moneyInFlight.remove(key) }
         do {
@@ -222,21 +222,20 @@ extension AppModel {
     public func invoiceBlocker(_ problem: Engine.Failure, invoice: Invoice, paidAt: Date?) -> (title: String, detail: String) {
         switch problem {
         case .invoiceWithoutAmount:
-            ("This invoice names no amount", "Ask for one with an amount.")
+            (String(localized: "This invoice names no amount", table: "Shared"), String(localized: "Ask for one with an amount.", table: "Shared"))
         case .invoiceExpired:
-            ("This invoice has expired", "Ask for a new one.")
+            (String(localized: "This invoice has expired", table: "Shared"), String(localized: "Ask for a new one.", table: "Shared"))
         case .ownInvoice:
-            ("This is your own invoice", "Send it to whoever is paying you.")
+            (String(localized: "This is your own invoice", table: "Shared"), String(localized: "Send it to whoever is paying you.", table: "Shared"))
         case .invoiceAlreadyPaid:
-            ("You already paid this invoice", paidAt.map { "On \(Formatting.moment($0))." } ?? "")
+            (String(localized: "You already paid this invoice", table: "Shared"), paidAt.map { String(localized: "On \(Formatting.moment($0)).", table: "Shared") } ?? "")
         case .invoicePending:
-            ("A payment of this invoice is on its way", "It may have paid already.")
+            (String(localized: "A payment of this invoice is on its way", table: "Shared"), String(localized: "It may have paid already.", table: "Shared"))
         case .insufficientBalance:
-            ("Not enough sats",
-             "Needs \(Sats.format(msat: invoice.amountMsat)) plus up to \(Sats.format(msat: Engine.feeReserveMsat(for: invoice.amountMsat))) "
-                 + "in fees. You have \(Sats.format(msat: balanceMsat ?? 0)).")
+            (String(localized: "Not enough sats", table: "Shared"),
+             String(localized: "Needs \(Sats.format(msat: invoice.amountMsat)) plus up to \(Sats.format(msat: Engine.feeReserveMsat(for: invoice.amountMsat))) in fees. You have \(Sats.format(msat: balanceMsat ?? 0)).", table: "Shared"))
         default:
-            ("This invoice cannot be paid now", problem.description)
+            (String(localized: "This invoice cannot be paid now", table: "Shared"), problem.description)
         }
     }
 
@@ -248,7 +247,7 @@ extension AppModel {
 
     /// Pays someone's request in their chat.
     public func payRequest(_ message: Message, invoice: Invoice, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        guard let id = message.id else { return .refused("This request cannot be paid.") }
+        guard let id = message.id else { return .refused(String(localized: "This request cannot be paid.", table: "Shared")) }
         return await pay("invoice \(invoice.paymentHash)") {
             _ = try await $0.payRequest(messageID: id, confirmedMsat: confirmedMsat)
         }
@@ -267,7 +266,7 @@ extension AppModel {
 
     /// Buys someone else's paid attachment; it opens once its seller sends the key.
     public func buyAttachment(_ message: Message, confirmedMsat: UInt64?) async -> PaymentOutcome {
-        guard let id = message.id else { return .refused("This attachment cannot be bought.") }
+        guard let id = message.id else { return .refused(String(localized: "This attachment cannot be bought.", table: "Shared")) }
         return await pay("purchase \(id)") { try await $0.buyAttachment(messageID: id, confirmedMsat: confirmedMsat) }
     }
 }

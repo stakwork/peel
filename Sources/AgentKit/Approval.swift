@@ -53,7 +53,7 @@ public struct ToolIntent: Sendable, Hashable, Codable {
     public var lines: [String] { details + [cost].compactMap { $0 } }
 
     /// "Always allow for Kate", or for the tool as a whole.
-    public var alwaysLabel: String { target.map { "Always allow for \($0.name)" } ?? "Always allow" }
+    public var alwaysLabel: String { target.map { String(localized: "Always allow for \($0.name)", table: "Shared") } ?? String(localized: "Always allow", table: "Shared") }
 
     /// Whether `text` shows on a card as all it is: no control character
     /// but a line break and a tab, and nothing that draws nothing (format
@@ -237,7 +237,7 @@ public struct SendGrant: Sendable, Hashable, Identifiable {
     /// "Hive and Kate, up to 10 sats a message": where it may post, and for how much.
     public var summary: String {
         let chats = ListFormatter.localizedString(byJoining: chats.map(\.name))
-        return maxPriceSats > 0 ? "\(chats), up to \(maxPriceSats) sats a message" : chats
+        return maxPriceSats > 0 ? String(localized: "\(chats), up to \(maxPriceSats) sats a message", table: "Shared") : chats
     }
 }
 

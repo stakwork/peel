@@ -135,10 +135,10 @@ private enum MediaStatus {
     func text(_ label: String) -> String {
         switch self {
         case .held(let size): [label, AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
-        case .retry: "Couldn't download yet - tap to retry"
-        case .failed: "\(label) not available"
-        case .notUploaded: "Not uploaded"
-        case .unplayable: "Can't play this \(label.lowercased())"
+        case .retry: String(localized: "Couldn't download yet - tap to retry")
+        case .failed: String(localized: "\(label) not available")
+        case .notUploaded: String(localized: "Not uploaded")
+        case .unplayable: String(localized: "Can't play this \(label.lowercased())")
         }
     }
 
@@ -236,7 +236,7 @@ struct VideoTile: View {
         }
         .attachmentTile(fitted: frame, message: message, handle: handle)
         .onHover { hovering = $0 }
-        .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Video")
+        .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? String(localized: "Video"))
     }
 
     /// The poster with play and length, or a plain tile saying where the video is.
@@ -281,7 +281,7 @@ struct VideoTile: View {
                 Button("Download") { Task { await model.download(message) } }
                     .buttonStyle(.peel(.outline, size: .sm))
             } else if let status {
-                Text(status.text("Video"))
+                Text(status.text(String(localized: "Video")))
                     .monospacedDigit()
                     .muted()
                     .help(handle.failureReason ?? "")
@@ -294,7 +294,7 @@ struct VideoTile: View {
                         .buttonStyle(.peel(.outline, size: .sm))
                 }
             } else if case .downloading = handle.state, let progress = handle.progress {
-                TransferBar(label: "Downloading", progress: progress).padding(.horizontal, Theme.Space.md)
+                TransferBar(label: String(localized: "Downloading"), progress: progress).padding(.horizontal, Theme.Space.md)
             } else if handle.isIdle {
                 Text("Waiting to download").muted()
             } else {
@@ -373,7 +373,7 @@ struct AudioCard: View {
                 HStack(spacing: Theme.Space.md) {
                     // Held or failed, a click loads it (again) and plays.
                     PlayButton(message: message, handle: handle, disabled: !status.canLoad)
-                    Text(status.text("Audio"))
+                    Text(status.text(String(localized: "Audio")))
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
@@ -390,7 +390,7 @@ struct AudioCard: View {
         }
         .attachmentCard()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? "Audio")
+        .accessibilityLabel(message.content?.trimmed.nilIfEmpty ?? String(localized: "Audio"))
         .modifier(MediaLoading(message: message, file: file, read: $read))
     }
 }
@@ -425,6 +425,6 @@ private struct PlayButton: View {
         }
         .buttonStyle(.plain)
         .disabled(busy || disabled || message.uploadState == .pending && handle.file == nil)
-        .help(playing ? "Pause" : "Play")
+        .help(playing ? String(localized: "Pause") : String(localized: "Play"))
     }
 }

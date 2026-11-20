@@ -643,7 +643,7 @@ private struct JumpToNewest: View {
 
     var body: some View {
         if count > 0 {
-            let words = Formatting.count(count, "new message", shown: Badge.text(count))
+            let words = Formatting.count(count, .newMessage, shown: Badge.text(count))
             Button(action: action) {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.down").font(.system(size: 13, weight: .semibold))
@@ -660,7 +660,7 @@ private struct JumpToNewest: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Jump to newest, \(words)")
         } else {
-            GlassButton("arrow.down", label: "Jump to newest", action: action)
+            GlassButton("arrow.down", label: String(localized: "Jump to newest"), action: action)
         }
     }
 }

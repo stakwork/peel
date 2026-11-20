@@ -18,18 +18,18 @@ struct AutomationsView: View {
         @Bindable var model = model
         let state = model.automations
         VStack(spacing: 0) {
-            DetailHeader(title: "Automations")
+            DetailHeader(title: String(localized: "Automations"))
             if model.agent?.connection == nil {
-                EmptyState("It runs your automations.", title: "Set up Peel's agent") {
-                    AgentConnectButton(source: .automations, title: "Set up", variant: .primary)
+                EmptyState(String(localized: "It runs your automations."), title: String(localized: "Set up Peel's agent")) {
+                    AgentConnectButton(source: .automations, title: String(localized: "Set up"), variant: .primary)
                 }
             } else if model.brain?.moved != nil {
-                EmptyState("They run on your home server, which this Mac doesn't read.",
-                           title: "On your home server")
+                EmptyState(String(localized: "They run on your home server, which this Mac doesn't read."),
+                           title: String(localized: "On your home server"))
             } else if model.automationsClient == nil {
-                EmptyState(model.agentSetUp.line, title: "Peel's strut isn't running")
+                EmptyState(model.agentSetUp.line, title: String(localized: "Peel's strut isn't running"))
             } else {
-                SegmentedChoice(selection: $model.automationsTab, options: [(.yours, "Yours"), (.system, "System")])
+                SegmentedChoice(selection: $model.automationsTab, options: [(.yours, String(localized: "Yours")), (.system, String(localized: "System"))])
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, Theme.Space.lg)
                     .padding(.top, Theme.Space.md)
@@ -53,16 +53,16 @@ struct AutomationsView: View {
     @ViewBuilder
     private func yours(_ state: AutomationsState) -> some View {
         if state.loaded, state.yours.isEmpty, state.problem == nil {
-            EmptyState("Ask Peel to remind you, or to do something on a schedule.", title: "No automations") {
+            EmptyState(String(localized: "Ask Peel to remind you, or to do something on a schedule."), title: String(localized: "No automations")) {
                 Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.outline))
             }
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.lg) {
                     notices(state)
-                    group("Upcoming", state.upcoming)
-                    group("Recurring", state.recurring)
-                    group("Done", state.done)
+                    group(String(localized: "Upcoming"), state.upcoming)
+                    group(String(localized: "Recurring"), state.recurring)
+                    group(String(localized: "Done"), state.done)
                 }
                 .padding(Theme.Space.lg)
             }
@@ -72,15 +72,14 @@ struct AutomationsView: View {
     @ViewBuilder
     private func system(_ state: AutomationsState) -> some View {
         if state.loaded, state.system.isEmpty, state.problem == nil {
-            EmptyState("This strut ships none. A newer one will.", title: "No system automations")
+            EmptyState(String(localized: "This strut ships none. A newer one will."), title: String(localized: "No system automations"))
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.lg) {
                     notices(state)
                     VStack(alignment: .leading, spacing: 2) {
                         if let connection = model.agent?.connection {
-                            Text("Runs on your connected model (\(connection.provider.modelName(connection.model))). "
-                                + "Sends parts of your memory to \(connection.provider.name).")
+                            Text("Runs on your connected model (\(connection.provider.modelName(connection.model))). Sends parts of your memory to \(connection.provider.name).")
                                 .muted()
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, Theme.Space.sm)
@@ -104,7 +103,7 @@ struct AutomationsView: View {
         if let problem = state.problem {
             Callout(.attention, detail: problem, dismiss: { model.automations.problem = nil })
         } else if state.schedulerLooksOff() {
-            Callout(.attention, "Scheduled runs are paused", detail: "Run now still works.") {
+            Callout(.attention, String(localized: "Scheduled runs are paused"), detail: String(localized: "Run now still works.")) {
                 EmptyView()
             }
         }
@@ -164,7 +163,7 @@ private struct AutomationRow: View {
 
     private var menu: [MenuEntry] {
         [
-            .button(automation.enabled ? "Pause" : "Resume", systemImage: automation.enabled ? "pause" : "play") {
+            .button(automation.enabled ? String(localized: "Pause") : String(localized: "Resume"), systemImage: automation.enabled ? "pause" : "play") {
                 Task { await model.setAutomation(automation, enabled: !automation.enabled) }
             },
             .button("Run now", systemImage: "play.circle") {
@@ -190,7 +189,7 @@ private struct AutomationDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             if let draft = editing {
-                FormTextField(label: "Prompt", text: Binding(get: { draft }, set: { editing = $0 }), axis: .vertical,
+                FormTextField(label: String(localized: "Prompt"), text: Binding(get: { draft }, set: { editing = $0 }), axis: .vertical,
                               focusOnAppear: true)
                 HStack(spacing: Theme.Space.sm) {
                     Button("Save") {
@@ -210,7 +209,7 @@ private struct AutomationDetail: View {
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: Theme.Space.sm) {
                     Button("Edit prompt") { editing = automation.prompt }.buttonStyle(.peel(.outline, size: .sm))
-                    Button(automation.enabled ? "Pause" : "Resume") {
+                    Button(automation.enabled ? String(localized: "Pause") : String(localized: "Resume")) {
                         Task { await model.setAutomation(automation, enabled: !automation.enabled) }
                     }
                     .buttonStyle(.peel(.outline, size: .sm))
@@ -290,12 +289,12 @@ private struct AutomationStatus: View {
     var body: some View {
         let system = automation.isSystem
         let (text, attention): (String, Bool) =
-            if running { ("Running…", false) }
-            else if !automation.enabled, !system { ("Paused", false) }
-            else if automation.lastRunFailed { ("Didn't finish", true) }
-            else if automation.isMissed, !system { ("Missed", false) }
+            if running { (String(localized: "Running…"), false) }
+            else if !automation.enabled, !system { (String(localized: "Paused"), false) }
+            else if automation.lastRunFailed { (String(localized: "Didn't finish"), true) }
+            else if automation.isMissed, !system { (String(localized: "Missed"), false) }
             else if let next = automation.nextRun, !system { (Formatting.dateAndTime(next), false) }
-            else if let last = automation.lastRun?.startedAt { ("Ran " + Formatting.dateAndTime(last), false) }
+            else if let last = automation.lastRun?.startedAt { (String(localized: "Ran \(Formatting.dateAndTime(last))"), false) }
             else { ("", false) }
         Text(text)
             .font(Theme.font(11))
@@ -318,7 +317,7 @@ private struct AutomationRuns: View {
         }
         if !runs.isEmpty || going != nil {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                SectionHeader("Runs")
+                SectionHeader(String(localized: "Runs"))
                 if let going {
                     row(going.startedAt) { Text("Running…").muted() }
                 }
@@ -349,7 +348,7 @@ private struct AutomationRuns: View {
                     // strut's agent wrote it, not Peel's: its links open nothing in Peel.
                     MessageText(text: text, chat: nil, agentLinks: false)
                 } else {
-                    Text(automation.isSystem ? "Finished" : "Nothing to report").muted()
+                    Text(automation.isSystem ? String(localized: "Finished") : String(localized: "Nothing to report")).muted()
                 }
                 if let cost = run.cost {
                     Text(cost.formatted(.currency(code: "USD").precision(.fractionLength(2...4)))).muted()

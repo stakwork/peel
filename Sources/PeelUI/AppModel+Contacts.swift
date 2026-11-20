@@ -8,7 +8,7 @@ extension AppModel {
     /// Returns whether a key exchange was started, once the engine went ahead.
     public func addContact(code: String, alias: String, confirmedMsat: UInt64?) async -> (PaymentOutcome, Bool?) {
         var added: Bool?
-        let outcome = await pay("add contact") {
+        let outcome = await pay(String(localized: "add contact", table: "Shared")) {
             let (pubkey, started) = try await $0.addContact(code: code, alias: alias.trimmed, confirmedMsat: confirmedMsat)
             if !started { destination = .chat(pubkey) }
             added = started

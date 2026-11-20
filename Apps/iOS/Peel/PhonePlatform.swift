@@ -118,7 +118,7 @@ final class PhoneWeb: WebPresenting {
     }
 
     func openDocument(_ file: URL, named name: String) async throws {
-        throw PeelError("Pages open on the Mac for now.")
+        throw PeelError(String(localized: "Pages open on the Mac for now."))
     }
 
     /// The public sites' stores (`PublicPage.storeIdentifier`), the only

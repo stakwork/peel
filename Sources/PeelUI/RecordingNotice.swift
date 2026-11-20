@@ -5,8 +5,8 @@ import Foundation
 /// when that changed, and nothing for a call that was never recorded or a
 /// repeat.
 public struct RecordingNotice: Equatable, Sendable {
-    public static let started = "Recording in progress.\nPlease be aware this call is being recorded."
-    public static let ended = "Recording ended.\nThis call is no longer being recorded."
+    public static let started = String(localized: "Recording in progress.\nPlease be aware this call is being recorded.", table: "Shared")
+    public static let ended = String(localized: "Recording ended.\nThis call is no longer being recorded.", table: "Shared")
 
     private var recording = false
 

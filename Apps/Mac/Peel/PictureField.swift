@@ -47,7 +47,7 @@ struct PictureField<Label: View>: View {
                     .overlay {
                         if dropTargeted { picture.outline.stroke(Theme.accent, lineWidth: 2) }
                     }
-                    .accessibilityLabel(working ? "Uploading the picture" : "Picture")
+                    .accessibilityLabel(working ? String(localized: "Uploading the picture") : String(localized: "Picture"))
                 label
                 if !confirmingRemove {
                     Button { Task { await choose() } } label: {
@@ -81,12 +81,12 @@ struct PictureField<Label: View>: View {
             }
             .buttonStyle(.peel(.outline))
         case .confirmed(let confirm, let action):
-            InlineConfirm(trigger: "Remove", confirm: confirm, confirming: $confirmingRemove) {
+            InlineConfirm(trigger: String(localized: "Remove"), confirm: confirm, confirming: $confirmingRemove) {
                 problem = nil
                 do {
                     try await action()
                 } catch {
-                    problem = PeelError.problem(error, couldNot: "remove the picture")
+                    problem = PeelError.problem(error, couldNot: String(localized: "remove the picture"))
                 }
             }
         case nil:
@@ -105,7 +105,7 @@ struct PictureField<Label: View>: View {
         let (files, refused) = await PasteboardFiles.files(from: items)
         defer { files.forEach { IncomingFiles.discard($0) } }
         guard let file = files.first else {
-            problem = refused.first.map { PeelError.problem($0, couldNot: "use that picture") } ?? "That is not a picture."
+            problem = refused.first.map { PeelError.problem($0, couldNot: String(localized: "use that picture")) } ?? String(localized: "That is not a picture.")
             return
         }
         await send(file)
@@ -120,7 +120,7 @@ struct PictureField<Label: View>: View {
         do {
             try await upload(file)
         } catch {
-            problem = PeelError.problem(error, couldNot: "upload the picture")
+            problem = PeelError.problem(error, couldNot: String(localized: "upload the picture"))
         }
     }
 }

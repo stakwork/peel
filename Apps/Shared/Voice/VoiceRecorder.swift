@@ -61,7 +61,7 @@ final class VoiceRecorder {
                 AVLinearPCMIsBigEndianKey: false,
             ]
             let recorder = try AVAudioRecorder(url: url, settings: settings)
-            guard recorder.record() else { throw PeelError("the microphone is busy") }
+            guard recorder.record() else { throw PeelError(String(localized: "the microphone is busy", table: "Shared")) }
             self.recorder = recorder
             file = url
             state.begin()
@@ -227,21 +227,21 @@ struct VoiceRecordingIndicator: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.text)
             Spacer(minLength: 0)
-            Text(state.phase == .cancelling ? "Release to cancel" : Self.hint)
+            Text(state.phase == .cancelling ? String(localized: "Release to cancel", table: "Shared") : Self.hint)
                 .voiceNote()
                 .foregroundStyle(state.phase == .cancelling ? Theme.destructive : Theme.secondaryText)
         }
         .padding(.horizontal, VoiceStyle.indicatorInset)
         .frame(minHeight: VoiceStyle.target)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Recording, \(state.clock)")
+        .accessibilityLabel(String(localized: "Recording, \(state.clock)", table: "Shared"))
     }
 
     private static var hint: String {
         #if os(macOS)
-        "Drag away or press Esc to cancel"
+        String(localized: "Drag away or press Esc to cancel", table: "Shared")
         #else
-        "‹ Slide to cancel"
+        String(localized: "‹ Slide to cancel", table: "Shared")
         #endif
     }
 }

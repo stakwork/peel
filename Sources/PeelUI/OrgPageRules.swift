@@ -28,10 +28,10 @@ public enum OrgPageRules {
     public static func failure(status: Int) -> String? {
         guard status >= 400 else { return nil }
         switch status {
-        case 401, 403: return "The workspace did not let this device open it (HTTP \(status))."
-        case 404: return "The workspace has nothing there (HTTP 404)."
-        case 500...: return "The workspace had a problem answering (HTTP \(status))."
-        default: return "The workspace answered with HTTP \(status)."
+        case 401, 403: return String(localized: "The workspace did not let this device open it (HTTP \(status)).", table: "Shared")
+        case 404: return String(localized: "The workspace has nothing there (HTTP 404).", table: "Shared")
+        case 500...: return String(localized: "The workspace had a problem answering (HTTP \(status)).", table: "Shared")
+        default: return String(localized: "The workspace answered with HTTP \(status).", table: "Shared")
         }
     }
 }

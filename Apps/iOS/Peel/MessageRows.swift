@@ -39,8 +39,9 @@ struct ConversationRow: View, Equatable {
         case .paymentRequest:
             RequestRowView(row: row, composer: composer, flashed: flashed)
         case .request:
-            RowNote(text: row.sender.name + " wants to join"
-                + (row.approved.map { $0 ? " · Approved" : " · Declined" } ?? ""))
+            RowNote(text: row.approved.map {
+                $0 ? String(localized: "\(row.sender.name) wants to join · Approved") : String(localized: "\(row.sender.name) wants to join · Declined")
+            } ?? String(localized: "\(row.sender.name) wants to join"))
         case .note:
             RowNote(text: row.message.membershipNote(by: row.sender))
         case .control(let line):
@@ -53,7 +54,7 @@ struct ConversationRow: View, Equatable {
                 RowNote(text: line)
             }
         case .missingOriginal:
-            RowNote(text: "Original message not available", italic: true)
+            RowNote(text: String(localized: "Original message not available"), italic: true)
         case .replies(let count):
             RepliesLine(count: count)
         }
@@ -123,7 +124,7 @@ struct MessageRowView: View {
             if retryable {
                 UndeliveredLine(message: message)
             } else if message.delivery == .pending, message.mayHavePaid {
-                WaitingLine(since: message.date, what: message.type == MessageType.call ? "Call" : "Message")
+                WaitingLine(since: message.date, what: message.type == MessageType.call ? String(localized: "Call") : String(localized: "Message"))
             }
         }
         .messageActions(actions, spoken: spoken)
@@ -134,14 +135,14 @@ struct MessageRowView: View {
     private var spoken: String {
         var parts = [row.sender.label, Formatting.time(row.date)]
         if let quote = row.quote, case .message(let parent, let sender) = quote {
-            parts.append("replying to \(sender.label): \(parent.preview)")
+            parts.append(String(localized: "replying to \(sender.label): \(parent.preview)"))
         }
-        parts.append(row.images.count > 1 ? "\(row.images.count) images" : message.preview)
+        parts.append(row.images.count > 1 ? String(localized: "\(row.images.count) images") : message.preview)
         if let boosts = row.boosts, boosts.count > 0, !message.deleted {
-            parts.append("boosted \(Sats.format(msat: boosts.totalMsat))")
+            parts.append(String(localized: "boosted \(Sats.format(msat: boosts.totalMsat))"))
         }
         if let summary = row.summary { parts.append(Formatting.replies(summary.count)) }
-        if message.isRetryable() { parts.append("not delivered") }
+        if message.isRetryable() { parts.append(String(localized: "not delivered")) }
         return parts.joined(separator: ", ")
     }
 }
@@ -317,20 +318,20 @@ private struct CallBlock: View {
                         Image(systemName: link.audioOnly ? "phone.fill" : "video.fill")
                             .foregroundStyle(Theme.secondaryText)
                             .accessibilityHidden(true)
-                        Text(link.audioOnly ? "Audio call" : "Video call")
+                        Text(link.audioOnly ? String(localized: "Audio call") : String(localized: "Video call"))
                             .phoneFont(.row)
                             .foregroundStyle(Theme.text)
                     }
                     if message.notSent {
-                        status("Not sent")
+                        status(String(localized: "Not sent"))
                     } else if onIt {
-                        who(presence.people ?? [], "You're on this call")
+                        who(presence.people ?? [], String(localized: "You're on this call"))
                     } else {
                         switch presence {
                         case .live(let people) where !people.isEmpty:
-                            who(people, "\(people.count) on the call")
-                        case .live: status("No one on the call")
-                        case .ended: status("Call ended")
+                            who(people, String(localized: "\(people.count) on the call"))
+                        case .live: status(String(localized: "No one on the call"))
+                        case .ended: status(String(localized: "Call ended"))
                         case .unknown: EmptyView()
                         }
                     }
@@ -403,13 +404,13 @@ struct PaymentRowView: View {
             }
             if message.fromMe, !message.deleted {
                 switch message.delivery {
-                case .pending: WaitingLine(since: message.date, what: "Payment", person: message.chat)
-                case .unsettled: QuietLine(text: "Payment not settled")
+                case .pending: WaitingLine(since: message.date, what: String(localized: "Payment"), person: message.chat)
+                case .unsettled: QuietLine(text: String(localized: "Payment not settled"))
                 case .failed: UndeliveredLine(message: message)
                 case .delivered, nil: EmptyView()
                 }
             } else if !message.deleted, message.arrived == false {
-                QuietLine(text: "Not received")
+                QuietLine(text: String(localized: "Not received"))
             }
         }
         .opacity(message.isSending() ? 0.6 : 1)
@@ -423,10 +424,10 @@ struct PaymentRowView: View {
             return Text("This payment has been deleted").italic().foregroundColor(Theme.secondaryText)
         } else if let msat = message.amountMsat, msat > 0 {
             let amount = Text(Sats.format(msat: msat)).fontWeight(.semibold)
-            return Text(message.fromMe ? "You sent \(amount)" : "\(who) sent you \(amount)")
+            return (message.fromMe ? Text("You sent \(amount)") : Text("\(who) sent you \(amount)"))
                 .foregroundColor(Theme.text)
         } else {
-            return Text(message.fromMe ? "You sent a payment" : "\(who) sent a payment with no sats")
+            return (message.fromMe ? Text("You sent a payment") : Text("\(who) sent a payment with no sats"))
                 .foregroundColor(Theme.secondaryText)
         }
     }
@@ -497,7 +498,8 @@ struct RequestRowView: View {
     private func status(_ invoice: Invoice) -> String {
         switch row.paymentRequest?.state ?? .open {
         case .underpaid: return String(localized: "Partly paid. This invoice can't take the rest.")
-        case .paid(let at): return (row.message.fromMe ? String(localized: "Paid") : String(localized: "You paid")) + (at.map { " · \(Formatting.when($0))" } ?? "")
+        case .paid(let at): let when = Formatting.when(at)
+            return row.message.fromMe ? String(localized: "Paid · \(when)") : String(localized: "You paid · \(when)")
         case .paying: return String(localized: "Paying…")
         case .open, .failed:
             if invoice.isExpired() { return String(localized: "Expired at \(invoice.expiresAt.map(Formatting.expiry) ?? "")") }
@@ -521,10 +523,10 @@ struct BoostLineView: View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             if showsChip, boosts.count > 0 { BoostChipView(boosts: boosts, chat: chat, inTribe: inTribe) }
             if let since = boosts.pendingSince {
-                WaitingLine(since: since, what: "Boost", person: inTribe ? nil : chat)
+                WaitingLine(since: since, what: String(localized: "Boost"), person: inTribe ? nil : chat)
             }
             ForEach(Array(boosts.unsettled.enumerated()), id: \.offset) { _, boost in
-                QuietLine(text: "Boost of \(Sats.format(msat: boost.amountMsat)) not settled")
+                QuietLine(text: String(localized: "Boost of \(Sats.format(msat: boost.amountMsat)) not settled"))
             }
             ForEach(boosts.failed, id: \.id) { boost in
                 UndeliveredLine(message: boost)
@@ -562,10 +564,9 @@ private struct BoostChipView: View {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.attention.opacity(pending ? 0.5 : 1))
-                Text(Sats.number(msat: boosts.totalMsat))
+                Text("\(Sats.number(msat: boosts.totalMsat)) sats")
                     .fontWeight(.semibold)
                     .foregroundStyle(mine ? Theme.boostMineText : Theme.text)
-                + Text(" sats").foregroundStyle(Theme.secondaryText)
                 HStack(spacing: -Self.overlap) {
                     ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,
@@ -607,7 +608,7 @@ private struct BoostersList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             Text("Boosts").font(Theme.font(15, .semibold)).foregroundStyle(Theme.text)
-            Text("\(Sats.format(msat: boosts.totalMsat)) from \(Formatting.count(boosts.count, "boost"))")
+            Text("\(Sats.format(msat: boosts.totalMsat)) from \(Formatting.count(boosts.count, .boost))")
                 .font(Theme.font(13))
                 .monospacedDigit()
                 .foregroundStyle(Theme.secondaryText)
@@ -623,7 +624,7 @@ private struct BoostersList: View {
                                 .lineLimit(1)
                             Spacer(minLength: Theme.Space.sm)
                             if boost.pendingSince != nil || boost.unsettled {
-                                Text(boost.unsettled ? "not settled" : "sending")
+                                Text(boost.unsettled ? String(localized: "not settled") : String(localized: "sending"))
                                     .font(Theme.font(12))
                                     .foregroundStyle(Theme.secondaryText)
                                     .fixedSize()
@@ -718,7 +719,7 @@ struct UndeliveredLine: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: Theme.Space.md) {
                 if let armed = attempt.armed {
-                    Button("\(message.type == MessageType.boost ? "Boost" : "Send") \(Sats.format(msat: armed))") {
+                    Button(message.type == MessageType.boost ? String(localized: "Boost \(Sats.format(msat: armed))") : String(localized: "Send \(Sats.format(msat: armed))")) {
                         Task { await retry() }
                     }
                     .foregroundStyle(Theme.attention)
@@ -772,8 +773,8 @@ struct WaitingLine: View {
         TimelineView(.redrawing(at: since.addingTimeInterval(Message.confirmationTimeout))) { context in
             if context.date.timeIntervalSince(since) >= Message.confirmationTimeout {
                 QuietLine(text: person.map {
-                    "\(what) waiting for \(model.contactName($0) ?? "them") to come online · can't be cancelled"
-                } ?? "\(what) waiting for the server…")
+                    String(localized: "\(what) waiting for \(model.contactName($0) ?? String(localized: "them")) to come online · can't be cancelled")
+                } ?? String(localized: "\(what) waiting for the server…"))
             }
         }
     }
@@ -938,9 +939,9 @@ struct AgentArtifactLine: View {
         switch model.stadeum.opening(handle) {
         case .page(let page): return page.workspace
         case _ where artifact.url != nil: return artifact.url?.host()
-        case .connectFirst: return "Connect Stadeum in You to open"
-        case .notPaired(let peer): return "@\(peer) isn't connected here"
-        case .onMac: return "On your Mac"
+        case .connectFirst: return String(localized: "Connect Stadeum in You to open")
+        case .notPaired(let peer): return String(localized: "@\(peer) isn't connected here")
+        case .onMac: return String(localized: "On your Mac")
         }
     }
 }
@@ -1026,7 +1027,7 @@ struct RepliesLine: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(count == 0 ? "No replies yet" : Formatting.replies(count))
+            Text(count == 0 ? String(localized: "No replies yet") : Formatting.replies(count))
                 .phoneFont(.time)
                 .foregroundStyle(Theme.tertiaryText)
                 .fixedSize()

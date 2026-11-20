@@ -111,7 +111,7 @@ enum MenuEntry {
 
     /// "Copy text" (⌘C), the same wherever a message's words can be copied.
     static func copyText(_ text: String) -> MenuEntry {
-        .copy("Copy text", text: text, shortcut: .command("c"))
+        .copy(String(localized: "Copy text"), text: text, shortcut: .command("c"))
     }
 
     var item: MenuItem? {

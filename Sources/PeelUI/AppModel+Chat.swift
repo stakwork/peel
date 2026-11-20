@@ -288,7 +288,7 @@ extension AppModel {
 
     /// Marks a chat read up to its newest message; thread unread clears with it.
     public func markRead(_ chat: String) async {
-        await attempt("mark as read", in: chat) { try await $0.markRead(chat) }
+        await attempt(String(localized: "mark as read", table: "Shared"), in: chat) { try await $0.markRead(chat) }
     }
 
     /// Mark as read or Mark as unread for a chat's menu (`ReadToggle`):
@@ -326,7 +326,7 @@ extension AppModel {
     /// marks the chat as sent to: the composer's text-only send, and the
     /// tribe owner's answer to a proposal on Jamie's post.
     func sendText(_ text: String, to chat: String, replyTo: String? = nil, inThread: String? = nil) async throws {
-        guard let engine else { throw PeelError("the account is closed.") }
+        guard let engine else { throw PeelError(String(localized: "the account is closed.", table: "Shared")) }
         try await engine.sendText(text, to: chat, replyTo: replyTo, inThread: inThread)
         sent(in: chat)
     }
@@ -338,7 +338,7 @@ extension AppModel {
     public func sendDictated(_ text: String, to chat: String) async -> Bool {
         guard engine != nil else { return false }
         guard myAlias?.nilIfEmpty != nil else {
-            conversationNotices[chat] = "Set your name before sending messages"
+            conversationNotices[chat] = String(localized: "Set your name before sending messages", table: "Shared")
             return false
         }
         Diagnostics.setAction(.send)
@@ -348,7 +348,7 @@ extension AppModel {
             try await sendText(text, to: chat)
             return true
         } catch {
-            conversationNotices[chat] = PeelError.noted(error, couldNot: "send")
+            conversationNotices[chat] = PeelError.noted(error, couldNot: String(localized: "send", table: "Shared"))
             return false
         }
     }
@@ -366,7 +366,7 @@ extension AppModel {
         // no name; nothing goes out under none (the composers also disable
         // Send for the same reason, this is the backstop).
         guard myAlias?.nilIfEmpty != nil else {
-            conversationNotices[chat] = "Set your name before sending messages"
+            conversationNotices[chat] = String(localized: "Set your name before sending messages", table: "Shared")
             return false
         }
         Diagnostics.setAction(.send)
@@ -388,7 +388,7 @@ extension AppModel {
                 try await sendText(text, to: chat, replyTo: replyTo, inThread: inThread)
                 return true
             } catch {
-                conversationNotices[chat] = PeelError.noted(error, couldNot: "send")
+                conversationNotices[chat] = PeelError.noted(error, couldNot: String(localized: "send", table: "Shared"))
                 replyTargets[composer] = reply
                 return false
             }
@@ -413,7 +413,7 @@ extension AppModel {
                 }
                 sent(in: chat)
             case .failure(let error):
-                refused.append((file, PeelError.noted(error, couldNot: "send \(file.lastPathComponent)")))
+                refused.append((file, PeelError.noted(error, couldNot: String(localized: "send \(file.lastPathComponent)", table: "Shared"))))
             }
         }
         if !refused.isEmpty {
@@ -453,7 +453,7 @@ extension AppModel {
             }
         }
         if !refused.isEmpty, let chat = composer.chat {
-            conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: "attach")
+            conversationNotices[chat] = PeelError.problem(refused.joined(separator: " "), couldNot: String(localized: "attach", table: "Shared"))
         }
         guard !files.isEmpty else { return }
         pendingFiles[composer, default: []].append(contentsOf: files)
@@ -481,7 +481,7 @@ extension AppModel {
 
     /// Picks files to attach, beside the window.
     public func chooseFiles(for composer: ComposerID) {
-        addFiles(platform.files.open(prompt: "Attach", multiple: true, directories: false, types: []) ?? [], to: composer)
+        addFiles(platform.files.open(prompt: String(localized: "Attach", table: "Shared"), multiple: true, directories: false, types: []) ?? [], to: composer)
     }
 
     // MARK: Attachments
@@ -536,7 +536,7 @@ extension AppModel {
                 // A paid one not bought yet: nothing wrong with it, nothing to fetch.
                 handle.state = .idle
             } catch {
-                let reason = PeelError.noted(error, couldNot: "download")
+                let reason = PeelError.noted(error, couldNot: String(localized: "download", table: "Shared"))
                 if MediaFetch.isTransient(error) {
                     handle.attempts += 1
                     handle.state = .retrying(reason: reason, attempt: handle.attempts)
@@ -606,7 +606,7 @@ extension AppModel {
         do {
             try await Task.detached { try UserFiles.copy(file, to: target, replacing: true) }.value
         } catch {
-            conversationNotices[message.chat] = PeelError.noted(error, couldNot: "save the file")
+            conversationNotices[message.chat] = PeelError.noted(error, couldNot: String(localized: "save the file", table: "Shared"))
         }
     }
 
@@ -619,7 +619,7 @@ extension AppModel {
         do {
             attachment(id).savedTo = try await UserFiles.saveToDownloads(file, named: fileName(of: message) ?? file.lastPathComponent)
         } catch {
-            conversationNotices[message.chat] = PeelError.noted(error, couldNot: "save to Downloads")
+            conversationNotices[message.chat] = PeelError.noted(error, couldNot: String(localized: "save to Downloads", table: "Shared"))
         }
     }
 
@@ -646,7 +646,7 @@ extension AppModel {
         do {
             try await webPresenter.openDocument(file, named: fileName(of: message) ?? "Page")
         } catch {
-            conversationNotices[message.chat] = PeelError.noted(error, couldNot: "open the page")
+            conversationNotices[message.chat] = PeelError.noted(error, couldNot: String(localized: "open the page", table: "Shared"))
         }
     }
 

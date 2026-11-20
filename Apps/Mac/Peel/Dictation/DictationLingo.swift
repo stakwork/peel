@@ -53,7 +53,7 @@ final class DictationLingo {
             problem = nil
         } catch {
             guard server == self.server, isUnlocked() else { return }
-            problem = PeelError.problem(error, couldNot: "read your vocabulary from Peel's strut")
+            problem = PeelError.problem(error, couldNot: String(localized: "read your vocabulary from Peel's strut"))
             log.error("lexicon not read: \(String(describing: error))")
         }
     }

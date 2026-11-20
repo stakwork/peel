@@ -37,7 +37,7 @@ extension AppModel {
     /// said in the row (`jamieMarkNotes`), the switch as it was; a throw is
     /// anything else that went wrong.
     public func setJamieSeesSenders(_ on: Bool, in tribe: String) async throws {
-        guard let jamie = stadeum.jamieLinks?.jamie.pubkey else { throw PeelError("Jamie isn't in this tribe.") }
+        guard let jamie = stadeum.jamieLinks?.jamie.pubkey else { throw PeelError(String(localized: "Jamie isn't in this tribe.", table: "Shared")) }
         do {
             knownMembers[tribe] = try await signedIn().showSenders(jamie, in: tribe, on: on)
             jamieMarkNotes[tribe] = nil
@@ -48,7 +48,7 @@ extension AppModel {
 
     /// What a tribe's Jamie row says when its tribes server does not answer
     /// the mark: one from before it does not know it. The link stands.
-    static let sendersNotShown = "This tribe's server can't tell Jamie who is speaking yet, so everyone here asks with your access."
+    static var sendersNotShown: String { String(localized: "This tribe's server can't tell Jamie who is speaking yet, so everyone here asks with your access.", table: "Shared") }
 
     /// As the account opens with a pairing (`Stadeum.opened`) and on each
     /// connection, only while connected (the lists need it), one at a time
@@ -94,7 +94,7 @@ extension AppModel {
             } catch Engine.Failure.sendersNotShown {
                 if self.engine === engine { jamieMarkNotes[tribe] = Self.sendersNotShown }
             } catch {
-                if self.engine === engine { jamieMarkNotes[tribe] = PeelError.noted(error, couldNot: "tell Jamie who is speaking") }
+                if self.engine === engine { jamieMarkNotes[tribe] = PeelError.noted(error, couldNot: String(localized: "tell Jamie who is speaking", table: "Shared")) }
             }
         }
     }
@@ -122,8 +122,8 @@ extension AppModel {
         guard stadeum.jamiePick(of: tribe) == "", let jamie = stadeum.jamieLinks?.jamie,
               let member = knownMembers[tribe]?.member(jamie.pubkey) else { return nil }
         return member.pending
-            ? "\(jamie.alias) is asking to join for an org you didn't pick: someone else linked this tribe. Approving it sends what's said here to that org."
-            : "\(jamie.alias) is in this tribe for an org you didn't pick: someone else linked it, and that org reads what's said here. Remove it in Members."
+            ? String(localized: "\(jamie.alias) is asking to join for an org you didn't pick: someone else linked this tribe. Approving it sends what's said here to that org.", table: "Shared")
+            : String(localized: "\(jamie.alias) is in this tribe for an org you didn't pick: someone else linked it, and that org reads what's said here. Remove it in Members.", table: "Shared")
     }
 
     /// A request to join a tribe this account owns: approved unasked when
@@ -184,7 +184,7 @@ extension AppModel {
                 return
             } catch {
                 // Still in Members to approve by hand.
-                conversationNotices[tribe] = PeelError.noted(error, couldNot: "approve \(links.jamie.alias)")
+                conversationNotices[tribe] = PeelError.noted(error, couldNot: String(localized: "approve \(links.jamie.alias)", table: "Shared"))
                 return
             }
         }

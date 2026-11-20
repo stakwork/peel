@@ -59,7 +59,7 @@ struct StadeumSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         } header: {
-            PhoneSectionHeader("Stadeum")
+            PhoneSectionHeader(String(localized: "Stadeum"))
         }
         .phoneRows(.grouped)
         .environment(\.surface, .raised)
@@ -134,7 +134,7 @@ struct BoxesSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } header: {
-                PhoneSectionHeader("Boxes")
+                PhoneSectionHeader(String(localized: "Boxes"))
             } footer: {
                 Text(BoxWords.howToLink)
             }

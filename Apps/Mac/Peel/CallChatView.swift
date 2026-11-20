@@ -29,7 +29,7 @@ struct CallChatView: View {
         HStack {
             Text("Chat").font(Theme.font(13, .semibold))
             Spacer()
-            IconButton("xmark", help: "Close chat") { call.setChatOpen(false) }
+            IconButton("xmark", help: String(localized: "Close chat")) { call.setChatOpen(false) }
         }
         .padding(.horizontal, Theme.Space.md)
         .frame(height: 38)
@@ -88,7 +88,7 @@ struct CallChatView: View {
                 .accessibilityLabel("Mention Jamie")
             }
             HStack(alignment: .bottom, spacing: Theme.Space.sm) {
-                TextField("", text: $draft, prompt: Text(call.jamieInCall ? "Message, @Jamie to ask" : "Message"), axis: .vertical)
+                TextField("", text: $draft, prompt: call.jamieInCall ? Text("Message, @Jamie to ask") : Text("Message"), axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(Theme.font(13))
                     .lineLimit(1...4)
@@ -106,7 +106,7 @@ struct CallChatView: View {
                     .background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: Theme.Radius.control))
                     .overlay { RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(focused ? Theme.accent : Theme.inputBorder) }
                     .accessibilityLabel("Message")
-                IconButton("arrow.up", help: "Send", variant: .outline, action: send)
+                IconButton("arrow.up", help: String(localized: "Send"), variant: .outline, action: send)
                     .disabled(trimmed.isEmpty)
             }
         }
@@ -144,7 +144,7 @@ private struct ChatRowView: View {
         let jamie = row.message.isFromJamie
         VStack(alignment: row.isMine ? .trailing : .leading, spacing: 2) {
             HStack(spacing: Theme.Space.xs) {
-                Text(row.isMine ? "You" : jamie ? "Jamie" : message.sender ?? "")
+                Text(row.isMine ? String(localized: "You") : jamie ? String(localized: "Jamie") : message.sender ?? "")
                     .font(Theme.font(12, .bold))
                     .foregroundStyle(jamie ? Theme.accent : Theme.secondaryText)
                 if message.isVoice {

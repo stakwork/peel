@@ -53,9 +53,9 @@ struct DiagnosticRecordSheet: View {
                         Button {
                             Clipboard.copy(record.text)
                             copied = true
-                        } label: { ActionLabel(copied ? "Copied" : "Copy") }
+                        } label: { ActionLabel(copied ? String(localized: "Copied") : String(localized: "Copy")) }
                             .secondaryAction()
-                        Button { model.deleteDiagnosticRecord() } label: { ActionLabel("Delete") }
+                        Button { model.deleteDiagnosticRecord() } label: { ActionLabel(String(localized: "Delete")) }
                             .secondaryAction()
                     }
                 }
@@ -100,16 +100,16 @@ struct DiagnosticsScreen: View {
                     .phoneFont(.secondary)
                     .foregroundStyle(Theme.secondaryText)
                 HStack(spacing: 12) {
-                    Button { load() } label: { ActionLabel("Refresh") }
+                    Button { load() } label: { ActionLabel(String(localized: "Refresh")) }
                         .secondaryAction()
                     Button {
                         Clipboard.copy(text)
                         copied = true
-                    } label: { ActionLabel(copied ? "Copied" : "Copy") }
+                    } label: { ActionLabel(copied ? String(localized: "Copied") : String(localized: "Copy")) }
                         .secondaryAction()
-                    ShareLink(item: text) { ActionLabel("Share") }
+                    ShareLink(item: text) { ActionLabel(String(localized: "Share")) }
                         .secondaryAction()
-                    Button { confirmingClear = true } label: { ActionLabel("Clear") }
+                    Button { confirmingClear = true } label: { ActionLabel(String(localized: "Clear")) }
                         .secondaryAction()
                 }
             }

@@ -124,7 +124,7 @@ public struct AutomationRunRecord: Sendable, Equatable, Identifiable {
         // Text strut wrote and left blank, with no error: not a run with no output at all.
         nothing = status == "success" && reply == nil && said != nil && text == nil && error == nil && !peels
         let why = Self.maskingKeys(reply?.error ?? error ?? "no reason given")
-        failure = AutomationFailure.isSentence(why) ? why : "Didn't finish: " + why
+        failure = AutomationFailure.isSentence(why) ? why : String(localized: "Didn't finish: \(why)", table: "Shared")
     }
 
 
@@ -455,7 +455,7 @@ public struct AutomationsClient: Sendable {
             return try await Web.requestStrut(method, url, json: body.map { Data($0.jsonString.utf8) }, bearer: server.key,
                                              limit: MemoryServer.replyLimit, what: what)
         } catch {
-            throw PeelError(PeelError.problem(error, couldNot: "reach strut at \(server.base.absoluteString)")
+            throw PeelError(PeelError.problem(error, couldNot: String(localized: "reach strut at \(server.base.absoluteString)", table: "Shared"))
                 + " Check that strut is running there.")
         }
     }

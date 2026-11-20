@@ -28,7 +28,7 @@ struct TribeDetailsPanel: View {
     private var info: TribeInfo? { details?.info }
 
     var body: some View {
-        DockedPanel(title: "Tribe details", close: done) {
+        DockedPanel(title: String(localized: "Tribe details"), close: done) {
             hero
             facts
             if !tribe.pages.isEmpty {
@@ -87,15 +87,15 @@ struct TribeDetailsPanel: View {
 
     @ViewBuilder private var facts: some View {
         FactList {
-            Fact("Owner") { owner }
+            Fact(String(localized: "Owner")) { owner }
             switch memberList {
-            case nil: Fact("Members") { known(nil) }
-            case .success(let members): Fact("Members") { Text(members.countLabel) }
+            case nil: Fact(String(localized: "Members")) { known(nil) }
+            case .success(let members): Fact(String(localized: "Members")) { Text(members.countLabel) }
             case .failure: EmptyView()
             }
-            Fact("To join") { known(info?.joinPrice.described) }
-            Fact("Each message") { Text(tribe.messagePrice.described) }
-            Fact("Escrow") { Text(tribe.escrowLine(millis: info?.escrowMillis)) }
+            Fact(String(localized: "To join")) { known(info?.joinPrice.described) }
+            Fact(String(localized: "Each message")) { Text(tribe.messagePrice.described) }
+            Fact(String(localized: "Escrow")) { Text(tribe.escrowLine(millis: info?.escrowMillis)) }
         }
         .monospacedDigit()
         .padding(.top, 14)
@@ -118,7 +118,7 @@ struct TribeDetailsPanel: View {
                 Text(alias).lineLimit(1)
             }
         } else {
-            known(info == nil ? nil : "Not given")
+            known(info == nil ? nil : String(localized: "Not given"))
         }
     }
 
@@ -157,12 +157,12 @@ struct TribeDetailsPanel: View {
             // Side by side while they fit, the buttons under the code when not.
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 14) {
-                    QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
+                    QRCodeTile(text: link, label: String(localized: "QR code of the tribe link"), size: 112)
                     shareButtons(link)
                     Spacer(minLength: 0)
                 }
                 VStack(alignment: .leading, spacing: 14) {
-                    QRCodeTile(text: link, label: "QR code of the tribe link", size: 112)
+                    QRCodeTile(text: link, label: String(localized: "QR code of the tribe link"), size: 112)
                     shareButtons(link)
                 }
             }
@@ -212,7 +212,7 @@ struct TribeDetailsPanel: View {
             details = try await model.tribeDetails(tribe.pubkey)
             problem = nil
         } catch {
-            problem = PeelError.problem(error, couldNot: "load tribe details")
+            problem = PeelError.problem(error, couldNot: String(localized: "load tribe details"))
         }
     }
 }
@@ -236,16 +236,16 @@ private struct TribeJamieSection: View {
             switch stadeum.status {
             case .off, .needsPairing:
                 FormItem(label: "Stadeum", helper: model.brain == .thisMac
-                         ? "Connect Stadeum to let one of your orgs answer @jamie here."
-                         : "Your assistant runs on your home server. Turn off Always on to connect Stadeum.",
+                         ? String(localized: "Connect Stadeum to let one of your orgs answer @jamie here.")
+                         : String(localized: "Your assistant runs on your home server. Turn off Always on to connect Stadeum."),
                          problem: stadeum.problem) {
                     if model.brain == .thisMac {
-                        Button(stadeum.status == .off ? "Connect Stadeum" : "Connect again") { model.connectHive() }
+                        Button(stadeum.status == .off ? String(localized: "Connect Stadeum") : String(localized: "Connect again")) { model.connectHive() }
                             .buttonStyle(.peel(.outline))
                     }
                 }
             case .pairing(let pairing):
-                FormItem(label: "Pair this Mac") {
+                FormItem(label: String(localized: "Pair this Mac")) {
                     HStack(alignment: .top) {
                         StadeumPairingCode(pairing: pairing)
                         Spacer(minLength: 0)
@@ -256,7 +256,7 @@ private struct TribeJamieSection: View {
             case .connected:
                 if let pick = stadeum.jamiePick(of: tribe.pubkey) {
                     let seesSenders = model.jamieSeesSenders(in: tribe.pubkey)
-                    FormItem(label: "Answers from",
+                    FormItem(label: String(localized: "Answers from"),
                              helper: TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum, seesSenders: seesSenders),
                              problem: picker.problem ?? model.othersJamie(in: tribe.pubkey)) {
                         HStack(spacing: Theme.Space.sm) {
@@ -284,7 +284,7 @@ private struct TribeJamieSection: View {
                             .disabled(picker.working)
                     }
                 } else {
-                    FormItem(label: "Answers from", helper: stadeum.jamieProblem == nil ? "Asking Stadeum…" : nil,
+                    FormItem(label: String(localized: "Answers from"), helper: stadeum.jamieProblem == nil ? String(localized: "Asking Stadeum…") : nil,
                              problem: stadeum.jamieProblem) {
                         if stadeum.jamieProblem != nil {
                             Button("Try again") { Task { await stadeum.readJamieLinks() } }
@@ -315,11 +315,11 @@ private struct TribeIdentitySection: View {
 
     var body: some View {
         @Bindable var draft = draft
-        FormSection("How you appear in #\(tribe.displayName)") {
-            FormItem(label: "Name", helper: draft.note, problem: draft.problem) {
-                FormTextField(label: "Name", prompt: accountName, text: $draft.alias)
+        FormSection(String(localized: "How you appear in #\(tribe.displayName)")) {
+            FormItem(label: String(localized: "Name"), helper: draft.note, problem: draft.problem) {
+                FormTextField(label: String(localized: "Name"), prompt: accountName, text: $draft.alias)
             }
-            FormItem(label: "Photo") {
+            FormItem(label: String(localized: "Photo")) {
                 PictureField(
                     picture: Avatar(name: draft.alias.trimmed.nilIfEmpty ?? accountName, url: draft.photoURL ?? model.myPhotoURL,
                                     size: Theme.AvatarSize.xl, hue: model.myHue),

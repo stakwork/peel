@@ -29,7 +29,7 @@ struct LockedAttachment: View {
                     .overlay {
                         VStack(spacing: Theme.Space.sm) {
                             lockMark(size: 40)
-                            Text(kind == .video ? "Paid video" : "Paid photo")
+                            Text(kind == .video ? String(localized: "Paid video") : String(localized: "Paid photo"))
                                 .font(Theme.font(13, .semibold))
                                 .foregroundStyle(Theme.text)
                         }
@@ -38,10 +38,10 @@ struct LockedAttachment: View {
                 HStack(spacing: 10) {
                     lockMark(size: 34)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(kind == .text ? "Paid message" : "Paid file")
+                        Text(kind == .text ? String(localized: "Paid message") : String(localized: "Paid file"))
                             .font(Theme.font(13, .semibold))
                         if kind != .text {
-                            Text(AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
+                            Text(AttachmentFormat.kind(mediaType: message.mediaType) ?? String(localized: "File"))
                                 .muted()
                         }
                     }
@@ -61,8 +61,7 @@ struct LockedAttachment: View {
         .background(Theme.quote)
         .attachmentTile()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Paid \(isPicture ? (kind == .video ? "video" : "photo") : "attachment"), "
-            + Sats.format(msat: message.attachmentPriceMsat ?? 0))
+        .accessibilityLabel(String(localized: "\(isPicture ? (kind == .video ? String(localized: "Paid video") : String(localized: "Paid photo")) : String(localized: "Paid attachment")), \(Sats.format(msat: message.attachmentPriceMsat ?? 0))"))
     }
 
     private func lockMark(size: CGFloat) -> some View {
@@ -100,14 +99,14 @@ struct LockedAttachment: View {
                         .monospacedDigit()
                         .padding(.top, 5)
                     Spacer(minLength: 8)
-                    PayButton(verb: "Unlock", totalMsat: price, attempt: attempt, send: { confirmed in
+                    PayButton(verb: String(localized: "Unlock"), totalMsat: price, attempt: attempt, send: { confirmed in
                         await model.buyAttachment(message, confirmedMsat: confirmed)
                     }, sent: {}, isDefault: false, namesAmount: false)
                 }
                 if let problem = attempt.problem {
                     ProblemText(problem)
                 } else if state == .failed {
-                    ProblemText("Didn't go through. Nothing was paid.")
+                    ProblemText(String(localized: "Didn't go through. Nothing was paid."))
                 }
             }
         }
@@ -143,8 +142,9 @@ struct ForSaleNote: View {
 
     var body: some View {
         Label {
-            Text("For sale at \(Sats.format(msat: priceMsat)) · "
-                + (purchases == 0 ? "not bought yet" : purchases == 1 ? "bought once" : "bought \(Formatting.count(purchases, "time"))"))
+            Text(purchases == 0 ? String(localized: "For sale at \(Sats.format(msat: priceMsat)) · not bought yet")
+                : purchases == 1 ? String(localized: "For sale at \(Sats.format(msat: priceMsat)) · bought once")
+                : String(localized: "For sale at \(Sats.format(msat: priceMsat)) · bought \(Formatting.count(purchases, .time))"))
         } icon: {
             Image(systemName: "lock")
         }
@@ -170,7 +170,7 @@ struct AttachmentPriceField: View {
             Image(systemName: text.wrappedValue.isEmpty ? "lock.open" : "lock")
                 .font(.system(size: 12))
                 .foregroundStyle(text.wrappedValue.isEmpty ? Theme.secondaryText : Theme.text)
-            FormNumberField(label: "Price", text: text, unit: "sats", prompt: "Free")
+            FormNumberField(label: String(localized: "Price"), text: text, unit: String(localized: "sats"), prompt: String(localized: "Free"))
                 .frame(width: 120)
         }
         .help("Price per file. Empty sends them free.")

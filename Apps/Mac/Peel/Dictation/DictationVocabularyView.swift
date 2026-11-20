@@ -37,8 +37,8 @@ struct DictationVocabularyView: View {
     private var add: some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             HStack(alignment: .bottom, spacing: Theme.Space.md) {
-                FormTextField(label: "Word", prompt: "Stakwork", text: $word)
-                FormTextField(label: "Dictation writes it as", prompt: "stack work", text: $heard)
+                FormTextField(label: String(localized: "Word"), prompt: "Stakwork", text: $word)
+                FormTextField(label: String(localized: "Dictation writes it as"), prompt: "stack work", text: $heard)
                 Button("Add") { Task { await addPair() } }
                     .buttonStyle(.peel(.primary))
                     .disabled(word.trimmed.isEmpty || heard.trimmed.isEmpty)
@@ -79,7 +79,7 @@ struct DictationVocabularyView: View {
             word = ""
             heard = ""
         } catch {
-            problem = PeelError.problem(error, couldNot: "add it")
+            problem = PeelError.problem(error, couldNot: String(localized: "add it"))
         }
     }
 }
@@ -107,7 +107,7 @@ private struct VocabularyRow: View {
                         Button("Remove") {
                             Task {
                                 do { try await lingo.remove(heard.refID) } catch {
-                                    problem = PeelError.problem(error, couldNot: "remove it")
+                                    problem = PeelError.problem(error, couldNot: String(localized: "remove it"))
                                 }
                             }
                         }
@@ -121,13 +121,13 @@ private struct VocabularyRow: View {
                 set: { on in
                     Task {
                         do { try await lingo.setDictation(entry, on: on) } catch {
-                            problem = PeelError.problem(error, couldNot: "change it")
+                            problem = PeelError.problem(error, couldNot: String(localized: "change it"))
                         }
                     }
                 }
             ))
             .accessibilityLabel("Use in dictation")
-            .help(entry.dictationOff ? "Dictation leaves this word alone" : "Dictation puts this word right")
+            .help(entry.dictationOff ? Text("Dictation leaves this word alone") : Text("Dictation puts this word right"))
         }
         .padding(.horizontal, Theme.Space.xs)
     }

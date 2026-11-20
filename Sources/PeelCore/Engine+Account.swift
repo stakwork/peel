@@ -86,7 +86,7 @@ extension Engine {
         let words = Self.words(in: mnemonic)
         guard words.count == 12, (try? Self.seed(of: mnemonic)) == seed else { throw Failure.notThisAccountsWords }
         guard answers.count >= Self.wordsChecked, answers.keys.allSatisfy(words.indices.contains) else {
-            throw PeelError("three of the twelve words are needed")
+            throw PeelError(String(localized: "three of the twelve words are needed", table: "Shared"))
         }
         let wrong = answers.filter { Self.words(in: $0.value) != [words[$0.key]] }.keys.sorted()
         guard wrong.isEmpty else { throw Failure.wrongWords(positions: wrong.map { $0 + 1 }) }

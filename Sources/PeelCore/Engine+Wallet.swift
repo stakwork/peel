@@ -193,14 +193,14 @@ public struct EngineWallet: AppWallet {
         do {
             return WalletInvoice(try Invoice(text))
         } catch {
-            throw WalletError(.badRequest, "Peel could not read that invoice.")
+            throw WalletError(.badRequest, String(localized: "Peel could not read that invoice.", table: "Shared"))
         }
     }
 
     public func problem(paying payment: WalletPayment) async -> WalletError? {
         switch payment {
         case .invoice(let invoice):
-            guard let read = try? Invoice(invoice.bolt11) else { return WalletError(.badRequest, "Peel could not read that invoice.") }
+            guard let read = try? Invoice(invoice.bolt11) else { return WalletError(.badRequest, String(localized: "Peel could not read that invoice.", table: "Shared")) }
             do {
                 return try engine.invoiceProblem(read).map(Self.walletError)
             } catch {

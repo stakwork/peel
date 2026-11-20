@@ -31,12 +31,12 @@ public struct StrutSpeech: Sendable {
 
         public var description: String {
             switch self {
-            case .noEngine: "This Peel's strut has no speech engine"
-            case .keyRefused: "Peel's strut refused its key"
-            case .modelUnavailable: "The speech model couldn't be downloaded"
-            case .unreachable: "Peel's strut isn't running"
-            case .tookTooLong: "Peel's strut took too long"
-            case .refused: "Peel's strut couldn't transcribe that"
+            case .noEngine: String(localized: "This Peel's strut has no speech engine", table: "Shared")
+            case .keyRefused: String(localized: "Peel's strut refused its key", table: "Shared")
+            case .modelUnavailable: String(localized: "The speech model couldn't be downloaded", table: "Shared")
+            case .unreachable: String(localized: "Peel's strut isn't running", table: "Shared")
+            case .tookTooLong: String(localized: "Peel's strut took too long", table: "Shared")
+            case .refused: String(localized: "Peel's strut couldn't transcribe that", table: "Shared")
             }
         }
     }

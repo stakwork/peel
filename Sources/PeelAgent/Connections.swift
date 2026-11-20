@@ -132,7 +132,7 @@ extension AutomationsClient {
     @discardableResult
     static func mcpName(_ name: String) throws -> String {
         guard name.range(of: #"^[A-Za-z0-9_-]{1,32}$"#, options: .regularExpression) != nil else {
-            throw PeelError("A name is 1 to 32 letters, digits, \u{201C}-\u{201D} or \u{201C}_\u{201D}.")
+            throw PeelError(String(localized: "A name is 1 to 32 letters, digits, \u{201C}-\u{201D} or \u{201C}_\u{201D}.", table: "Shared"))
         }
         return name
     }

@@ -111,7 +111,7 @@ public struct PaymentItem: Sendable, Equatable, Identifiable {
 
     /// Why someone else's payment that came without its sats is `failed`
     /// (`Message.arrived`).
-    public static let notArrived = "Not received: the server has no record of these sats arriving"
+    public static let notArrived = String(localized: "Not received: the server has no record of these sats arriving", table: "Shared")
 
     /// Sats of ours to a contact, which go the asynchronous way: they wait
     /// for the contact's app to come online, with a ping to wake it.
@@ -826,8 +826,12 @@ extension Storage {
                 case .failed: item.status = .failed; item.error = invoice.error
                 case .paid: break
                 case .underpaid:
-                    item.note = "Partly paid: " + (invoice.paidMsat.map { Sats.format(msat: $0, of: invoice.amountMsat) }
-                        ?? "an unknown amount of \(Sats.format(msat: invoice.amountMsat))")
+                    let paidText = invoice.paidMsat.map { Sats.format(msat: $0, of: invoice.amountMsat) }
+                    if let paidText {
+                        item.note = String(localized: "Partly paid: \(paidText)", table: "Shared")
+                    } else {
+                        item.note = String(localized: "Partly paid: an unknown amount of \(Sats.format(msat: invoice.amountMsat))", table: "Shared")
+                    }
                 }
             }
             if let message {

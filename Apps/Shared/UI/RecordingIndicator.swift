@@ -29,7 +29,7 @@ struct RecordingIndicator: View {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { faded = true }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("This call is being recorded")
+        .accessibilityLabel(Text("This call is being recorded", tableName: "Shared"))
     }
 }
 

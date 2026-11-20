@@ -97,7 +97,7 @@ struct PersonCard: View {
                             .accessibilityHidden(true)
                         let time = Text(Formatting.time(context.date, in: local.zone)).bold()
                         let offset = Formatting.offset(model.difference(local.zone, at: context.date))
-                        Text("\(time) local time · \(offset ?? "same as yours")")
+                        Text("\(time) local time · \(offset ?? String(localized: "same as yours"))")
                             .font(Theme.font(13))
                             .monospacedDigit()
                     }
@@ -167,7 +167,7 @@ struct ChatInfoPanel: View {
     @State private var removeProblem: String?
 
     var body: some View {
-        DockedPanel(title: "Details", close: done) {
+        DockedPanel(title: String(localized: "Details"), close: done) {
             PanelHero(name: conversation.name) {
                 ConversationIcon(conversation: conversation, size: Theme.AvatarSize.xl)
             } lines: {
@@ -187,8 +187,8 @@ struct ChatInfoPanel: View {
         } footer: {
             FormFooter(problem: removeProblem) {
                 InlineConfirm(
-                    trigger: "Remove contact…", explanation: "Remove \(conversation.name) and delete your chat?",
-                    confirm: "Remove", alignment: .trailing
+                    trigger: String(localized: "Remove contact…"), explanation: String(localized: "Remove \(conversation.name) and delete your chat?"),
+                    confirm: String(localized: "Remove"), alignment: .trailing
                 ) { await remove() }
             }
         }
@@ -230,7 +230,7 @@ struct ChatTimeZoneSection: View {
     var body: some View {
         if conversation.offersTimeZoneSwitch(tribe: tribe) {
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                SectionHeader("Time zone")
+                SectionHeader(String(localized: "Time zone"))
                 if let sharing = zone.sharing {
                     FormSwitchRow(
                         label: String(localized: "Share my time zone with \(target)"),
@@ -299,9 +299,9 @@ private struct ContactKeyCard: View {
         Card {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
                 HStack(alignment: .top, spacing: Theme.Space.md) {
-                    QRCodeTile(text: pubkey, label: "QR code of their public key", size: 92, inset: 6)
+                    QRCodeTile(text: pubkey, label: String(localized: "QR code of their public key"), size: 92, inset: 6)
                     VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                        SectionHeader("Public key")
+                        SectionHeader(String(localized: "Public key"))
                         Text(pubkey)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.text)
@@ -311,7 +311,7 @@ private struct ContactKeyCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 HStack(spacing: Theme.Space.sm) {
-                    CopyButton("Copy key", text: pubkey)
+                    CopyButton(String(localized: "Copy key"), text: pubkey)
                     CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(pubkey) }
                 }
                 .buttonStyle(.peel(.outline))

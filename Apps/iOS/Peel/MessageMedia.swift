@@ -98,13 +98,13 @@ struct ImageTile: View {
                             .foregroundStyle(Theme.secondaryText)
                         } else if case .held(let size)? = handle?.state {
                             // Past the automatic limit (`Engine.autoDownloadImageLimit`): waits for a tap.
-                            note("arrow.down.circle", ["Image", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " - ") + ", tap to download")
+                            note("arrow.down.circle", AttachmentFormat.size(size).map { String(localized: "Image - \($0), tap to download") } ?? String(localized: "Image, tap to download"))
                         } else if handle?.isRetrying == true {
-                            note("arrow.down.circle", "Couldn't download yet - tap to retry")
+                            note("arrow.down.circle", String(localized: "Couldn't download yet - tap to retry"))
                         } else if handle?.failureReason != nil {
-                            note("photo", "Image not available")
+                            note("photo", String(localized: "Image not available"))
                         } else if case .idle? = handle?.state {
-                            note("clock", "Waiting to download")
+                            note("clock", String(localized: "Waiting to download"))
                         } else {
                             ProgressView()
                         }
@@ -116,7 +116,7 @@ struct ImageTile: View {
         .accessibilityElement()
         .accessibilityLabel("Image")
         .accessibilityAddTraits([.isImage, .isButton])
-        .accessibilityHint(model.awaitsManualDownload(message) ? "Downloads the image" : "Opens the image full screen")
+        .accessibilityHint(model.awaitsManualDownload(message) ? Text("Downloads the image") : Text("Opens the image full screen"))
         .contentShape(shape)
         .onTapGesture {
             if model.awaitsManualDownload(message) || canRetry {

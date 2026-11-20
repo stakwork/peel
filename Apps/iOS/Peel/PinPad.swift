@@ -31,7 +31,7 @@ struct PinPad: View {
                         Color.clear.frame(width: Self.key, height: Self.key)
                     }
                     digitKey("0")
-                    symbolKey("delete.left", label: "Delete") { if !pin.isEmpty { pin.removeLast() } }
+                    symbolKey("delete.left", label: String(localized: "Delete")) { if !pin.isEmpty { pin.removeLast() } }
                         .opacity(pin.isEmpty ? 0.35 : 1)
                 }
             }

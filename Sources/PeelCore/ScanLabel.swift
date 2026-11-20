@@ -21,11 +21,11 @@ public struct ScanLabel: Sendable, Equatable {
         let lower = trimmed.lowercased()
         if lower.hasPrefix("peel://"), let url = URL(string: trimmed) {
             if let app = PublicAppLink(peelLink: url) {
-                self.init(kind: .peel, text: "Open \(Self.bare(app.host)) in Peel")
+                self.init(kind: .peel, text: String(localized: "Open \(Self.bare(app.host)) in Peel", table: "Shared"))
                 return
             }
             if BoxLinkOffer(peelLink: url) != nil {
-                self.init(kind: .peel, text: "Link a box")
+                self.init(kind: .peel, text: String(localized: "Link a box", table: "Shared"))
                 return
             }
         }
@@ -35,24 +35,24 @@ public struct ScanLabel: Sendable, Equatable {
             return
         }
         if TribeLink(trimmed) != nil {
-            self.init(kind: .tribe, text: "Tribe")
+            self.init(kind: .tribe, text: String(localized: "Tribe", table: "Shared"))
             return
         }
         if (try? Invoice(trimmed)) != nil {
-            self.init(kind: .invoice, text: "Lightning invoice")
+            self.init(kind: .invoice, text: String(localized: "Lightning invoice", table: "Shared"))
             return
         }
         if let read = try? ContactCode.read(trimmed) {
             switch read {
-            case .invite: self.init(kind: .invite, text: "Sphinx invite")
-            case .tribe: self.init(kind: .tribe, text: "Tribe")
-            case .contact: self.init(kind: .contact, text: "Contact")
+            case .invite: self.init(kind: .invite, text: String(localized: "Sphinx invite", table: "Shared"))
+            case .tribe: self.init(kind: .tribe, text: String(localized: "Tribe", table: "Shared"))
+            case .contact: self.init(kind: .contact, text: String(localized: "Contact", table: "Shared"))
             }
             return
         }
         let line = trimmed.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         let short = line.count > Self.maxText ? String(line.prefix(Self.maxText)) + "…" : line
-        self.init(kind: .text, text: short.isEmpty ? "Code" : short)
+        self.init(kind: .text, text: short.isEmpty ? String(localized: "Code", table: "Shared") : short)
     }
 
     init(kind: Kind, text: String) {

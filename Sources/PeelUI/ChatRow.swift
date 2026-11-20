@@ -6,7 +6,7 @@ import PeelCore
 /// you, the contact, or a tribe member by the alias they sent.
 public struct Sender: Equatable, Sendable {
     /// What someone who sent no name is called, everywhere.
-    public static let unnamed = "Someone"
+    public static var unnamed: String { String(localized: "Someone", table: "Shared") }
 
     /// The name they go by; nil when they sent none.
     public var alias: String?
@@ -16,9 +16,9 @@ public struct Sender: Equatable, Sendable {
     public var isMe = false
 
     /// Their name as a run header shows it: yours is your alias.
-    public var name: String { alias ?? (isMe ? "You" : Self.unnamed) }
+    public var name: String { alias ?? (isMe ? String(localized: "You", table: "Shared") : Self.unnamed) }
     /// As quotes and lists name them: you are "You".
-    public var label: String { isMe ? "You" : name }
+    public var label: String { isMe ? String(localized: "You", table: "Shared") : name }
     /// What their avatar's initials come from: "?" with no name.
     public var avatarName: String { alias ?? "?" }
 }
@@ -484,22 +484,22 @@ public struct AgentRequest: Equatable, Sendable {
 
     /// What the row says: "Read your unread messages", after who asked
     /// outside the agent chat ("Kate: Read your unread messages").
-    public var label: String { asker.map { "\($0): \(words)" } ?? words }
+    public var label: String { asker.map { String(localized: "\($0): \(words)", table: "Shared") } ?? words }
 
     /// "Read your unread messages", by the request's kind.
     public var words: String {
         switch kind {
-        case "chats.list": "Read your chats"
-        case "chats.read": "Read a chat"
-        case "chats.threads": "Read threads"
-        case "chats.unseen": "Read your unread messages"
-        case "chats.search": "Search your messages"
-        case "attachments.read": "Read an attachment"
-        case "send": "Send a message"
-        case "approve": "Asked for your approval"
-        case "calendar.events": "Read your calendar"
-        case let kind where kind.hasPrefix("calendar."): "Change your calendar"
-        default: "Asked your Mac"
+        case "chats.list": String(localized: "Read your chats", table: "Shared")
+        case "chats.read": String(localized: "Read a chat", table: "Shared")
+        case "chats.threads": String(localized: "Read threads", table: "Shared")
+        case "chats.unseen": String(localized: "Read your unread messages", table: "Shared")
+        case "chats.search": String(localized: "Search your messages", table: "Shared")
+        case "attachments.read": String(localized: "Read an attachment", table: "Shared")
+        case "send": String(localized: "Send a message", table: "Shared")
+        case "approve": String(localized: "Asked for your approval", table: "Shared")
+        case "calendar.events": String(localized: "Read your calendar", table: "Shared")
+        case let kind where kind.hasPrefix("calendar."): String(localized: "Change your calendar", table: "Shared")
+        default: String(localized: "Asked your Mac", table: "Shared")
         }
     }
 
@@ -508,20 +508,20 @@ public struct AgentRequest: Equatable, Sendable {
     /// Outside the agent chat, one never answered was not this Mac's.
     public func outcome(at now: Date) -> String? {
         switch isExpired(at: now) && asker == nil ? .expired : status {
-        case nil where asker != nil: "Not answered"
-        case nil: "on your Mac…"
+        case nil where asker != nil: String(localized: "Not answered", table: "Shared")
+        case nil: String(localized: "on your Mac…", table: "Shared")
         case .done?: nil
-        case .denied?: "Declined"
-        case .expired?: "Too late, nothing done"
-        case .failed?: "Could not do it"
-        case .unknown?: "Not sure it went"
+        case .denied?: String(localized: "Declined", table: "Shared")
+        case .expired?: String(localized: "Too late, nothing done", table: "Shared")
+        case .failed?: String(localized: "Could not do it", table: "Shared")
+        case .unknown?: String(localized: "Not sure it went", table: "Shared")
         }
     }
 
     /// How it ended at `now` on a device that never answers it (the phone,
     /// decision 9): its card waits on the Mac rather than working there.
     public func outcomeElsewhere(at now: Date) -> String? {
-        status == nil && asks && !isExpired(at: now) ? "Waiting for your approval on your Mac" : outcome(at: now)
+        status == nil && asks && !isExpired(at: now) ? String(localized: "Waiting for your approval on your Mac", table: "Shared") : outcome(at: now)
     }
 }
 

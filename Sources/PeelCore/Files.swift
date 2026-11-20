@@ -181,7 +181,7 @@ struct TooLarge: Error, CustomStringConvertible {
     var size: Int64?
 
     var description: String {
-        "the file is larger than \(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file))"
+        String(localized: "the file is larger than \(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file))", table: "Shared")
     }
 }
 
@@ -193,16 +193,16 @@ enum ProfilePhoto {
     static func jpeg(from file: URL, limit: Int) throws -> Data {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= limit else { throw TooLarge(limit: limit) }
-        guard !ImageDecoding.isTooLarge(file) else { throw PeelError("\(file.lastPathComponent) is too large") }
+        guard !ImageDecoding.isTooLarge(file) else { throw PeelError(String(localized: "\(file.lastPathComponent) is too large", table: "Shared")) }
         guard let image = ImageDecoding.thumbnail(file, maxPixels: maxPixels) else {
-            throw PeelError("\(file.lastPathComponent) is not a picture")
+            throw PeelError(String(localized: "\(file.lastPathComponent) is not a picture", table: "Shared"))
         }
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
-            throw PeelError("could not make a JPEG")
+            throw PeelError(String(localized: "could not make a JPEG", table: "Shared"))
         }
         CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.5] as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else { throw PeelError("could not make a JPEG") }
+        guard CGImageDestinationFinalize(destination) else { throw PeelError(String(localized: "could not make a JPEG", table: "Shared")) }
         return data as Data
     }
 }
@@ -262,13 +262,13 @@ public enum UserFiles {
             try quarantine(target)
             return target
         }
-        throw PeelError("there are too many files called \(clean) already")
+        throw PeelError(String(localized: "there are too many files called \(clean) already", table: "Shared"))
     }
 
     /// `save` into the person's Downloads folder, off the caller's actor.
     public static func saveToDownloads(_ file: URL, named name: String) async throws -> URL {
         guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            throw PeelError("there is no Downloads folder")
+            throw PeelError(String(localized: "there is no Downloads folder", table: "Shared"))
         }
         return try await Task.detached { try save(file, named: name, in: downloads) }.value
     }

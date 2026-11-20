@@ -23,13 +23,13 @@ struct YouTab: View {
                 Section {
                     AgentRow()
                 } header: {
-                    PhoneSectionHeader("Agent")
+                    PhoneSectionHeader(String(localized: "Agent"))
                 }
                 .phoneRows(.grouped)
                 Section {
                     VoiceModeSettingsFields()
                 } header: {
-                    PhoneSectionHeader("Voice mode")
+                    PhoneSectionHeader(String(localized: "Voice mode"))
                 } footer: {
                     Text("Talk to Peel by voice from its chat. Speech is recognised on this iPhone. Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default.")
                 }
@@ -38,7 +38,7 @@ struct YouTab: View {
                 BoxesSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
-                        LabeledContent("Twelve words", value: model.wordsConfirmed ? "" : "Not checked yet")
+                        LabeledContent("Twelve words", value: model.wordsConfirmed ? "" : String(localized: "Not checked yet"))
                     }
                     if model.profile?.requiresPIN == true {
                         NavigationLink("Change PIN", value: YouRoute.changePIN)
@@ -50,16 +50,16 @@ struct YouTab: View {
                     }
                     PaymentConfirmationRow()
                     NavigationLink(value: YouRoute.connectedApps) {
-                        LabeledContent("Connected apps", value: model.walletConnections.isEmpty ? "None" : "\(model.walletConnections.count)")
+                        LabeledContent("Connected apps", value: model.walletConnections.isEmpty ? String(localized: "None") : "\(model.walletConnections.count)")
                     }
                     NavigationLink(value: YouRoute.siteLocation) {
-                        LabeledContent("Site location", value: model.siteLocations.isEmpty ? "None" : "\(model.siteLocations.count)")
+                        LabeledContent("Site location", value: model.siteLocations.isEmpty ? String(localized: "None") : "\(model.siteLocations.count)")
                     }
                     AutoDownloadMediaRow()
                     NavigationLink("Diagnostics", value: YouRoute.diagnostics)
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(model.myServer ?? "None")
+                            Text(model.myServer ?? String(localized: "None"))
                             Text(model.connection.label)
                                 .phoneFont(.secondary)
                                 .foregroundStyle(Theme.quietText(on: .raised))
@@ -67,7 +67,7 @@ struct YouTab: View {
                     }
                     .accessibilityElement(children: .combine)
                 } header: {
-                    PhoneSectionHeader("Account")
+                    PhoneSectionHeader(String(localized: "Account"))
                 }
                 .phoneRows(.grouped)
                 .environment(\.surface, .raised)
@@ -78,14 +78,14 @@ struct YouTab: View {
                     // crash reporter is off and the debugger takes the signal.
                     Button("Force test crash") { Diagnostics.forceTestCrash() }
                 } header: {
-                    PhoneSectionHeader("Debug")
+                    PhoneSectionHeader(String(localized: "Debug"))
                 }
                 .phoneRows(.grouped)
                 #endif
                 Section {
                     ForgetAccount(
-                        trigger: "Forget this account",
-                        explanation: "Removes the account and its messages from this iPhone. You need your twelve words to sign back in.",
+                        trigger: String(localized: "Forget this account"),
+                        explanation: String(localized: "Removes the account and its messages from this iPhone. You need your twelve words to sign back in."),
                         destructiveTrigger: true
                     )
                 }
@@ -144,7 +144,7 @@ private struct Identity: View {
                 .phoneFont(PhoneFont(size: 16, style: .body))
                 .monospacedDigit()
                 .foregroundStyle(Theme.tertiaryText)
-                .accessibilityLabel("Balance, \(model.balanceText ?? "not known yet")")
+                .accessibilityLabel(model.balanceText.map { String(localized: "Balance, \($0)") } ?? String(localized: "Balance, not known yet"))
         }
         .frame(maxWidth: .infinity)
     }
@@ -200,14 +200,14 @@ private struct BiometricsRow: View {
         })) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(name)
-                Text(everyOpen ? "Peel asks for your PIN every time it opens."
-                               : "Asks for \(name) when Peel opens, until it asks for your PIN.")
+                Text(everyOpen ? String(localized: "Peel asks for your PIN every time it opens.")
+                               : String(localized: "Asks for \(name) when Peel opens, until it asks for your PIN."))
                     .phoneFont(.secondary)
                     .foregroundStyle(Theme.quietText(on: .raised))
                 // Turned on on another device: never enrolled from there, only
                 // offered; the switch turns it on, through the same PIN step.
                 if model.biometricsOffered, !on {
-                    Text("\(name) is on on your other device")
+                    Text("\(name) is enabled on your other device")
                         .phoneFont(.secondary)
                         .foregroundStyle(Theme.quietText(on: .raised))
                 }
@@ -247,11 +247,11 @@ private struct PINTimeoutRow: View {
 
     private static func label(_ hours: Int) -> String {
         switch hours {
-        case PINTimeout.never: "Never ask for PIN"
-        case 0: "When Peel opens"
-        case 1: "After an hour away"
-        case 24: "After a day away"
-        default: "After \(hours) hours away"
+        case PINTimeout.never: String(localized: "Never ask for PIN")
+        case 0: String(localized: "When Peel opens")
+        case 1: String(localized: "After an hour away")
+        case 24: String(localized: "After a day away")
+        default: String(localized: "After \(hours) hours away")
         }
     }
 }
@@ -292,7 +292,7 @@ private struct PaymentConfirmationRow: View {
             }
         })) {
             ForEach(presets(Self.choices, including: current), id: \.self) { msat in
-                Text(msat == 0 ? "Always" : "Over \(Sats.format(msat: msat))").tag(msat)
+                Text(msat == 0 ? String(localized: "Always") : String(localized: "Over \(Sats.format(msat: msat))")).tag(msat)
             }
         }
         .pickerStyle(.menu)
@@ -339,9 +339,9 @@ private struct BoostAmountScreen: View {
             .phoneRows(.grouped)
             Section {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    SatsInput(label: "Another amount", text: $custom, focused: $customFocused)
-                    TouchPayButton(verb: "Save", totalMsat: Sats.msat(custom), attempt: attempt, send: { confirmed in
-                        guard let typed = Sats.msat(custom) else { return .refused("Enter an amount.") }
+                    SatsInput(label: String(localized: "Another amount"), text: $custom, focused: $customFocused)
+                    TouchPayButton(verb: String(localized: "Save"), totalMsat: Sats.msat(custom), attempt: attempt, send: { confirmed in
+                        guard let typed = Sats.msat(custom) else { return .refused(String(localized: "Enter an amount.")) }
                         return await model.setBoostAmount(msat: typed, confirmedMsat: confirmed)
                     }, sent: {
                         custom = ""
@@ -350,7 +350,7 @@ private struct BoostAmountScreen: View {
                 }
                 .padding(.vertical, Theme.Space.sm)
             } header: {
-                PhoneSectionHeader("Another amount")
+                PhoneSectionHeader(String(localized: "Another amount"))
             }
             .phoneRows(.grouped)
         }
@@ -370,7 +370,7 @@ private struct NameEditor: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        StepPage(title: "Your name", problem: problem) {
+        StepPage(title: String(localized: "Your name"), problem: problem) {
             TextField("Name", text: $draft)
                 .font(Theme.font(17))
                 .textContentType(.nickname)
@@ -381,7 +381,7 @@ private struct NameEditor: View {
                 .frame(height: 50)
                 .fieldBox(focused: focused)
         } actions: {
-            Button { Task { await save() } } label: { ActionLabel("Save", working: working) }
+            Button { Task { await save() } } label: { ActionLabel(String(localized: "Save"), working: working) }
                 .primaryAction()
                 .disabled(draft.trimmed.isEmpty || draft.trimmed == model.myAlias || working)
         }
@@ -400,7 +400,7 @@ private struct NameEditor: View {
             try await model.setName(draft.trimmed)
             dismiss()
         } catch {
-            problem = PeelError.problem(error, couldNot: "save your name")
+            problem = PeelError.problem(error, couldNot: String(localized: "save your name"))
         }
     }
 }
@@ -423,14 +423,14 @@ private struct ChangePIN: View {
         Group {
             switch step {
             case .old:
-                PinPrompt(title: "Enter your current PIN", detail: note, pin: $old) { step = .new }
+                PinPrompt(title: String(localized: "Enter your current PIN"), detail: note, pin: $old) { step = .new }
             case .new:
-                PinPrompt(title: "Choose a new PIN", detail: note, pin: $new) {
+                PinPrompt(title: String(localized: "Choose a new PIN"), detail: note, pin: $new) {
                     note = nil
                     step = .confirm
                 }
             case .confirm:
-                PinPrompt(title: "Enter the new PIN again", detail: note, pin: $confirmation, working: working) {
+                PinPrompt(title: String(localized: "Enter the new PIN again"), detail: note, pin: $confirmation, working: working) {
                     Task { await submit() }
                 }
             }
@@ -456,7 +456,7 @@ private struct ChangePIN: View {
         } catch let error as SecretStoreFailure where error == .wrongPIN {
             reset(to: .old, note: PIN.problem(error))
         } catch {
-            reset(to: .new, note: PeelError.problem(error, couldNot: "change the PIN") + " Choose the new PIN again.")
+            reset(to: .new, note: String(localized: "\(PeelError.problem(error, couldNot: String(localized: "change the PIN"))) Choose the new PIN again."))
         }
     }
 }
@@ -487,22 +487,22 @@ private struct WordsScreen: View {
     var body: some View {
         Group {
             if asking {
-                PinPrompt(title: "Enter your PIN", detail: problem ?? "To show your twelve words.", pin: $pin, working: working) {
+                PinPrompt(title: String(localized: "Enter your PIN"), detail: problem ?? String(localized: "To show your twelve words."), pin: $pin, working: working) {
                     Task { await reveal() }
                 }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { hide() } }
                 }
             } else if !words.isEmpty, checking {
-                StepPage(title: "Check what you wrote", detail: "Type these three words from your paper.", problem: problem) {
+                StepPage(title: String(localized: "Check what you wrote"), detail: String(localized: "Type these three words from your paper."), problem: problem) {
                     WordCheckBoxes(check: $check) { Task { await confirm() } }
                 } actions: {
-                    Button { Task { await confirm() } } label: { ActionLabel("Check", working: working) }
+                    Button { Task { await confirm() } } label: { ActionLabel(String(localized: "Check"), working: working) }
                         .primaryAction()
                         .disabled(!check.isFilled || working)
                 }
             } else if !words.isEmpty {
-                StepPage(title: "Your twelve words", detail: "Anyone with these words controls your account. Keep them on paper.") {
+                StepPage(title: String(localized: "Your twelve words"), detail: String(localized: "Anyone with these words controls your account. Keep them on paper.")) {
                     NumberedWords(places: Array(words.indices)) { index in
                         Text(visible ? words[index] : "••••••")
                             .font(Theme.font(16))
@@ -517,23 +517,23 @@ private struct WordsScreen: View {
                             .foregroundStyle(Theme.secondaryText)
                     }
                 } actions: {
-                    Button { visible.toggle() } label: { ActionLabel(visible ? "Mask" : "Reveal") }.primaryAction()
-                    Button { hide() } label: { ActionLabel("Hide") }.secondaryAction()
+                    Button { visible.toggle() } label: { ActionLabel(visible ? String(localized: "Mask") : String(localized: "Reveal")) }.primaryAction()
+                    Button { hide() } label: { ActionLabel(String(localized: "Hide")) }.secondaryAction()
                 }
                 .task(id: hideAt) {
                     try? await Task.sleep(for: .seconds(Self.shownFor))
                     if !Task.isCancelled { hide() }
                 }
             } else {
-                StepPage(title: "Twelve words",
-                         detail: model.wordsConfirmed ? "Checked against your paper." : "Not checked against your paper yet.",
+                StepPage(title: String(localized: "Twelve words"),
+                         detail: model.wordsConfirmed ? String(localized: "Checked against your paper.") : String(localized: "Not checked against your paper yet."),
                          problem: problem) {
                     EmptyView()
                 } actions: {
                     if !model.wordsConfirmed {
-                        Button { Task { await start(checking: true) } } label: { ActionLabel("Check words") }.primaryAction()
+                        Button { Task { await start(checking: true) } } label: { ActionLabel(String(localized: "Check words")) }.primaryAction()
                     }
-                    Button { Task { await start(checking: false) } } label: { ActionLabel("Show words") }
+                    Button { Task { await start(checking: false) } } label: { ActionLabel(String(localized: "Show words")) }
                         .secondaryAction()
                 }
             }

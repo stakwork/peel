@@ -18,7 +18,7 @@ struct AgentSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             SettingsSection {
                 AgentNameRow(agent: agent)
-                Fact("Provider") {
+                Fact(String(localized: "Provider")) {
                     VStack(alignment: .leading, spacing: 4) {
                         if let connection = agent.connection {
                             HStack(spacing: 8) {
@@ -48,11 +48,11 @@ struct AgentSettingsSection: View {
                             Button("Try again") { model.modelChanged() }
                                 .buttonStyle(.peel(.outline))
                         }
-                        AgentConnectButton(source: .account, title: agent.connection == nil ? "Connect" : "Change")
+                        AgentConnectButton(source: .account, title: agent.connection == nil ? String(localized: "Connect") : String(localized: "Change"))
                     }
                 }
                 if let connection = agent.connection {
-                    Fact("API key") {
+                    Fact(String(localized: "API key")) {
                         Text("•••• \(connection.keyHint)")
                             .monospacedDigit()
                             .accessibilityLabel("Key ending \(connection.keyHint)")
@@ -60,18 +60,18 @@ struct AgentSettingsSection: View {
                         HStack(spacing: 8) {
                             // Replace steps aside while Remove asks.
                             if !removingKey {
-                                AgentConnectButton(source: .accountKey, title: "Replace")
+                                AgentConnectButton(source: .accountKey, title: String(localized: "Replace"))
                             }
                             // The DM and its bridge stay: it answers again once a model is connected.
-                            InlineConfirm(trigger: "Remove", prompt: "Remove the key?",
+                            InlineConfirm(trigger: String(localized: "Remove"), prompt: String(localized: "Remove the key?"),
                                           explanation: model.agentChat == nil ? nil
-                                              : "Your assistant stays in Direct messages but can't answer until you connect a model.",
-                                          confirm: "Remove", alignment: .trailing, confirming: $removingKey) {
+                                              : String(localized: "Your assistant stays in Direct messages but can't answer until you connect a model."),
+                                          confirm: String(localized: "Remove"), alignment: .trailing, confirming: $removingKey) {
                                 attempt { try agent.removeKey() }
                             }
                         }
                     }
-                    Fact("Model") {
+                    Fact(String(localized: "Model")) {
                         PeelDropdown(
                             selection: connection.model,
                             options: models(connection)
@@ -81,7 +81,7 @@ struct AgentSettingsSection: View {
                 }
                 // Each "Always allow" given on a card, until revoked; a workspace's is under Connections.
                 ForEach(Array(agent.approvalRules.filter { $0.tool != DeviceActions.peerTool }.enumerated()), id: \.element.id) { index, rule in
-                    Fact(index == 0 ? "Always allowed" : "") {
+                    Fact(index == 0 ? String(localized: "Always allowed") : "") {
                         Text(AgentToolTitle.of(rule.tool) + (rule.target.map { " to \($0.name)" } ?? ""))
                     } trailing: {
                         Button("Revoke") { attempt { try agent.revoke(rule) } }
@@ -91,8 +91,8 @@ struct AgentSettingsSection: View {
                 // Each send grant an automation's card made, until revoked.
                 let cards = model.macAgent.deviceCards
                 ForEach(Array(cards.grants.enumerated()), id: \.element.id) { index, grant in
-                    Fact(index == 0 ? "May post as you" : "") {
-                        Text("\(grant.name ?? "An automation"), to \(grant.summary)")
+                    Fact(index == 0 ? String(localized: "May post as you") : "") {
+                        Text("\(grant.name ?? String(localized: "An automation")), to \(grant.summary)")
                     } trailing: {
                         Button("Revoke") { attempt { try cards.revoke(grant) } }
                             .buttonStyle(.peel(.outline))
@@ -105,7 +105,7 @@ struct AgentSettingsSection: View {
                         // Not EmptyView: it drops the value's full-width frame and the row centres.
                         Spacer(minLength: 0)
                     } trailing: {
-                        InlineConfirm(trigger: "Clear…", prompt: "Clear the old assistant chats on this Mac?", confirm: "Clear") {
+                        InlineConfirm(trigger: String(localized: "Clear…"), prompt: String(localized: "Clear the old assistant chats on this Mac?"), confirm: String(localized: "Clear")) {
                             attempt { try agent.clear() }
                         }
                     }
@@ -145,7 +145,7 @@ struct AgentSettingsSection: View {
             try change()
             problem = nil
         } catch {
-            problem = PeelError.problem(error, couldNot: "change the agent")
+            problem = PeelError.problem(error, couldNot: String(localized: "change the agent"))
         }
     }
 }
@@ -157,7 +157,7 @@ private struct AgentAccountRow: View {
 
     var body: some View {
         let setUp = model.agentSetUp
-        Fact("Own account") {
+        Fact(String(localized: "Own account")) {
             Text(setUp.line)
                 .font(Theme.font(12))
                 .foregroundStyle(setUp.problem ? Theme.attention : Theme.secondaryText)
@@ -179,7 +179,7 @@ struct AgentSetUpPanel: View {
     var body: some View {
         let setUp = model.agentSetUp
         let offer = setUp == .offer
-        Callout(setUp.problem ? .attention : .neutral, offer ? "Give your assistant its own account" : nil,
+        Callout(setUp.problem ? .attention : .neutral, offer ? String(localized: "Give your assistant its own account") : nil,
                 detail: setUp.line, icon: setUp.busy ? .progress : nil) {
             if let action = setUp.action {
                 Button(action) { model.setUpAgent() }
@@ -196,8 +196,8 @@ struct AgentSetUpPanel: View {
 /// answer, so nothing is sent; Connect opens the Connect panel beside it.
 struct AgentModelPrompt: View {
     var body: some View {
-        Callout(.neutral, "Connect a model", detail: "Your assistant can't answer until you connect one.") {
-            AgentConnectButton(source: .dm, title: "Connect", variant: .primary)
+        Callout(.neutral, String(localized: "Connect a model"), detail: String(localized: "Your assistant can't answer until you connect one.")) {
+            AgentConnectButton(source: .dm, title: String(localized: "Connect"), variant: .primary)
                 .padding(.top, 6)
         }
         .padding(.horizontal, 20)
@@ -215,8 +215,8 @@ private struct AgentNameRow: View {
     var body: some View {
         if editing {
             VStack(alignment: .leading, spacing: 14) {
-                FormItem(label: "Name", problem: problem) {
-                    FormTextField(label: "Name", text: $draft, focusOnAppear: true)
+                FormItem(label: String(localized: "Name"), problem: problem) {
+                    FormTextField(label: String(localized: "Name"), text: $draft, focusOnAppear: true)
                         .onSubmit(save)
                 }
                 .padding([.horizontal, .top], settingsRowPadding)
@@ -231,7 +231,7 @@ private struct AgentNameRow: View {
                 .padding([.horizontal, .bottom], settingsRowPadding)
             }
         } else {
-            Fact("Name") {
+            Fact(String(localized: "Name")) {
                 Text(agent.name)
             } trailing: {
                 Button("Edit") {
@@ -286,11 +286,11 @@ struct BrainSection: View {
     @ViewBuilder private var rows: some View {
         switch model.brain {
         case .thisMac?:
-            Fact("Always on") {
+            Fact(String(localized: "Always on")) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Off")
                     Text(model.homeMoveBlocker
-                         ?? "Your assistant only answers while this Mac is awake. Run it on a home server to keep it answering around the clock.")
+                         ?? String(localized: "Your assistant only answers while this Mac is awake. Run it on a home server to keep it answering around the clock."))
                         .muted()
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -302,10 +302,10 @@ struct BrainSection: View {
         case .moved(let home)?:
             movedRows(home)
         case nil:
-            Fact("Always on") {
+            Fact(String(localized: "Always on")) {
                 Text("Peel couldn't tell where your assistant runs, so it starts nothing for now.").muted()
             } trailing: {
-                Button("Use this Mac") { attempt(couldNot: "use this Mac") { try model.useThisMac() } }
+                Button("Use this Mac") { attempt(couldNot: String(localized: "use this Mac")) { try model.useThisMac() } }
                     .buttonStyle(.peel(.outline))
             }
         }
@@ -316,15 +316,15 @@ struct BrainSection: View {
     /// Restore: the lossy way back, for a box that is gone.
     @ViewBuilder private func movedRows(_ home: MovedHome) -> some View {
         let busy = model.homeMove?.isRunning == true || homeAsk != nil
-        Fact("Always on") {
+        Fact(String(localized: "Always on")) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(home.answered ? "On, from your home server" : "Sent to your home server")
+                Text(home.answered ? String(localized: "On, from your home server") : String(localized: "Sent to your home server"))
                 Text(home.host)
                     .font(Theme.code(12))
                     .foregroundStyle(Theme.secondaryText)
                     .textSelection(.enabled)
-                Text(home.answered ? "Answering since \(Formatting.date(home.date)), even while this Mac sleeps."
-                     : "Sent \(Formatting.date(home.date)), but your assistant hasn't answered from there yet. This Mac keeps its own stopped, so two never run at once.")
+                Text(home.answered ? String(localized: "Answering since \(Formatting.date(home.date)), even while this Mac sleeps.")
+                     : String(localized: "Sent \(Formatting.date(home.date)), but your assistant hasn't answered from there yet. This Mac keeps its own stopped, so two never run at once."))
                     .foregroundStyle(home.answered ? Theme.secondaryText : Theme.attention)
                     .fixedSize(horizontal: false, vertical: true)
                 // This Mac's strut for dictation, kept in step with the box (`HomeSyncer`).
@@ -345,9 +345,9 @@ struct BrainSection: View {
             }
             .disabled(busy)
         }
-        Fact("Server gone?") {
-            Text(home.strutCopy == nil ? "Restore your assistant on this Mac as it was when it was sent. Anything since then is lost."
-                 : "Restore your assistant on this Mac as it was on \(Formatting.date(home.date)). Anything since then is lost.").muted()
+        Fact(String(localized: "Server gone?")) {
+            Text(home.strutCopy == nil ? String(localized: "Restore your assistant on this Mac as it was when it was sent. Anything since then is lost.")
+                 : String(localized: "Restore your assistant on this Mac as it was on \(Formatting.date(home.date)). Anything since then is lost.")).muted()
         } trailing: {
             Button("Restore…") { homeAsk = .restore }
                 .buttonStyle(.peel(.outline))
@@ -361,14 +361,15 @@ struct BrainSection: View {
     /// again makes a new one).
     private static func homeSync(_ status: HomeSyncer.Status, lastSync: Date?) -> String {
         switch status {
-        case .noPeer: "Your home server gave this Mac no way to sync with it, so dictation uses what it knew at the move."
+        case .noPeer: String(localized: "Your home server gave this Mac no way to sync with it, so dictation uses what it knew at the move.")
         case .expired(let date):
-            "This Mac's sync with your home server ran out \(Formatting.date(date)). Turn off Always on and set it up again to renew it."
-        case .notYet: "Not synced with this Mac yet."
-        case .synced(let date): "Last synced with this Mac \(Formatting.dateAndTime(date))."
+            String(localized: "This Mac's sync with your home server ran out \(Formatting.date(date)). Turn off Always on and set it up again to renew it.")
+        case .notYet: String(localized: "Not synced with this Mac yet.")
+        case .synced(let date): String(localized: "Last synced with this Mac \(Formatting.dateAndTime(date)).")
         case .failed(let at):
-            "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps "
-                + (lastSync.map { "what it last synced, \(Formatting.dateAndTime($0))." } ?? "what it knew at the move.")
+            lastSync.map { last in
+                String(localized: "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps what it last synced, \(Formatting.dateAndTime(last)).")
+            } ?? String(localized: "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps what it knew at the move.")
         }
     }
 
@@ -384,17 +385,15 @@ struct BrainSection: View {
             let away = !back && !link.isHomeNetwork
             Callout(
                 away ? .attention : .neutral,
-                back ? "Turn off Always on and bring your assistant back from \(link.host)?" : "Move your assistant to your home server at \(link.host)?",
+                back ? String(localized: "Turn off Always on and bring your assistant back from \(link.host)?") : String(localized: "Move your assistant to your home server at \(link.host)?"),
                 detail: model.homeMoveBlocker ?? (away
-                    ? "\(link.host) isn't on your home network. Your assistant carries its own account and keys: "
-                        + "only move it to a computer you run."
+                    ? String(localized: "\(link.host) isn't on your home network. Your assistant carries its own account and keys: only move it to a computer you run.")
                     : back
-                    ? "Your assistant, its memory and its automations come back and run on this Mac. It's offline for about a minute."
-                    : "Its memory and automations go with it, and it keeps answering while this Mac sleeps. "
-                        + "It's offline for about a minute. Your Sphinx words stay on this Mac.")
+                    ? String(localized: "Your assistant, its memory and its automations come back and run on this Mac. It's offline for about a minute.")
+                    : String(localized: "Its memory and automations go with it, and it keeps answering while this Mac sleeps. It's offline for about a minute. Your Sphinx words stay on this Mac."))
             ) {
                 HStack(spacing: 8) {
-                    Button(back ? "Turn off" : "Move") {
+                    Button(back ? String(localized: "Turn off") : String(localized: "Move")) {
                         homeAsk = nil
                         model.moveHome()
                     }
@@ -413,13 +412,12 @@ struct BrainSection: View {
                     stepsCallout
                 case .restore:
                     let day = model.brain?.moved.map { Formatting.date($0.date) } ?? ""
-                    Callout(.neutral, "Restore your assistant on this Mac?",
-                            detail: "This Mac goes back to how it was on \(day), when your assistant moved. What happened on your home server since then is lost. "
-                                + "Only do this if your home server is gone: two copies must never run at once.") {
+                    Callout(.neutral, String(localized: "Restore your assistant on this Mac?"),
+                            detail: String(localized: "This Mac goes back to how it was on \(day), when your assistant moved. What happened on your home server since then is lost. Only do this if your home server is gone: two copies must never run at once.")) {
                         HStack(spacing: 8) {
                             Button("Restore") {
                                 homeAsk = nil
-                                attempt(couldNot: "restore your assistant") { try model.useThisMacCopy() }
+                                attempt(couldNot: String(localized: "restore your assistant")) { try model.useThisMacCopy() }
                             }
                             .buttonStyle(.peel(.primary))
                             Button("Cancel") { homeAsk = nil }
@@ -440,22 +438,22 @@ struct BrainSection: View {
         let home = model.brain?.moved
         let steps: [HomeSteps.Step] = if let home {
             [
-                .init(words: "On your home server, in the folder you started it from, run:",
+                .init(words: String(localized: "On your home server, in the folder you started it from, run:"),
                       command: "docker compose exec setup sh /setup.sh send-back \(home.host)"),
-                .init(words: "Open the link it prints, on this Mac."),
+                .init(words: String(localized: "Open the link it prints, on this Mac.")),
             ]
         } else {
             [
-                .init(words: "On that computer, copy Peel's [home folder](\(Self.homeGuide)) over and, inside it, run:",
+                .init(words: String(localized: "On that computer, copy Peel's [home folder](\(Self.homeGuide)) over and, inside it, run:"),
                       command: "docker compose up -d"),
-                .init(words: "On this Mac, open its setup page at http://<its address>:8090."),
-                .init(words: "Click the link on that page. Peel asks before anything moves."),
+                .init(words: String(localized: "On this Mac, open its setup page at http://<its address>:8090.")),
+                .init(words: String(localized: "Click the link on that page. Peel asks before anything moves.")),
             ]
         }
-        return Callout(.neutral, home == nil ? "Run your assistant on a home server" : "Turn off Always on",
+        return Callout(.neutral, home == nil ? String(localized: "Run your assistant on a home server") : String(localized: "Turn off Always on"),
                        detail: home == nil
-                           ? "Any computer on your home network that stays on and runs Docker: a Raspberry Pi, a NAS, a spare Mac or PC."
-                           : "Your assistant comes back to this Mac with everything it did on your home server.") {
+                           ? String(localized: "Any computer on your home network that stays on and runs Docker: a Raspberry Pi, a NAS, a spare Mac or PC.")
+                           : String(localized: "Your assistant comes back to this Mac with everything it did on your home server.")) {
             VStack(alignment: .leading, spacing: 8) {
                 HomeSteps(steps: steps)
                 Button("Cancel") { homeAsk = nil }
@@ -493,11 +491,11 @@ private struct HomeMoveCallout: View {
                     .buttonStyle(.peel(.outline))
             }
         case .ended(.movedOut):
-            Callout(.neutral, detail: "Always on. Your assistant answered from your home server.",
+            Callout(.neutral, detail: String(localized: "Always on. Your assistant answered from your home server."),
                     icon: .symbol("checkmark.circle", Theme.confirmed), dismiss: dismiss)
         case .ended(.movedBack(let answered)):
-            Callout(.neutral, detail: answered ? "Your assistant is back on this Mac, and it answered."
-                        : "Your assistant is back on this Mac. It hasn't answered yet; it may still be starting.",
+            Callout(.neutral, detail: answered ? String(localized: "Your assistant is back on this Mac, and it answered.")
+                        : String(localized: "Your assistant is back on this Mac. It hasn't answered yet; it may still be starting."),
                     icon: .symbol("checkmark.circle", Theme.confirmed), dismiss: dismiss)
         case .ended(.unchanged(let why)), .ended(.unanswered(_, let why)), .ended(.stillAway(let why)):
             Callout(.attention, detail: why, dismiss: dismiss)
@@ -506,11 +504,11 @@ private struct HomeMoveCallout: View {
 
     static func words(_ direction: HomeMoveState.Direction, _ step: PeelHomeMove.Step) -> String {
         switch (direction, step) {
-        case (_, .checking): "Checking your home server…"
-        case (.out, .sending): "Stopping your assistant here and moving it to your home server…"
-        case (.back, .sending): "Bringing your assistant back to this Mac…"
-        case (.out, .waiting): "Waiting for your assistant to answer from your home server…"
-        case (.back, .waiting): "Starting your assistant here and waiting for it to answer…"
+        case (_, .checking): String(localized: "Checking your home server…")
+        case (.out, .sending): String(localized: "Stopping your assistant here and moving it to your home server…")
+        case (.back, .sending): String(localized: "Bringing your assistant back to this Mac…")
+        case (.out, .waiting): String(localized: "Waiting for your assistant to answer from your home server…")
+        case (.back, .waiting): String(localized: "Starting your assistant here and waiting for it to answer…")
         }
     }
 }
@@ -545,7 +543,7 @@ private struct HomeSteps: View {
                                     .padding(.vertical, 5)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(Theme.codeFill, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-                                CopyButton("Copy", text: command)
+                                CopyButton(String(localized: "Copy"), text: command)
                             }
                         }
                     }

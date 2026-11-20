@@ -96,7 +96,7 @@ final class DictationController {
         hud.model.accept = { [weak self] in self?.send(.accept) }
         hud.model.cancel = { [weak self] in self?.send(.cancel) }
         speech.onDownloadWait = { [weak self] in
-            self?.hud.show(.message("Downloading the speech model (\(StrutSpeech.modelSize)), once"))
+            self?.hud.show(.message(String(localized: "Downloading the speech model (\(StrutSpeech.modelSize)), once")))
         }
         capture.onLevel = { [weak self] level in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.hud.model.push(level) } }
@@ -278,7 +278,7 @@ final class DictationController {
         let on = SecureInput.isEnabled
         guard on != secureInput else { return }
         secureInput = on
-        hud.model.note = on ? "Another app is blocking keyboard shortcuts" : nil
+        hud.model.note = on ? String(localized: "Another app is blocking keyboard shortcuts") : nil
     }
 
     private func startListening() {
@@ -354,7 +354,7 @@ final class DictationController {
               Date().timeIntervalSince(since) >= DictationDefaults.handsFreeTipAfter else { return }
         tipClock = nil
         settings.handsFreeTipsShown += 1
-        hud.model.tip = "Press Space to keep going hands-free"
+        hud.model.tip = String(localized: "Press Space to keep going hands-free")
     }
 
     // MARK: - Effects
@@ -416,16 +416,16 @@ final class DictationController {
             try capture.beginRecording()
         } catch DictationAudioCapture.Failure.permissionDenied {
             permissions.refresh()
-            abandon("Allow the microphone in System Settings")
+            abandon(String(localized: "Allow the microphone in System Settings"))
             return
         } catch {
-            abandon("The microphone is not available")
+            abandon(String(localized: "The microphone is not available"))
             return
         }
     }
 
     private static func secureMessage(entry: Bool) -> String {
-        entry ? "Another app has secure typing on, so dictation is off" : "Dictation is off in password fields"
+        entry ? String(localized: "Another app has secure typing on, so dictation is off") : String(localized: "Dictation is off in password fields")
     }
 
     /// Where the text went, when the HUD has something to say about it.
@@ -433,9 +433,9 @@ final class DictationController {
         switch outcome {
         case .inserted: nil
         case .blocked(let entry): secureMessage(entry: entry)
-        case .copied(.focusMoved): "The focus moved, so it's on the clipboard: press ⌘V"
-        case .copied(.noAccessibility): "Copied: press ⌘V. Allow Accessibility for Peel to type it."
-        case .copied(.noField), .copied(.notPosted): "Copied: press ⌘V"
+        case .copied(.focusMoved): String(localized: "The focus moved, so it's on the clipboard: press ⌘V")
+        case .copied(.noAccessibility): String(localized: "Copied: press ⌘V. Allow Accessibility for Peel to type it.")
+        case .copied(.noField), .copied(.notPosted): String(localized: "Copied: press ⌘V")
         }
     }
 
@@ -467,7 +467,7 @@ final class DictationController {
         hud.show(.working)
         target = nil
         guard let recorded = capture.finishRecording() else {
-            hud.show(.message("The recording could not be saved"))
+            hud.show(.message(String(localized: "The recording could not be saved")))
             return
         }
         // Too short to hold a word, or no audio at all: strut is not asked
@@ -475,7 +475,7 @@ final class DictationController {
         guard recorded.duration >= DictationDefaults.minRecording else {
             try? FileManager.default.removeItem(at: recorded.url)
             // Another dictation still transcribing keeps the working pill.
-            if inserting == 0 { hud.show(.message("Nothing was heard")) }
+            if inserting == 0 { hud.show(.message(String(localized: "Nothing was heard"))) }
             return
         }
         let session = DictationSession(audioURL: recorded.url, duration: recorded.duration, mode: mode)
@@ -504,15 +504,15 @@ final class DictationController {
                 // Strut has already put the user's vocabulary right ("stack work" → "Stakwork").
                 transcript = try await transcriber.transcribe(audioFileURL: session.audioURL)
             } catch {
-                let why = (error as? StrutSpeech.Failure).map(String.init(describing:)) ?? "Couldn't transcribe"
+                let why = (error as? StrutSpeech.Failure).map(String.init(describing:)) ?? String(localized: "Couldn't transcribe")
                 await entry.keep(nil, .failed, note: why)
                 hud.show(.message(why))
                 return
             }
             let text = transcript.text, rewritten = transcript.heard
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                await entry.keep(nil, .failed, note: "Nothing was heard")
-                hud.show(.message("Nothing was heard"))
+                await entry.keep(nil, .failed, note: String(localized: "Nothing was heard"))
+                hud.show(.message(String(localized: "Nothing was heard")))
                 return
             }
             await previous?.value
@@ -532,7 +532,7 @@ final class DictationController {
             case .blocked(let secureEntry): kept = await entry.keep(nil, .blocked, note: Self.secureMessage(entry: secureEntry))
             }
             // Only a message: by now another dictation may be under way.
-            if let note { hud.show(.message(kept && copied ? note + " (also in History)" : note)) }
+            if let note { hud.show(.message(kept && copied ? String(localized: "\(note) (also in History)") : note)) }
         }
     }
 }
@@ -607,15 +607,15 @@ extension DictationController {
             self?.hud.hide()
             Task { await self?.lingo.undo(learned.undo, on: learned.server) }
         }
-        hud.show(.learned("Learned " + ListFormatter.localizedString(byJoining: learned.words)))
+        hud.show(.learned(String(localized: "Learned \(ListFormatter.localizedString(byJoining: learned.words))")))
     }
 
     /// Why a dictation was copied rather than typed, for its History row.
     fileprivate static func historyNote(_ why: DictationTextInserter.Outcome.Why) -> String {
         switch why {
-        case .noField, .notPosted: "no field had focus"
-        case .focusMoved: "the focus moved"
-        case .noAccessibility: "Accessibility is off"
+        case .noField, .notPosted: String(localized: "no field had focus")
+        case .focusMoved: String(localized: "the focus moved")
+        case .noAccessibility: String(localized: "Accessibility is off")
         }
     }
 }

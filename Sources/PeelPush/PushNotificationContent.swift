@@ -84,7 +84,7 @@ public enum PushNotificationContent: Equatable, Sendable {
     /// Show the notification as the server sent it (a Hive link's).
     case asSent
 
-    public static let generic = PushNotificationContent.text(title: "Peel", body: "You have new messages")
+    public static let generic = PushNotificationContent.text(title: "Peel", body: String(localized: "You have new messages", table: "Shared"))
 }
 
 /// What the extension delivers: the words, and the chat they are about when known.
@@ -136,7 +136,9 @@ public enum PushNotificationResolver {
         return ResolvedPush(
             content: .text(
                 title: "Peel",
-                body: found.isTribe ? "You have new messages in \(found.name)" : "You have new messages from \(found.name)"),
+                body: found.isTribe
+                    ? String(localized: "You have new messages in \(found.name)", table: "Shared")
+                    : String(localized: "You have new messages from \(found.name)", table: "Shared")),
             route: .child(kind: found.isTribe ? .tribe : .contact, index: index))
     }
 }

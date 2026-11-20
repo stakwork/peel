@@ -52,7 +52,7 @@ struct MainTabs: View {
                 if case .page(let request) = model.stadeum.opening(page) { router.orgPage = request }
                 return .handled
             case .connectFirst(let slug):
-                CopyFeedback.announce("Connect @\(slug) first")
+                CopyFeedback.announce(String(localized: "Connect @\(slug) first"))
                 return .systemAction
             case .notOurs:
                 return .systemAction
@@ -172,7 +172,7 @@ private struct SearchTab: View {
             }
             .onCallBannerInset()
             .navigationTitle("Search")
-            .searchable(text: $model.searchQuery, prompt: "Search chats")
+            .searchable(text: $model.searchQuery, prompt: Text("Search chats"))
             .chatsDestinations()
         }
     }

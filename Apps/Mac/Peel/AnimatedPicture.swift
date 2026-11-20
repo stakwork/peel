@@ -48,8 +48,8 @@ private struct GIFPlayback: ViewModifier {
                         Label("GIF", systemImage: started ? "pause.fill" : "play.fill")
                     }
                     .buttonStyle(.peel(.outline, size: .sm))
-                    .help(started ? "Pause" : "Play")
-                    .accessibilityLabel(started ? "Pause GIF" : "Play GIF")
+                    .help(started ? Text("Pause") : Text("Play"))
+                    .accessibilityLabel(started ? Text("Pause GIF") : Text("Play GIF"))
                     .padding(Theme.Space.sm)
                 }
             }

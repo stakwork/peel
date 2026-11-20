@@ -202,7 +202,7 @@ final class WebPane: NSObject, Identifiable {
     /// the page's place. The page then has the keyboard.
     func go(to typed: String) {
         guard let url = WebPage.typed(typed) else {
-            problem = Problem(url: nil, message: "Only http and https addresses open here.")
+            problem = Problem(url: nil, message: String(localized: "Only http and https addresses open here."))
             return
         }
         open(url)
@@ -245,7 +245,7 @@ final class WebPane: NSObject, Identifiable {
     func strutChanged(to server: MemoryServer?) {
         guard let strut, strut.server != server else { return }
         endPage()
-        problem = Problem(url: nil, message: "Peel's strut started again. Open this from the agent's message again.")
+        problem = Problem(url: nil, message: String(localized: "Peel's strut started again. Open this from the agent's message again."))
     }
 
     /// The boxes linked changed: a box's page whose box is no longer linked
@@ -253,7 +253,7 @@ final class WebPane: NSObject, Identifiable {
     func boxesChanged(_ boxes: Boxes) {
         guard let box, !boxes.shows(box) else { return }
         endPage()
-        problem = Problem(url: nil, message: "Peel is no longer linked to \(box.workspace).")
+        problem = Problem(url: nil, message: String(localized: "Peel is no longer linked to \(box.workspace)."))
     }
 
     func goBack() { webView?.goBack() }
@@ -428,7 +428,7 @@ final class WebPane: NSObject, Identifiable {
     private static func offlineRules() async throws -> WKContentRuleList {
         guard let rules = try await WKContentRuleListStore.default()?.compileContentRuleList(
             forIdentifier: "peel-offline", encodedContentRuleList: offlineRuleList
-        ) else { throw PeelError("the page could not be made safe to show") }
+        ) else { throw PeelError(String(localized: "the page could not be made safe to show")) }
         return rules
     }
 }
@@ -528,7 +528,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
     /// the key again: strut's UI took it out of the one it shows.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         guard crashes.again() else {
-            problem = Problem(url: showsNoAddress ? nil : webView.url ?? page.url, message: "The page stopped working.")
+            problem = Problem(url: showsNoAddress ? nil : webView.url ?? page.url, message: String(localized: "The page stopped working."))
             return
         }
         if let strut {
@@ -604,7 +604,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
 extension WebPane: WKDownloadDelegate {
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
         guard let folder = try? IncomingFiles.newFolder(in: Self.downloadsRoot) else {
-            self.download = .failed(suggestedFilename, reason: "Could not make a folder for it")
+            self.download = .failed(suggestedFilename, reason: String(localized: "Could not make a folder for it"))
             return nil
         }
         let file = folder.appendingPathComponent("download", isDirectory: false)
@@ -700,8 +700,8 @@ enum WebMenuEntries {
 extension TribePage {
     var title: String {
         switch kind {
-        case .app: "Tribe app"
-        case .secondBrain: "Second brain"
+        case .app: String(localized: "Tribe app")
+        case .secondBrain: String(localized: "Second brain")
         }
     }
 
@@ -773,7 +773,7 @@ struct WebPaneView: View {
                     WebViewHost(webView: webView)
                 }
                 if let problem = pane.problem {
-                    EmptyState(problem.message, title: "Could not open \(problem.url?.host ?? "that address")") {
+                    EmptyState(problem.message, title: String(localized: "Could not open \(problem.url?.host ?? String(localized: "that address"))")) {
                         // An address Peel would not open has nothing to try again.
                         if problem.url != nil {
                             Button("Try again") { pane.retry() }
@@ -806,25 +806,25 @@ private struct WebToolbar: View {
     var body: some View {
         let page = pane.page
         HStack(spacing: 2) {
-            IconButton("arrow.left", help: "Back") { pane.goBack() }
+            IconButton("arrow.left", help: String(localized: "Back")) { pane.goBack() }
                 .disabled(!page.canGoBack)
-            IconButton("arrow.right", help: "Forward") { pane.goForward() }
+            IconButton("arrow.right", help: String(localized: "Forward")) { pane.goForward() }
                 .disabled(!page.canGoForward)
-            IconButton(page.isLoading ? "xmark" : "arrow.clockwise", help: page.isLoading ? "Stop" : "Reload") {
+            IconButton(page.isLoading ? "xmark" : "arrow.clockwise", help: page.isLoading ? String(localized: "Stop") : String(localized: "Reload")) {
                 pane.reloadOrStop()
             }
             .disabled(pane.webView == nil)
             AddressField(pane: pane)
                 .padding(.horizontal, 6)
-            IconButton("arrow.up.right.square", help: "Open in default browser") {
+            IconButton("arrow.up.right.square", help: String(localized: "Open in default browser")) {
                 if let url = page.url { NSWorkspace.shared.open(url) }
             }
             .disabled(page.url == nil)
             if pane.canOpenInNewWindow {
-                IconButton("arrow.up.forward.app", help: "Open in new window") { pane.openInNewWindow() }
+                IconButton("arrow.up.forward.app", help: String(localized: "Open in new window")) { pane.openInNewWindow() }
             }
             MoreMenu(pane: pane, url: page.url)
-            IconButton("xmark", help: "Close (⌘W)") {
+            IconButton("xmark", help: String(localized: "Close (⌘W)")) {
                 pane.close()
             }
         }
@@ -980,7 +980,7 @@ private struct MoreMenu: View {
     let url: URL?
 
     var body: some View {
-        MenuButton(help: "More", source: "web-more", entries: entries) {
+        MenuButton(help: String(localized: "More"), source: "web-more", entries: entries) {
             Image(systemName: "ellipsis").rotationEffect(.degrees(90))
         }
     }
@@ -996,7 +996,7 @@ private struct MoreMenu: View {
             [.destructive("Clear website data", systemImage: "trash", confirm: "Sign out of every site?") {
                 Task {
                     await pane.clearWebsiteData()
-                    CopyFeedback.announce("Website data cleared")
+                    CopyFeedback.announce(String(localized: "Website data cleared"))
                 }
             }]
         )
@@ -1014,17 +1014,17 @@ private struct DownloadBar: View {
         Group {
             switch download {
             case .saving(let name):
-                Callout(detail: "Downloading \(name)…", icon: .progress, oneLine: true, dismiss: dismiss)
+                Callout(detail: String(localized: "Downloading \(name)…"), icon: .progress, oneLine: true, dismiss: dismiss)
             case .saved(let file):
                 Callout(
-                    detail: "Saved \(file.lastPathComponent) to Downloads",
+                    detail: String(localized: "Saved \(file.lastPathComponent) to Downloads"),
                     icon: .symbol("arrow.down.circle", Theme.confirmed), oneLine: true, dismiss: dismiss
                 ) {
                     Button("Show in Finder") { model.showInFinder(file) }
                         .buttonStyle(.peel(.outline, size: .sm))
                 }
             case .failed(let name, let reason):
-                Callout(detail: PeelError.problem(reason, couldNot: "download \(name)"), icon: .problem, dismiss: dismiss)
+                Callout(detail: PeelError.problem(reason, couldNot: String(localized: "download \(name)")), icon: .problem, dismiss: dismiss)
             }
         }
         .padding(.horizontal, Theme.Space.md)

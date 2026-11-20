@@ -46,8 +46,8 @@ public enum Sats {
     /// 2,100 of 2,400 msat), both in msat instead.
     public static func format(msat part: some BinaryInteger, of total: some BinaryInteger) -> String {
         let (part, total) = (UInt64(clamping: part), UInt64(clamping: total))
-        if part != total && whole(part) == whole(total) { return "\(part.formatted()) of \(total.formatted()) msat" }
-        return "\(number(msat: part)) of \(format(msat: total))"
+        if part != total && whole(part) == whole(total) { return String(localized: "\(part.formatted()) of \(total.formatted()) msat", table: "Shared") }
+        return String(localized: "\(number(msat: part)) of \(format(msat: total))", table: "Shared")
     }
 
     private static func whole(_ msat: some BinaryInteger) -> UInt64 { UInt64(clamping: msat) / msatPerSat }

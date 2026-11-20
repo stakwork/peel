@@ -48,7 +48,7 @@ struct WalletConnectSheetView: View {
             }
             FactList(labelWidth: 120) {
                 if let offer = sheet.signIn {
-                    Fact("Sign in") {
+                    Fact(String(localized: "Sign in")) {
                         VStack(alignment: .leading, spacing: 6) {
                             Picker("Sign in", selection: $identity) {
                                 ForEach(offer.keys, id: \.self) { key in
@@ -63,8 +63,8 @@ struct WalletConnectSheetView: View {
                 }
                 if sheet.asksWallet { walletFacts }
             }
-            Text(sheet.asksWallet ? "You can lower, raise or take this back in Account › Payments."
-                                  : "You can take this back in Account › Payments › Connected apps.")
+            Text(sheet.asksWallet ? String(localized: "You can lower, raise or take this back in Account › Payments.")
+                                  : String(localized: "You can take this back in Account › Payments › Connected apps."))
                 .muted()
             HStack {
                 Spacer()
@@ -88,7 +88,7 @@ struct WalletConnectSheetView: View {
 
     /// What the app may spend: its methods, the limit, over it, the end.
     @ViewBuilder private var walletFacts: some View {
-        Fact("It may") {
+        Fact(String(localized: "It may")) {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(WalletWords.methods(sheet.required), id: \.self) { Text($0) }
                 ForEach(sheet.optional, id: \.self) { method in
@@ -101,7 +101,7 @@ struct WalletConnectSheetView: View {
                 if !sheet.notifications.isEmpty { Text("Hear when its own payments land").muted() }
             }
         }
-        Fact("Spending limit") {
+        Fact(String(localized: "Spending limit")) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     TextField("None", text: $limit)
@@ -110,13 +110,13 @@ struct WalletConnectSheetView: View {
                         .frame(width: 110)
                     Text("sats").muted()
                 }
-                Text(raised ? "Up to what the app asked for, \(Sats.format(msat: sheet.maxAmountMsat ?? 0))."
+                Text(raised ? String(localized: "Up to what the app asked for, \(Sats.format(msat: sheet.maxAmountMsat ?? 0)).")
                             : WalletWords.limit(limitMsat, renewal: sheet.renewal))
                     .muted()
                 Text("Inside it, the app pays without asking you.").muted()
             }
         }
-        Fact("Over the limit") {
+        Fact(String(localized: "Over the limit")) {
             Picker("Over the limit", selection: $overLimit) {
                 Text("Ask me each time").tag(WalletConnection.OverBudget.ask)
                 Text("Refuse").tag(WalletConnection.OverBudget.refuse)
@@ -125,7 +125,7 @@ struct WalletConnectSheetView: View {
             .pickerStyle(.radioGroup)
         }
         if let expires = sheet.expiresAt {
-            Fact("Ends", text: Date(timeIntervalSince1970: TimeInterval(expires)).formatted(date: .abbreviated, time: .shortened))
+            Fact(String(localized: "Ends"), text: Date(timeIntervalSince1970: TimeInterval(expires)).formatted(date: .abbreviated, time: .shortened))
         }
     }
 
@@ -167,20 +167,20 @@ struct WalletPaymentSheetView: View {
             BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 30)
             FactList(labelWidth: 100) {
                 let key = Formatting.shortKey(sheet.payee)
-                Fact("To", text: sheet.payeeName.map { "\($0) · \(key)" } ?? "\(key), not a contact")
-                if let memo = sheet.memo { Fact(sheet.keysend ? "Message" : "Memo", text: memo) }
+                Fact(String(localized: "To"), text: sheet.payeeName.map { "\($0) · \(key)" } ?? String(localized: "\(key), not a contact"))
+                if let memo = sheet.memo { Fact(sheet.keysend ? String(localized: "Message") : String(localized: "Memo"), text: memo) }
                 if let expires = sheet.expiresAt {
-                    Fact("Expires", text: Date(timeIntervalSince1970: TimeInterval(expires)).formatted(.relative(presentation: .named)))
+                    Fact(String(localized: "Expires"), text: Date(timeIntervalSince1970: TimeInterval(expires)).formatted(.relative(presentation: .named)))
                 }
-                Fact("Fee", text: sheet.async ? "Added on top, with 1 sat to reach them" : "Added on top")
+                Fact(String(localized: "Fee"), text: sheet.async ? String(localized: "Added on top, with 1 sat to reach them") : String(localized: "Added on top"))
                 if let max = sheet.maxAmountMsat {
-                    Fact("Limit", text: "\(Sats.format(msat: sheet.usedMsat)) of \(Sats.format(msat: max)) spent")
+                    Fact(String(localized: "Limit"), text: String(localized: "\(Sats.format(msat: sheet.usedMsat)) of \(Sats.format(msat: max)) spent"))
                 } else {
-                    Fact("Limit", text: "None: it asks you each time")
+                    Fact(String(localized: "Limit"), text: String(localized: "None: it asks you each time"))
                 }
             }
             if let comment = sheet.comment {
-                Callout(.neutral, "The app says", detail: "“\(comment)”")
+                Callout(.neutral, String(localized: "The app says"), detail: "“\(comment)”")
             }
             WalletPayFooter(amountMsat: sheet.amountMsat, done: done)
         }
@@ -208,7 +208,7 @@ struct WalletPayFooter: View {
             Button("Decline") { done(false) }
                 .buttonStyle(.peel(.outline))
                 .keyboardShortcut(.cancelAction)
-            PayButton(verb: "Pay", totalMsat: settled ? amount : nil, attempt: attempt,
+            PayButton(verb: String(localized: "Pay"), totalMsat: settled ? amount : nil, attempt: attempt,
                       send: { confirmed in confirmed == amount && armedSettled ? .sent : .needsConfirmation(msat: amount) },
                       sent: { done(true) }, isDefault: false, namesAmount: true)
         }
@@ -240,12 +240,12 @@ struct WalletCreditSheetView: View {
             }
             BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 30)
             FactList(labelWidth: 100) {
-                Fact("Runs", text: sheet.workflow)
-                Fact("Buys", text: WalletWords.creditBuys(sheet))
-                Fact("Expires", text: Date(timeIntervalSince1970: TimeInterval(sheet.expiresAt)).formatted(.relative(presentation: .named)))
-                Fact("Fee", text: "Added on top")
+                Fact(String(localized: "Runs"), text: sheet.workflow)
+                Fact(String(localized: "Buys"), text: WalletWords.creditBuys(sheet))
+                Fact(String(localized: "Expires"), text: Date(timeIntervalSince1970: TimeInterval(sheet.expiresAt)).formatted(.relative(presentation: .named)))
+                Fact(String(localized: "Fee"), text: String(localized: "Added on top"))
             }
-            Callout(.neutral, "The server says", detail: "“\(sheet.description)”")
+            Callout(.neutral, String(localized: "The server says"), detail: "“\(sheet.description)”")
             Text(WalletWords.creditNote(sheet))
                 .muted()
             WalletPayFooter(amountMsat: sheet.amountMsat, done: done)
@@ -264,9 +264,9 @@ struct ConnectedAppsSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        SettingsSection("Connected apps") {
+        SettingsSection(String(localized: "Connected apps")) {
             if model.walletConnections.isEmpty {
-                Fact("None yet") {
+                Fact(String(localized: "None yet")) {
                     Text("An app that asks to use your wallet appears here once you connect it. Inside its spending limit it pays without asking you.")
                         .muted()
                         .fixedSize(horizontal: false, vertical: true)
@@ -320,8 +320,8 @@ private struct ConnectedAppRow: View {
         ForEach(WalletWords.methods(connection.methods), id: \.self) { Text($0).muted() }
         Text(WalletWords.limit(connection.maxAmountMsat, renewal: connection.renewal))
         if let spent, connection.maxAmountMsat != nil {
-            Text("\(Sats.format(msat: spent.usedMsat)) spent"
-                 + (spent.renewsAt.map { ", renews \(Date(timeIntervalSince1970: TimeInterval($0)).formatted(.relative(presentation: .named)))" } ?? ""))
+            Text(spent.renewsAt.map { String(localized: "\(Sats.format(msat: spent.usedMsat)) spent, renews \(Date(timeIntervalSince1970: TimeInterval($0)).formatted(.relative(presentation: .named)))") }
+                 ?? String(localized: "\(Sats.format(msat: spent.usedMsat)) spent"))
                 .monospacedDigit()
                 .muted()
         }

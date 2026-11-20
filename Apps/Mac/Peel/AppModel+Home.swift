@@ -39,20 +39,20 @@ extension AppModel {
 
     /// Why Peel Home can't move from where it is now, in words; nil when it can.
     var homeMoveBlocker: String? {
-        if homeMove?.isRunning == true { return "Your assistant is moving." }
+        if homeMove?.isRunning == true { return String(localized: "Your assistant is moving.") }
         if let link = homeLink, let home = brain?.moved, let refusal = PeelHomeMove.refusal(link, from: home) { return refusal }
         switch brain {
         case .moved?: return nil
         case .thisMac?:
             guard hasOwnStrut else {
                 return profile?.kind == .development
-                    ? "This development profile runs your assistant only when Peel is started with -strut YES."
-                    : "This copy of Peel has no assistant of its own to move."
+                    ? String(localized: "This development profile runs your assistant only when Peel is started with -strut YES.")
+                    : String(localized: "This copy of Peel has no assistant of its own to move.")
             }
-            guard agentBridge.status == .running else { return "Set up your assistant first." }
+            guard agentBridge.status == .running else { return String(localized: "Set up your assistant first.") }
             return nil
         case nil:
-            return "Peel couldn't tell where your assistant runs. Choose Use this Mac first."
+            return String(localized: "Peel couldn't tell where your assistant runs. Choose Use this Mac first.")
         }
     }
 
@@ -97,11 +97,11 @@ extension AppModel {
     /// bridge's identity from the agent's `account`. Throws with no strut of
     /// Peel's own to run it.
     private func homeMove(for profile: Profile, account: AgentAccount?) throws -> PeelHomeMove {
-        guard let mover = Self.strut(for: profile)?.mover else { throw PeelError("This copy of Peel has no assistant of its own to move.") }
+        guard let mover = Self.strut(for: profile)?.mover else { throw PeelError(String(localized: "This copy of Peel has no assistant of its own to move.")) }
         var parts = HomeParts(strut: BundledStrut.dataFolder(for: profile), bridge: BundledBridge.dataFolder(for: profile),
                               secretKey: profile.strutKey, homePeer: profile.homePeer)
         if let account {
-            parts.identity = BundledBridge.identity(account: account, alias: agent?.name ?? "Agent", actor: stadeum.link?.actor)
+            parts.identity = BundledBridge.identity(account: account, alias: agent?.name ?? String(localized: "Agent"), actor: stadeum.link?.actor)
             // Who the person is to the box's strut: their Hive actor, as Peel's strut and bridge
             // name them; without a pairing, this account's own key, the one sender the bridge answers.
             parts.peerActor = stadeum.link?.actor ?? account.owner
@@ -281,8 +281,8 @@ private final class HomeLocal: PeelHomeLocal {
         guard let model = open else { return false }
         let here = model.brain == .thisMac
         return await model.pingAgent(here
-            ? "Your assistant is back on this Mac. Reply so Peel knows you're here."
-            : "Your assistant moved to your home server. Reply so Peel knows you're there.")
+            ? String(localized: "Your assistant is back on this Mac. Reply so Peel knows you're here.")
+            : String(localized: "Your assistant moved to your home server. Reply so Peel knows you're there."))
     }
 }
 

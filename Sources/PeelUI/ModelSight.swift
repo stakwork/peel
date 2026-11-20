@@ -9,8 +9,8 @@ import UniformTypeIdentifiers
 /// tray and the phone's share it through `AppModel`.
 public struct ModelSight: Equatable, Sendable {
     /// The toggle's words: what it offers and what each side means.
-    public static let title = "Let the model see this picture"
-    public static let help = "Off: only the text read from it goes to the model. On: the picture is sent to your model provider."
+    public static let title = String(localized: "Let the model see this picture", table: "Shared")
+    public static let help = String(localized: "Off: only the text read from it goes to the model. On: the picture is sent to your model provider.", table: "Shared")
 
     /// The pictures turned off; every other picture is on.
     private var off: [ComposerID: Set<URL>] = [:]

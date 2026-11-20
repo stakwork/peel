@@ -231,9 +231,9 @@ final class IOSCallSession {
     /// or what the connection is doing.
     func status(at now: Date) -> String {
         switch state {
-        case .connecting: return "Connecting…"
-        case .reconnecting: return "Reconnecting…"
-        case .lost: return "Disconnected"
+        case .connecting: return String(localized: "Connecting…")
+        case .reconnecting: return String(localized: "Reconnecting…")
+        case .lost: return String(localized: "Disconnected")
         case .connected:
             guard let start = callStartedAt ?? connectedAt else { return "" }
             let seconds = Int(max(0, now.timeIntervalSince(start)))
@@ -389,7 +389,7 @@ final class IOSCallSession {
             do {
                 try await local.setMicrophone(enabled: true)
             } catch {
-                deviceNotice = "Could not turn the microphone on"
+                deviceNotice = String(localized: "Could not turn the microphone on")
             }
         }
         refresh()
@@ -457,7 +457,7 @@ final class IOSCallSession {
                     options: DataPublishOptions(destinationIdentities: [jamie], topic: CallChatWire.topic, reliable: true)
                 )
             } catch {
-                deviceNotice = "Could not reach Jamie"
+                deviceNotice = String(localized: "Could not reach Jamie")
             }
         }
     }
@@ -477,7 +477,7 @@ final class IOSCallSession {
         do {
             try await room.localParticipant.setMicrophone(enabled: on)
         } catch {
-            if on { deviceNotice = "Could not turn the microphone on" }
+            if on { deviceNotice = String(localized: "Could not turn the microphone on") }
         }
     }
 
@@ -498,7 +498,7 @@ final class IOSCallSession {
                 wantsCamera = false
             }
         } catch {
-            if on { deviceNotice = "Could not turn the camera on" }
+            if on { deviceNotice = String(localized: "Could not turn the camera on") }
         }
         refresh()
     }

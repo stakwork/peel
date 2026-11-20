@@ -11,12 +11,12 @@ extension Message {
     /// "Not sent", beside Retry and Discard. An attachment the memes server
     /// never got says so, as the Mac app.
     public var undeliveredLabel: String {
-        if uploadState == .failed { return "Not uploaded" }
-        guard MessageType.payments.contains(type) else { return "Not delivered" }
+        if uploadState == .failed { return String(localized: "Not uploaded", table: "Shared") }
+        guard MessageType.payments.contains(type) else { return String(localized: "Not delivered", table: "Shared") }
         if type == MessageType.boost, let msat = amountMsat {
-            return "Boost of \(Sats.format(msat: msat)) not sent"
+            return String(localized: "Boost of \(Sats.format(msat: msat)) not sent", table: "Shared")
         }
-        return "Not sent"
+        return String(localized: "Not sent", table: "Shared")
     }
 }
 

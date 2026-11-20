@@ -33,19 +33,19 @@ struct CallCard: View {
                             Image(systemName: link.audioOnly ? "phone" : "video")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Theme.secondaryText)
-                            Text(link.audioOnly ? "Audio call" : "Video call")
+                            Text(link.audioOnly ? String(localized: "Audio call") : String(localized: "Video call"))
                                 .font(Theme.font(14, .semibold))
                         }
                         if notSent {
-                            line("Not sent")
+                            line(String(localized: "Not sent"))
                         } else if onIt {
-                            who(presence.people ?? [], "You're on this call")
+                            who(presence.people ?? [], String(localized: "You're on this call"))
                         } else {
                             switch presence {
                             case .live(let people) where !people.isEmpty:
-                                who(people, "\(people.count) on the call")
-                            case .live: line("No one on the call")
-                            case .ended: line("Call ended")
+                                who(people, String(localized: "\(people.count) on the call"))
+                            case .live: line(String(localized: "No one on the call"))
+                            case .ended: line(String(localized: "Call ended"))
                             case .unknown:
                                 // So the card does not grow under the reader when it does.
                                 if CallLink.isRecent(message.date) { Color.clear.frame(height: Self.lineHeight) }
@@ -84,7 +84,7 @@ struct CallCard: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(link.audioOnly ? "Audio call" : "Video call")
+        .accessibilityLabel(link.audioOnly ? Text("Audio call") : Text("Video call"))
         // Only while the card is drawn, and only for a recent call.
         .task(id: link.room) {
             guard CallLink.mayBeLive(message) else { return }
@@ -237,15 +237,15 @@ struct CallHeaderButton: View {
             } label: {
                 HStack(spacing: 7) {
                     OnlineDot()
-                    Text("\(onIt ? "Open" : "Join") · \(count)")
+                    Text(onIt ? String(localized: "Open · \(count)") : String(localized: "Join · \(count)"))
                         .monospacedDigit()
                 }
                 .buttonProgress(joining || model.calls.startingIn == chat)
             }
             .buttonStyle(.peel(.ghost, size: .sm))
             .disabled(model.calls.joiningRoom != nil && !joining)
-            .help(onIt ? "Bring the call window forward" : "Join the newest live call")
-            .accessibilityLabel(onIt ? "Open the call, \(count) on it" : "Join the call, \(count) on it")
+            .help(onIt ? Text("Bring the call window forward") : Text("Join the newest live call"))
+            .accessibilityLabel(onIt ? Text("Open the call, \(count) on it") : Text("Join the call, \(count) on it"))
             Theme.inputBorder.frame(width: 1, height: PeelButton.Size.sm.height)
             IconButton(help: "Start a new call", lit: menuOpen) {
                 showMenu(header: true)
@@ -265,7 +265,7 @@ struct CallHeaderButton: View {
 
     private func showMenu(header: Bool) {
         let jamie = model.callJamie(in: chat)
-        let with = jamie.map { "With Jamie from \($0.name)" }
+        let with = jamie.map { String(localized: "With Jamie from \($0.name)") }
         let items: [MenuEntry] = [
             .button("Audio call", subtitle: with, systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
             .button("Video call", subtitle: with, systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
@@ -318,9 +318,8 @@ struct CallSwitchConfirm: View {
     let confirm: () -> Void
 
     var body: some View {
-        let text = Text("Leave the call in ") + Text(other).fontWeight(.semibold)
-            + Text(joining ? " and join?" : " and start a new one?")
-        let commit = joining ? "Leave and join" : "Leave and start"
+        let text = joining ? Text("Leave the call in \(other) and join?") : Text("Leave the call in \(other) and start a new one?")
+        let commit = joining ? String(localized: "Leave and join") : String(localized: "Leave and start")
         let buttons = HStack(spacing: Theme.Space.sm) {
             Button("Cancel", action: cancel)
                 .buttonStyle(.peel(.outline, size: .sm))
@@ -403,7 +402,7 @@ struct OnCallBar: View {
                 HStack(spacing: 7) {
                     if call.isRecording { RecordingIndicator() }
                     CallPeopleStack(people: people, size: Theme.AvatarSize.sm, border: Theme.quote)
-                    Text(people.count == 1 ? "Only you" : "\(people.count) on the call")
+                    Text(people.count == 1 ? String(localized: "Only you") : String(localized: "\(people.count) on the call"))
                         .font(Theme.font(12))
                         .monospacedDigit()
                         .foregroundStyle(Theme.secondaryText)
@@ -411,8 +410,8 @@ struct OnCallBar: View {
                 }
                 .frame(minHeight: 20)
                 HStack(spacing: 6) {
-                    let label = call.micOn ? "Mute" : "Unmute"
-                    IconButton(help: "\(label) (⌘⇧A)", variant: .outline, action: call.toggleMicrophone) {
+                    let label = call.micOn ? String(localized: "Mute") : String(localized: "Unmute")
+                    IconButton(help: String(localized: "\(label) (⌘⇧A)"), variant: .outline, action: call.toggleMicrophone) {
                         Image(systemName: call.micOn ? "mic" : "mic.slash")
                             .foregroundStyle(call.micOn ? Theme.text : Theme.secondaryText)
                     }

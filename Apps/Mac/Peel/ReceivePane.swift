@@ -18,7 +18,7 @@ struct ReceivePane: View {
     @State private var problem: String?
 
     var body: some View {
-        PaneFrame(title: "Receive", close: close) {
+        PaneFrame(title: String(localized: "Receive"), close: close) {
             if let invoice, invoice.status == .paid || invoice.status == .underpaid {
                 paid(invoice)
             } else if let invoice {
@@ -34,25 +34,25 @@ struct ReceivePane: View {
                     if let record { invoice = record }
                 }
             } catch {
-                problem = PeelError.problem(error, couldNot: "check the invoice")
+                problem = PeelError.problem(error, couldNot: String(localized: "check the invoice"))
             }
         }
     }
 
     @ViewBuilder private var form: some View {
         let amountMsat = Sats.msat(amount)
-        FormItem(label: "Amount") {
-            SatsField(label: "Amount", text: $amount)
+        FormItem(label: String(localized: "Amount")) {
+            SatsField(label: String(localized: "Amount"), text: $amount)
         }
-        FormItem(label: "Memo") {
-            FormTextField(label: "Memo", prompt: "What it's for (optional)", text: $memo)
+        FormItem(label: String(localized: "Memo")) {
+            FormTextField(label: String(localized: "Memo"), prompt: String(localized: "What it's for (optional)"), text: $memo)
         }
         FormFooter(problem: problem) {
             Button {
                 guard let amountMsat else { return }
                 Task { await create(amountMsat) }
             } label: {
-                Text(amountMsat.map { "Create invoice for \(Sats.format(msat: $0))" } ?? "Create invoice")
+                Text(amountMsat.map { String(localized: "Create invoice for \(Sats.format(msat: $0))") } ?? String(localized: "Create invoice"))
                     .buttonProgress(working)
             }
             .buttonStyle(.peel(.primary))
@@ -77,13 +77,13 @@ struct ReceivePane: View {
 
     @ViewBuilder private func waiting(_ invoice: InvoiceRecord) -> some View {
         VStack(spacing: Theme.Space.md) {
-            QRCodeTile(text: invoice.bolt11.uppercased(), label: "QR code of the invoice", size: 220, inset: 12)
+            QRCodeTile(text: invoice.bolt11.uppercased(), label: String(localized: "QR code of the invoice"), size: 220, inset: 12)
             Text("\(invoice.bolt11.prefix(16))…\(invoice.bolt11.suffix(12))")
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.secondaryText)
                 .textSelection(.enabled)
             HStack(spacing: Theme.Space.sm) {
-                CopyButton("Copy invoice", text: invoice.bolt11)
+                CopyButton(String(localized: "Copy invoice"), text: invoice.bolt11)
                     .buttonStyle(.peel(.primary))
                 CopyButton("Copy QR image", systemImage: "qrcode") { QRCode.copyImage(invoice.bolt11.uppercased()) }
                     .buttonStyle(.peel(.outline))
@@ -107,16 +107,16 @@ struct ReceivePane: View {
                 .foregroundStyle(full ? Theme.confirmed : Theme.attention)
                 .frame(width: 64, height: 64)
                 .background((full ? Theme.confirmed : Theme.attention).opacity(0.14), in: Circle())
-            Text(full ? "Paid" : "Partly paid").font(Theme.font(20, .bold))
-            BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? "Amount not known",
+            Text(full ? String(localized: "Paid") : String(localized: "Partly paid")).font(Theme.font(20, .bold))
+            BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? String(localized: "Amount not known"),
                       color: full ? Theme.confirmed : Theme.text)
             if !invoice.memo.isEmpty { Text(invoice.memo).font(Theme.font(14)) }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
         FactList {
-            Fact("Received", text: Formatting.time(invoice.paid ?? .now, seconds: true))
-            Fact("Invoice for", text: Sats.format(msat: invoice.amountMsat))
+            Fact(String(localized: "Received"), text: Formatting.time(invoice.paid ?? .now, seconds: true))
+            Fact(String(localized: "Invoice for"), text: Sats.format(msat: invoice.amountMsat))
         }
         HStack(spacing: Theme.Space.sm) {
             Button { close() } label: { Text("Done").frame(maxWidth: .infinity) }
@@ -141,7 +141,7 @@ private struct WaitingStatus: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let left = invoice.expires.map { $0.timeIntervalSince(context.date) } ?? .infinity
             if left <= 0 {
-                Callout(.attention, "This invoice has expired", detail: "Nothing was paid.") {
+                Callout(.attention, String(localized: "This invoice has expired"), detail: String(localized: "Nothing was paid.")) {
                     Button("Make a new one", action: renew).buttonStyle(.peel(.link))
                 }
             } else {
@@ -153,8 +153,8 @@ private struct WaitingStatus: View {
                         Spacer()
                         if let expires = invoice.expires {
                             Text(left < 3600
-                                ? "Expires in \(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))"
-                                : "Expires \(Formatting.expiry(expires))")
+                                ? String(localized: "Expires in \(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))")
+                                : String(localized: "Expires \(Formatting.expiry(expires))"))
                                 .monospacedDigit()
                                 .muted()
                         }

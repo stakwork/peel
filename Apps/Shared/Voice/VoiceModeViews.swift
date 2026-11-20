@@ -14,9 +14,9 @@ struct VoiceModeButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(voice.phase.isActive ? "End voice mode" : "Talk to Peel")
-        .accessibilityHint(voice.phase.isActive ? "" : "Speak to the agent and hear its answers")
-        .help(voice.phase.isActive ? "End voice mode" : "Talk to Peel")
+        .accessibilityLabel(voice.phase.isActive ? String(localized: "End voice mode", table: "Shared") : String(localized: "Talk to Peel", table: "Shared"))
+        .accessibilityHint(voice.phase.isActive ? "" : String(localized: "Speak to the agent and hear its answers", table: "Shared"))
+        .help(voice.phase.isActive ? String(localized: "End voice mode", table: "Shared") : String(localized: "Talk to Peel", table: "Shared"))
     }
 }
 
@@ -35,8 +35,8 @@ struct VoiceHelpButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .accessibilityLabel("Voice mode phrases")
-        .help("Voice mode phrases")
+        .accessibilityLabel(Text("Voice mode phrases", tableName: "Shared"))
+        .help(Text("Voice mode phrases", tableName: "Shared"))
         .popover(isPresented: $shown) {
             VoicePhrases()
                 .presentationCompactAdaptation(.popover)
@@ -47,34 +47,34 @@ struct VoiceHelpButton: View {
 /// What to say in voice mode: the first phrase of each command.
 private struct VoicePhrases: View {
     private static let lines: [(VoiceCommand, String)] = [
-        (.send, "Send what you said"),
-        (.discard, "Throw it away"),
-        (.stopSpeaking, "Stop reading"),
-        (.repeatReply, "Read the last reply again"),
-        (.readAll, "Read a summarised reply in full"),
-        (.stopAgent, "Stop the agent's answer"),
-        (.mute, "Stop listening (Peel unmute to resume)"),
-        (.deactivate, "Turn voice mode off"),
+        (.send, String(localized: "Send what you said", table: "Shared")),
+        (.discard, String(localized: "Throw it away", table: "Shared")),
+        (.stopSpeaking, String(localized: "Stop reading", table: "Shared")),
+        (.repeatReply, String(localized: "Read the last reply again", table: "Shared")),
+        (.readAll, String(localized: "Read a summarised reply in full", table: "Shared")),
+        (.stopAgent, String(localized: "Stop the agent's answer", table: "Shared")),
+        (.mute, String(localized: "Stop listening (Peel unmute to resume)", table: "Shared")),
+        (.deactivate, String(localized: "Turn voice mode off", table: "Shared")),
     ]
 
     var body: some View {
         let table = VoiceCommandPhrases.english
         VStack(alignment: .leading, spacing: 8) {
-            Text("Say Peel, then a command")
+            Text("Say Peel, then a command", tableName: "Shared")
                 .font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 ForEach(Self.lines, id: \.0) { command, meaning in
                     if let phrase = table.phrases[command]?.first {
                         GridRow {
-                            Text("Peel \(phrase)").fontWeight(.semibold)
-                            Text(meaning).foregroundStyle(.secondary)
+                            Text("Peel \(phrase)", tableName: "Shared").fontWeight(.semibold)
+                            Text(verbatim: meaning).foregroundStyle(.secondary)
                         }
                     }
                 }
             }
             .font(.callout)
             if let wake = VoiceCommandPhrases.english.phrases[.activate]?.first {
-                Text("\"\(wake.capitalized)\" starts voice mode when listening for it is on in settings.")
+                Text("\"\(wake.capitalized)\" starts voice mode when listening for it is on in settings.", tableName: "Shared")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -94,7 +94,7 @@ struct VoicePanel: View {
     var body: some View {
         let phase = voice.phase
         let muted = voice.isMuted
-        let status = muted ? "Muted — say Peel unmute" : phase.label
+        let status = muted ? String(localized: "Muted — say Peel unmute", table: "Shared") : phase.label
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
@@ -108,16 +108,16 @@ struct VoicePanel: View {
                         .accessibilityHidden(true)
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(muted ? "Muted. Say Peel unmute to listen again." : phase.label)
+                .accessibilityLabel(muted ? String(localized: "Muted. Say Peel unmute to listen again.", table: "Shared") : phase.label)
                 VoiceHelpButton(size: 28)
             }
             if !voice.draft.isEmpty {
                 Text(voice.draft)
                     .lineLimit(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel("What you said: \(voice.draft)")
+                    .accessibilityLabel(String(localized: "What you said: \(voice.draft)", table: "Shared"))
             } else if phase == .listening, !muted {
-                Text("Say Peel send when you are done.")
+                Text("Say Peel send when you are done.", tableName: "Shared")
                     .foregroundStyle(.secondary)
                     .font(.callout)
             }
@@ -137,11 +137,11 @@ struct VoicePanel: View {
                     .accessibilityLabel(Text("Stop speaking", tableName: "Shared"))
                 }
                 Button { voice.toggleMute() } label: {
-                    Label(muted ? "Unmute" : "Mute", systemImage: muted ? "mic.fill" : "mic.slash.fill")
+                    Label(muted ? String(localized: "Unmute", table: "Shared") : String(localized: "Mute", table: "Shared"), systemImage: muted ? "mic.fill" : "mic.slash.fill")
                         .frame(maxWidth: .infinity, minHeight: 36)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityLabel(muted ? "Unmute the microphone" : "Mute the microphone")
+                .accessibilityLabel(muted ? String(localized: "Unmute the microphone", table: "Shared") : String(localized: "Mute the microphone", table: "Shared"))
                 if phase == .hearing, !muted {
                     Button { voice.sendNow() } label: {
                         Label { Text("Send", tableName: "Shared") } icon: { Image(systemName: "arrow.up.circle.fill") }

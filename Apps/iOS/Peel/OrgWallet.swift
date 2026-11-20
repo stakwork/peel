@@ -196,7 +196,8 @@ struct WalletConnectPhoneSheet: View {
                 Section {
                     Text(WalletWords.who(title: sheet.title, app: sheet.app, version: sheet.version, place: sheet.place,
                                          byOrg: sheet.byOrg))
-                    Text("Every app on \(sheet.place) shares this connection\(sheet.asksWallet ? " and its spending limit" : "").")
+                    Text(sheet.asksWallet ? String(localized: "Every app on \(sheet.place) shares this connection and its spending limit.")
+                         : String(localized: "Every app on \(sheet.place) shares this connection."))
                         .foregroundStyle(Theme.secondaryText)
                 }
                 if let offer = sheet.signIn {
@@ -287,9 +288,9 @@ struct WalletPaymentPhoneSheet: View {
                     BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 34)
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
                         let key = Formatting.shortKey(sheet.payee)
-                        Text("To " + (sheet.payeeName.map { "\($0) · \(key)" } ?? "\(key), not a contact"))
-                        if let memo = sheet.memo { Text((sheet.keysend ? "Message: " : "Memo: ") + memo) }
-                        Text(sheet.async ? "Fee added on top, with 1 sat to reach them" : "Fee added on top")
+                        Text(sheet.payeeName.map { String(localized: "To \($0) · \(key)") } ?? String(localized: "To \(key), not a contact"))
+                        if let memo = sheet.memo { Text(sheet.keysend ? String(localized: "Message: \(memo)") : String(localized: "Memo: \(memo)")) }
+                        Text(sheet.async ? String(localized: "Fee added on top, with 1 sat to reach them") : String(localized: "Fee added on top"))
                             .foregroundStyle(Theme.secondaryText)
                         if let max = sheet.maxAmountMsat {
                             Text("\(Sats.format(msat: sheet.usedMsat)) of its \(Sats.format(msat: max)) limit spent")
@@ -299,9 +300,9 @@ struct WalletPaymentPhoneSheet: View {
                             Text("The app says: “\(comment)”").foregroundStyle(Theme.secondaryText)
                         }
                     }
-                    TouchPayButton(verb: "Pay", totalMsat: amount, attempt: attempt, send: { confirmed in
+                    TouchPayButton(verb: String(localized: "Pay"), totalMsat: amount, attempt: attempt, send: { confirmed in
                         confirmed == amount ? .sent : .needsConfirmation(msat: amount)
-                    }, sent: { done(true) }, armedNote: "That's over this app's spending limit. Check it, then confirm.")
+                    }, sent: { done(true) }, armedNote: String(localized: "That's over this app's spending limit. Check it, then confirm."))
                 }
                 .padding(Theme.Space.lg)
             }
@@ -333,14 +334,14 @@ struct WalletCreditPhoneSheet: View {
                     BigAmount(amount: Sats.number(msat: sheet.amountMsat), size: 34)
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
                         Text("Runs \(sheet.workflow)")
-                        Text("Buys " + WalletWords.creditBuys(sheet))
+                        Text("Buys \(WalletWords.creditBuys(sheet))")
                         Text("Fee added on top").foregroundStyle(Theme.secondaryText)
                         Text("The server says: “\(sheet.description)”").foregroundStyle(Theme.secondaryText)
                         Text(WalletWords.creditNote(sheet)).foregroundStyle(Theme.secondaryText)
                     }
-                    TouchPayButton(verb: "Pay", totalMsat: amount, attempt: attempt, send: { confirmed in
+                    TouchPayButton(verb: String(localized: "Pay"), totalMsat: amount, attempt: attempt, send: { confirmed in
                         confirmed == amount ? .sent : .needsConfirmation(msat: amount)
-                    }, sent: { done(true) }, armedNote: "Check the amount, then confirm.")
+                    }, sent: { done(true) }, armedNote: String(localized: "Check the amount, then confirm."))
                 }
                 .padding(Theme.Space.lg)
             }

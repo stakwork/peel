@@ -7,7 +7,7 @@ struct NotificationOffer: View {
 
     var body: some View {
         OfferBar(
-            icon: "bell", text: "Get notified about new messages?", action: "Turn on notifications",
+            icon: "bell", text: String(localized: "Get notified about new messages?"), action: String(localized: "Turn on notifications"),
             dismiss: model.dismissNotificationOffer, accept: { Task { await model.enableNotifications() } }
         )
     }

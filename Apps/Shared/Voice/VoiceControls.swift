@@ -50,12 +50,12 @@ struct VoiceControls: View {
             }
             .buttonStyle(.plain)
             .disabled(!ready && !needsTap)
-            .accessibilityLabel(needsTap ? "Download" : label(state))
+            .accessibilityLabel(needsTap ? String(localized: "Download", table: "Shared") : label(state))
             VStack(alignment: .leading, spacing: 4) {
                 SeekBar(fraction: fraction, enabled: ready && (player.duration ?? 0) > 0) { x, width in
                     player.seek(to: VoiceMessage.seekTime(x: x, width: width, total: player.duration ?? 0))
                 }
-                Text(needsTap ? tapCaption(handle) : waiting ? "Waiting to download" : caption(state))
+                Text(needsTap ? tapCaption(handle) : waiting ? String(localized: "Waiting to download", table: "Shared") : caption(state))
                     .voiceCaption()
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
@@ -72,27 +72,27 @@ struct VoiceControls: View {
     }
 
     private func tapCaption(_ handle: AttachmentHandle?) -> String {
-        if handle?.isRetrying == true { return "Couldn't download yet - tap to retry" }
+        if handle?.isRetrying == true { return String(localized: "Couldn't download yet - tap to retry", table: "Shared") }
         if case .held(let size)? = handle?.state {
-            return ["Tap to download", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
+            return [String(localized: "Tap to download", table: "Shared"), AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " · ")
         }
-        return "Tap to download"
+        return String(localized: "Tap to download", table: "Shared")
     }
 
     private func label(_ state: VoiceMessage.RowState) -> String {
         switch state {
-        case .ready: player.isPlaying ? "Pause" : "Play"
-        case .failed: "Can't play"
-        case .uploading, .loading: "Loading"
+        case .ready: player.isPlaying ? String(localized: "Pause", table: "Shared") : String(localized: "Play", table: "Shared")
+        case .failed: String(localized: "Can't play", table: "Shared")
+        case .uploading, .loading: String(localized: "Loading", table: "Shared")
         }
     }
 
     private func caption(_ state: VoiceMessage.RowState) -> String {
         switch state {
         case .ready: VoiceMessage.timeLabel(current: player.time, total: player.duration)
-        case .uploading: "Uploading…"
-        case .loading: "Loading…"
-        case .failed: "Can't play this audio"
+        case .uploading: String(localized: "Uploading…", table: "Shared")
+        case .loading: String(localized: "Loading…", table: "Shared")
+        case .failed: String(localized: "Can't play this audio", table: "Shared")
         }
     }
 }
@@ -122,8 +122,8 @@ struct SeekBar: View {
         }
         .frame(height: 24)
         .accessibilityElement()
-        .accessibilityLabel("Position")
-        .accessibilityValue("\(Int(fraction * 100)) percent")
+        .accessibilityLabel(Text("Position", tableName: "Shared"))
+        .accessibilityValue(String(localized: "\(Int(fraction * 100)) percent", table: "Shared"))
         .accessibilityAdjustableAction { direction in
             let step = direction == .increment ? 0.1 : -0.1
             if enabled { seek(min(1, max(0, fraction + step)) * 1000, 1000) }

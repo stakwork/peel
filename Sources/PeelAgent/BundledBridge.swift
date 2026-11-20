@@ -151,7 +151,7 @@ public final class BundledBridge: CustomReflectable {
             try await launched(account, strut: strut, invite: nil, alias: alias)
             _ = try await agentContactInfo()
             guard try await contact()?.contactKey != nil else {
-                throw PeelError("Your assistant has not answered your key exchange yet. Try again in a minute.")
+                throw PeelError(String(localized: "Your assistant has not answered your key exchange yet. Try again in a minute.", table: "Shared"))
             }
             return account
         }
@@ -169,13 +169,13 @@ public final class BundledBridge: CustomReflectable {
             } catch {}
         }.value
         guard balance >= Self.answerMsat else {
-            throw PeelError("Your assistant has no sats to answer your key exchange: its account was made before, without this invite.")
+            throw PeelError(String(localized: "Your assistant has no sats to answer your key exchange: its account was made before, without this invite.", table: "Shared"))
         }
         // The person's "Set up" showed this cost: no second confirmation.
         _ = try await Self.online { try await engine.addContact(code: info, alias: alias, confirmedMsat: Engine.keyExchangeMsat) }
         let deadline = ContinuousClock.now + .seconds(30)
         while try await contact()?.contactKey == nil {
-            guard ContinuousClock.now < deadline else { throw PeelError("Your assistant has not answered your key exchange yet. Try again in a minute.") }
+            guard ContinuousClock.now < deadline else { throw PeelError(String(localized: "Your assistant has not answered your key exchange yet. Try again in a minute.", table: "Shared")) }
             try await Task.sleep(for: .milliseconds(500))
         }
         return account
@@ -200,7 +200,7 @@ public final class BundledBridge: CustomReflectable {
         let file = Self.inviteFile(in: data)
         if let kept = try? String(contentsOf: file, encoding: .utf8),
            let status = try engine.storage.invite(code: kept)?.status, [.sending, .ready].contains(status) {
-            guard status == .ready else { throw PeelError("The server has not confirmed your agent's invite yet. Try again in a minute.") }
+            guard status == .ready else { throw PeelError(String(localized: "The server has not confirmed your agent's invite yet. Try again in a minute.", table: "Shared")) }
             return kept
         }
         try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -212,7 +212,7 @@ public final class BundledBridge: CustomReflectable {
             }
         }.value
         try Data(made.code.utf8).write(to: file, options: .atomic)
-        guard made.status == .ready else { throw PeelError("The server has not confirmed your agent's invite yet. Try again in a minute.") }
+        guard made.status == .ready else { throw PeelError(String(localized: "The server has not confirmed your agent's invite yet. Try again in a minute.", table: "Shared")) }
         return made.code
     }
 
@@ -240,20 +240,20 @@ public final class BundledBridge: CustomReflectable {
     private func registered(within timeout: Duration = .seconds(30), balance: Bool = true) async throws -> (info: String, balanceMsat: UInt64) {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            guard let server, let admin else { throw PeelError("Peel's bridge stopped before the agent's account registered.") }
+            guard let server, let admin else { throw PeelError(String(localized: "Peel's bridge stopped before the agent's account registered.", table: "Shared")) }
             if let (status, body) = try? await Web.requestStrut(
                 "GET", server.base.appending(path: "contact_info"), headers: ["x-admin-token": admin.token], limit: 4096,
                 what: "the agent's contact info", timeout: 5
             ), status == 200 {
                 guard let info = Self.contactInfo(in: body, agent: admin.agent) else {
-                    throw PeelError("Peel's bridge holds an account that is not your agent's.")
+                    throw PeelError(String(localized: "Peel's bridge holds an account that is not your agent's.", table: "Shared"))
                 }
                 if !balance { return (info, 0) }
                 if let msat = Self.balanceMsat(in: body) { return (info, msat) }
             }
             try await Task.sleep(for: .milliseconds(200))
         }
-        throw PeelError("The agent's account did not register in \(Int(timeout.components.seconds)) seconds.")
+        throw PeelError(String(localized: "The agent's account did not register in \(Int(timeout.components.seconds)) seconds.", table: "Shared"))
     }
 
     /// Stops it: its stdin closed, SIGTERM, then SIGKILL if it is still there
@@ -360,7 +360,7 @@ public final class BundledBridge: CustomReflectable {
     /// for the jobs that end there. Replaces what it held; no tokens clears
     /// them.
     public func usePeers(actor: String, tokens: [String: String]) async throws {
-        guard let server, let admin else { throw PeelError("Peel's bridge is not running.") }
+        guard let server, let admin else { throw PeelError(String(localized: "Peel's bridge is not running.", table: "Shared")) }
         try await Self.admin(server.base, "peers", ["actor": actor, "tokens": tokens], token: admin.token, method: "PUT",
                              refused: "your Stadeum workspaces")
     }
@@ -378,7 +378,7 @@ public final class BundledBridge: CustomReflectable {
         )
         guard status == 200 || allowing.contains(status) else {
             let what = refused ?? (route == "seed" ? "the agent's account" : "its owner")
-            throw PeelError("Peel's bridge refused \(what) (HTTP \(status)).")
+            throw PeelError(String(localized: "Peel's bridge refused \(what) (HTTP \(status)).", table: "Shared"))
         }
     }
 

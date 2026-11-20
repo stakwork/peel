@@ -206,7 +206,7 @@ extension Engine {
                 try storage.setUpload(.failed, id: id)
                 // It has no tag yet, so the row itself says it failed.
                 if let row = try storage.message(id: id) { emit.yield(.message(row, .live)) }
-                emit.yield(.conversationError(chat: message.chat, message: "Not uploaded: \(PeelError.readable(error))"))
+                emit.yield(.conversationError(chat: message.chat, message: String(localized: "Not uploaded: \(PeelError.readable(error))", table: "Shared")))
                 return nil
             }
         }

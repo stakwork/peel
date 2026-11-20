@@ -25,10 +25,10 @@ struct PayInvoicePane: View {
     }
 
     var body: some View {
-        PaneFrame(title: "Pay an invoice", close: close) {
+        PaneFrame(title: String(localized: "Pay an invoice"), close: close) {
             let unreadable = !text.trimmed.isEmpty && invoice == nil
-            FormItem(label: "Invoice", problem: unreadable ? "That isn't an invoice." : nil) {
-                FormTextField(label: "Invoice", prompt: "lnbc…", text: $text, axis: .vertical, problem: unreadable, monospaced: true)
+            FormItem(label: String(localized: "Invoice"), problem: unreadable ? String(localized: "That isn't an invoice.") : nil) {
+                FormTextField(label: String(localized: "Invoice"), prompt: "lnbc…", text: $text, axis: .vertical, problem: unreadable, monospaced: true)
             }
             if let invoice {
                 UntilExpiry(invoice: invoice) { expired in details(invoice, expired: expired) }
@@ -42,7 +42,7 @@ struct PayInvoicePane: View {
             do {
                 for try await record in updates { payment = record }
             } catch {
-                attempt.problem = PeelError.problem(error, couldNot: "check the payment")
+                attempt.problem = PeelError.problem(error, couldNot: String(localized: "check the payment"))
             }
         }
     }
@@ -95,7 +95,7 @@ struct PayInvoicePane: View {
             }
             FormFooter(problem: attempt.problem) {
                 Button("Cancel", action: close).buttonStyle(.peel(.outline))
-                PayButton(verb: "Pay", totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
+                PayButton(verb: String(localized: "Pay"), totalMsat: invoice.amountMsat, attempt: attempt, send: { confirmed in
                     await model.payInvoice(invoice, confirmedMsat: confirmed)
                 }, sent: {}, namesAmount: false)
             }
@@ -105,18 +105,18 @@ struct PayInvoicePane: View {
     private func facts(_ invoice: Invoice, expired: Bool) -> some View {
         let key = Formatting.shortKey(invoice.payee)
         return FactList {
-            Fact("To", text: model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? "\(key), not a contact")
-            if !invoice.memo.isEmpty { Fact("Memo", text: invoice.memo) }
+            Fact(String(localized: "To"), text: model.contactName(invoice.payee).map { "\($0) · \(key)" } ?? String(localized: "\(key), not a contact"))
+            if !invoice.memo.isEmpty { Fact(String(localized: "Memo"), text: invoice.memo) }
             if let expires = invoice.expiresAt {
                 let at = Formatting.expiry(expires)
                 if expired {
-                    Fact("Expires", text: "Expired at \(at)", tint: Theme.attention)
+                    Fact(String(localized: "Expires"), text: String(localized: "Expired at \(at)"), tint: Theme.attention)
                 } else {
-                    Fact("Expires", text: "\(expires.formatted(.relative(presentation: .named))), at \(at)")
+                    Fact(String(localized: "Expires"), text: String(localized: "\(expires.formatted(.relative(presentation: .named))), at \(at)"))
                 }
             }
             if payment == nil || payment?.status == .failed {
-                Fact("Fee", text: "Added on top")
+                Fact(String(localized: "Fee"), text: String(localized: "Added on top"))
             }
         }
     }
@@ -128,9 +128,9 @@ struct PayInvoicePane: View {
         var link: (String, () -> Void)?
         switch problem {
         case .invoiceAlreadyPaid:
-            if let sent { link = ("Show that payment", { show(sent.id) }) }
+            if let sent { link = (String(localized: "Show that payment"), { show(sent.id) }) }
         case .insufficientBalance:
-            link = ("Receive sats", receive)
+            link = (String(localized: "Receive sats"), receive)
         default:
             break
         }
@@ -147,8 +147,8 @@ struct PayInvoicePane: View {
                     .font(Theme.font(14, .semibold))
                     .foregroundStyle(Theme.text)
                     .monospacedDigit()
-                Text(item?.feeMsat.map { $0 == 0 ? "No routing fee." : "Routing fee \(Sats.format(msat: $0))." }
-                     ?? "Fee not known yet.")
+                Text(item?.feeMsat.map { $0 == 0 ? String(localized: "No routing fee.") : String(localized: "Routing fee \(Sats.format(msat: $0)).") }
+                     ?? String(localized: "Fee not known yet."))
                     .monospacedDigit()
                     .muted()
                 HStack {

@@ -152,7 +152,7 @@ struct ImageTile: View {
                     if model.awaitsManualDownload(message) || handle.isHeld || handle.isRetrying {
                         VStack(spacing: Theme.Space.sm) {
                             Label(tapLabel(handle), systemImage: "photo").muted()
-                            Button(handle.isRetrying ? "Retry" : "Download") { Task { await model.download(message) } }
+                            Button(handle.isRetrying ? String(localized: "Retry") : String(localized: "Download")) { Task { await model.download(message) } }
                                 .buttonStyle(.peel(.outline, size: .sm))
                         }
                     } else if let notShown {
@@ -172,17 +172,18 @@ struct ImageTile: View {
         }
         .attachmentTile(fitted: displaySize, message: message, handle: handle)
         .help(handle.failureReason ?? "")
-        .accessibilityLabel(isGIF ? "GIF" : message.content?.trimmed.nilIfEmpty ?? "Image")
+        .accessibilityLabel(isGIF ? String(localized: "GIF") : message.content?.trimmed.nilIfEmpty ?? String(localized: "Image"))
     }
 
     /// What an image waiting for a click says: held by its size, a failed
     /// download that may pass, or just "Image" (Auto download media is off).
     private func tapLabel(_ handle: AttachmentHandle) -> String {
-        if handle.isRetrying { return "Couldn't download yet - tap to retry" }
+        if handle.isRetrying { return String(localized: "Couldn't download yet - tap to retry") }
         if case .held(let size) = handle.state {
-            return ["Image", AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " - ") + ", click to download"
+            let details = [String(localized: "Image"), AttachmentFormat.size(size)].compactMap { $0 }.joined(separator: " - ")
+            return String(localized: "\(details), click to download")
         }
-        return "Image"
+        return String(localized: "Image")
     }
 
     /// A GIF by its own size (its frames may be decoded smaller, or evicted
@@ -295,7 +296,7 @@ struct FileCard: View {
             AttachmentMark(message: message, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 // The name comes with the download; until then, what it says it is.
-                Text(name ?? AttachmentFormat.kind(mediaType: message.mediaType) ?? "File")
+                Text(name ?? AttachmentFormat.kind(mediaType: message.mediaType) ?? String(localized: "File"))
                     .font(Theme.font(14, .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -330,10 +331,10 @@ struct FileCard: View {
                 EmptyView()
             case .idle, .held, .retrying, .failed, .ready:
                 if model.opensAsPage(message) {
-                    IconButton("globe", help: "Open in Peel", action: openPage)
+                    IconButton("globe", help: String(localized: "Open in Peel"), action: openPage)
                 }
                 if handle.savedTo == nil {
-                    IconButton("arrow.down.to.line", help: "Download to Downloads") {
+                    IconButton("arrow.down.to.line", help: String(localized: "Download to Downloads")) {
                         Task { await model.saveToDownloads(message) }
                     }
                 }
@@ -353,9 +354,9 @@ struct AttachmentStatus: View {
 
     var body: some View {
         if message.fromMe, message.uploadState == .pending {
-            TransferBar(label: "Uploading", progress: handle.progress)
+            TransferBar(label: String(localized: "Uploading"), progress: handle.progress)
         } else if case .downloading = handle.state, !isRecording || handle.progress != nil {
-            TransferBar(label: "Downloading", progress: handle.progress)
+            TransferBar(label: String(localized: "Downloading"), progress: handle.progress)
         } else if let saved = handle.savedTo {
             SavedNote(file: saved)
         } else if !isRecording, let reason = handle.failureReason {
@@ -410,7 +411,7 @@ extension View {
     func attachmentTile(fitted size: CGSize, message: Message, handle: AttachmentHandle) -> some View {
         overlay(alignment: .bottom) {
             if message.fromMe, message.uploadState == .pending {
-                TransferBar(label: "Uploading", progress: handle.progress).padding(Theme.Space.sm)
+                TransferBar(label: String(localized: "Uploading"), progress: handle.progress).padding(Theme.Space.sm)
             }
         }
         .attachmentTile(fitted: size)
@@ -476,7 +477,7 @@ struct AttachmentMark: View {
                 }
             } else {
                 Theme.selection.overlay {
-                    Text(message.attachmentKind == .image ? "IMG" : AttachmentFormat.badge(message.fileName, mediaType: message.mediaType))
+                    Text(verbatim: message.attachmentKind == .image ? "IMG" : AttachmentFormat.badge(message.fileName, mediaType: message.mediaType))
                         .font(Theme.font(size * 0.26, .bold))
                         .foregroundStyle(Theme.text)
                 }

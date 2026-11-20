@@ -30,7 +30,7 @@ struct AddContactSheet: View {
     var body: some View {
         Group {
             if let sentTo {
-                SheetPage(title: "Add contact") {
+                SheetPage(title: String(localized: "Add contact")) {
                     Label("Sent to \(sentTo)", systemImage: "checkmark.circle.fill")
                         .phoneFont(PhoneFont.row.weight(.semibold))
                         .foregroundStyle(Theme.confirmed)
@@ -49,26 +49,26 @@ struct AddContactSheet: View {
     }
 
     private var form: some View {
-        SheetPage(title: "Add contact") {
+        SheetPage(title: String(localized: "Add contact")) {
             CodeEntry(
-                label: "Their code", prompt: "Contact info, invite or Sphinx link", text: $text,
-                scanTitle: "Scan their code", scanPrompt: "Point the camera at their contact QR code.",
-                accept: { (try? ContactCode.read($0))?.pubkey == nil ? "That code doesn't name anyone." : nil },
+                label: String(localized: "Their code"), prompt: String(localized: "Contact info, invite or Sphinx link"), text: $text,
+                scanTitle: String(localized: "Scan their code"), scanPrompt: String(localized: "Point the camera at their contact QR code."),
+                accept: { (try? ContactCode.read($0))?.pubkey == nil ? String(localized: "That code doesn't name anyone.") : nil },
                 choose: ContactCode.likeliest(in:),
                 picked: { pickedText = $0 }
             )
             if let code, let pubkey = code.pubkey {
                 CodePreview(code: code, pubkey: pubkey)
             }
-            FieldLabel("Name") {
-                NoteInput(label: "Name", prompt: code?.inviterName ?? "Optional", text: $name)
+            FieldLabel(String(localized: "Name")) {
+                NoteInput(label: String(localized: "Name"), prompt: code?.inviterName ?? String(localized: "Optional"), text: $name)
             }
             if let problem = (text == pickedText ? codeProblem : nil) ?? code?.addRefusal {
                 ProblemText(problem)
             }
         } actions: {
             TouchPayButton(
-                verb: "Add", totalMsat: text.trimmed.isEmpty ? nil : Engine.keyExchangeMsat, attempt: attempt
+                verb: String(localized: "Add"), totalMsat: text.trimmed.isEmpty ? nil : Engine.keyExchangeMsat, attempt: attempt
             ) { confirmed in
                 let (outcome, added) = await model.addContact(code: text, alias: name, confirmedMsat: confirmed)
                 // Already a contact: their chat opened.
@@ -131,12 +131,12 @@ struct InviteSheet: View {
             if let made {
                 InviteDetailScreen(code: made.code)
             } else {
-                SheetPage(title: "Invite someone") {
-                    FieldLabel("Amount") { SatsInput(label: "Amount", text: $amount, focused: $amountFocused) }
+                SheetPage(title: String(localized: "Invite someone")) {
+                    FieldLabel(String(localized: "Amount")) { SatsInput(label: String(localized: "Amount"), text: $amount, focused: $amountFocused) }
                     VStack(alignment: .leading, spacing: Theme.Space.md) {
-                        PhoneSectionHeader("Only you see these")
-                        FieldLabel("Nickname") { NoteInput(label: "Nickname", prompt: "Optional", text: $nickname) }
-                        FieldLabel("Message") { NoteInput(label: "Message", prompt: "Optional", text: $message) }
+                        PhoneSectionHeader(String(localized: "Only you see these"))
+                        FieldLabel(String(localized: "Nickname")) { NoteInput(label: String(localized: "Nickname"), prompt: String(localized: "Optional"), text: $nickname) }
+                        FieldLabel(String(localized: "Message")) { NoteInput(label: String(localized: "Message"), prompt: String(localized: "Optional"), text: $message) }
                     }
                     Text("The sats leave your balance now. Cancel the invite to get them back.")
                         .phoneFont(.secondary)
@@ -144,8 +144,8 @@ struct InviteSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                     BalanceLine()
                 } actions: {
-                    TouchPayButton(verb: "Invite", totalMsat: Sats.msat(amount), attempt: attempt) { confirmed in
-                        guard let msat = Sats.msat(amount) else { return .refused("Enter an amount in sats.") }
+                    TouchPayButton(verb: String(localized: "Invite"), totalMsat: Sats.msat(amount), attempt: attempt) { confirmed in
+                        guard let msat = Sats.msat(amount) else { return .refused(String(localized: "Enter an amount in sats.")) }
                         let (outcome, invite) = await model.makeInvite(
                             amountMsat: msat, nickname: nickname, message: message, confirmedMsat: confirmed
                         )
@@ -176,7 +176,7 @@ struct InviteDetailScreen: View {
 
     var body: some View {
         let invite = model.invites[code]
-        SheetPage(title: invite?.nickname ?? "Invite") {
+        SheetPage(title: invite?.nickname ?? String(localized: "Invite")) {
             if let invite {
                 content(invite)
             } else {
@@ -200,7 +200,7 @@ struct InviteDetailScreen: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
         if invite.status == .ready {
-            ShareableCode(text: invite.link, label: "QR code of the invite", copyTitle: "Copy invite")
+            ShareableCode(text: invite.link, label: String(localized: "QR code of the invite"), copyTitle: String(localized: "Copy invite"))
             Text("Anyone with this invite can claim its sats.")
                 .phoneFont(.secondary)
                 .foregroundStyle(Theme.secondaryText)
@@ -208,13 +208,13 @@ struct InviteDetailScreen: View {
                 .multilineTextAlignment(.center)
         } else {
             // Faint until the server holds the sats.
-            QRCodeTile(text: nil, label: "QR code of the invite, not ready yet", size: 220, inset: 12)
+            QRCodeTile(text: nil, label: String(localized: "QR code of the invite, not ready yet"), size: 220, inset: 12)
                 .frame(maxWidth: .infinity)
         }
         if let message = invite.message {
             PhoneCard {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    PhoneSectionHeader("Your message")
+                    PhoneSectionHeader(String(localized: "Your message"))
                     Text(message)
                         .phoneFont(.row)
                         .foregroundStyle(Theme.text)
@@ -247,9 +247,9 @@ struct InviteDetailScreen: View {
         }
         if invite.isPending {
             ConfirmInPlace(
-                trigger: invite.status == .cancelling ? "Ask again" : "Cancel invite",
-                explanation: "Get the sats back?",
-                confirm: "Cancel invite", destructive: false
+                trigger: invite.status == .cancelling ? String(localized: "Ask again") : String(localized: "Cancel invite"),
+                explanation: String(localized: "Get the sats back?"),
+                confirm: String(localized: "Cancel invite"), destructive: false
             ) {
                 problem = nil
                 do {

@@ -82,9 +82,11 @@ with `--profile` (required; `default` is reserved for the app's own account).
 
 The apps are in English and Spanish (`es`). Text lives in String Catalogs:
 
-- `Apps/Shared/Shared.xcstrings`: strings in shared code (table `Shared`, so
-  it does not clash with the app catalogs; read it with `tableName: "Shared"`
-  or `String(localized:table: "Shared")`)
+- `Apps/Shared/Shared.xcstrings`: strings in shared code (`Apps/Shared`) and in
+  every `Sources/` package (table `Shared`, so it does not clash with the app
+  catalogs). Always name the table: `Text("x", tableName: "Shared")` or
+  `String(localized: "x", table: "Shared")`. Both apps bundle it, and the
+  packages read the app's bundle.
 - `Apps/Mac/Peel/Localizable.xcstrings`: the Mac app
 - `Apps/iOS/Peel/Localizable.xcstrings`: the iPhone app
 - `Apps/Mac/Peel/InfoPlist.xcstrings`, `Apps/iOS/Peel/InfoPlist.xcstrings`:
@@ -98,9 +100,22 @@ language (Project > Info > Localizations adds it to `knownRegions` in
 **Add a string.** Use a literal where SwiftUI takes a `LocalizedStringKey`
 (`Text("Save")`, `Button`, `Label`, `Toggle`, `navigationTitle`), and
 `String(localized: "…")` anywhere else (a `String` property, an alert, an
-AppKit title). Building in Xcode adds the key to the catalog; give it its
-translations. Never localize what is compared, stored or sent. Strings in
-`Sources/` packages are not localized yet.
+AppKit title, a helper that takes a `String`). A ternary of literals in `Text(`
+is a plain `String`: write `String(localized:)` on each branch. Build a
+sentence as ONE interpolated string, never by `+`, so a translator can reorder
+it; for a count use a plural variation (`%lld replies`, with `one` and `other`
+in en and es) or `Formatting.count`. Keys with several placeholders use
+positional specifiers in the values (`%1$@ … %2$@`). Never localize what is
+compared, stored or sent.
+
+**Building does not add the key.** `SWIFT_EMIT_LOC_STRINGS` is `NO`, so Xcode
+does not extract keys: add the key and its `es` value to the catalog by hand
+(the key is the literal with each `\(x)` as `%@` / `%lld`). Then run
+`python3 scripts/check-localization.py`: it checks every catalog (valid JSON,
+an `es` value for every key, matching placeholders, plural forms, no key with
+leading or trailing space) and scans the Swift sources for localized literals
+with no key or no table. `--hunt <files>` lists string literals that look
+user-facing but are not localized yet.
 
 **Test.** Edit the scheme, Options > App Language > Spanish, or launch with
 `-AppleLanguages '(es)'`.

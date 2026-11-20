@@ -141,7 +141,7 @@ public final class AgentSession {
             approvalRules = try rules.all()
         } catch {
             Diagnostics.note(errorKind: .database)
-            notice = [notice, "Could not read what the agent is always allowed to do: \(error.localizedDescription)"]
+            notice = [notice, String(localized: "Could not read what the agent is always allowed to do: \(error.localizedDescription)", table: "Shared")]
                 .compactMap { $0 }.joined(separator: " ")
         }
         do {
@@ -156,7 +156,7 @@ public final class AgentSession {
             }
         } catch {
             Diagnostics.note(errorKind: .database)
-            notice = "Could not read the agent chat: \(error.localizedDescription)"
+            notice = String(localized: "Could not read the agent chat: \(error.localizedDescription)", table: "Shared")
         }
     }
 

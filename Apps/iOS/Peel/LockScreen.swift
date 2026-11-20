@@ -35,7 +35,7 @@ struct LockScreen: View {
                 Text("Peel is locked")
                     .phoneFont(PhoneFont(size: 20, weight: .bold, style: .title3))
                     .accessibilityAddTraits(.isHeader)
-                Text(problem ?? "Unlock with \(name) to continue.")
+                Text(problem ?? String(localized: "Unlock with \(name) to continue."))
                     .phoneFont(PhoneFont(size: 15, style: .subheadline))
                     .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -85,8 +85,8 @@ struct LockScreen: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ForgetAccount(
-                trigger: "Forgot your PIN?",
-                explanation: "Forget this account on this iPhone. " + AppModel.forgetWarning(holdsSats: holdsSats)
+                trigger: String(localized: "Forgot your PIN?"),
+                explanation: String(localized: "Forget this account on this iPhone. \(AppModel.forgetWarning(holdsSats: holdsSats))")
             )
             // Not while an unlock is opening the account.
             .disabled(working)
@@ -122,7 +122,7 @@ struct LockScreen: View {
         defer { working = false }
         do {
             if try await !model.unlockWithBiometrics() {
-                problem = model.lockOffersBiometrics ? nil : "Enter your PIN."
+                problem = model.lockOffersBiometrics ? nil : String(localized: "Enter your PIN.")
             }
         } catch {
             problem = PIN.problem(error)
@@ -176,6 +176,6 @@ struct ForgetAccount: View {
         working = true
         defer { working = false }
         problem = nil
-        do { try await model.forgetAccount() } catch { problem = PeelError.problem(error, couldNot: "forget the account") }
+        do { try await model.forgetAccount() } catch { problem = PeelError.problem(error, couldNot: String(localized: "forget the account")) }
     }
 }

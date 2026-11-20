@@ -38,23 +38,23 @@ struct ReceiveSheet: View {
                     if let record { invoice = record }
                 }
             } catch {
-                problem = PeelError.problem(error, couldNot: "check the invoice")
+                problem = PeelError.problem(error, couldNot: String(localized: "check the invoice"))
             }
         }
     }
 
     private var form: some View {
         let amountMsat = Sats.msat(amount)
-        return SheetPage(title: "Receive") {
-            FieldLabel("Amount") { SatsInput(label: "Amount", text: $amount, focused: $amountFocused) }
-            FieldLabel("Note") { NoteInput(label: "Note", prompt: "What it's for (optional)", text: $memo) }
+        return SheetPage(title: String(localized: "Receive")) {
+            FieldLabel(String(localized: "Amount")) { SatsInput(label: String(localized: "Amount"), text: $amount, focused: $amountFocused) }
+            FieldLabel(String(localized: "Note")) { NoteInput(label: String(localized: "Note"), prompt: String(localized: "What it's for (optional)"), text: $memo) }
             if let problem { ProblemText(problem) }
         } actions: {
             Button {
                 guard let amountMsat else { return }
                 Task { await create(amountMsat) }
             } label: {
-                Text(amountMsat.map { "Create invoice for \(Sats.format(msat: $0))" } ?? "Create invoice")
+                Text(amountMsat.map { String(localized: "Create invoice for \(Sats.format(msat: $0))") } ?? String(localized: "Create invoice"))
                     .monospacedDigit()
                     .frame(maxWidth: .infinity)
                     .buttonProgress(working)
@@ -80,9 +80,9 @@ struct ReceiveSheet: View {
     }
 
     private func waiting(_ invoice: InvoiceRecord) -> some View {
-        SheetPage(title: "Receive") {
+        SheetPage(title: String(localized: "Receive")) {
             VStack(spacing: Theme.Space.md) {
-                QRCodeTile(text: invoice.bolt11.uppercased(), label: "QR code of the invoice for \(Sats.format(msat: invoice.amountMsat))",
+                QRCodeTile(text: invoice.bolt11.uppercased(), label: String(localized: "QR code of the invoice for \(Sats.format(msat: invoice.amountMsat))"),
                            size: 260, inset: 14)
                 BigAmount(amount: Sats.number(msat: invoice.amountMsat), size: 28)
                 if !invoice.memo.isEmpty {
@@ -101,7 +101,7 @@ struct ReceiveSheet: View {
             if let problem { ProblemText(problem) }
         } actions: {
             HStack(spacing: Theme.Space.md) {
-                CopyButton("Copy", text: invoice.bolt11)
+                CopyButton(String(localized: "Copy"), text: invoice.bolt11)
                     .buttonStyle(.peel(.primary, size: .touch))
                 ShareLink(item: invoice.bolt11) {
                     Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
@@ -113,7 +113,7 @@ struct ReceiveSheet: View {
 
     private func paid(_ invoice: InvoiceRecord) -> some View {
         let full = invoice.status == .paid
-        return SheetPage(title: "Receive") {
+        return SheetPage(title: String(localized: "Receive")) {
             VStack(spacing: Theme.Space.md) {
                 Image(systemName: full ? "checkmark" : "exclamationmark")
                     .font(.system(size: 26, weight: .bold))
@@ -121,10 +121,10 @@ struct ReceiveSheet: View {
                     .frame(width: 64, height: 64)
                     .background((full ? Theme.confirmed : Theme.attention).opacity(0.14), in: Circle())
                     .accessibilityHidden(true)
-                Text(full ? "Paid" : "Partly paid")
+                Text(full ? String(localized: "Paid") : String(localized: "Partly paid"))
                     .phoneFont(PhoneFont(size: 22, weight: .bold, style: .title2))
                     .accessibilityAddTraits(.isHeader)
-                BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? "Amount not known",
+                BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? String(localized: "Amount not known"),
                           color: full ? Theme.confirmed : Theme.text)
                 if !invoice.memo.isEmpty { Text(invoice.memo).phoneFont(.row) }
             }
@@ -133,9 +133,9 @@ struct ReceiveSheet: View {
             PhoneCard {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
                     if let paid = invoice.paid {
-                        FactRow("Received", Formatting.time(paid, seconds: true))
+                        FactRow(String(localized: "Received"), Formatting.time(paid, seconds: true))
                     }
-                    FactRow("Invoice for", Sats.format(msat: invoice.amountMsat))
+                    FactRow(String(localized: "Invoice for"), Sats.format(msat: invoice.amountMsat))
                 }
                 .padding(Theme.Space.md)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -165,7 +165,7 @@ private struct InvoiceCountdown: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let left = invoice.expires.map { $0.timeIntervalSince(context.date) } ?? .infinity
             if left <= 0 {
-                Callout(.attention, "This invoice has expired", detail: "Nothing was paid.") {
+                Callout(.attention, String(localized: "This invoice has expired"), detail: String(localized: "Nothing was paid.")) {
                     Button("Make a new one", action: renew).buttonStyle(.peel(.link))
                 }
             } else {
@@ -176,8 +176,8 @@ private struct InvoiceCountdown: View {
                     Spacer(minLength: Theme.Space.sm)
                     if let expires = invoice.expires {
                         Text(left < 3600
-                             ? "Expires in \(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))"
-                             : "Expires \(Formatting.expiry(expires))")
+                             ? String(localized: "Expires in \(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))")
+                             : String(localized: "Expires \(Formatting.expiry(expires))"))
                             .phoneFont(.secondary)
                             .monospacedDigit()
                             .foregroundStyle(Theme.tertiaryText)

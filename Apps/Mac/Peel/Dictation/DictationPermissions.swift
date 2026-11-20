@@ -94,32 +94,32 @@ struct DictationPermissionRows: View {
     let permissions: DictationPermissions
 
     var body: some View {
-        Fact("Microphone") {
-            state(permissions.microphone, needed: "Needed to hear you")
+        Fact(String(localized: "Microphone")) {
+            state(permissions.microphone, needed: String(localized: "Needed to hear you"))
         } trailing: {
             button(permissions.microphone) { Task { await permissions.requestMicrophone() } }
         }
-        Fact("Input Monitoring") {
-            state(permissions.inputMonitoring, needed: "Needed to see the dictation key. Turn it on with Allow.")
+        Fact(String(localized: "Input Monitoring")) {
+            state(permissions.inputMonitoring, needed: String(localized: "Needed to see the dictation key. Turn it on with Allow."))
         } trailing: {
             button(permissions.inputMonitoring) { permissions.requestInputMonitoring() }
         }
-        Fact("Accessibility") {
-            state(permissions.accessibility, needed: "Needed to type what you said, and to keep Space and Esc from reaching the app. Turn it on with Allow.")
+        Fact(String(localized: "Accessibility")) {
+            state(permissions.accessibility, needed: String(localized: "Needed to type what you said, and to keep Space and Esc from reaching the app. Turn it on with Allow."))
         } trailing: {
             button(permissions.accessibility) { permissions.requestAccessibility() }
         }
     }
 
     private func state(_ status: DictationPermissions.Status, needed: String) -> some View {
-        Text(status == .granted ? "Allowed" : needed)
+        Text(status == .granted ? String(localized: "Allowed") : needed)
             .foregroundStyle(status == .granted ? Theme.text : Theme.secondaryText)
     }
 
     @ViewBuilder
     private func button(_ status: DictationPermissions.Status, action: @escaping () -> Void) -> some View {
         if status != .granted {
-            Button(status == .notAsked ? "Allow" : "System Settings…", action: action)
+            Button(status == .notAsked ? String(localized: "Allow") : String(localized: "System Settings…"), action: action)
                 .buttonStyle(.peel(status == .notAsked ? .primary : .outline))
         }
     }

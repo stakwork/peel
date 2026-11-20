@@ -20,9 +20,9 @@ final class ScreenShare {
         func note(includingPeel: Bool) -> String {
             switch self {
             case .display:
-                includingPeel ? "You're sharing your screen, with Peel's windows" : "You're sharing your screen, without Peel's windows"
-            case .window: "You're sharing a window"
-            case .application: "You're sharing an app"
+                includingPeel ? String(localized: "You're sharing your screen, with Peel's windows") : String(localized: "You're sharing your screen, without Peel's windows")
+            case .window: String(localized: "You're sharing a window")
+            case .application: String(localized: "You're sharing an app")
             }
         }
 

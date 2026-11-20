@@ -108,8 +108,8 @@ extension SphinxTools {
             return .result(.text("Not sent to \(ChatData.quoted(chat)): it costs \(price.described), over the most allowed (\(maxPriceSats) sats)."))
         }
         let intent = ToolIntent(
-            action: chat.isTribe ? "Send to the tribe \(name)" : "Send to \(name)", content: text, details: details,
-            cost: price.map { "Costs \($0.described). Paid from your balance." },
+            action: chat.isTribe ? String(localized: "Send to the tribe \(name)", table: "Shared") : String(localized: "Send to \(name)", table: "Shared"), content: text, details: details,
+            cost: price.map { String(localized: "Costs \($0.described). Paid from your balance.", table: "Shared") },
             target: ToolIntent.Target(id: chat.chat, name: name))
         return .action(intent) {
             let tag: String?

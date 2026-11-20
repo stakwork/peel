@@ -150,7 +150,8 @@ struct OrgPageSheet<Page: PhonePage>: View {
             Button("Settings") { PageLocationAuthorizer.openSettings() }
             Button("Not now", role: .cancel) {}
         } message: {
-            Text("\(location.deniedBySystem ?? "The site") can't get your location until you turn it on for Peel in Settings.")
+            Text(location.deniedBySystem.map { String(localized: "\($0) can't get your location until you turn it on for Peel in Settings.") }
+                ?? String(localized: "The site can't get your location until you turn it on for Peel in Settings."))
         }
         .sheet(item: $controller.shared) { file in
             ShareSheet(url: file.url).ignoresSafeArea()
@@ -477,7 +478,7 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
 
         func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
             guard let folder = controller.newFolder() else {
-                controller.notice = "There was no room to keep it."
+                controller.notice = String(localized: "There was no room to keep it.")
                 return nil
             }
             let file = folder.appendingPathComponent(OrgPageRules.filename(suggestedFilename), isDirectory: false)
@@ -493,7 +494,7 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
         func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
             if let entry = downloads.removeValue(forKey: ObjectIdentifier(download)) { controller.remove(entry.folder) }
             if (error as NSError).code == NSURLErrorCancelled { return }
-            controller.notice = "The download did not finish."
+            controller.notice = String(localized: "The download did not finish.")
         }
 
         /// `target=_blank` and `window.open`: never a window. One on the org's

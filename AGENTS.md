@@ -914,7 +914,7 @@ is a short plan. Update the status and the journal when you finish something.
   right to reply in the thread, VoiceOver's actions), `ThreadSheet`,
   `Composer` (`PhoneComposer`: the glass capsule over a `UITextView`,
   attach from Photos, the camera or Files, `@` mentions, the mic and the
-  bolt saying what is coming) and `YouTab` (photo, name and balance;
+  bolt saying what is coming) and `YouTab` (photo, name and balance; your contact info card, QR and Copy;
   Agent; Stadeum; the words, Change PIN, Face ID, the PIN timeout, boost amount,
   the confirmation threshold, server; Forget).
   `Peel/Assets.xcassets` holds `Logo`, a link to

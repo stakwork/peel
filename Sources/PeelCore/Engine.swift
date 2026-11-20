@@ -1810,10 +1810,15 @@ public actor Engine {
         }
         if let error = result.error {
             // The core reports a failed "online" reply only in this text, with
-            // the ping's tag at the end; the payment it was for no longer exists.
-            if let tag = error.components(separatedBy: "async pay not found: ").last, tag.count == 64,
-               let pingTime = pingsByTag.removeValue(forKey: tag) {
-                followUps.acknowledgedPings.append(pingTime)
+            // the ping's tag at the end; the payment it was for no longer exists
+            // (expired, or settled already). Nothing for the person to do, so
+            // it is acknowledged and recorded, never shown.
+            if let tag = Self.missingAsyncPayTag(error) {
+                if let pingTime = pingsByTag.removeValue(forKey: tag) {
+                    followUps.acknowledgedPings.append(pingTime)
+                }
+                Diagnostics.recordCoreFailure(site: .commit, kind: nil, detail: error)
+                return followUps
             }
             // A refused send carries its tag; a live message names its sender.
             let chat = try sent?.tag.flatMap { try storage.chat(forTag: $0) } ?? expectedSender
@@ -2447,6 +2452,15 @@ public actor Engine {
         try await run { time, state in
             try Sphinxrs.getMutes(seed: seed, uniqueTime: time, state: state)
         }
+    }
+
+    /// The tag in the core's "async pay not found: <tag>" (a held payment
+    /// that no longer exists), or nil for any other error.
+    static func missingAsyncPayTag(_ error: String) -> String? {
+        let parts = error.components(separatedBy: "async pay not found: ")
+        guard parts.count == 2 else { return nil }
+        let tag = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: ". \n"))
+        return tag.count == 64 && tag.allSatisfy(\.isHexDigit) ? tag : nil
     }
 
     /// A ping is "paymentHash:time:tag".

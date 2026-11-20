@@ -47,4 +47,28 @@ struct EngineFailureTests {
         #expect(PeelError.readable(Engine.Failure.tooLargeToSend("big.mov"))
             == "big.mov is larger than 32 MB, the most Peel can send")
     }
+
+    /// A held payment that is gone (expired, or settled already) comes back
+    /// from the core as "async pay not found: <tag>". Nothing for the person
+    /// to do, so it is never an event the app shows; any other core error is.
+    @Test func aHeldPaymentThatIsGoneIsNotShown() async throws {
+        let engine = try engine()
+        let tag = String(repeating: "09", count: 32)
+        try await engine.takeError("Anyhow error: async pay not found: \(tag).")
+        try await engine.takeError("something else broke")
+        await engine.close()
+        var errors: [String] = []
+        for await event in engine.events {
+            if case .coreError(let message) = event { errors.append(message) }
+            if case .conversationError(_, let message) = event { errors.append(message) }
+        }
+        #expect(errors == ["something else broke"])
+    }
+}
+
+private extension Engine {
+    /// A core reply carrying only `error`, committed and followed up as `receive` does.
+    func takeError(_ error: String) async throws {
+        try await run { _, _ in coreResult(error: error) }
+    }
 }

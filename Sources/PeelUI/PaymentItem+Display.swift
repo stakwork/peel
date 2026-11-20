@@ -76,9 +76,12 @@ extension PaymentItem {
     public var keyExchangeNote: String? {
         guard kind == .keyExchange else { return nil }
         let five = Sats.format(msat: Engine.keyExchangeMsat), three = Sats.format(msat: Engine.priceToMeetMsat)
-        return addedThem
-            ? String(localized: "Adding \(chatName ?? String(localized: "them", table: "Shared")) cost \(five), and \(three) came back.", table: "Shared")
-            : String(localized: "\(chatName ?? String(localized: "They", table: "Shared")) paid \(five) to add you, and \(three) went back.", table: "Shared")
+        if addedThem {
+            let them = chatName ?? String(localized: "them", table: "Shared")
+            return String(localized: "Adding \(them) cost \(five), and \(three) came back.", table: "Shared")
+        }
+        let they = chatName ?? String(localized: "They", table: "Shared")
+        return String(localized: "\(they) paid \(five) to add you, and \(three) went back.", table: "Shared")
     }
 
     /// "Boost received", "Payment sent".

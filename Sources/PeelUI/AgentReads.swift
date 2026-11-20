@@ -48,10 +48,10 @@ public struct AgentReads: Equatable, Sendable {
             switch kind {
             case .unseen: return String(localized: "your unread messages", table: "Shared")
             case .chats: return String(localized: "your chats", table: "Shared")
-            case .chat: return String(localized: "read \(count) chats", table: "Shared")
-            case .threads: return String(localized: "read threads in \(count) chats", table: "Shared")
+            case .chat: return count == 1 ? String(localized: "a chat", table: "Shared") : String(localized: "\(count) chats", table: "Shared")
+            case .threads: return count == 1 ? String(localized: "threads in a chat", table: "Shared") : String(localized: "threads in \(count) chats", table: "Shared")
             case .calendar: return String(localized: "your calendar", table: "Shared")
-            case .attachment: return String(localized: "read \(requests.count) attachments", table: "Shared")
+            case .attachment: return requests.count == 1 ? String(localized: "an attachment", table: "Shared") : String(localized: "\(requests.count) attachments", table: "Shared")
             case .search: return nil
             }
         }
@@ -61,7 +61,7 @@ public struct AgentReads: Equatable, Sendable {
 
         public var title: String {
             guard let object else {
-                return String(localized: "Searched your messages \(requests.count) times", table: "Shared")
+                return requests.count == 1 ? String(localized: "Searched your messages", table: "Shared") : String(localized: "Searched your messages \(requests.count) times", table: "Shared")
             }
             return String(localized: "Read \(object)", table: "Shared")
         }
@@ -96,15 +96,15 @@ public struct AgentReads: Equatable, Sendable {
             switch step.kind {
             case .unseen: return String(localized: "unread messages", table: "Shared")
             case .chats: return steps.count == 1 ? String(localized: "your chats", table: "Shared") : nil
-            case .chat: return String(localized: "checked \(chats) chats", table: "Shared")
+            case .chat: return chats == 1 ? String(localized: "a chat", table: "Shared") : String(localized: "\(chats) chats", table: "Shared")
             case .threads: return String(localized: "threads", table: "Shared")
-            case .search: return String(localized: "checked \(count) searches", table: "Shared")
+            case .search: return count == 1 ? String(localized: "a search", table: "Shared") : String(localized: "\(count) searches", table: "Shared")
             case .calendar: return String(localized: "your calendar", table: "Shared")
-            case .attachment: return String(localized: "checked \(count) attachments", table: "Shared")
+            case .attachment: return count == 1 ? String(localized: "an attachment", table: "Shared") : String(localized: "\(count) attachments", table: "Shared")
             }
         }
-        // In English as the rest of the row, whatever the Mac's language.
-        let list = items.formatted(.list(type: .and))
+        let list = items.count < 2 ? items.joined()
+            : String(localized: "\(items.dropLast().joined(separator: ", ")) and \(items[items.count - 1])", table: "Shared")
         return String(localized: "Checked \(list)", table: "Shared")
     }
 

@@ -142,7 +142,7 @@ public struct PeelError: Error, CustomStringConvertible, Sendable {
         let hosts = failing.compactMap { URL(string: $0)?.host() }.filter { !$0.isEmpty }
         let namesAddress = text.contains("://") || (failing + hosts).contains { text.contains($0) }
         return namesAddress || text.isEmpty
-            ? String(localized: "something went wrong (\(nsError.domain) error \(nsError.code))", table: "Shared") : text
+            ? String(localized: "something went wrong (\(nsError.domain) error \(String(nsError.code)))", table: "Shared") : text
     }
 
     /// A POSIX error code in words.

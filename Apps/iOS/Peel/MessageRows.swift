@@ -498,7 +498,9 @@ struct RequestRowView: View {
     private func status(_ invoice: Invoice) -> String {
         switch row.paymentRequest?.state ?? .open {
         case .underpaid: return String(localized: "Partly paid. This invoice can't take the rest.")
-        case .paid(let at): let when = Formatting.when(at)
+        case .paid(let at):
+            guard let at else { return row.message.fromMe ? String(localized: "Paid") : String(localized: "You paid") }
+            let when = Formatting.when(at)
             return row.message.fromMe ? String(localized: "Paid · \(when)") : String(localized: "You paid · \(when)")
         case .paying: return String(localized: "Paying…")
         case .open, .failed:

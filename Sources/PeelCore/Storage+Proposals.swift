@@ -352,7 +352,7 @@ public enum TribeDecider: Sendable, Equatable {
     public var line: String {
         switch self {
         case .you, .owner: String(localized: "The tribe's owner decides this.", table: "Shared")
-        case .someone(let name?): String(localized: "\(name) decides this.", table: "Shared")
+        case .someone(let name?): String(localized: "\(name)'s to decide.", table: "Shared")
         case .someone(nil): String(localized: "The person who asked decides this.", table: "Shared")
         }
     }

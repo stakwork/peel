@@ -29,20 +29,23 @@ public enum Formatting {
             default: break
             }
         }
+        // One key for one and one for many, chosen here (not a catalog plural): the English
+        // reads right wherever no catalog is loaded (tests, the command line).
+        let one = count == 1
         switch noun {
-        case .payment: return String(localized: "\(count) payments", table: "Shared")
-        case .match: return String(localized: "\(count) matches", table: "Shared")
-        case .member: return String(localized: "\(count) members", table: "Shared")
-        case .minute: return String(localized: "\(count) minutes", table: "Shared")
-        case .reply: return String(localized: "\(count) replies", table: "Shared")
-        case .person: return String(localized: "\(count) people", table: "Shared")
-        case .newMessage: return String(localized: "\(count) new messages", table: "Shared")
-        case .boost: return String(localized: "\(count) boosts", table: "Shared")
-        case .word: return String(localized: "\(count) words", table: "Shared")
-        case .model: return String(localized: "\(count) models", table: "Shared")
-        case .fact: return String(localized: "\(count) facts", table: "Shared")
-        case .time: return String(localized: "\(count) times", table: "Shared")
-        case .app: return String(localized: "\(count) apps", table: "Shared")
+        case .payment: return one ? String(localized: "\(count) payment", table: "Shared") : String(localized: "\(count) payments", table: "Shared")
+        case .match: return one ? String(localized: "\(count) match", table: "Shared") : String(localized: "\(count) matches", table: "Shared")
+        case .member: return one ? String(localized: "\(count) member", table: "Shared") : String(localized: "\(count) members", table: "Shared")
+        case .minute: return one ? String(localized: "\(count) minute", table: "Shared") : String(localized: "\(count) minutes", table: "Shared")
+        case .reply: return one ? String(localized: "\(count) reply", table: "Shared") : String(localized: "\(count) replies", table: "Shared")
+        case .person: return one ? String(localized: "\(count) person", table: "Shared") : String(localized: "\(count) people", table: "Shared")
+        case .newMessage: return one ? String(localized: "\(count) new message", table: "Shared") : String(localized: "\(count) new messages", table: "Shared")
+        case .boost: return one ? String(localized: "\(count) boost", table: "Shared") : String(localized: "\(count) boosts", table: "Shared")
+        case .word: return one ? String(localized: "\(count) word", table: "Shared") : String(localized: "\(count) words", table: "Shared")
+        case .model: return one ? String(localized: "\(count) model", table: "Shared") : String(localized: "\(count) models", table: "Shared")
+        case .fact: return one ? String(localized: "\(count) fact", table: "Shared") : String(localized: "\(count) facts", table: "Shared")
+        case .time: return one ? String(localized: "\(count) time", table: "Shared") : String(localized: "\(count) times", table: "Shared")
+        case .app: return one ? String(localized: "\(count) app", table: "Shared") : String(localized: "\(count) apps", table: "Shared")
         }
     }
 

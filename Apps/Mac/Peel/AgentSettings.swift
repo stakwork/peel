@@ -367,11 +367,9 @@ struct BrainSection: View {
         case .notYet: String(localized: "Not synced with this Mac yet.")
         case .synced(let date): String(localized: "Last synced with this Mac \(Formatting.dateAndTime(date)).")
         case .failed(let at):
-            if let lastSync {
-                String(localized: "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps what it last synced, \(Formatting.dateAndTime(lastSync)).")
-            } else {
-                String(localized: "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps what it knew at the move.")
-            }
+            lastSync.map { last in
+                String(localized: "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps what it last synced, \(Formatting.dateAndTime(last)).")
+            } ?? String(localized: "Couldn't reach your home server when this Mac last tried, \(Formatting.dateAndTime(at)). Dictation keeps what it knew at the move.")
         }
     }
 

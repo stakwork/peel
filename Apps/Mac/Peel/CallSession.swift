@@ -173,6 +173,9 @@ final class CallSession {
     @ObservationIgnored private var micMeterAdded = false
     @ObservationIgnored private var micWatchdog: Task<Void, Never>?
     @ObservationIgnored private var micRetryTask: Task<Void, Never>?
+    /// When the microphone was last restarted. A restart can make a
+    /// Bluetooth headset change profile, which fires another device change.
+    @ObservationIgnored private var lastMicRestart: ContinuousClock.Instant?
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
     /// Each person as last read, by identity, with the name and metadata
     /// it was read from: the room changes many times a second while people
@@ -414,6 +417,7 @@ final class CallSession {
             Self.deviceLog.error("microphone restart failed: \(String(describing: error))")
             deviceNotice = "Could not turn the microphone on"
         }
+        lastMicRestart = .now
         refresh()
     }
 
@@ -708,8 +712,14 @@ final class CallSession {
                 deviceNotice = "Output moved to \(audio.defaultOutputDevice.name), but your microphone is still \(inUseName)."
             }
         }
-        // The track bound to the old device is replaced on any change.
-        if wantsMic {
+        // The track bound to the old device is replaced when the devices it
+        // may be bound to moved, or the mic is off. Not right after a restart:
+        // that can itself flip a headset's profile and notify again.
+        if wantsMic, moveMic || moveSpeaker || !micOn {
+            if micOn, let last = lastMicRestart, last.duration(to: .now) < .seconds(5) {
+                Self.deviceLog.info("microphone restart skipped: restarted less than 5 seconds ago")
+                return
+            }
             // The engine restart from the device changes should finish before
             // the track is reopened.
             Task {

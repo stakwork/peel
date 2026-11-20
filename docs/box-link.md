@@ -98,6 +98,10 @@ once unlocked (Link or Cancel, nothing else shuts it); You › Boxes
 org's page opens, a swipe or long press forgets it. The sheet closes when
 its box goes.
 
+A box's own Jamie answers in the tribes its people add there as places:
+the tribe's Jamie row offers each linked box beside Stadeum's orgs
+(`docs/hive-tribes.md`, "From a box").
+
 ## Decided
 
 - **Opening a box's apps: the box's own strut UI, as the member.** Open

@@ -5,7 +5,9 @@ switched on (`JAMIE_SERVICE_TOKEN`, `JAMIE_SPHINX_PUBKEY`) and for Jamie's
 account to run. Not yet checked in the running app. Who is asking
 (below): Peel's side built 2026-11-02 on sphinx-rs v0.8.41; it needs a
 tribes server with sphinx#419 and Hive with #5688, and is safe without
-either.
+either. From a box (below): Peel's side built 2026-11-20 against strut
+#787; it needs a box whose Sphinx daemon runs stakwork/sphinx#440 in
+`DAEMON_REPLY=strut` mode.
 
 A tribe's owner links the tribe to one of the orgs Peel is paired with
 (Stadeum). From then on anyone in the tribe can write `@jamie …`, and
@@ -29,14 +31,17 @@ Jamie who is speaking and Stadeum knows them; otherwise as the owner
 1. Opens the tribe's details. A **Jamie** row is there for its owner only
    (`AppModel.offersJamie`: the owner, still in it, on a tribes server Hive
    can name).
-2. Picks one of their orgs, or **No Jamie**. When the tribe has no Jamie
-   yet and its app or second brain is on one of their orgs, **Add Jamie
-   from Acme** links it in one tap.
+2. Picks one of their orgs, one of their boxes, or **No Jamie**. When the
+   tribe has no Jamie yet and its app or second brain is on one of their
+   orgs (or, with no such org, on a box), **Add Jamie from Acme** links it
+   in one tap.
 3. In a private tribe, Jamie asks to join a few seconds later. Peel
    approves it without asking.
 
 With no pairing, or a revoked one, the row starts Hive's pairing (Connect
-Stadeum) and shows the code in place.
+Stadeum) and shows the code in place; with no pairing and a box linked,
+the row offers the boxes and leaves Stadeum to Account › Connections (You
+› Stadeum on the iPhone).
 
 Everyone else in the tribe only types `@jamie`.
 
@@ -219,6 +224,114 @@ their delegation, their access. Anyone else asks with the owner's, as before.
     link opens, never the title its sender wrote ("Open the app “board” v3
     from Acme? Anyone in the tribe could have sent this link.");
   - an https link opens as any link in a message does.
+
+## From a box
+
+Strut's `plans/jamie-in-tribes.md` §4 and §5.4 (item 7), specs/API.md
+§13.4 and §13.6, "Places". A self-hosted box (a strut Peel is linked to,
+`docs/box-link.md`) has a Jamie of its own: the box's Sphinx daemon, a
+**host** of its strut. Strut keeps the tribes its people add as **places**;
+the daemon follows that list, joins each tribe, and answers `@jamie` there
+as the person who added it (or as the person asking, once the tribe tells
+Jamie who is speaking and the box knows their Sphinx account). No Hive.
+
+**The row** is the same row, with a second source beside Stadeum. Each box
+Peel is linked to is an option in **Answers from**, named by its host,
+when its strut has a Sphinx host ready. "Add Jamie from …" and "Knows who
+is speaking" work the same.
+
+**Strut**, with the person token Peel holds for the box (`BoxLink.token`,
+`Authorization: Bearer`):
+
+| Route | Answer |
+|---|---|
+| `GET /people/places` | `{ hosts: [{ host, account }], places: Place[] }` |
+| `POST /people/places` with `{ host: "sphinx", key, link, name? }` | `{ place, account }` |
+| `DELETE /people/places/sphinx/<key>` | `{ removed }` |
+
+`key` is the tribe's pubkey, `link` its link (`Tribe.link`), `name` its name
+as one line of at most 80 characters. A `hosts` entry for `sphinx` is the
+box's Jamie, its `account` (`sphinx:<66 hex>`) Jamie's key; none means the
+box isn't ready for tribes, and it is not offered. `places` are the
+person's own, and a tribe there is answered from that box.
+
+What Peel says when the box refuses:
+
+| The box answers | Peel says |
+|---|---|
+| 409 `place_linked:` | "Someone else on <host> already added Jamie to this tribe." |
+| 404 `no_host:` | "<host> isn't ready for tribes yet." |
+| 404 to `GET` (a strut from before places) | nothing: the box offers no Jamie |
+| 429 | "<host> is busy. Try again in a minute." |
+| 401 | the token is renewed once and the call made again (`Boxes.asMember`, as Open does); a box that no longer links the key is let go |
+| anything else | "<host> said: <strut's error>." |
+
+**Peel.**
+- `BoxClient.places`, `addPlace`, `removePlace` (`Sources/PeelCore/BoxPlaces.swift`)
+  make the calls. A 401 is `BoxClient.TokenRefused`.
+- `Boxes` (`Sources/PeelUI/Boxes.swift`) keeps what each box last said
+  (`places`, never on disk), read when a tribe's details open and when a
+  member request needs it (`readPlaces`), and adds and removes
+  (`addJamie`, `removeJamie`). A read answered after a change made here
+  does not overwrite it, as with Hive. A box forgotten or let go takes its
+  places with it.
+- `JamieChoices` (PeelCore) puts the row together from Stadeum's side
+  (`Stadeum.jamieOrgs`, while it is connected) and the boxes:
+  - `options`: the orgs as today, then each box with a Jamie ready, then
+    No Jamie. A box's id is `box:<its address>` (`JamieSource`), which no
+    peer id can be.
+  - `pick`: known once every source has said (Hive, while connected, and
+    each box). A tribe that is a place on a box is answered from it.
+    Hive's read failing keeps the row waiting, with its words and Try
+    again, as today. A box whose read failed (and had nothing read before)
+    is left out (`failed`), and the row says why under it: one box that is
+    down never takes the orgs away. Its Jamie may still be in a tribe the
+    row then shows as No Jamie, until the box answers.
+  - `plan`: a pick adds the new source first, so a refusal (409, 404)
+    leaves the old one answering; then every other source that has Jamie
+    in the tribe is removed. Between two orgs it is still Hive's one link.
+    An old one that would not go is said ("Could not remove Jamie from
+    Acme."), and the row says Jamie is there from both until a pick fixes
+    it (`AppModel.jamieTwice`).
+  - `suggestion`: today's org first; with none, a box whose host is the
+    host of the tribe's app or second brain.
+- `AppModel.setJamie(_:for:)` follows the plan, marks the new Jamie by its
+  own key (`markJamie(_:in:)`) and unmarks the one that left.
+  `jamieSeesSenders` and the switch read the picked Jamie's key: Hive's, or
+  the box's.
+- **Approving.** A member request in a tribe the person owns approves, by
+  key and once a session, Hive's Jamie as before, and a box's Jamie only
+  where the person added the tribe on that box from this device this
+  session (`Boxes.jamiesAdded`, with the key the box answered then). A
+  box's own list is its database: a box Peel is merely linked to (to open
+  its apps) could name any tribe of the owner's, and any key as its Jamie,
+  and have that key let into a private tribe unasked. Jamie asks to join a
+  few seconds after the tap, so the device that tapped approves it. One
+  added on the other device, or before a restart, waits in Members. The
+  `othersJamie` warning is still Hive's alone.
+- **Stadeum off.** The row offers the boxes and leaves Connect Stadeum out
+  only while a box offers a Jamie (or has not said yet,
+  `JamieChoices.offersBoxes`). With none, it offers Connect Stadeum as
+  before.
+
+**Not built.**
+- The launch's sweep (`markLinkedJamies`) marks Hive's tribes only. A box's
+  Jamie is marked when it is added, after its approval, and by the switch;
+  one whose tribes server did not answer then is not asked again at the
+  next launch.
+- A box's Jamie in a tribe for someone else's place (another person on that
+  box added the owner's tribe), or added on the other device, is not
+  approved unasked, and nothing says why: its request waits in Members.
+- With Stadeum off, a tribe Hive still links is not seen: picking a box
+  then leaves Hive's Jamie in too (strut's plan, §11: remove the central
+  one first).
+- A box that refuses even a renewed token is let go, as Open does; a read
+  of places in the background can now do that too.
+- Peel's list of places is the person's own on each box; the Jamie app on
+  the box does not list them yet (strut's plan, §11). Forgetting a box in
+  Peel is local, as its link is: its Jamie stays in the tribes added there
+  until they are removed first (No Jamie), or the link is removed in
+  Connect on the box, which takes its places with it.
 
 ## Proposals in a tribe
 
@@ -417,6 +530,14 @@ in `docs/testing.md`, "Proposal cards in a tribe".
 
 ## Tests
 
+- `BoxPlacesTests` (PeelCore): a box's places read, added and removed as
+  the person on a stand-in, the box's Jamie and the person's tribes taken
+  from strut's answer, its refusals in words, a 401 as `TokenRefused`; the
+  row's choices (`JamieChoices`): the pick waiting for every source, the
+  options, what a pick adds and removes, the suggestion.
+- `BoxesTests` (PeelUI): a box's places read, added and removed as its
+  member, a refused token renewed once, a failed read keeping what was
+  read, a forgotten box taking its places with it.
 - `HiveTests`: linking, listing and unlinking with the device credential,
   the request shapes, and Hive's refusals in words; the Sphinx key told to
   Hive and each of its answers, the renewal's `sphinx`, and the proof as a
@@ -466,4 +587,8 @@ in `docs/testing.md`, "Proposal cards in a tribe".
   `markLinkedJamies`, `Stadeum.opened`) has no test of its own; the engine
   and Stadeum parts it calls do.
 - The iPhone's Jamie row and You › Stadeum line were not compiled here (the
-  iOS slices of the core were not built).
+  iOS slices of the core were not built). Since "From a box" both apps
+  build, the iPhone's for the simulator.
+- From a box, live: a box running strut with #787 and the daemon of
+  stakwork/sphinx#440 joining a tribe Peel added, its private join approved,
+  its `@jamie` answered, and the mark.

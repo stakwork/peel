@@ -308,11 +308,12 @@ private struct TribeDetailsView: View {
 }
 
 /// "Jamie", for the tribe's owner (docs/hive-tribes.md), as on the Mac
-/// (`TribeJamiePicker`): which of your Stadeum orgs answers `@jamie` here,
-/// or No Jamie, as Hive has it; with no Jamie yet, the org the tribe's app
-/// or second brain is on, in one tap; once Jamie is in, whether it knows
-/// who is speaking, with your switch. Unpaired, Connect Stadeum pairs
-/// this iPhone from here.
+/// (`TribeJamiePicker`): which of your Stadeum orgs or linked boxes
+/// answers `@jamie` here, or No Jamie, as Hive and each box have it; with
+/// no Jamie yet, the org or box the tribe's app or second brain is on, in
+/// one tap; once Jamie is in, whether it knows who is speaking, with your
+/// switch. Unpaired, Connect Stadeum pairs this iPhone from here, unless a
+/// box already offers Jamie.
 private struct TribeJamie: View {
     @Environment(AppModel.self) private var model
     let tribe: Tribe
@@ -322,9 +323,15 @@ private struct TribeJamie: View {
     var body: some View {
         let stadeum = model.stadeum
         let connected = stadeum.status == .connected
+        let choices = model.jamieChoices
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             PhoneSectionHeader("Jamie")
+            if choices.offers(in: tribe.pubkey) {
+                answersFrom(choices)
+            }
             switch stadeum.status {
+            case .connected, .off where choices.offersBoxes(in: tribe.pubkey):
+                EmptyView()
             case .off, .needsPairing:
                 note(String(localized: "Connect Stadeum to let one of your orgs answer @jamie here."))
                 Button { stadeum.connect(as: UIDevice.current.name) } label: {
@@ -334,59 +341,63 @@ private struct TribeJamie: View {
                 if let problem = stadeum.problem { ProblemText(problem) }
             case .pairing(let pairing):
                 StadeumPairingCode(pairing: pairing)
-            case .connected:
-                if let pick = stadeum.jamiePick(of: tribe.pubkey) {
-                    let seesSenders = model.jamieSeesSenders(in: tribe.pubkey)
-                    PhoneCard {
-                        HStack(spacing: Theme.Space.md) {
-                            Text("Answers from").phoneFont(.row)
-                            Spacer(minLength: Theme.Space.sm)
-                            Picker("Answers from", selection: Binding {
-                                pick
-                            } set: { id in
-                                Task { await picker.pick(id, for: tribe, with: model) }
-                            }) {
-                                ForEach(stadeum.jamieOptions(for: tribe.pubkey), id: \.id) { Text($0.name).tag($0.id) }
-                            }
-                            .pickerStyle(.menu)
-                            .labelsHidden()
-                            .disabled(picker.working)
-                        }
-                        .foregroundStyle(Theme.text)
-                        .padding(.horizontal, Theme.Space.md)
-                        .frame(minHeight: Theme.touchTarget)
-                    }
-                    if let suggested = model.jamieSuggestion(for: tribe) {
-                        Button { Task { await picker.pick(suggested.id, for: tribe, with: model) } } label: {
-                            Text("Add Jamie from \(suggested.name)").frame(maxWidth: .infinity).buttonProgress(picker.working)
-                        }
-                        .buttonStyle(.peel(.outline, size: .touch))
-                        .disabled(picker.working)
-                    }
-                    if let seesSenders {
-                        SwitchRow(label: TribeJamiePicker.showsSenders, detail: model.jamieMarkNotes[tribe.pubkey],
-                                  isOn: Binding(get: { seesSenders }, set: { on in
-                                      Task { await picker.showSenders(on, in: tribe, with: model) }
-                                  }))
-                            .disabled(picker.working)
-                    }
-                    if let problem = picker.problem ?? model.othersJamie(in: tribe.pubkey) {
-                        ProblemText(problem)
-                    } else {
-                        note(TribeJamiePicker.helper(pick: pick, in: tribe, stadeum: stadeum, seesSenders: seesSenders))
-                    }
-                } else if let problem = stadeum.jamieProblem {
-                    ProblemText(problem)
-                    Button { Task { await stadeum.readJamieLinks() } } label: { Text("Try again").frame(maxWidth: .infinity) }
-                        .buttonStyle(.peel(.outline, size: .touch))
-                } else {
-                    note(String(localized: "Asking Stadeum…"))
-                }
             }
         }
-        // Read again each time the details open (the other device may have changed it), and once paired.
+        // Read again each time the details open (the other device may have changed it), once paired, and for each box linked.
         .task(id: connected) {
             if connected { await stadeum.readJamieLinks() }
+        }
+        .task(id: model.boxes.links.map(\.url)) { await model.boxes.readPlaces() }
+    }
+
+    /// "Answers from": the pick and what else there is, once every source has said.
+    @ViewBuilder private func answersFrom(_ choices: JamieChoices) -> some View {
+        if let pick = choices.pick(of: tribe.pubkey) {
+            let seesSenders = model.jamieSeesSenders(in: tribe.pubkey)
+            PhoneCard {
+                HStack(spacing: Theme.Space.md) {
+                    Text("Answers from").phoneFont(.row)
+                    Spacer(minLength: Theme.Space.sm)
+                    Picker("Answers from", selection: Binding {
+                        pick.id
+                    } set: { id in
+                        Task { await picker.pick(id, for: tribe, with: model) }
+                    }) {
+                        ForEach(choices.options(for: tribe.pubkey)) { Text($0.name).tag($0.id) }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .disabled(picker.working)
+                }
+                .foregroundStyle(Theme.text)
+                .padding(.horizontal, Theme.Space.md)
+                .frame(minHeight: Theme.touchTarget)
+            }
+            if let suggested = choices.suggestion(for: tribe) {
+                Button { Task { await picker.pick(suggested.id, for: tribe, with: model) } } label: {
+                    Text("Add Jamie from \(suggested.name)").frame(maxWidth: .infinity).buttonProgress(picker.working)
+                }
+                .buttonStyle(.peel(.outline, size: .touch))
+                .disabled(picker.working)
+            }
+            if let seesSenders {
+                SwitchRow(label: TribeJamiePicker.showsSenders, detail: model.jamieMarkNotes[tribe.pubkey],
+                          isOn: Binding(get: { seesSenders }, set: { on in
+                              Task { await picker.showSenders(on, in: tribe, with: model) }
+                          }))
+                    .disabled(picker.working)
+            }
+            if let problem = picker.problem ?? model.jamieTwice(in: tribe.pubkey) ?? model.othersJamie(in: tribe.pubkey) ?? model.jamieProblem {
+                ProblemText(problem)
+            } else {
+                note(TribeJamiePicker.helper(pick: pick, in: tribe, choices: choices, seesSenders: seesSenders))
+            }
+        } else if let problem = model.jamieProblem {
+            ProblemText(problem)
+            Button { Task { await model.readJamies() } } label: { Text("Try again").frame(maxWidth: .infinity) }
+                .buttonStyle(.peel(.outline, size: .touch))
+        } else {
+            note(model.jamieAskingBox.map { String(localized: "Asking \($0)…") } ?? String(localized: "Asking Stadeum…"))
         }
     }
 

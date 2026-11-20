@@ -310,11 +310,18 @@ public struct BoxClient: Sendable {
         return Answer(actor: actor, name: a["name"]?.string?.nilIfEmpty, token: token, exp: exp)
     }
 
+    /// strut's own words for a refusal (its `error`), cleaned to a line.
+    static func said(_ data: Data) -> String? {
+        (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"].map { TextLine.clean($0, max: 200) }
+    }
+
+    /// strut's 429.
+    var busy: PeelError { PeelError(String(localized: "\(host) is busy. Try again in a minute.", table: "Shared")) }
+
     /// strut's refusal, in words the person can act on (strut's words
     /// beside them only where they say more).
     func failure(_ status: Int, _ data: Data, linking: Bool) -> PeelError {
-        let said = (try? JSONDecoder.hive.decode([String: String].self, from: data))?["error"]
-            .map { TextLine.clean($0, max: 200) }
+        let said = Self.said(data)
         switch status {
         case 401 where linking:
             return PeelError(String(localized: "\(host) didn't take the link: it ran out or was already used. Choose Link Peel in Connect there again.", table: "Shared"))
@@ -325,7 +332,7 @@ public struct BoxClient: Sendable {
         case 413:
             return PeelError(String(localized: "\(host) refused the link as too large.", table: "Shared"))
         case 429:
-            return PeelError(String(localized: "\(host) is busy. Try again in a minute.", table: "Shared"))
+            return busy
         default:
             return PeelError("\(host) could not \(linking ? "link Peel" : "renew Peel's link"): \(said ?? "HTTP \(status)").")
         }

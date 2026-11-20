@@ -10,7 +10,10 @@ import PeelCore
 /// token renewed by signing again about daily while the account is open.
 /// A box whose member removed the link (`403 not_linked`) is let go and
 /// said once. Opening one shows its own strut UI as the member, where its
-/// apps are listed and opened (`home(of:)`).
+/// apps are listed and opened (`home(of:)`). A box's own Jamie answers in
+/// the tribes the person adds there (`places`, `addJamie`, `removeJamie`;
+/// docs/hive-tribes.md, "From a box"). A token the box no longer takes is
+/// renewed once before any of these gives up (`asMember`).
 @MainActor @Observable
 public final class Boxes {
     /// The boxes linked, in the order they were linked.
@@ -23,6 +26,23 @@ public final class Boxes {
     public var problem: String?
     /// A box let go because its member removed the link there: said once.
     public var notice: String?
+    /// What each box last said of Jamie for this person (`readPlaces`), by
+    /// its address: absent until read. Never kept on disk.
+    public private(set) var places: [URL: BoxPlaces] = [:]
+    /// Why the last read of a box's places failed, in words, by its address;
+    /// gone once one works.
+    public private(set) var placesProblems: [URL: String] = [:]
+    @ObservationIgnored private var placesReadAt: [URL: Date] = [:]
+    @ObservationIgnored private var placesReading: [URL: Task<Void, Never>] = [:]
+    /// Counts this device's adds and removes on each box: a read begun
+    /// before one does not overwrite it (`readPlaces`).
+    @ObservationIgnored private var placesChanges: [URL: Int] = [:]
+    /// The tribes added on each box from this device this session, with the
+    /// Jamie key the box answered then (`addJamie`): the only box Jamies
+    /// Peel approves unasked (`jamiesAdded`).
+    @ObservationIgnored private var added: [URL: [String: String]] = [:]
+    /// The renewal under way for each box (`renewOnce`).
+    @ObservationIgnored private var renewals: [URL: Task<BoxLink?, any Error>] = [:]
     /// Signs a box's challenge with the open account's key
     /// (`Engine.signBoxLink`); nil while no account is open.
     @ObservationIgnored public var sign: (@Sendable (BoxChallenge) async throws -> VisitorSignature)?
@@ -67,6 +87,8 @@ public final class Boxes {
         profile = nil
         unreadable = false
         links = []
+        renewals = [:]
+        forgetPlaces(of: nil)
         linking = nil
         problem = nil
         notice = nil
@@ -145,6 +167,7 @@ public final class Boxes {
         do {
             try BoxLink.write(kept, to: profile.boxes)
             links = kept
+            forgetPlaces(of: box.url)
             problem = nil
         } catch {
             problem = PeelError.noted(error, couldNot: String(localized: "forget \(box.host)", table: "Shared"))
@@ -154,20 +177,30 @@ public final class Boxes {
     // MARK: - Opening
 
     /// The box's own strut UI as its member, to open (`BoxLink.home`): its
-    /// token checked first. One the box no longer takes (a 401) is renewed
-    /// once; a box that no longer links the key is let go (`notice`), as is
-    /// one that refuses even a renewed token. Throws why it does not open.
+    /// token checked first (`asMember`). Throws why it does not open.
     public func home(of box: BoxLink) async throws -> OrgPageRequest {
+        try await asMember(box) { link in
+            guard try await BoxClient(box: link.url).accepts(link) else { throw BoxClient.TokenRefused() }
+            return link.home
+        }
+    }
+
+    /// `call` as `box`'s member with the token kept. One the box no longer
+    /// takes (a 401, `BoxClient.TokenRefused`) is renewed once and `call`
+    /// made again; a box that no longer links the key is let go (`notice`),
+    /// as is one that refuses even a renewed token.
+    private func asMember<T>(_ box: BoxLink, _ call: (BoxLink) async throws -> T) async throws -> T {
         guard let kept = links.first(where: { $0.url == box.url }) else {
             throw PeelError(String(localized: "Peel is no longer linked to \(box.host).", table: "Shared"))
         }
-        if try await BoxClient(box: kept.url).accepts(kept) { return kept.home }
-        guard let renewed = try await renew(kept) else { throw PeelError(Self.unlinked(kept)) }
-        guard try await BoxClient(box: renewed.url).accepts(renewed) else {
+        do { return try await call(kept) } catch is BoxClient.TokenRefused {}
+        guard let renewed = try await renewOnce(kept) else { throw PeelError(Self.unlinked(kept)) }
+        do {
+            return try await call(renewed)
+        } catch is BoxClient.TokenRefused {
             drop(renewed)
             throw PeelError(Self.unlinked(renewed))
         }
-        return renewed.home
     }
 
     /// `home(of:)`, or nil with why it does not open in `problem` (or `notice`, a box let go).
@@ -188,6 +221,109 @@ public final class Boxes {
     /// while the box does.
     public func shows(_ page: OrgPageRequest) -> Bool {
         links.contains { $0.home.peer == page.peer }
+    }
+
+    // MARK: - Jamie in tribes
+
+    /// Reads every box's places (`BoxClient.places`, docs/hive-tribes.md,
+    /// "From a box"), each unless read in the last `age` seconds; one read
+    /// per box at a time, joined, the boxes side by side. A read that fails
+    /// keeps what was read before and says why (`placesProblems`).
+    public func readPlaces(ifOlderThan age: TimeInterval = 0) async {
+        let reads = links.map { readPlaces(of: $0, ifOlderThan: age) }
+        for read in reads { await read.value }
+    }
+
+    private func readPlaces(of box: BoxLink, ifOlderThan age: TimeInterval) -> Task<Void, Never> {
+        if places[box.url] != nil, let at = placesReadAt[box.url], Date().timeIntervalSince(at) < age { return Task {} }
+        if let reading = placesReading[box.url] { return reading }
+        let generation = generation
+        let changes = placesChanges[box.url]
+        let reading = Task {
+            defer { if generation == self.generation { placesReading[box.url] = nil } }
+            do {
+                let read = try await asMember(box) { try await BoxClient(box: $0.url).places($0) }
+                // Closed, or the box forgotten, meanwhile: nothing of it is kept.
+                guard generation == self.generation, links.contains(where: { $0.url == box.url }) else { return }
+                placesProblems[box.url] = nil
+                // Added or removed here while it was asked: older than what is kept, so the next read asks again.
+                guard changes == placesChanges[box.url] else { return }
+                places[box.url] = read
+                placesReadAt[box.url] = Date()
+            } catch {
+                guard generation == self.generation, links.contains(where: { $0.url == box.url }), !(error is CancellationError) else { return }
+                placesProblems[box.url] = PeelError.noted(error, couldNot: String(localized: "read which tribes have Jamie on \(box.host)", table: "Shared"))
+            }
+        }
+        placesReading[box.url] = reading
+        return reading
+    }
+
+    /// Adds `tribe` on `box` (`BoxClient.addPlace`): the box's Jamie joins
+    /// it and answers `@jamie` there, as this person. Answers that Jamie's
+    /// key. A throw is the box's refusal in words, and changes nothing.
+    public func addJamie(to tribe: Tribe, from box: BoxLink) async throws -> String {
+        guard let link = tribe.link else {
+            throw PeelError(String(localized: "This tribe's server isn't known here, so Jamie can't join it.", table: "Shared"))
+        }
+        let generation = generation
+        let jamie = try await asMember(box) {
+            try await BoxClient(box: $0.url).addPlace($0, tribe: tribe.pubkey, link: link, name: tribe.name)
+        }
+        guard generation == self.generation, links.contains(where: { $0.url == box.url }) else { return jamie }
+        var said = places[box.url] ?? BoxPlaces(jamie: jamie, tribes: [])
+        said.jamie = jamie
+        said.tribes.insert(tribe.pubkey.lowercased())
+        places[box.url] = said
+        added[box.url, default: [:]][tribe.pubkey.lowercased()] = jamie
+        placesChanges[box.url, default: 0] += 1
+        placesProblems[box.url] = nil
+        return jamie
+    }
+
+    /// Removes `tribe` (its key) from this person's places on `box`: its
+    /// Jamie leaves. Answers that Jamie's key when the tribe was theirs
+    /// there: the member whose mark goes with it. A throw changes nothing.
+    @discardableResult
+    public func removeJamie(from tribe: String, on box: BoxLink) async throws -> String? {
+        let key = tribe.lowercased()
+        let jamie = places[box.url].flatMap { $0.tribes.contains(key) ? $0.jamie : nil }
+        let generation = generation
+        try await asMember(box) { try await BoxClient(box: $0.url).removePlace($0, tribe: key) }
+        guard generation == self.generation else { return nil }
+        places[box.url]?.tribes.remove(key)
+        added[box.url]?[key] = nil
+        placesChanges[box.url, default: 0] += 1
+        placesProblems[box.url] = nil
+        return jamie
+    }
+
+    /// The Jamie keys of the boxes `tribe` was added on from this device
+    /// this session, while it is still there. A box's own list is its
+    /// database, and one Peel is merely linked to could name any tribe and
+    /// any key in it: so a box's Jamie is approved unasked only where the
+    /// person just added it here, and its request otherwise waits in
+    /// Members (docs/hive-tribes.md, "From a box").
+    public func jamiesAdded(in tribe: String) -> [String] {
+        let key = tribe.lowercased()
+        return links.compactMap { box in
+            guard places[box.url]?.tribes.contains(key) != false else { return nil }
+            return added[box.url]?[key]
+        }
+    }
+
+    /// What `box`'s places said, and their reads, let go; every box's with nil.
+    private func forgetPlaces(of box: URL?) {
+        let gone = box.map { [$0] } ?? Array(Set(places.keys).union(placesProblems.keys).union(placesReading.keys).union(added.keys))
+        for box in gone {
+            placesReading[box]?.cancel()
+            places[box] = nil
+            placesProblems[box] = nil
+            placesReadAt[box] = nil
+            placesReading[box] = nil
+            placesChanges[box] = nil
+            added[box] = nil
+        }
     }
 
     // MARK: - Renewing
@@ -240,6 +376,18 @@ public final class Boxes {
         }
     }
 
+    /// `renew`, joined while one for the box is under way, and none when the
+    /// box's token kept is no longer `box`'s (renewed meanwhile): calls that
+    /// meet a refused token at once sign once.
+    private func renewOnce(_ box: BoxLink) async throws -> BoxLink? {
+        if let current = links.first(where: { $0.url == box.url }), current.token != box.token { return current }
+        if let renewal = renewals[box.url] { return try await renewal.value }
+        let renewal = Task { try await renew(box) }
+        renewals[box.url] = renewal
+        defer { if renewals[box.url] == renewal { renewals[box.url] = nil } }
+        return try await renewal.value
+    }
+
     /// Keeps `link` (the Keychain first), in place of the box's earlier one.
     private func keep(_ link: BoxLink) throws {
         guard let profile, !unreadable else { return }
@@ -256,6 +404,7 @@ public final class Boxes {
         let kept = links.filter { $0.url != box.url }
         try? BoxLink.write(kept, to: profile.boxes)
         links = kept
+        forgetPlaces(of: box.url)
         notice = Self.unlinked(box)
     }
 

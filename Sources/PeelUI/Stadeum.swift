@@ -445,23 +445,18 @@ public final class Stadeum {
     }
 
     /// The workspace `tribe`'s Jamie answers from (a peer id), "" for none;
-    /// nil until Hive has said. What a tribe's Jamie row shows picked.
+    /// nil until Hive has said. Hive's half of what a tribe's Jamie row shows
+    /// picked (`AppModel.jamieChoices`).
     public func jamiePick(of tribe: String) -> String? {
         jamieLinks.map { _ in jamieLink(of: tribe)?.workspace ?? "" }
     }
 
-    /// What a tribe's Jamie row offers, by peer id: each live workspace by
-    /// name, the one `tribe` is linked to even when it is no longer live
-    /// (so the row says what is true), then No Jamie as "".
-    public func jamieOptions(for tribe: String) -> [(id: String, name: String)] {
-        var options = live.map { (id: $0.id, name: $0.name) }
-        if let linked = jamieLink(of: tribe)?.workspace, !options.contains(where: { $0.id == linked }) {
-            options.append((id: linked, name: "@" + linked))
-        }
-        return options + [(id: "", name: Self.noJamie)]
+    /// What Stadeum gives a tribe's Jamie row (`JamieChoices`, beside the
+    /// boxes): the live orgs and what Hive last said, while it is connected;
+    /// nil otherwise, when it offers nothing and is not waited for.
+    public var jamieOrgs: JamieChoices.Orgs? {
+        status == .connected ? JamieChoices.Orgs(live: live, links: jamieLinks) : nil
     }
-
-    public static let noJamie = String(localized: "No Jamie", table: "Shared")
 
     /// Whether a deliverable sent in a tribe opens here: on one of the
     /// person's own live workspaces, with their own token. Anyone in a tribe

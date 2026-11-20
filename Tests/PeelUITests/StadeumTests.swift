@@ -436,7 +436,7 @@ struct StadeumTests {
 
         await stadeum.readJamieLinks()
         #expect(stadeum.jamiePick(of: tribe.uppercased()) == "initech")
-        #expect(stadeum.jamieOptions(for: tribe).map(\.name) == ["Acme", "@initech", "No Jamie"])
+        #expect(JamieChoices(orgs: stadeum.jamieOrgs).options(for: tribe).map(\.name) == ["Acme", "@initech", "No Jamie"])
         await stadeum.readJamieLinks(ifOlderThan: 60)
         #expect(reads.withLock { $0 } == 1)
 
@@ -444,7 +444,7 @@ struct StadeumTests {
         try await stadeum.setJamie(stadeum.live.first, for: record)
         #expect(stadeum.jamiePick(of: tribe) == "acme" && stadeum.jamieLinks?.jamie.pubkey == jamie)
         try await stadeum.setJamie(nil, for: record)
-        #expect(stadeum.jamiePick(of: tribe) == "" && stadeum.jamieOptions(for: tribe).map(\.id) == ["acme", ""])
+        #expect(stadeum.jamiePick(of: tribe) == "" && JamieChoices(orgs: stadeum.jamieOrgs).options(for: tribe).map(\.id) == ["acme", ""])
 
         let handle3 = try #require(AgentArtifact.Handle(app: "@acme/board"))
         #expect(stadeum.opensFromTribe(handle3))
@@ -453,7 +453,7 @@ struct StadeumTests {
         let handle5 = try #require(AgentArtifact.Handle(path: "/jobs/j/files/a.md"))
         #expect(!stadeum.opensFromTribe(handle5))
         stadeum.close()
-        #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil)
+        #expect(stadeum.jamieLinks == nil && stadeum.jamiePick(of: tribe) == nil && stadeum.jamieOrgs == nil)
     }
 
     /// An unlink Hive refuses changes nothing: the tribe stays linked, so

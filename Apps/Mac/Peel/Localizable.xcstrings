@@ -2433,6 +2433,22 @@
         }
       }
     },
+    "Asking %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asking %@…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consultando a %@…"
+          }
+        }
+      }
+    },
     "Asking Stadeum…" : {
       "localizations" : {
         "en" : {

@@ -17,6 +17,38 @@
         }
       }
     },
+    "%@ isn't ready for tribes yet." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ isn't ready for tribes yet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ aún no está preparado para las tribus."
+          }
+        }
+      }
+    },
+    "%@'s answer about Jamie could not be read." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@'s answer about Jamie could not be read."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer la respuesta de %@ sobre Jamie."
+          }
+        }
+      }
+    },
     "%@, up to %lld sats a message" : {
       "localizations" : {
         "en" : {
@@ -4001,6 +4033,22 @@
         }
       }
     },
+    "Jamie is in this tribe from %@, and each answers. Pick one." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jamie is in this tribe from %@, and each answers. Pick one."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jamie está en esta tribu desde %@, y cada uno responde. Elige uno."
+          }
+        }
+      }
+    },
     "Jamie isn't in this tribe." : {
       "localizations" : {
         "en" : {
@@ -5649,6 +5697,22 @@
         }
       }
     },
+    "Peel is still asking where Jamie is." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel is still asking where Jamie is."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel todavía está consultando dónde está Jamie."
+          }
+        }
+      }
+    },
     "Peel is still linking to %@. Open the link from %@ again once it's done." : {
       "localizations" : {
         "en" : {
@@ -5901,6 +5965,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Foto"
+          }
+        }
+      }
+    },
+    "Pick one of your boxes: Jamie joins #%@ and answers @jamie there from that box, using your access to it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick one of your boxes: Jamie joins #%@ and answers @jamie there from that box, using your access to it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige una de tus cajas: Jamie se une a #%@ y responde a @jamie allí desde esa caja, usando tu acceso a ella."
+          }
+        }
+      }
+    },
+    "Pick one of your orgs or boxes: Jamie joins #%@ and answers @jamie there from it, using your access to it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick one of your orgs or boxes: Jamie joins #%@ and answers @jamie there from it, using your access to it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige una de tus organizaciones o cajas: Jamie se une a #%@ y responde a @jamie allí desde ella, usando tu acceso a ella."
           }
         }
       }
@@ -7245,6 +7341,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Otra persona ya vinculó esta tribu a una organización."
+          }
+        }
+      }
+    },
+    "Someone else on %@ already added Jamie to this tribe." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Someone else on %@ already added Jamie to this tribe."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otra persona en %@ ya agregó a Jamie a esta tribu."
           }
         }
       }
@@ -11249,6 +11361,22 @@
         }
       }
     },
+    "read which tribes have Jamie on %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "read which tribes have Jamie on %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "leer qué tribus tienen a Jamie en %@"
+          }
+        }
+      }
+    },
     "read your Stadeum connection" : {
       "localizations" : {
         "en" : {
@@ -11309,6 +11437,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "quitar a Jamie"
+          }
+        }
+      }
+    },
+    "remove Jamie from %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "remove Jamie from %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "quitar a Jamie de %@"
           }
         }
       }

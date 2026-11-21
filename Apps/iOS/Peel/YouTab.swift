@@ -46,7 +46,7 @@ struct YouTab: View {
                         Toggle("Show subtitles", isOn: $showSubtitles)
                     }
                 } footer: {
-                    Text("Open Peel on a mic and a text box instead of Chats. A grid icon at the top right shows the standard view.")
+                    Text("Open Peel on a mic and a text box instead of Chats. The grid icon at the top right turns Voice Mode off.")
                 }
                 .phoneRows(.grouped)
                 Section {

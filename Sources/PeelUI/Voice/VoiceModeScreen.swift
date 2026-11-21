@@ -1,4 +1,5 @@
 import Foundation
+import PeelCore
 
 /// The "Voice Mode" setting (docs/voice-mode.md, "Voice Mode screen"): an
 /// alternative default interface, off unless the person turns it on. This
@@ -23,13 +24,14 @@ public enum VoiceModeInteraction: String, CaseIterable, Equatable, Sendable {
     /// True for modes where the agent's reply is spoken.
     public var speaksReply: Bool { self == .speechInSpeechOut || self == .textInSpeechOut }
 
-    /// A short label for a segmented picker.
+    /// A short label for a segmented picker: symbols, the same in every
+    /// language, so not in the catalogs (`accessibilityLabel` says it in words).
     public var label: String {
         switch self {
-        case .speechInSpeechOut: String(localized: "🎙️ → 🔊", table: "Shared")
-        case .textInTextOut: String(localized: "⌨️ → 📄", table: "Shared")
-        case .speechInTextOut: String(localized: "🎙️ → 📄", table: "Shared")
-        case .textInSpeechOut: String(localized: "⌨️ → 🔊", table: "Shared")
+        case .speechInSpeechOut: "🎙️ → 🔊"
+        case .textInTextOut: "⌨️ → 📄"
+        case .speechInTextOut: "🎙️ → 📄"
+        case .textInSpeechOut: "⌨️ → 🔊"
         }
     }
 
@@ -50,15 +52,30 @@ public enum VoiceModeSubtitlesSetting {
     public static let defaultValue = false
 }
 
-/// Which interface the app opens on once it is unlocked.
-public enum VoiceModeRoute: Equatable, Sendable {
-    case voice
-    case standard
+/// What the Voice Mode screen shows as the agent's reply, from the agent
+/// DM's timeline rather than the voice controller, so a typed message's
+/// reply shows (and is read) too, with the microphone off.
+public enum VoiceModeReply {
+    /// The agent's texts since your newest message (a text, a picture, a
+    /// file), oldest first; empty while it has not answered. Control lines,
+    /// deleted messages and yours that never went do not count. Messages
+    /// oldest first, as a timeline holds them.
+    public static func latest(in messages: [Message], chat: String) -> [Message] {
+        var replies: [Message] = []
+        for message in messages.reversed() where message.chat == chat && !message.deleted && message.control == nil {
+            if message.fromMe {
+                if message.notSent { continue }
+                break
+            }
+            if message.type == MessageType.text { replies.append(message) }
+        }
+        return replies.reversed()
+    }
 
-    /// `showedStandard` is the in-memory choice of the grid icon, for the
-    /// rest of this launch: it never changes the setting.
-    public static func initial(voiceModeOn: Bool, showedStandard: Bool) -> VoiceModeRoute {
-        voiceModeOn && !showedStandard ? .voice : .standard
+    /// The replies as one text, a blank line between them.
+    public static func text(of replies: [Message]) -> String? {
+        let texts = replies.map(\.shownText).filter { !$0.isEmpty }
+        return texts.isEmpty ? nil : texts.joined(separator: "\n\n")
     }
 }
 

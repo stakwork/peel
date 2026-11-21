@@ -818,7 +818,7 @@ private struct VoiceModeRow: View {
                 if interaction.speaksReply {
                     Toggle(String(localized: "Show subtitles"), isOn: $showSubtitles)
                 }
-                Text("Open Peel on a mic and a text box. A grid icon at the top right shows the standard view.")
+                Text("Open Peel on a mic and a text box. The grid icon at the top right turns Voice Mode off.")
                     .muted()
             }
         }

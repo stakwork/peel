@@ -4,19 +4,24 @@ import SwiftUI
 
 /// Voice Mode, the alternative default interface (docs/voice-mode.md, "Voice
 /// Mode screen"): a mic in the middle of a linen canvas, a small text box at
-/// the bottom, and a grid icon at the top right for the standard view. What
+/// the bottom, and a grid icon at the top right that turns it off. What
 /// is said or typed goes to the agent's DM, through the controller's own
-/// send path and `AppModel.sendDictated`.
+/// send path and `AppModel.sendDictated`. The screen opens that DM, and what
+/// it shows (or reads) as the reply comes from its timeline
+/// (`VoiceModeReply`), so a typed message is answered with the mic off.
 struct VoiceModeScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Shows the standard interface for the rest of this launch.
+    /// Turns Voice Mode off: the standard interface comes back.
     let showStandard: () -> Void
 
     @State private var voice = VoiceModeController()
     @State private var typing = false
     @State private var text = ""
     @State private var sendFailed = false
+    /// After a typed message in a speech-out mode, the replies already there
+    /// when it went: any other that comes is read aloud. nil: nothing to read.
+    @State private var readSince: Set<String>?
     @FocusState private var focused: Bool
 
     @AppStorage(VoiceModeInteraction.key)
@@ -26,6 +31,15 @@ struct VoiceModeScreen: View {
 
     private var chat: String? { model.agentChat }
     private var listening: Bool { voice.phase.isActive && interaction.usesMic }
+    /// The agent's answer to your newest message, once its DM is the open chat.
+    private var replies: [Message] {
+        guard let chat, model.loadedChat == chat else { return [] }
+        return VoiceModeReply.latest(in: model.timeline.messages, chat: chat)
+    }
+    private var replyText: String? { VoiceModeReply.text(of: replies) }
+    private var waiting: Bool { model.agentUnanswered != nil }
+    /// A reply is being read, by voice mode or `readAloud`.
+    private var speaking: Bool { voice.phase == .speaking || voice.isReadingAloud }
 
     var body: some View {
         ZStack {
@@ -34,7 +48,7 @@ struct VoiceModeScreen: View {
                 modePicker
                 if interaction.usesMic { mic }
                 status
-                if !interaction.usesMic { replyArea }
+                if !interaction.speaksReply { replyArea }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, Theme.Space.lg)
@@ -49,14 +63,13 @@ struct VoiceModeScreen: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .accessibilityLabel(Text("Standard view", tableName: "Shared"))
+            .accessibilityLabel(Text("Turn off Voice Mode", tableName: "Shared"))
             .padding(Theme.Space.sm)
         }
         .overlay(alignment: .bottom) { textBox.padding(Theme.Space.md) }
         .overlay(alignment: .bottom) {
             // Subtitle overlay: the reply as text in a band while it is spoken.
-            if interaction.speaksReply && showSubtitles, let reply = voice.replyText,
-               voice.phase == .speaking || voice.phase == .waiting {
+            if interaction.speaksReply && showSubtitles && speaking, let reply = replyText {
                 Text(reply)
                     .font(.callout)
                     .foregroundStyle(.primary)
@@ -69,10 +82,20 @@ struct VoiceModeScreen: View {
         }
         .animation(.easeInOut(duration: 0.3), value: interaction)
         .animation(.easeInOut(duration: 0.3), value: showSubtitles)
-        .onAppear { attach() }
-        .onDisappear { voice.stop() }
+        .onAppear {
+            attach()
+            openAgentChat()
+        }
+        .onDisappear {
+            voice.stop()
+            voice.stopReading()
+        }
+        .onChange(of: model.agentChat) { openAgentChat() }
+        .onChange(of: replies.compactMap(\.uuid)) { readNewReplies() }
         .onChange(of: interaction) { _, _ in
-            voice.speakReplies = interaction.speaksReply
+            voice.speaksReplies = interaction.speaksReply
+            readSince = nil
+            voice.stopReading()
             if !interaction.usesMic { voice.stop() }
         }
         .onChange(of: focused) { _, isFocused in
@@ -84,13 +107,30 @@ struct VoiceModeScreen: View {
     // requiresOnDeviceRecognition when the device model is available, so no
     // audio leaves the device then (docs/voice-mode.md, "Voice Mode screen").
     private func attach() {
-        voice.speakReplies = interaction.speaksReply
+        voice.speaksReplies = interaction.speaksReply
         voice.attach(model, hooks: .init(
             isAnswering: { model.agentUnanswered != nil },
             isWaitingApproval: { model.agentChat.map { model.waitingCards[$0] != nil } == true },
             stopAgentTurn: nil,
             blocked: { nil }
         ))
+    }
+
+    /// The agent's DM is the open chat, so its timeline holds the replies
+    /// (`AppModel.timeline` is the open chat's). On the iPhone it is pushed
+    /// on Chats behind this screen; the standard view opens on it.
+    private func openAgentChat() {
+        guard let chat, model.selectedChat != chat else { return }
+        model.destination = .agent
+    }
+
+    /// Reads what came after a typed message, in the speech-out modes.
+    private func readNewReplies() {
+        guard let before = readSince, interaction.speaksReply else { return }
+        let new = replies.filter { $0.uuid.map { !before.contains($0) } ?? false }
+        guard !new.isEmpty, let text = VoiceModeReply.text(of: new) else { return }
+        readSince = before.union(new.compactMap(\.uuid))
+        voice.readAloud(text)
     }
 
     // MARK: Mode picker
@@ -158,7 +198,10 @@ struct VoiceModeScreen: View {
             return interaction.usesMic ? notice + " " + String(localized: "You can type a message instead.", table: "Shared") : notice
         }
         if sendFailed { return String(localized: "Could not send that. Try again.", table: "Shared") }
-        guard interaction.usesMic else { return voice.phase == .waiting ? voice.phase.label : "" }
+        // Text-out modes say it in the reply area.
+        guard interaction.usesMic else {
+            return interaction.speaksReply && waiting ? String(localized: "Waiting for reply…", table: "Shared") : ""
+        }
         switch voice.phase {
         case .idle: return String(localized: "Tap the mic and talk to Peel", table: "Shared")
         case .hearing: return voice.draft
@@ -168,10 +211,10 @@ struct VoiceModeScreen: View {
 
     // MARK: Reply area
 
-    /// The agent's reply as text, for the modes without a mic.
+    /// The agent's reply as text, for the modes that do not speak it.
     @ViewBuilder private var replyArea: some View {
         if !interaction.speaksReply {
-            if let reply = voice.replyText {
+            if let reply = replyText {
                 ScrollView {
                     Text(reply)
                         .font(.callout)
@@ -181,7 +224,7 @@ struct VoiceModeScreen: View {
                 }
                 .frame(maxWidth: 520, maxHeight: 280)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } else if voice.phase == .waiting {
+            } else if waiting {
                 Text("Waiting for reply…", tableName: "Shared")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -235,8 +278,12 @@ struct VoiceModeScreen: View {
     private func send() {
         guard let chat, canSend else { return }
         let sent = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let before = Set(replies.compactMap(\.uuid))
         Task {
             if await model.sendDictated(sent, to: chat) {
+                // A speech-out mode reads the answer, unless voice mode is on
+                // and reads it itself (as a new message).
+                readSince = interaction.speaksReply && !voice.phase.isActive ? before : nil
                 text = ""
                 sendFailed = false
                 focused = false

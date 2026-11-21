@@ -10353,18 +10353,18 @@
         }
       }
     },
-    "Open Peel on a mic and a text box. A grid icon at the top right shows the standard view." : {
+    "Open Peel on a mic and a text box. The grid icon at the top right turns Voice Mode off." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open Peel on a mic and a text box. A grid icon at the top right shows the standard view."
+            "value" : "Open Peel on a mic and a text box. The grid icon at the top right turns Voice Mode off."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abre Peel con un micrófono y un cuadro de texto. Un icono de cuadrícula arriba a la derecha muestra la vista estándar."
+            "value" : "Abre Peel con un micrófono y un cuadro de texto. El icono de cuadrícula arriba a la derecha desactiva el modo de voz."
           }
         }
       }

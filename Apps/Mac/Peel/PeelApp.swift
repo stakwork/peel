@@ -276,9 +276,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    /// Voice Mode's screen in place of the standard one; its grid icon turns it off.
     @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
-    /// The grid icon's choice, for this launch only; the setting stays on.
-    @State private var showedStandard = false
 
     var body: some View {
         switch model.phase {
@@ -290,10 +289,9 @@ struct RootView: View {
         case .onboarding:
             OnboardingView()
         case .ready:
-            switch VoiceModeRoute.initial(voiceModeOn: voiceMode, showedStandard: showedStandard) {
-            case .voice:
-                VoiceModeScreen { showedStandard = true }
-            case .standard:
+            if voiceMode {
+                VoiceModeScreen { voiceMode = false }
+            } else {
                 standard
             }
         }

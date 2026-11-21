@@ -111,8 +111,9 @@ is a short plan. Update the status and the journal when you finish something.
     button's "N new messages": what counts as seen at the bottom and when
     the list leaves it, crossings judged against the last one taken (tested)
   - (`Sources/PeelUI/Voice/VoiceModeScreen.swift`: `VoiceModeSetting`, the
-    Voice Mode setting's key and default; `VoiceModeRoute`, which interface
-    opens; `LinenFleck`, the linen's seeded flecks; tested in
+    Voice Mode setting's key and default; `VoiceModeInteraction`, its four
+    modes; `VoiceModeReply`, the reply it shows, from the agent DM's
+    timeline; `LinenFleck`, the linen's seeded flecks; tested in
     `VoiceModeScreenTests`. The screen is `Apps/Shared/Voice/VoiceModeScreen`
     (on-device speech via VoiceListener)
     over `LinenBackground`; `docs/voice-mode.md`, "Voice Mode screen")

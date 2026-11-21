@@ -114,6 +114,7 @@ is a short plan. Update the status and the journal when you finish something.
     Voice Mode setting's key and default; `VoiceModeRoute`, which interface
     opens; `LinenFleck`, the linen's seeded flecks; tested in
     `VoiceModeScreenTests`. The screen is `Apps/Shared/Voice/VoiceModeScreen`
+    (on-device speech via VoiceListener)
     over `LinenBackground`; `docs/voice-mode.md`, "Voice Mode screen")
   - `MentionQuery.swift` — the `@word` before a composer's cursor (or a
     `/` command opening the agent DM's message) and what it matches, by

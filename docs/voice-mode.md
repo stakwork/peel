@@ -357,7 +357,12 @@ after the lock and onboarding screens, which still come first.
   vignette; charcoal in dark mode). Listening shows pulsing rings and a stop
   icon; Reduce Motion drops the pulse.
 - The mic is the existing `VoiceModeController` (no new recogniser), with the
-  phone's hooks. A refused permission or an unavailable recogniser is the
+  phone's hooks. Speech is transcribed on the device: `VoiceListener` sets
+  `requiresOnDeviceRecognition = true` when the recogniser's
+  `supportsOnDeviceRecognition` is true (the attachment reader's
+  `SystemTranscriber` requires it too). Where a locale has no on-device model,
+  the listener does not require it and the system recogniser may use Apple's
+  server, as the rest of voice mode does. A refused permission or an unavailable recogniser is the
   controller's notice, shown under the mic with "You can type a message
   instead." With no agent chat yet the screen says so. Stopping the agent's
   turn is not offered here (no `stopAgentTurn`, as on the phone).

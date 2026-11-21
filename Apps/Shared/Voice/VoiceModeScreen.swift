@@ -52,6 +52,9 @@ struct VoiceModeScreen: View {
         }
     }
 
+    // The mic is on-device: VoiceModeController → VoiceListener, which sets
+    // requiresOnDeviceRecognition when the device model is available, so no
+    // audio leaves the device then (docs/voice-mode.md, "Voice Mode screen").
     private func attach() {
         voice.attach(model, hooks: .init(
             isAnswering: { model.agentUnanswered != nil },

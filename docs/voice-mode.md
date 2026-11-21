@@ -342,6 +342,43 @@ owns the settings synced through the official apps' encrypted file, and these
 are about this device's speaker, microphone and car. `DictationSettings` does
 the same.
 
+## Voice Mode screen
+
+An alternative default interface, behind the **Voice Mode** setting (iPhone:
+You tab; Mac: Account › Profile). Off by default; `VoiceModeSetting`
+(`Sources/PeelUI/Voice/VoiceModeScreen.swift`, key `voiceMode`, `@AppStorage`,
+this device's like `VoiceDefaults`). When on, the app opens on
+`VoiceModeScreen` (`Apps/Shared/Voice/`) instead of `MainTabs` / `MainView`,
+after the lock and onboarding screens, which still come first.
+`VoiceModeRoute.initial(voiceModeOn:showedStandard:)` decides.
+
+- A mic in a glowing circle on a linen canvas (`LinenBackground`: `Canvas`,
+  warp and weft, flecks placed from a fixed seed by `LinenFleck.make`, a
+  vignette; charcoal in dark mode). Listening shows pulsing rings and a stop
+  icon; Reduce Motion drops the pulse.
+- The mic is the existing `VoiceModeController` (no new recogniser), with the
+  phone's hooks. Speech is transcribed on the device: `VoiceListener` sets
+  `requiresOnDeviceRecognition = true` when the recogniser's
+  `supportsOnDeviceRecognition` is true (the attachment reader's
+  `SystemTranscriber` requires it too). Where a locale has no on-device model,
+  the listener does not require it and the system recogniser may use Apple's
+  server, as the rest of voice mode does. A refused permission or an unavailable recogniser is the
+  controller's notice, shown under the mic with "You can type a message
+  instead." With no agent chat yet the screen says so. Stopping the agent's
+  turn is not offered here (no `stopAgentTurn`, as on the phone).
+- The text box is a capsule that springs up into a multi-line field with a
+  send button, and folds back when focus is lost while empty. It sends with
+  `AppModel.sendDictated(_:to:)` to the agent's DM (`agentChat`), not the
+  composer: this screen has no attachments, mentions or replies, and
+  `sendDictated` is the plain-text path that voice already uses, with the
+  name check and the chat's notice.
+- The grid icon at the top right shows the standard view for the rest of the
+  launch (`@State`, in memory); the setting stays on, so the next launch opens
+  on Voice Mode again.
+
+Not built or run: written on a machine with no Apple SDK; compile it and look
+at it in `scripts/check-app.sh` and the simulator before shipping.
+
 ## Hands-free driving: options
 
 ### Speaking

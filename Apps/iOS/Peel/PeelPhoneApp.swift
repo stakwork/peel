@@ -133,6 +133,9 @@ struct PeelPhoneApp: App {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
+    @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
+    /// The grid icon's choice, for this launch only; the setting stays on.
+    @State private var showedStandard = false
 
     var body: some View {
         @Bindable var model = model
@@ -203,7 +206,10 @@ struct RootView: View {
         case .onboarding:
             Onboarding()
         case .ready:
-            MainTabs()
+            switch VoiceModeRoute.initial(voiceModeOn: voiceMode, showedStandard: showedStandard) {
+            case .voice: VoiceModeScreen { showedStandard = true }
+            case .standard: MainTabs()
+            }
         }
     }
 }

@@ -46,6 +46,12 @@ final class VoiceModeController {
     private(set) var level: Float = 0
     /// The "Hey Peel" listener is on.
     private(set) var isArmed = false
+    /// Set by VoiceModeScreen to disable TTS for text-output interaction modes.
+    /// When false, the controller processes the reply but does not speak it.
+    var speakReplies: Bool = true
+    /// The raw Markdown text of the agent's last reply, for text-output display.
+    /// Updated by finishTurn; nil until the first reply arrives.
+    private(set) var replyText: String?
 
     private var machine = VoiceMachine()
     @ObservationIgnored private var model: AppModel?
@@ -522,7 +528,7 @@ final class VoiceModeController {
         }
         guard !new.isEmpty else { return }
         new.compactMap(\.uuid).forEach { seen.insert($0) }
-        guard settings.spokenReplies else { return }
+        guard settings.spokenReplies, speakReplies else { return }
         let spoken = new.map { SpokenText(markdown: $0.shownText) }.filter { !$0.chunks.isEmpty }
         guard !spoken.isEmpty else { return }
         let intro = new.contains { $0.replyUUID != nil } ? String(localized: "Peel answered an earlier message.", table: "Shared") : String(localized: "A new message from Peel.", table: "Shared")
@@ -581,7 +587,8 @@ final class VoiceModeController {
         pendingTurn = nil
         let spoken = reply.map { SpokenText(markdown: $0) }
         if let spoken, !spoken.chunks.isEmpty { lastReply = spoken }
-        guard let spoken, settings.spokenReplies, !spoken.chunks.isEmpty else {
+        replyText = reply
+        guard let spoken, settings.spokenReplies, speakReplies, !spoken.chunks.isEmpty else {
             perform(machine.apply(.replyReady(hasReply: false)))
             if reply != nil, phase == .listening { cues.play(.ready) }
             return

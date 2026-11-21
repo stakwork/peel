@@ -21256,6 +21256,38 @@
           }
         }
       }
+    },
+    "Interaction mode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interaction mode"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo de interacción"
+          }
+        }
+      }
+    },
+    "Show subtitles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show subtitles"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar subtítulos"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

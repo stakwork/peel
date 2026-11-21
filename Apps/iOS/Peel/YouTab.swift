@@ -11,6 +11,8 @@ struct YouTab: View {
     @Environment(PhoneRouter.self) private var router
     @State private var editingName = false
     @AppStorage(VoiceModeSetting.key) private var voiceModeOn = VoiceModeSetting.defaultValue
+    @AppStorage(VoiceModeInteraction.key) private var interaction = VoiceModeInteraction.defaultValue
+    @AppStorage(VoiceModeSubtitlesSetting.key) private var showSubtitles = VoiceModeSubtitlesSetting.defaultValue
     /// What this phone unlocks with, if anything: a system query, made once.
     @State private var biometryName: String?
 
@@ -34,6 +36,15 @@ struct YouTab: View {
                 .phoneRows(.grouped)
                 Section {
                     Toggle(isOn: $voiceModeOn) { Text("Voice Mode") }
+                    Picker("Interaction mode", selection: $interaction) {
+                        ForEach(VoiceModeInteraction.allCases, id: \.self) { mode in
+                            Text(mode.accessibilityLabel).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    if interaction.speaksReply {
+                        Toggle("Show subtitles", isOn: $showSubtitles)
+                    }
                 } footer: {
                     Text("Open Peel on a mic and a text box instead of Chats. A grid icon at the top right shows the standard view.")
                 }

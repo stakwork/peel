@@ -19,17 +19,25 @@ struct VoiceModeScreen: View {
     @State private var sendFailed = false
     @FocusState private var focused: Bool
 
+    @AppStorage(VoiceModeInteraction.key)
+    private var interaction: VoiceModeInteraction = VoiceModeInteraction.defaultValue
+    @AppStorage(VoiceModeSubtitlesSetting.key)
+    private var showSubtitles: Bool = VoiceModeSubtitlesSetting.defaultValue
+
     private var chat: String? { model.agentChat }
-    private var listening: Bool { voice.phase.isActive }
+    private var listening: Bool { voice.phase.isActive && interaction.usesMic }
 
     var body: some View {
         ZStack {
             LinenBackground()
             VStack(spacing: Theme.Space.lg) {
-                mic
+                modePicker
+                if interaction.usesMic { mic }
                 status
+                if !interaction.usesMic { replyArea }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, Theme.Space.lg)
             .offset(y: typing ? -80 : 0)
         }
         .overlay(alignment: .topTrailing) {
@@ -45,8 +53,28 @@ struct VoiceModeScreen: View {
             .padding(Theme.Space.sm)
         }
         .overlay(alignment: .bottom) { textBox.padding(Theme.Space.md) }
+        .overlay(alignment: .bottom) {
+            // Subtitle overlay: the reply as text in a band while it is spoken.
+            if interaction.speaksReply && showSubtitles, let reply = voice.replyText,
+               voice.phase == .speaking || voice.phase == .waiting {
+                Text(reply)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .padding(Theme.Space.md)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.bottom, 100)
+                    .padding(.horizontal, Theme.Space.lg)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: interaction)
+        .animation(.easeInOut(duration: 0.3), value: showSubtitles)
         .onAppear { attach() }
         .onDisappear { voice.stop() }
+        .onChange(of: interaction) { _, _ in
+            voice.speakReplies = interaction.speaksReply
+            if !interaction.usesMic { voice.stop() }
+        }
         .onChange(of: focused) { _, isFocused in
             if !isFocused && text.isEmpty { withAnimation(.spring(duration: 0.4, bounce: 0.25)) { typing = false } }
         }
@@ -56,12 +84,32 @@ struct VoiceModeScreen: View {
     // requiresOnDeviceRecognition when the device model is available, so no
     // audio leaves the device then (docs/voice-mode.md, "Voice Mode screen").
     private func attach() {
+        voice.speakReplies = interaction.speaksReply
         voice.attach(model, hooks: .init(
             isAnswering: { model.agentUnanswered != nil },
             isWaitingApproval: { model.agentChat.map { model.waitingCards[$0] != nil } == true },
             stopAgentTurn: nil,
             blocked: { nil }
         ))
+    }
+
+    // MARK: Mode picker
+
+    private var modePicker: some View {
+        Picker(selection: $interaction) {
+            ForEach(VoiceModeInteraction.allCases, id: \.self) { mode in
+                Text(mode.label)
+                    .accessibilityLabel(mode.accessibilityLabel)
+                    .tag(mode)
+            }
+        } label: {
+            Text(interaction.accessibilityLabel)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 360)
+        .padding(Theme.Space.xs)
+        .background(.regularMaterial.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     // MARK: Mic
@@ -102,17 +150,42 @@ struct VoiceModeScreen: View {
     }
 
     /// The notice the controller posts when speech is refused or cannot run
-    /// (words that suggest typing), else where the voice stands.
+    /// (words that suggest typing), else where the voice stands. Text-in modes
+    /// have no mic to describe, so their idle line is empty.
     private var message: String {
         guard let chat else { return String(localized: "Peel's chat isn't set up yet. Set it up from the standard view.", table: "Shared") }
-        if sendFailed { return String(localized: "Could not send that. Try again.", table: "Shared") }
         if let notice = model.conversationNotices[chat] {
-            return notice + " " + String(localized: "You can type a message instead.", table: "Shared")
+            return interaction.usesMic ? notice + " " + String(localized: "You can type a message instead.", table: "Shared") : notice
         }
+        if sendFailed { return String(localized: "Could not send that. Try again.", table: "Shared") }
+        guard interaction.usesMic else { return voice.phase == .waiting ? voice.phase.label : "" }
         switch voice.phase {
         case .idle: return String(localized: "Tap the mic and talk to Peel", table: "Shared")
         case .hearing: return voice.draft
         default: return voice.phase.label
+        }
+    }
+
+    // MARK: Reply area
+
+    /// The agent's reply as text, for the modes without a mic.
+    @ViewBuilder private var replyArea: some View {
+        if !interaction.speaksReply {
+            if let reply = voice.replyText {
+                ScrollView {
+                    Text(reply)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Space.md)
+                }
+                .frame(maxWidth: 520, maxHeight: 280)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else if voice.phase == .waiting {
+                Text("Waiting for reply…", tableName: "Shared")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

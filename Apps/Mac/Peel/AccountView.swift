@@ -800,12 +800,24 @@ private struct NotificationsRow: View {
 
 private struct VoiceModeRow: View {
     @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
+    @AppStorage(VoiceModeInteraction.key) private var interaction = VoiceModeInteraction.defaultValue
+    @AppStorage(VoiceModeSubtitlesSetting.key) private var showSubtitles = VoiceModeSubtitlesSetting.defaultValue
 
     var body: some View {
         Fact(String(localized: "Voice Mode")) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 Toggle(isOn: $voiceMode) { Text("Voice Mode") }
                     .labelsHidden()
+                Picker(String(localized: "Interaction mode"), selection: $interaction) {
+                    ForEach(VoiceModeInteraction.allCases, id: \.self) { mode in
+                        Text(mode.accessibilityLabel).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                if interaction.speaksReply {
+                    Toggle(String(localized: "Show subtitles"), isOn: $showSubtitles)
+                }
                 Text("Open Peel on a mic and a text box. A grid icon at the top right shows the standard view.")
                     .muted()
             }

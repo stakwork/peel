@@ -35,4 +35,35 @@ struct VoiceModeScreenTests {
         #expect(first != LinenFleck.make(seed: 1))
         #expect(first.allSatisfy { (0...1).contains($0.x) && (0...1).contains($0.y) })
     }
+
+    @Test func interactionModeDefaultAndKey() {
+        #expect(VoiceModeInteraction.key == "voiceModeInteraction")
+        #expect(VoiceModeInteraction.defaultValue == .speechInSpeechOut)
+    }
+
+    @Test func interactionModeUsesMic() {
+        #expect(VoiceModeInteraction.speechInSpeechOut.usesMic)
+        #expect(!VoiceModeInteraction.textInTextOut.usesMic)
+        #expect(VoiceModeInteraction.speechInTextOut.usesMic)
+        #expect(!VoiceModeInteraction.textInSpeechOut.usesMic)
+    }
+
+    @Test func interactionModeSpeaksReply() {
+        #expect(VoiceModeInteraction.speechInSpeechOut.speaksReply)
+        #expect(!VoiceModeInteraction.textInTextOut.speaksReply)
+        #expect(!VoiceModeInteraction.speechInTextOut.speaksReply)
+        #expect(VoiceModeInteraction.textInSpeechOut.speaksReply)
+    }
+
+    @Test func subtitlesDefaultAndKey() {
+        #expect(VoiceModeSubtitlesSetting.key == "voiceModeSubtitles")
+        #expect(VoiceModeSubtitlesSetting.defaultValue == false)
+    }
+
+    @Test func interactionModeRoundTrips() {
+        // All cases survive a rawValue round-trip (needed for @AppStorage).
+        for mode in VoiceModeInteraction.allCases {
+            #expect(VoiceModeInteraction(rawValue: mode.rawValue) == mode)
+        }
+    }
 }

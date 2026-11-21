@@ -8,6 +8,48 @@ public enum VoiceModeSetting {
     public static let defaultValue = false
 }
 
+/// The four interaction modes for the Voice Mode screen.
+public enum VoiceModeInteraction: String, CaseIterable, Equatable, Sendable {
+    case speechInSpeechOut  // default
+    case textInTextOut
+    case speechInTextOut
+    case textInSpeechOut
+
+    public static let key = "voiceModeInteraction"
+    public static let defaultValue = VoiceModeInteraction.speechInSpeechOut
+
+    /// True for modes where the mic is used for input.
+    public var usesMic: Bool { self == .speechInSpeechOut || self == .speechInTextOut }
+    /// True for modes where the agent's reply is spoken.
+    public var speaksReply: Bool { self == .speechInSpeechOut || self == .textInSpeechOut }
+
+    /// A short label for a segmented picker.
+    public var label: String {
+        switch self {
+        case .speechInSpeechOut: String(localized: "🎙️ → 🔊", table: "Shared")
+        case .textInTextOut: String(localized: "⌨️ → 📄", table: "Shared")
+        case .speechInTextOut: String(localized: "🎙️ → 📄", table: "Shared")
+        case .textInSpeechOut: String(localized: "⌨️ → 🔊", table: "Shared")
+        }
+    }
+
+    /// A longer accessibility label.
+    public var accessibilityLabel: String {
+        switch self {
+        case .speechInSpeechOut: String(localized: "Speech in, speech out", table: "Shared")
+        case .textInTextOut: String(localized: "Text in, text out", table: "Shared")
+        case .speechInTextOut: String(localized: "Speech in, text out", table: "Shared")
+        case .textInSpeechOut: String(localized: "Text in, speech out", table: "Shared")
+        }
+    }
+}
+
+/// Subtitle setting: show the spoken reply as on-screen text in speech-out modes.
+public enum VoiceModeSubtitlesSetting {
+    public static let key = "voiceModeSubtitles"
+    public static let defaultValue = false
+}
+
 /// Which interface the app opens on once it is unlocked.
 public enum VoiceModeRoute: Equatable, Sendable {
     case voice

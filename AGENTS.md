@@ -110,6 +110,11 @@ is a short plan. Update the status and the journal when you finish something.
   - `ListBottom.swift` — a message list against its bottom, for its jump
     button's "N new messages": what counts as seen at the bottom and when
     the list leaves it, crossings judged against the last one taken (tested)
+  - (`Sources/PeelUI/Voice/VoiceModeScreen.swift`: `VoiceModeSetting`, the
+    Voice Mode setting's key and default; `VoiceModeRoute`, which interface
+    opens; `LinenFleck`, the linen's seeded flecks; tested in
+    `VoiceModeScreenTests`. The screen is `Apps/Shared/Voice/VoiceModeScreen`
+    over `LinenBackground`; `docs/voice-mode.md`, "Voice Mode screen")
   - `MentionQuery.swift` — the `@word` before a composer's cursor (or a
     `/` command opening the agent DM's message) and what it matches, by
     any of an item's names, for the Mac's composer and the iPhone's (tested)

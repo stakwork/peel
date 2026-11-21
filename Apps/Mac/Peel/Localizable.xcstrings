@@ -10353,6 +10353,22 @@
         }
       }
     },
+    "Open Peel on a mic and a text box. A grid icon at the top right shows the standard view." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Peel on a mic and a text box. A grid icon at the top right shows the standard view."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre Peel con un micrófono y un cuadro de texto. Un icono de cuadrícula arriba a la derecha muestra la vista estándar."
+          }
+        }
+      }
+    },
     "Open System Settings" : {
       "localizations" : {
         "en" : {
@@ -17765,6 +17781,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vocabulario"
+          }
+        }
+      }
+    },
+    "Voice Mode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice Mode"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo de voz"
           }
         }
       }

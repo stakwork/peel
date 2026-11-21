@@ -45,6 +45,7 @@ struct AccountView: View {
                 NameRow()
                 TimeZoneRow()
                 AutoDownloadMediaRow()
+                VoiceModeRow()
                 Fact(String(localized: "Server")) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.myServer ?? String(localized: "None"))
@@ -793,6 +794,21 @@ private struct NotificationsRow: View {
         case .notAsked: String(localized: "Off")
         case .denied: String(localized: "Off in System Settings")
         case .unavailable: String(localized: "Unavailable")
+        }
+    }
+}
+
+private struct VoiceModeRow: View {
+    @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
+
+    var body: some View {
+        Fact(String(localized: "Voice Mode")) {
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle(isOn: $voiceMode) { Text("Voice Mode") }
+                    .labelsHidden()
+                Text("Open Peel on a mic and a text box. A grid icon at the top right shows the standard view.")
+                    .muted()
+            }
         }
     }
 }

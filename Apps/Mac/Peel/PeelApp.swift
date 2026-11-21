@@ -276,6 +276,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
+    /// The grid icon's choice, for this launch only; the setting stays on.
+    @State private var showedStandard = false
 
     var body: some View {
         switch model.phase {
@@ -287,13 +290,22 @@ struct RootView: View {
         case .onboarding:
             OnboardingView()
         case .ready:
-            MainView()
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: 0) {
-                        if DictationController.shared.showsOffer { DictationOffer() }
-                        if model.notifier.offersPermission { NotificationOffer() }
-                    }
-                }
+            switch VoiceModeRoute.initial(voiceModeOn: voiceMode, showedStandard: showedStandard) {
+            case .voice:
+                VoiceModeScreen { showedStandard = true }
+            case .standard:
+                standard
+            }
         }
+    }
+
+    private var standard: some View {
+        MainView()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    if DictationController.shared.showsOffer { DictationOffer() }
+                    if model.notifier.offersPermission { NotificationOffer() }
+                }
+            }
     }
 }

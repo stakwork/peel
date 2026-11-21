@@ -5513,6 +5513,22 @@
         }
       }
     },
+    "Open Peel on a mic and a text box instead of Chats. A grid icon at the top right shows the standard view." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Peel on a mic and a text box instead of Chats. A grid icon at the top right shows the standard view."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre Peel con un micrófono y un cuadro de texto en lugar de Chats. Un icono de cuadrícula arriba a la derecha muestra la vista estándar."
+          }
+        }
+      }
+    },
     "Open Settings" : {
       "localizations" : {
         "en" : {
@@ -9453,6 +9469,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Video no disponible"
+          }
+        }
+      }
+    },
+    "Voice Mode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice Mode"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo de voz"
           }
         }
       }

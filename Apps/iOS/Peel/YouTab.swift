@@ -10,6 +10,7 @@ struct YouTab: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
     @State private var editingName = false
+    @AppStorage(VoiceModeSetting.key) private var voiceModeOn = VoiceModeSetting.defaultValue
     /// What this phone unlocks with, if anything: a system query, made once.
     @State private var biometryName: String?
 
@@ -29,6 +30,12 @@ struct YouTab: View {
                     AgentRow()
                 } header: {
                     PhoneSectionHeader(String(localized: "Agent"))
+                }
+                .phoneRows(.grouped)
+                Section {
+                    Toggle(isOn: $voiceModeOn) { Text("Voice Mode") }
+                } footer: {
+                    Text("Open Peel on a mic and a text box instead of Chats. A grid icon at the top right shows the standard view.")
                 }
                 .phoneRows(.grouped)
                 Section {

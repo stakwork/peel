@@ -342,6 +342,59 @@ owns the settings synced through the official apps' encrypted file, and these
 are about this device's speaker, microphone and car. `DictationSettings` does
 the same.
 
+## Voice Mode screen
+
+An alternative default interface, behind the **Voice Mode** setting (iPhone:
+You tab; Mac: Account › Profile). Off by default; `VoiceModeSetting`
+(`Sources/PeelUI/Voice/VoiceModeScreen.swift`, key `voiceMode`, `@AppStorage`,
+this device's like `VoiceDefaults`). When on, the app opens on
+`VoiceModeScreen` (`Apps/Shared/Voice/`) instead of `MainTabs` / `MainView`,
+after the lock and onboarding screens, which still come first. Turning the
+setting on while Peel is open switches to the screen at once.
+
+- A mic in a glowing circle on a linen canvas (`LinenBackground`: `Canvas`,
+  warp and weft, flecks placed from a fixed seed by `LinenFleck.make`, a
+  vignette; charcoal in dark mode). Listening shows pulsing rings and a stop
+  icon; Reduce Motion drops the pulse.
+- The mic is the existing `VoiceModeController` (no new recogniser), with the
+  phone's hooks. Speech is transcribed on the device: `VoiceListener` sets
+  `requiresOnDeviceRecognition = true` when the recogniser's
+  `supportsOnDeviceRecognition` is true (the attachment reader's
+  `SystemTranscriber` requires it too). Where a locale has no on-device model,
+  the listener does not require it and the system recogniser may use Apple's
+  server, as the rest of voice mode does. A refused permission or an unavailable recogniser is the
+  controller's notice, shown under the mic with "You can type a message
+  instead." With no agent chat yet the screen says so. Stopping the agent's
+  turn is not offered here (no `stopAgentTurn`, as on the phone).
+- The text box is a capsule that springs up into a multi-line field with a
+  send button, and folds back when focus is lost while empty. It sends with
+  `AppModel.sendDictated(_:to:)` to the agent's DM (`agentChat`), not the
+  composer: this screen has no attachments, mentions or replies, and
+  `sendDictated` is the plain-text path that voice already uses, with the
+  name check and the chat's notice.
+- The grid icon at the top right turns the setting off, and the standard view
+  comes back; turning it on again opens the screen again.
+- Four interaction modes (`VoiceModeInteraction`, key `voiceModeInteraction`),
+  picked at the top of the screen or beside the setting: speech in and out
+  (the default), text in and out, speech in and text out, text in and speech
+  out. A text-in mode hides the mic; the text box is there in every mode.
+  The mode overrides the voice settings' "spoken replies"
+  (`VoiceModeController.speaksReplies`): a speech-out mode speaks.
+- The screen opens the agent's DM (`destination = .agent`), since
+  `AppModel.timeline` is the open chat's; on the iPhone it is pushed on Chats
+  behind the screen, so the standard view opens on it. The reply shown is
+  the agent's texts since your newest message (`VoiceModeReply.latest`), from
+  that timeline, not from the controller: a typed message's reply shows with
+  the mic off. A text-out mode shows it in a panel ("Waiting for reply…"
+  until it comes). A speech-out mode reads it: through voice mode while the
+  mic is on, else, after a typed message, with `readAloud` (the speaker
+  alone, a playback session, no microphone).
+- Subtitles (`voiceModeSubtitles`, off by default), in the speech-out modes:
+  the reply as text in a band while it is read, and only then.
+- Peel links, scans and notifications opened while the screen shows go to
+  the iPhone's router, which only `MainTabs` shows: they appear once Voice
+  Mode is turned off. Known gap.
+
 ## Hands-free driving: options
 
 ### Speaking

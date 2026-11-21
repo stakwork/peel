@@ -133,6 +133,8 @@ struct PeelPhoneApp: App {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
+    /// Voice Mode's screen in place of the standard one; its grid icon turns it off.
+    @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
 
     var body: some View {
         @Bindable var model = model
@@ -203,7 +205,11 @@ struct RootView: View {
         case .onboarding:
             Onboarding()
         case .ready:
-            MainTabs()
+            if voiceMode {
+                VoiceModeScreen { voiceMode = false }
+            } else {
+                MainTabs()
+            }
         }
     }
 }

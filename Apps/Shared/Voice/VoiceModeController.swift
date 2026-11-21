@@ -46,6 +46,11 @@ final class VoiceModeController {
     private(set) var level: Float = 0
     /// The "Hey Peel" listener is on.
     private(set) var isArmed = false
+    /// Whether replies are read aloud. nil: the voice settings decide
+    /// (`spokenReplies`); the Voice Mode screen sets it from its mode.
+    var speaksReplies: Bool?
+    /// A reply is being read with voice mode off (`readAloud`).
+    private(set) var isReadingAloud = false
 
     private var machine = VoiceMachine()
     @ObservationIgnored private var model: AppModel?
@@ -133,6 +138,7 @@ final class VoiceModeController {
             model.conversationNotices[chat] = reason
             return
         }
+        stopReading()
         stopWake()
         let authorization = await VoiceAuthorization.request()
         if let notice = authorization.notice {
@@ -316,6 +322,11 @@ final class VoiceModeController {
     }
 
     private func speechEnded() {
+        if isReadingAloud {
+            isReadingAloud = false
+            deactivateSession()
+            return
+        }
         guard phase == .speaking else { return }
         echo.speechEnded(now: Date())
         // `.speechEnded` clears the draft and the listener's text: a fresh
@@ -324,6 +335,35 @@ final class VoiceModeController {
         restoreHeldDraft()
         if pendingTurn != nil { perform(machine.apply(.awaitReply)) }
         if phase == .listening || phase == .hearing { cues.play(.ready) }
+    }
+
+    /// Reads `markdown` aloud with voice mode off: the Voice Mode screen's
+    /// text in, speech out. The speaker only, never the microphone; not
+    /// while voice mode or the "Hey Peel" listener runs.
+    func readAloud(_ markdown: String) {
+        guard !phase.isActive, !isArmed, !starting else { return }
+        let spoken = SpokenText(markdown: markdown)
+        guard !spoken.chunks.isEmpty else { return }
+        // A second message while the first is read is queued after it.
+        if !isReadingAloud {
+            settings = VoiceSettings(defaults: .standard)
+            do {
+                try activatePlaybackSession()
+            } catch {
+                return
+            }
+            speaker.stop()
+            isReadingAloud = true
+        }
+        speaker.speak(spoken.chunks, rate: settings.speechRate)
+    }
+
+    /// Stops what `readAloud` is reading.
+    func stopReading() {
+        guard isReadingAloud else { return }
+        isReadingAloud = false
+        speaker.stop()
+        deactivateSession()
     }
 
     /// The draft held over a speech is the draft again, and what is said
@@ -522,7 +562,7 @@ final class VoiceModeController {
         }
         guard !new.isEmpty else { return }
         new.compactMap(\.uuid).forEach { seen.insert($0) }
-        guard settings.spokenReplies else { return }
+        guard speaksReplies ?? settings.spokenReplies else { return }
         let spoken = new.map { SpokenText(markdown: $0.shownText) }.filter { !$0.chunks.isEmpty }
         guard !spoken.isEmpty else { return }
         let intro = new.contains { $0.replyUUID != nil } ? String(localized: "Peel answered an earlier message.", table: "Shared") : String(localized: "A new message from Peel.", table: "Shared")
@@ -581,7 +621,7 @@ final class VoiceModeController {
         pendingTurn = nil
         let spoken = reply.map { SpokenText(markdown: $0) }
         if let spoken, !spoken.chunks.isEmpty { lastReply = spoken }
-        guard let spoken, settings.spokenReplies, !spoken.chunks.isEmpty else {
+        guard let spoken, speaksReplies ?? settings.spokenReplies, !spoken.chunks.isEmpty else {
             perform(machine.apply(.replyReady(hasReply: false)))
             if reply != nil, phase == .listening { cues.play(.ready) }
             return
@@ -661,6 +701,16 @@ final class VoiceModeController {
         var options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
         if !settings.pauseOtherAudio { options.insert(.interruptSpokenAudioAndMixWithOthers) }
         try session.setCategory(.playAndRecord, mode: .voiceChat, options: options)
+        try session.setActive(true)
+        #endif
+    }
+
+    /// Playback alone, for `readAloud`: no microphone, so not `.voiceChat`.
+    private func activatePlaybackSession() throws {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        let options: AVAudioSession.CategoryOptions = settings.pauseOtherAudio ? [] : [.interruptSpokenAudioAndMixWithOthers]
+        try session.setCategory(.playback, mode: .spokenAudio, options: options)
         try session.setActive(true)
         #endif
     }

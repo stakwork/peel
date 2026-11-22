@@ -1065,6 +1065,22 @@
         }
       }
     },
+    "Apps you opened" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps you opened"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps que abriste"
+          }
+        }
+      }
+    },
     "Apps your Stadeum workspaces pin show here." : {
       "localizations" : {
         "en" : {
@@ -6997,6 +7013,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eliminar contacto"
+          }
+        }
+      }
+    },
+    "Remove from Apps" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from Apps"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar de Apps"
           }
         }
       }

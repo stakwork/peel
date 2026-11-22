@@ -236,6 +236,18 @@ is a short plan. Update the status and the journal when you finish something.
     server for a visitor's page (strut's specs/WALLET.md §1.2) and its
     `problems` (a port of strut's `creditPurchaseProblems`, held to its
     `credit_purchases` vectors)
+  - `InviteLink.swift` — a worker's invite as a link
+    (`docs/phases/13-worker-invite-iphone.md`): `fromPeelLink`
+    (`peel://join?…` → `sphinx.chat://?…`; Peel never registers
+    `sphinx.chat`), `fromClipboard` (a whole `sphinx.chat://?action=i&…`
+    link or strut's `…/public/join#action=i&…`), `appOf` (the single `a=`:
+    the app to open after signup, as `PublicAppLink`); tested in
+    `InviteLinkTests`. Never logged or stored
+  - `Storage+PublicApps.swift` — the public apps opened here (`publicApp`,
+    v37): `OpenedPublicApp`, `rememberPublicApp`, `openedPublicApps`,
+    `forgetPublicApp`; Disconnect (`deleteWalletConnection`) forgets an
+    origin's apps; shown in the iPhone's Apps under "Apps you opened"
+    (`AppModel+OpenedApps`); tested in `OpenedPublicAppsTests`
   - `PublicApp.swift` — `PublicAppLink`, a stranger's public app as Peel
     opens it from `peel://open?url=<address>` (https, or http to this
     machine): its seller, the app it names, its origin, and the app a

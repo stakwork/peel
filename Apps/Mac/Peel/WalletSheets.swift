@@ -50,13 +50,18 @@ struct WalletConnectSheetView: View {
                 if let offer = sheet.signIn {
                     Fact(String(localized: "Sign in")) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Picker("Sign in", selection: $identity) {
-                                ForEach(offer.keys, id: \.self) { key in
-                                    Text(WalletWords.signIn(key)).tag(Optional(key))
+                            // One key (the challenge names it) is no choice: only what it means.
+                            if offer.keys.count > 1 {
+                                Picker("Sign in", selection: $identity) {
+                                    ForEach(offer.keys, id: \.self) { key in
+                                        Text(WalletWords.signIn(key)).tag(Optional(key))
+                                    }
                                 }
+                                .labelsHidden()
+                                .pickerStyle(.radioGroup)
+                            } else if let key = offer.keys.first {
+                                Text(WalletWords.signIn(key))
                             }
-                            .labelsHidden()
-                            .pickerStyle(.radioGroup)
                             if let identity { Text(WalletWords.signInNote(identity)).muted().fixedSize(horizontal: false, vertical: true) }
                         }
                     }

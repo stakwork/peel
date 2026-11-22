@@ -2,6 +2,7 @@ import Observation
 import PeelCore
 import PeelUI
 import SwiftUI
+import UIKit
 
 /// The phone's tabs (docs/design/iphone.md, decision 1): Chats, Payments,
 /// You, and the system's separate search tab.
@@ -94,8 +95,21 @@ final class PhoneRouter {
     var publicPage: PublicPage? {
         didSet { if let publicPage { PhoneWeb.remember(publicPage, in: model.profile) } }
     }
-    /// Such a link that came while Peel was locked: opened once it unlocks.
+    /// Such a link that came while Peel was locked (or, for a new account,
+    /// before it exists): opened once Peel is ready.
     var waitingLink: PublicAppLink?
+    /// Whether `waitingLink` is the app a worker's invite named (`a=`): its
+    /// page signs the account in with no question (`WalletHost.grantInvitePage`).
+    /// Only that link: never carried to another one, and dropped with it.
+    var waitingLinkInvited = false
+    /// The invite a tapped `peel://join` link or the clipboard brought, as the
+    /// `sphinx.chat://?…` link the core reads, for onboarding to fill in
+    /// (`take(invite:)`). Held in memory only and never logged: an invite is a
+    /// secret until it is used.
+    var pendingInvite: String?
+    /// Whether this process has looked on the clipboard for an invite
+    /// (`takeClipboardInvite`): once, not again.
+    @ObservationIgnored private var clipboardChecked = false
     /// The call screen is up over everything (`IOSCallScreen`); the call
     /// goes on, with its bar over the tabs, while it is down.
     var callShown = false
@@ -131,7 +145,11 @@ final class PhoneRouter {
     /// Back to a fresh Chats tab with nothing pushed: onboarding (an account
     /// forgotten from You, or a restore) must not reopen on the tab the last
     /// account was left on (Profile).
-    func reset() {
+    ///
+    /// `keepingInvite`: onboarding starting is the one reset that leaves an
+    /// invite link's waiting app and its invite, which came before it (a cold
+    /// launch by the link) and are what onboarding is for.
+    func reset(keepingInvite: Bool = false) {
         holding = true
         tab = .chats
         chats = []
@@ -140,7 +158,13 @@ final class PhoneRouter {
         you = []
         orgPage = nil
         publicPage = nil
-        waitingLink = nil
+        if !keepingInvite {
+            pendingInvite = nil
+            waitingLink = nil
+            waitingLinkInvited = false
+        } else if !waitingLinkInvited {
+            waitingLink = nil
+        }
         holding = false
         publish()
     }
@@ -158,22 +182,104 @@ final class PhoneRouter {
             you = []
             return true
         }
+        if let invite = InviteLink.fromPeelLink(url) {
+            take(invite: invite)
+            return true
+        }
         guard let link = PublicAppLink(peelLink: url) else { return false }
         if model.phase == .ready {
-            orgPage = nil
-            publicPage = PublicPage(link)
+            show(link, invited: false)
         } else {
             waitingLink = link
+            waitingLinkInvited = false
         }
         return true
     }
 
-    /// Peel unlocked: the link that waited for it opens.
+    /// Peel ready: the link that waited for it opens.
     func openWaitingLink() {
         guard model.phase == .ready, let link = waitingLink else { return }
+        let invited = waitingLinkInvited
         waitingLink = nil
+        waitingLinkInvited = false
+        show(link, invited: invited)
+    }
+
+    /// A public app over everything, from a link or Apps' list. Kept for Apps
+    /// first and, when a worker's invite named it, granted its sign-in, both
+    /// before the page loads (`AppModel.openingPublicApp`).
+    func open(_ link: PublicAppLink, invited: Bool = false) {
+        show(link, invited: invited)
+    }
+
+    private func show(_ link: PublicAppLink, invited: Bool) {
+        model.openingPublicApp(link, invited: invited)
         orgPage = nil
         publicPage = PublicPage(link)
+    }
+
+    // MARK: Worker invites
+
+    /// A worker's invite (`InviteLink`), tapped as `peel://join?…` or taken
+    /// off the clipboard: for a new account it is held for onboarding, which
+    /// fills in its invite step, and the app it names (`a=`) waits to open
+    /// once the account is ready; an account already here ignores the invite
+    /// and only opens the app (now if unlocked, else after the PIN), as Android
+    /// does. A tapped link wins over the clipboard, which is then not read.
+    func take(invite link: String) {
+        clipboardChecked = true
+        let hasAccount = model.profile?.hasAccount == true
+        pendingInvite = hasAccount ? nil : link
+        guard let app = InviteLink.appOf(link) else { return }
+        if model.phase == .ready {
+            show(app, invited: true)
+        } else {
+            waitingLink = app
+            waitingLinkInvited = true
+        }
+    }
+
+    /// The invite step's Continue: the app its text names (`a=`) waits to open
+    /// once the account is ready, whatever brought the invite (pasted, scanned,
+    /// tapped or off the clipboard; for a tapped link, the same one again).
+    func takeInviteApp(from text: String) {
+        guard let app = InviteLink.appOf(text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
+        waitingLink = app
+        waitingLinkInvited = true
+    }
+
+    /// The invite waiting for onboarding, once: taken as it fills the invite
+    /// step, so Back to the welcome screen and in again starts empty.
+    func takePendingInvite() -> String? {
+        defer { pendingInvite = nil }
+        return pendingInvite
+    }
+
+    /// The invite strut's join page copied as it sent the worker to install
+    /// Peel: nothing carries a tapped link across an install, so a Peel with
+    /// no account and no invite in hand looks on the clipboard, once a
+    /// process, as it first comes to the front. Nothing is read from an empty
+    /// clipboard (`hasStrings`, which iOS does not ask about), and only a whole
+    /// invite link is taken (`InviteLink.fromClipboard`), as a tapped one is,
+    /// then cleared from the clipboard if it still holds it. Never logged or stored.
+    /// Waits while Peel is still opening, and ends with an account found.
+    func takeClipboardInvite() {
+        guard !clipboardChecked, pendingInvite == nil else { return }
+        switch model.phase {
+        case .loading: return
+        case .onboarding where model.profile?.hasAccount != true: break
+        default:
+            clipboardChecked = true
+            return
+        }
+        guard UIApplication.shared.applicationState == .active else { return }
+        clipboardChecked = true
+        let pasteboard = UIPasteboard.general
+        guard pasteboard.hasStrings else { return }
+        let count = pasteboard.changeCount
+        guard let text = pasteboard.string, let link = InviteLink.fromClipboard(text) else { return }
+        take(invite: link)
+        if pasteboard.changeCount == count { pasteboard.items = [] }
     }
 
     // MARK: Opening things

@@ -56,6 +56,8 @@ struct PeelPhoneApp: App {
                     }
                     if phase == .active {
                         model.becameActive()
+                        // A worker's invite copied by strut's join page, once a process (`takeClipboardInvite`).
+                        router.takeClipboardInvite()
                         PushCoordinator.shared.refreshNames()
                         PushCoordinator.shared.openPending(model: model, router: router)
                         PushCoordinator.shared.removeDeliveredOfReadChats(model: model, frontmost: true)
@@ -188,10 +190,15 @@ struct RootView: View {
             }
             // Onboarding starts from Chats: the tab left selected by a
             // forgotten account (You, Profile) must not outlive it.
+            // An invite link's app and invite, which came first, are what onboarding is for;
+            // then, with no account, the clipboard is looked at once (`takeClipboardInvite`).
             .onChange(of: model.phase) { _, phase in
-                if phase == .onboarding { router.reset() }
+                if phase == .onboarding {
+                    router.reset(keepingInvite: true)
+                    router.takeClipboardInvite()
+                }
             }
-            .onAppear { if model.phase == .onboarding { router.reset() } }
+            .onAppear { if model.phase == .onboarding { router.reset(keepingInvite: true) } }
     }
 
     @ViewBuilder private var phase: some View {

@@ -105,8 +105,16 @@ extension Storage {
 
     /// Revoked: the app must `connect` again, and ask again to sign the
     /// person in. Its payments stay in history.
+    ///
+    /// A stranger's origin (`origin:<origin>`) leaves Apps with its
+    /// connection: its opened apps are forgotten in the same write.
     public func deleteWalletConnection(key: String) throws {
-        _ = try pool.write { db in try WalletConnection.deleteOne(db, key: key) }
+        try pool.write { db in
+            _ = try WalletConnection.deleteOne(db, key: key)
+            if key.hasPrefix(Self.originKeyPrefix) {
+                try db.execute(sql: "DELETE FROM publicApp WHERE origin = ?", arguments: [String(key.dropFirst(Self.originKeyPrefix.count))])
+            }
+        }
     }
 
     // MARK: Transactions

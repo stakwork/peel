@@ -29,6 +29,9 @@ struct AppsScreen: View {
         // A source no longer listed, or the only one: all of them.
         let shownSource = sources.count > 1 && sources.contains(source ?? "") ? source : nil
         let shown = WorkspaceApp.filter(apps, query: query, source: shownSource)
+        // The public apps opened here (a worker's Tasks), kept in Apps with no workspace; not under a workspace's filter.
+        let opened = model.openedApps
+        let openedShown = shownSource == nil ? opened.filter { $0.matches(query) } : []
         let unread = stadeum.unreadApps.compactMap { id in stadeum.live.first { $0.id == id }?.name }
         // Not while searching: the search is of the apps.
         let homes = query.isEmpty ? model.talkHomes : []
@@ -97,6 +100,25 @@ struct AppsScreen: View {
                 }
             }
             .phoneRows()
+            if !openedShown.isEmpty {
+                Section {
+                    ForEach(openedShown) { app in
+                        if let link = app.link {
+                            Button { router.open(link) } label: { OpenedAppRow(app: app) }
+                                .buttonStyle(.plain)
+                                // The app leaves the list; its connection stays under You, so a link someone sent never sticks.
+                                .contextMenu {
+                                    Button("Remove from Apps", systemImage: "minus.circle", role: .destructive) {
+                                        model.forgetOpenedApp(app)
+                                    }
+                                }
+                        }
+                    }
+                } header: {
+                    PhoneSectionHeader(String(localized: "Apps you opened"))
+                }
+                .phoneRows()
+            }
         }
         .phoneList()
         .scrollEdges()
@@ -122,12 +144,12 @@ struct AppsScreen: View {
             }
         }
         .overlay {
-            if !apps.isEmpty, shown.isEmpty {
+            if !apps.isEmpty || !opened.isEmpty, shown.isEmpty, openedShown.isEmpty {
                 ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
             } else if apps.isEmpty, !homes.isEmpty {
                 // The Talk rows show; the apps section says why it is empty.
                 if stadeum.readingApps { ProgressView() }
-            } else if apps.isEmpty {
+            } else if apps.isEmpty, opened.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
                         Label { Text("No Stadeum here yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
@@ -208,6 +230,36 @@ private struct AppRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(pinned ? Text("Pinned to Chats") : Text(verbatim: ""))
+        .accessibilityHint("Opens it")
+    }
+}
+
+/// A public app opened here: its title, and under it where it is and which app.
+private struct OpenedAppRow: View {
+    let app: OpenedPublicApp
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Space.md) {
+            WorkspaceAppIcon(nil, size: 20)
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 30, height: 30)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(app.title)
+                    .phoneFont(.row)
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                Text(app.caption)
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.tertiaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 7)
+        .frame(minHeight: Theme.touchTarget)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
         .accessibilityHint("Opens it")
     }
 }

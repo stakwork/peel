@@ -498,11 +498,6 @@ public final class AppModel {
                 profile = try Profile(name: development, kind: .development)
             } else {
                 profile = try Profile(name: "default", kind: .app)
-                // A phone's Keychain outlives the app: words left by a deleted app are no account, and
-                // `hasAccount` must not see them (an invite would be ignored). Before anything reads it.
-                #if os(iOS)
-                profile?.discardKeychainLeftByReinstall()
-                #endif
             }
         } catch {
             notice = PeelError.noted(error)

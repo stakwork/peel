@@ -131,42 +131,6 @@ public struct Profile: Sendable {
     /// Where the agent's database lives, beside the account's.
     public var agentDatabase: URL { directory.appendingPathComponent("agent.sqlite") }
 
-    /// Whether the words in the Keychain outlived the app that made them.
-    ///
-    /// On iOS, deleting an app deletes its files (this profile's `directory`,
-    /// with the database) but not its Keychain items, so a phone that once had
-    /// Peel and was reinstalled still holds the old words with no account data
-    /// behind them. Without this check `hasAccount` is true on a fresh install:
-    /// an invite link is ignored as if the person had an account, the clipboard
-    /// is never read, and the lock screen opens words with an empty database.
-    /// Android loses the words with the app on uninstall, so this makes the
-    /// phone start as a new install does. Words with a directory are a normal
-    /// launch or an upgrade, and no words is nothing to clear: never stale.
-    public static func isStaleAfterReinstall(hasWords: Bool, directoryExists: Bool) -> Bool {
-        hasWords && !directoryExists
-    }
-
-    /// Clears the Keychain items an earlier install left (the words, the
-    /// remembered PIN, Face ID's flag, the agent's, strut's, Peel Home's and
-    /// the boxes' items) when `isStaleAfterReinstall`, and says whether it did.
-    /// The Hive pairing stays, as in `delete`: an app profile's is the
-    /// device's, kept under an account of its own. An
-    /// app profile only; call it at launch before `hasAccount` is first read
-    /// and before anything creates `directory`. Nothing is touched while the
-    /// directory exists.
-    @discardableResult
-    public func discardKeychainLeftByReinstall() -> Bool {
-        guard kind == .app,
-              Self.isStaleAfterReinstall(
-                hasWords: secrets.hasMnemonic, directoryExists: FileManager.default.fileExists(atPath: directory.path)
-              ) else { return false }
-        // `delete` removes the rest, and fails on the first item it cannot remove; the words go last there, so
-        // remove them first: they alone decide `hasAccount`.
-        try? secrets.deleteMnemonic()
-        try? delete()
-        return true
-    }
-
     public var hasAccount: Bool { secrets.hasMnemonic }
 
     public var requiresPIN: Bool { secrets.requiresPIN }

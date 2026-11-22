@@ -385,7 +385,8 @@ struct VisitorSignInTests {
     @Test func theInvitePageSignsInWithNoSheet() async throws {
         let wallet = ScriptedWallet(), person = ScriptedPerson()
         let host = try host(wallet)
-        let page = try #require(PublicAppLink(try #require(URL(string: "https://shop.example.com/public/?app=strut/worker"))))
+        let address = try #require(URL(string: "https://shop.example.com/public/?app=strut/worker"))
+        let page = try #require(PublicAppLink(address))
         #expect(try WalletHost.grantInvitePage(page, storage: storage, now: Self.now))
         let kept = try #require(try storage.walletConnection(key: Self.origin.key))
         #expect(kept.signIn == .root && kept.methods.isEmpty && kept.app == "/strut/worker")
@@ -401,7 +402,8 @@ struct VisitorSignInTests {
     /// that already signs in, as the person chose, is left alone; an expired
     /// one counts as none.
     @Test func theInvitePageKeepsWhatTheOriginAlreadyHolds() throws {
-        let page = try #require(PublicAppLink(try #require(URL(string: "https://shop.example.com/"))))
+        let address = try #require(URL(string: "https://shop.example.com/"))
+        let page = try #require(PublicAppLink(address))
         var held = WalletConnection(
             key: Self.origin.key, app: "/moon-game", title: "Moon Game", place: "shop.example.com", methods: [.getInfo],
             notificationTypes: [], maxAmountMsat: 5_000, renewal: .daily, expiresAt: nil, overBudget: .refuse, createdAt: Self.now - 10

@@ -13,7 +13,8 @@ struct OpenedPublicAppsTests {
     init() throws { storage = try profile.storage() }
 
     func link(_ address: String) throws -> PublicAppLink {
-        try #require(PublicAppLink(try #require(URL(string: address))))
+        let url = try #require(URL(string: address))
+        return try #require(PublicAppLink(url))
     }
 
     func connection(_ origin: String, title: String) -> WalletConnection {
@@ -84,6 +85,7 @@ struct OpenedPublicAppsTests {
         #expect(app.caption == "acme.example.com · strut/worker")
         #expect(app.matches("") && app.matches("ACME") && app.matches(" worker ") && !app.matches("books"))
         try storage.saveWalletConnection(connection("https://acme.example.com", title: "Tasks"))
-        #expect(try #require(try storage.openedPublicApps().first).matches("tasks"))
+        let titled = try #require(try storage.openedPublicApps().first)
+        #expect(titled.matches("tasks"))
     }
 }

@@ -103,7 +103,8 @@ struct InviteLinkTests {
         #expect(app.app == "worker")
         #expect(app.origin == "https://acme.example.com")
         #expect(app.seller.absoluteString == "https://acme.example.com")
-        #expect(app == PublicAppLink(try #require(URL(string: "https://acme.example.com/public/?app=worker"))))
+        let same = try #require(URL(string: "https://acme.example.com/public/?app=worker"))
+        #expect(app == PublicAppLink(same))
         // Anywhere in the link, and a plus stays a plus.
         let plus = InviteLink.appOf("sphinx.chat://?a=https%3A%2F%2Facme.example.com%2Fa+b&action=i&d=abc")
         #expect(plus?.url.absoluteString == "https://acme.example.com/a+b")

@@ -242,6 +242,13 @@ public final class AgentSession {
             try store.add(type: RecordType.agent, name: newName, createdBy: AgentTurn.Author.user.rawValue)
         }
         name = newName
+        // Keep the Keychain copy's name in step so the preferences sync sends
+        // it. No key connected yet: nothing to update. `connection` is left
+        // alone, as reassigning it would restart strut.
+        if var credential = try credentials.read() {
+            credential.agentName = newName
+            try credentials.write(credential)
+        }
     }
 
     // MARK: Records

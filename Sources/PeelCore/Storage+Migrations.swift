@@ -668,6 +668,22 @@ extension Storage {
                     decidedAt INTEGER NOT NULL);
                 """)
         }
+        migrator.registerMigration("v37") { db in
+            // The public apps opened here (a worker's Tasks, a stranger's
+            // app): one row per app on a seller ('' for the seller's own
+            // page), the address it was last opened at, so Apps can open it
+            // again. Not synced; a restore starts with none.
+            try db.execute(sql: """
+                CREATE TABLE publicApp (
+                    seller TEXT NOT NULL,
+                    app TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    origin TEXT NOT NULL,
+                    openedAt INTEGER NOT NULL,
+                    PRIMARY KEY (seller, app));
+                CREATE INDEX publicApp_origin ON publicApp (origin);
+                """)
+        }
         return migrator
     }
 }

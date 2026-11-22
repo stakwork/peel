@@ -202,13 +202,18 @@ struct WalletConnectPhoneSheet: View {
                 }
                 if let offer = sheet.signIn {
                     Section {
-                        Picker("Sign in", selection: $identity) {
-                            ForEach(offer.keys, id: \.self) { key in
-                                Text(WalletWords.signIn(key)).tag(Optional(key))
+                        // One key (the challenge names it) is no choice: only what it means.
+                        if offer.keys.count > 1 {
+                            Picker("Sign in", selection: $identity) {
+                                ForEach(offer.keys, id: \.self) { key in
+                                    Text(WalletWords.signIn(key)).tag(Optional(key))
+                                }
                             }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
+                        } else if let key = offer.keys.first {
+                            Text(WalletWords.signIn(key))
                         }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
                     } header: {
                         Text("Sign in")
                     } footer: {

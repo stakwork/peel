@@ -192,7 +192,7 @@ struct VisitorSignInTests {
         #expect(first.objectValue["result"]?.objectValue["address"] == .string(ScriptedWallet.address))
         #expect(person.takeShown() == ["connect"])
         let sheet = try #require(person.lastConnect)
-        #expect(sheet.signIn == SignInOffer(host: "shop.example.com", keys: [.root, .domain]))
+        #expect(sheet.signIn == SignInOffer(host: "shop.example.com", keys: [.root]))
         #expect(!sheet.asksWallet && sheet.required.isEmpty && sheet.byOrg)
         let kept = try #require(try storage.walletConnection(key: Self.origin.key))
         #expect(kept.signIn == .root && kept.methods.isEmpty)
@@ -209,14 +209,14 @@ struct VisitorSignInTests {
         #expect(wallet.calls == ["sign_in root", "sign_in root"])
     }
 
-    /// "A new identity for this app": picked by the person and kept, or the
-    /// only choice when the app takes a key of its domain alone.
+    /// "A new identity for this app": the only choice when the app's challenge
+    /// is for its domain's key (a root challenge offers the account alone), kept.
     @Test func aNewIdentityIsThePersonsChoiceOrTheAppsRule() async throws {
         let wallet = ScriptedWallet(), person = ScriptedPerson()
         let host = try host(wallet)
         person.will("approve")
         person.pick(.domain)
-        let picked = await host.handle(signIn(challenge("shop.example.com")), from: caller(person))
+        let picked = await host.handle(signIn(challenge("shop.example.com", key: "domain")), from: caller(person))
         #expect(picked.objectValue["result"]?.objectValue["key"] == .string(key2G))
         // A new identity is unlinkable: it carries no address of the account.
         #expect(picked.objectValue["result"]?.objectValue["address"] == nil)
@@ -375,6 +375,57 @@ struct VisitorSignInTests {
         #expect(try await engine.signVisitor(challenge, as: .root).address == nil)
         try storage.set("\(accountKey)_\(key3G)", for: .contactInfo)
         #expect(try await engine.signVisitor(challenge, as: .root).address == nil)
+    }
+
+    // MARK: An invite's page
+
+    /// The page a worker's invite names signs the account in as you before it
+    /// loads: its first sign-in goes through with only the toast, with no
+    /// sheet, and not even a tap (docs/phases/13-worker-invite-iphone.md).
+    @Test func theInvitePageSignsInWithNoSheet() async throws {
+        let wallet = ScriptedWallet(), person = ScriptedPerson()
+        let host = try host(wallet)
+        let address = try #require(URL(string: "https://shop.example.com/public/?app=strut/worker"))
+        let page = try #require(PublicAppLink(address))
+        #expect(try WalletHost.grantInvitePage(page, storage: storage, now: Self.now))
+        let kept = try #require(try storage.walletConnection(key: Self.origin.key))
+        #expect(kept.signIn == .root && kept.methods.isEmpty && kept.app == "/strut/worker")
+        #expect(kept.title == "shop.example.com" && kept.place == "shop.example.com" && kept.createdAt == Self.now)
+
+        let reply = await host.handle(signIn(challenge("shop.example.com")), from: caller(person, acted: false))
+        #expect(reply.objectValue["result"]?.objectValue["key"] == .string(keyG))
+        #expect(person.takeShown() == ["signed in to shop.example.com as root"])
+        #expect(wallet.calls == ["sign_in root"])
+    }
+
+    /// A connection already there keeps its grant and gains the sign-in; one
+    /// that already signs in, as the person chose, is left alone; an expired
+    /// one counts as none.
+    @Test func theInvitePageKeepsWhatTheOriginAlreadyHolds() throws {
+        let address = try #require(URL(string: "https://shop.example.com/"))
+        let page = try #require(PublicAppLink(address))
+        var held = WalletConnection(
+            key: Self.origin.key, app: "/moon-game", title: "Moon Game", place: "shop.example.com", methods: [.getInfo],
+            notificationTypes: [], maxAmountMsat: 5_000, renewal: .daily, expiresAt: nil, overBudget: .refuse, createdAt: Self.now - 10
+        )
+        try storage.saveWalletConnection(held)
+        #expect(try WalletHost.grantInvitePage(page, storage: storage, now: Self.now))
+        held.signIn = .root
+        #expect(try storage.walletConnection(key: Self.origin.key) == held)
+
+        // The person's own choice stays.
+        held.signIn = .domain
+        try storage.saveWalletConnection(held)
+        #expect(try !WalletHost.grantInvitePage(page, storage: storage, now: Self.now))
+        #expect(try storage.walletConnection(key: Self.origin.key)?.signIn == .domain)
+
+        // An expired connection is replaced by a fresh one.
+        held.signIn = nil
+        held.expiresAt = Self.now - 1
+        try storage.saveWalletConnection(held)
+        #expect(try WalletHost.grantInvitePage(page, storage: storage, now: Self.now))
+        let fresh = try #require(try storage.walletConnection(key: Self.origin.key))
+        #expect(fresh.signIn == .root && fresh.methods.isEmpty && fresh.expiresAt == nil && fresh.createdAt == Self.now)
     }
 
     // MARK: Helpers

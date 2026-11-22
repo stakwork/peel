@@ -691,6 +691,33 @@ public actor WalletHost {
 
     // MARK: Sign in
 
+    /// The page a worker's invite link names (`InviteLink.appOf`, its `a=`)
+    /// signs the account in as you, with no sheet and no tap (only the toast),
+    /// from the first time Peel opens it (docs/phases/13-worker-invite-iphone.md):
+    /// written as Peel opens that page, before it loads, for a new account and
+    /// one already here alike. Called only for a link an invite carried, never
+    /// for a `peel://open` link or an open from the Apps list.
+    ///
+    /// Keyed as that page's sheet-made grant is (`WalletScope.origin`, the
+    /// link's origin exactly) so `signIn` finds it, and titled by its host until
+    /// the app's first sign-in names it. A connection already there keeps its
+    /// wallet grant and gains the sign-in; one that already signs in (a key the
+    /// person chose) is left as it is; an expired one counts as none. True when
+    /// it wrote.
+    @discardableResult
+    public static func grantInvitePage(_ link: PublicAppLink, storage: Storage, now: Int64) throws -> Bool {
+        let key = WalletScope.origin(link.origin).key
+        let held = try storage.walletConnection(key: key).flatMap { $0.isExpired(now: now) ? nil : $0 }
+        if held?.signIn != nil { return false }
+        var connection = held ?? WalletConnection(
+            key: key, app: "/\(link.app ?? "")", title: link.host, place: link.host, methods: [], notificationTypes: [],
+            maxAmountMsat: nil, renewal: .never, expiresAt: nil, overBudget: .ask, createdAt: now
+        )
+        connection.signIn = .root
+        try storage.saveWalletConnection(connection)
+        return true
+    }
+
     /// The host's own ops (specs/WALLET.md §1.2), which only a stranger's
     /// public app that Peel opened may send.
     static let visitorOps = ["buy_credit", "buy_credit_status", "buy_credit_cancel", "sign_in"]
@@ -734,7 +761,10 @@ public actor WalletHost {
         guard caller.personActed else {
             throw WalletError(.restricted, "Peel asks you to sign in only right after you click or tap in the app.")
         }
-        let keys: [SignInKey] = challenge.visitorKey == .domain ? [.domain] : wallet.signsPerDomain ? [.root, .domain] : [.root]
+        // Exactly the key the challenge names: a root one offers the account's alone, even where Peel can sign per domain
+        // (docs/phases/13-worker-invite-iphone.md, as on Android: a worker is not asked to understand the choice, and a
+        // new identity could never be paid).
+        let keys: [SignInKey] = [challenge.visitorKey]
         let offer = SignInOffer(host: host, keys: keys)
         // ONE sheet: the wallet this page asked for beside signing in, when it is not held yet.
         let app = WalletApp(

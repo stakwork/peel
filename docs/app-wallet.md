@@ -122,8 +122,11 @@ it, and the person is then `secp:<x-only key>` there.
   v34): `root` (as you: the account's key, child index 0, the one payments
   come from) or `domain` (a new identity for this app). The first sign-in
   asks on the connection sheet, only after the person's click or tap; a
-  challenge that takes only the domain's key (`visitorKey: domain`) offers
-  only that. When the page already asked for a wallet (`capability`), the
+  challenge offers exactly the key it names: the account's alone for a
+  root one, the domain's alone for `visitorKey: domain` (so no choice to
+  understand; phase 13). The page a worker's invite named is granted `root`
+  before it loads (`WalletHost.grantInvitePage`), so its sign-in asks
+  nothing. When the page already asked for a wallet (`capability`), the
   same sheet asks for it too: ONE sheet. Later sign-ins to the same origin
   sign with no sheet and a toast. Disconnecting ends both. A connection
   that only signs in holds no wallet: `connected` is false and every

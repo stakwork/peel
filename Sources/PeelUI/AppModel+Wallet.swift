@@ -30,6 +30,7 @@ extension AppModel {
                     }
                 } catch {}
             },
+            openedAppsTask(storage),
         ]
     }
 
@@ -37,6 +38,7 @@ extension AppModel {
         let host = wallet
         wallet = nil
         walletConnections = []
+        openedApps = []
         walletListeners = [:]
         if let host { Task { await host.stop() } }
     }

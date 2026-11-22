@@ -404,6 +404,9 @@ public final class AppModel {
     public internal(set) var wallet: WalletHost?
     /// What the person granted apps' pages: Connected apps.
     public internal(set) var walletConnections: [WalletConnection] = []
+    /// The public apps opened here, last opened first: Apps' "Apps you
+    /// opened" (`AppModel+OpenedApps`).
+    public internal(set) var openedApps: [OpenedPublicApp] = []
     /// What the person decided about sites asking for their location:
     /// You › Site location (`AppModel+SiteLocation`).
     public internal(set) var siteLocations: [SiteLocationGrant] = []

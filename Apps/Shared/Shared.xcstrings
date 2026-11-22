@@ -4177,6 +4177,22 @@
         }
       }
     },
+    "keep the app" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "keep the app"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mantener la app"
+          }
+        }
+      }
+    },
     "Key %lld" : {
       "localizations" : {
         "en" : {
@@ -6701,6 +6717,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quitar de Peel"
+          }
+        }
+      }
+    },
+    "remove the app" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "remove the app"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "quitar la app"
           }
         }
       }

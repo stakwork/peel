@@ -10,6 +10,7 @@ import SwiftUI
 /// onboarding".
 struct Onboarding: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneRouter.self) private var router
 
     enum Path { case newAccount, restore }
     enum Step: Hashable { case invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring, restoreName }
@@ -39,6 +40,10 @@ struct Onboarding: View {
                         .navigationBarBackButtonHidden([.showWords, .restoring, .restoreName].contains(step))
                 }
         }
+        // A worker's invite that came by a tapped link or the clipboard
+        // (`PhoneRouter.take(invite:)`): the invite step filled in, on the new-account path.
+        .onAppear { fillInInvite() }
+        .onChange(of: router.pendingInvite) { _, _ in fillInInvite() }
         .onChange(of: steps) { old, new in
             problem = problemAfterBack
             problemAfterBack = nil
@@ -128,7 +133,11 @@ struct Onboarding: View {
                         }
                     }
             } actions: {
-                continueButton(enabled: !invite.trimmed.isEmpty) { go(.name) }
+                continueButton(enabled: !invite.trimmed.isEmpty) {
+                    // A worker's invite also names the app to open once the account is ready, wherever the invite came from.
+                    router.takeInviteApp(from: invite)
+                    go(.name)
+                }
             }
         case .enterWords:
             StepPage(title: String(localized: "Restore with recovery words"), detail: String(localized: "Type them in order, or paste all twelve."),
@@ -247,6 +256,14 @@ struct Onboarding: View {
         self.path = path
         model.notice = nil
         steps = [step]
+    }
+
+    /// The invite waiting for this screen goes into the invite step; the person
+    /// still taps Continue, then names themself and sets a PIN, as ever.
+    private func fillInInvite() {
+        guard let link = router.takePendingInvite() else { return }
+        start(.newAccount, at: .invite)
+        invite = link
     }
 
     private func go(_ step: Step) {

@@ -124,7 +124,7 @@ struct OrgPageSheet<Page: PhonePage>: View {
                     }
                 }
                 .animation(CopyFeedback.exit, value: wallet.toast)
-                .ignoresSafeArea(edges: .bottom)
+                .background { Color(uiColor: controller.pageBackground ?? .systemBackground).ignoresSafeArea() }
                 .navigationTitle(page.title(showingAnotherApp: controller.showsAnotherApp))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -215,6 +215,9 @@ private final class OrgPageController<Page: PhonePage> {
     /// The page shows an app other than the one it opened with: a link in
     /// it opened that one here.
     var showsAnotherApp = false
+    /// The page's own background (`underPageBackgroundColor`), drawn behind
+    /// the web view, into the home-indicator strip below it.
+    var pageBackground: UIColor?
 
     @ObservationIgnored private var page: Page?
     /// The address the last failure was at (`failed`), for Try again.
@@ -242,6 +245,9 @@ private final class OrgPageController<Page: PhonePage> {
             webView.observe(\.estimatedProgress, options: [.new]) { [weak self] _, _ in
                 Task { @MainActor [weak self] in self?.sync() }
             },
+            webView.observe(\.underPageBackgroundColor, options: [.initial, .new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.sync() }
+            },
         ]
     }
 
@@ -250,6 +256,7 @@ private final class OrgPageController<Page: PhonePage> {
         canGoBack = webView.canGoBack
         isLoading = webView.isLoading
         progress = webView.estimatedProgress
+        pageBackground = webView.underPageBackgroundColor
         let shown = webView.url.flatMap { page?.shownApp($0) }
         showsAnotherApp = shown != nil && shown != page.flatMap { $0.shownApp($0.url) }
     }
@@ -344,6 +351,9 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsLinkPreview = false
+        // The web view ends at the bottom safe area and carries no inset of its
+        // own, so the page's viewport is exactly what is visible.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         // Back from a file strut's viewer opened in place (`createWebViewWith`).
         webView.allowsBackForwardNavigationGestures = true
         controller.attach(webView, showing: page)

@@ -277,6 +277,7 @@ strut's whole UI without the token (the iPhone).
   web view's address as strut moves the page in place, so Reload, a page
   closed by the keep-alive and shown again, a preview and a crash all open
   where the app was. Cleared with the account.
+- **The iPhone's layout.** `OrgPageSheet`'s web view ends at the bottom safe area (no `ignoresSafeArea`) and has `contentInsetAdjustmentBehavior = .never`, so the page's viewport (100vh, fixed bottoms) is exactly what shows, as on Android; the strip below it is filled with the page's `underPageBackgroundColor`.
 - **The iPhone.** `OrgPageSheet` opens a link to another app as that app's
   page alone in place (Back returns), with the token, on the person's tap;
   the title is the workspace's while it shows another app. Reload and a

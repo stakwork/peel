@@ -48,7 +48,7 @@ That is stakwork/strut's change, not made here.
   phase turns `.onboarding`): once per process, only with no account on the device and no invite in hand;
   `UIPasteboard.general.hasStrings` first, so an empty clipboard is never read and iOS shows no "Allow Paste" prompt; taken only
   through `InviteLink.fromClipboard`; then treated as a tapped link (invite and `a=`), and the pasteboard cleared if its
-  `changeCount` has not moved. Never logged or stored. No Paste button.
+  `changeCount` has not moved. Never logged or stored. The invite step also has Apple's `PasteButton` (no "Allow Paste?" prompt), which fills the field through `InviteLink.fromClipboard`, else the trimmed text.
 - **Onboarding fill-in** (`Onboarding.fillInInvite`): a pending invite takes the new-account path straight to the invite step,
   filled in; the person still taps Continue, names themself and sets a PIN. Continue also hands the invite step's text to
   `PhoneRouter.takeInviteApp(from:)`, so a pasted or scanned invite (the whole join link included, passed to the core as

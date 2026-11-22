@@ -428,6 +428,29 @@ struct VisitorSignInTests {
         #expect(fresh.signIn == .root && fresh.methods.isEmpty && fresh.expiresAt == nil && fresh.createdAt == Self.now)
     }
 
+    /// The invite page's grant is titled by its host until the app's first
+    /// sign-in names it, so "Apps you opened" shows "Tasks", not the host; a
+    /// title a sheet already set is never renamed.
+    @Test func theFirstInviteSignInNamesTheApp() async throws {
+        let wallet = ScriptedWallet(), person = ScriptedPerson()
+        let host = try host(wallet)
+        let address = try #require(URL(string: "https://shop.example.com/public/?app=strut/worker"))
+        let page = try #require(PublicAppLink(address))
+        try WalletHost.grantInvitePage(page, storage: storage, now: Self.now)
+        try storage.rememberPublicApp(page, at: Self.now)
+        let reply = await host.handle(signIn(challenge("shop.example.com"), title: "Tasks"), from: caller(person, acted: false))
+        #expect(reply.objectValue["result"]?.objectValue["key"] == .string(keyG))
+        #expect(try storage.walletConnection(key: Self.origin.key)?.title == "Tasks")
+        #expect(try storage.openedPublicApps().map(\.title) == ["Tasks"])
+
+        // Named by a sheet already: another title does not rename it.
+        var named = try #require(try storage.walletConnection(key: Self.origin.key))
+        named.title = "Moon Game"
+        try storage.saveWalletConnection(named)
+        _ = await host.handle(signIn(challenge("shop.example.com"), title: "Tasks"), from: caller(person, acted: false))
+        #expect(try storage.walletConnection(key: Self.origin.key)?.title == "Moon Game")
+    }
+
     // MARK: Helpers
 
     func host(_ wallet: ScriptedWallet) throws -> WalletHost {
@@ -458,10 +481,10 @@ struct VisitorSignInTests {
         .string(challengeText(host, key: key, exp: exp) ?? "")
     }
 
-    func signIn(_ challenge: JSONValue, seller: String = "https://shop.example.com") -> JSONValue {
+    func signIn(_ challenge: JSONValue, seller: String = "https://shop.example.com", title: String = "Moon Game") -> JSONValue {
         .object([
             "v": .int(1), "op": .string("sign_in"), "seller": .string(seller), "challenge": challenge,
-            "app": .object(["name": .string("moon-game"), "version": .string("v3"), "title": .string("Moon Game")]),
+            "app": .object(["name": .string("moon-game"), "version": .string("v3"), "title": .string(title)]),
         ])
     }
 

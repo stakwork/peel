@@ -1573,6 +1573,11 @@ public final class AppModel {
     /// The colours other devices gave people and chats, by colour key, as
     /// `#rrggbb` (`Engine.syncedColours`).
     public private(set) var syncedColours: [String: String] = [:]
+    /// What this account's agent is called, as last chosen on any device
+    /// (`Engine.syncedAgentName`); nil until one was. Every platform keeps
+    /// it, the phone too, where there is no agent to name: a screen that
+    /// shows the agent's name there reads it from here.
+    public private(set) var syncedAgentName: String?
     /// The file says Face ID is on on another device and it is off here:
     /// You offers to turn it on, with a face (`turnOnBiometrics`).
     public internal(set) var biometricsOffered = false
@@ -1605,14 +1610,20 @@ public final class AppModel {
     /// What this account's preferences file gives the app beyond the
     /// settings it reads from `settings()`: the colours other devices gave
     /// (`chat_color`, import-only), what Face ID's choice elsewhere asks
-    /// of this device, and whether the file holds a different agent key.
+    /// of this device, the agent's name, and whether the file holds a
+    /// different agent key.
     /// Read when an account opens and on every `.preferencesChanged`.
     private func refreshSyncedPreferences(_ engine: Engine) async {
         let colours = (try? await engine.syncedColours()) ?? [:]
         let wish = try? await engine.biometricWish()
         let adoptable = await engine.agentCredentialAdoptable
+        let agentName = try? await engine.syncedAgentName()
         guard self.engine === engine else { return }
         if colours != syncedColours { syncedColours = colours }
+        if agentName != syncedAgentName { syncedAgentName = agentName }
+        // The agent takes the name the file gave; none in the file leaves its own.
+        // `rename` only changes the agent here: it does not date the name anew.
+        if let agentName, let agent, agent.name != agentName { try? agent.rename(agentName) }
         agentKeyAvailable = adoptable
         guard let biometrics = profile?.biometrics, let wish else {
             biometricsOffered = false
@@ -1742,6 +1753,7 @@ public final class AppModel {
         sidebarLayout = savedLayout
         senderZoneCache = [:]
         syncedColours = [:]
+        syncedAgentName = nil
         biometricsOffered = false
         agentKeyAvailable = false
         lastActiveAt = nil

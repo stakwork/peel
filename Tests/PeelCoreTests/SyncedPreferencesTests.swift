@@ -247,4 +247,66 @@ struct SyncedPreferencesTests {
         ]
         for text in texts { #expect(!text.contains(Self.testKey), "\(text)") }
     }
+
+    // MARK: peel.agent_name
+
+    /// The name is its own account-wide item, Peel-only, and never an opt-in
+    /// key: a device with no agent (the phone) syncs and keeps it too.
+    @Test func theAgentNameIsItsOwnItemOnEveryDevice() throws {
+        #expect(Preference<String>.agentName.key == "peel.agent_name")
+        #expect(Preference<String>.agentName.scope == .account)
+        #expect(!Preference<String>.agentName.optIn && Preference<String>.agentName.uploads)
+        #expect(Preferences.synced.contains("peel.agent_name"))
+        #expect(Preferences.syncedKeys(enabling: []).contains("peel.agent_name"))
+        // Separate from the key's item, which keeps its own name part.
+        #expect(Preferences.agentNameKey != Preferences.agentConfigKey)
+    }
+
+    @Test func aNameIsReadAndWrittenTrimmed() throws {
+        let name = Preference<String>.agentName
+        #expect(name.read(.string("  Pip ")) == "Pip")
+        #expect(name.read(.string("   ")) == nil && name.read(.string("")) == nil)
+        #expect(name.read(.int(5)) == nil)
+        #expect(try name.write(" Pip ") == .string("Pip"))
+        #expect(throws: UnwritablePreference.self) { try name.write("  ") }
+        // What Peel writes the official apps keep as it is.
+        #expect(Preferences.isOfficialFixedPoint(try name.write("Pip the second")))
+    }
+
+    @Test func aRenameGoesUpAndIsTakenByTheOtherDevice() throws {
+        let storage = try profile.storage()
+        try storage.setPreference(.agentName, "Pip", at: Date(timeIntervalSince1970: 100))
+        let server = try file(item("peel.agent_name", "Old", at: 50))
+        let merge = server.merged(with: try storage.preferenceRows(), keys: Preferences.synced)
+        #expect(merge.changed && merge.apply.isEmpty && merge.uploads.map(\.key) == ["peel.agent_name"])
+        #expect(try merge.file.text.contains(#""value":"Pip""#))
+
+        // The other device, holding "Old" dated earlier, takes the newer name.
+        let other = try file(item("peel.agent_name", "Pip", at: 100))
+        let taken = other.merged(with: [row("peel.agent_name", #""Old""#, at: 50)], keys: Preferences.synced)
+        #expect(taken.apply.map(\.row) == [row("peel.agent_name", #""Pip""#, at: 100)] && !taken.changed)
+    }
+
+    /// A file from before the item, or one that lacks it, neither gives a
+    /// name nor takes one away; what else it holds is kept as it is.
+    @Test func aFileWithoutTheNameChangesNothingHere() throws {
+        let old = try file(item("tip_amount", "500", at: 5))
+        let none = old.merged(with: [], keys: Preferences.synced)
+        #expect(none.apply.map(\.row.key) == ["tip_amount"])
+        #expect(none.file == old)
+        let storage = try profile.storage()
+        _ = try storage.applyPreferences(none.apply)
+        #expect(try storage.preference(.agentName) == nil)
+        // A name here, undated by the file: it is added, and nothing else is wiped.
+        let mine = old.merged(with: [row("peel.agent_name", #""Pip""#, at: 7)], keys: Preferences.synced)
+        #expect(mine.changed && mine.file.items.count == 2)
+    }
+
+    @Test func aBlankNameInTheFileIsNotTaken() throws {
+        let server = try file(item("peel.agent_name", "   ", at: 50))
+        #expect(server.merged(with: [], keys: Preferences.synced).apply.isEmpty)
+        let kept = server.merged(with: [row("peel.agent_name", #""Pip""#, at: 10)], keys: Preferences.synced)
+        // The name stays; the file's date is taken, as for any refused value.
+        #expect(kept.apply.map(\.row) == [row("peel.agent_name", #""Pip""#, at: 50)])
+    }
 }

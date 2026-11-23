@@ -268,6 +268,34 @@ extension Journeys {
             await alice.close()
         }
 
+        /// The agent's name is its own item: a rename on the Mac goes up, the phone
+        /// (no agent) takes and keeps it, and a file without the item changes no name.
+        @Test func theAgentNameFollowsTheAccount() async throws {
+            let mac = try await Person.create("alice")
+            let phone = try await Person.restore("alice", mnemonic: mac.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) { await !phone.engine.isSyncingHistory }
+            #expect(try await phone.engine.syncedAgentName() == nil)
+
+            try await mac.engine.agentNameChanged("Pip")
+            #expect(try await mac.engine.syncPreferences().uploaded)
+            #expect(try await Self.value("peel.agent_name", of: mac) == .string("Pip"))
+            // Not carried by the agent's key item, which a device with no key never writes.
+            #expect(try await Self.value("ai_agent_config", of: mac) == nil)
+
+            _ = try await phone.engine.syncPreferences()
+            #expect(try await phone.engine.syncedAgentName() == "Pip")
+            // Synced again with nothing new: no upload, the name stays.
+            #expect(try await !phone.engine.syncPreferences().uploaded)
+            #expect(try await phone.engine.syncedAgentName() == "Pip")
+
+            // An official app rewrites the file without the item: nothing is wiped here.
+            try await Self.write(#"{"items":[]}"#, for: phone)
+            _ = try await phone.engine.syncPreferences()
+            #expect(try await phone.engine.syncedAgentName() == "Pip")
+            await phone.close()
+            await mac.close()
+        }
+
         /// The twelve words on a new device bring the settings back as soon
         /// as it is online, with no sync asked for.
         @Test func restoreBringsSettingsBack() async throws {

@@ -114,6 +114,42 @@ struct AgentSessionTests {
         #expect(session(try SQLiteAgentStore(path: path, device: "mac")).name == "Pip")
     }
 
+    /// A rename changes the agent's own record only: the name travels as its
+    /// own preferences item, so the Keychain credential is left as it was.
+    @Test func renamingLeavesTheCredentialAlone() throws {
+        let credentials = MemoryCredentials()
+        var credential = testKey
+        credential.agentName = "Bot"
+        try credentials.write(credential)
+        let agent = session(try SQLiteAgentStore.inMemory(device: "mac"), credentials: credentials)
+        try agent.rename("Pip")
+        #expect(agent.name == "Pip")
+        #expect(try credentials.read() == credential)
+    }
+
+    /// A key from the file names an agent never named here, and only that.
+    @Test func aKeysNameSeedsAnUnnamedAgentOnly() throws {
+        let credentials = MemoryCredentials()
+        let agent = session(try SQLiteAgentStore.inMemory(device: "mac"), credentials: credentials)
+        var credential = testKey
+        credential.agentName = "Sphinx Agent"
+        try credentials.write(credential)
+        agent.reloadConnection()
+        #expect(agent.name == AgentSession.defaultName)
+        credential.agentName = "Bot"
+        try credentials.write(credential)
+        agent.reloadConnection()
+        #expect(agent.name == "Bot")
+        // Named now (here or from the file): a later key's name changes nothing.
+        credential.agentName = "Other"
+        try credentials.write(credential)
+        agent.reloadConnection()
+        #expect(agent.name == "Bot")
+        try agent.rename("Pip")
+        agent.reloadConnection()
+        #expect(agent.name == "Pip")
+    }
+
     @Test func aCredentialNeverPrintsItsKey() {
         #expect(!String(describing: testKey).contains("4f2a"))
         #expect(!String(reflecting: testKey).contains("sk-ant"))

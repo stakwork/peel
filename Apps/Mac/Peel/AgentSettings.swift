@@ -249,8 +249,9 @@ private struct AgentNameRow: View {
         guard !draft.trimmed.isEmpty else { return }
         do {
             try agent.rename(draft)
-            // The name rides with the key in the preferences file: dated and synced shortly.
-            Task { try? await model.engine?.agentCredentialConnected() }
+            // The name is its own item in the preferences file: dated now and synced shortly.
+            let name = agent.name
+            Task { try? await model.engine?.agentNameChanged(name) }
             editing = false
         } catch {
             problem = PeelError.readable(error)

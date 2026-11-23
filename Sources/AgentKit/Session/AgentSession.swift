@@ -190,12 +190,31 @@ public final class AgentSession {
     /// strut as a manual connect would (`credentialChanged`).
     public func reloadConnection() {
         do {
-            connection = try credentials.read().map(Connection.init)
+            let credential = try credentials.read()
+            connection = credential.map(Connection.init)
+            seedName(from: credential)
         } catch {
             Diagnostics.note(errorKind: .other)
             notice = "Could not read the connected model's key: \(error.localizedDescription)"
         }
     }
+
+    /// A key from the file carries the name the official apps know (its
+    /// `ai_agent_config`). It names an agent that has never been named here,
+    /// and nothing else: the agent's own name item, or a rename, beats it.
+    private func seedName(from credential: AgentCredential?) {
+        guard name == Self.defaultName, let seed = credential?.agentName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !seed.isEmpty, seed != Self.defaultName, seed != Self.officialDefaultName else { return }
+        do {
+            guard try store.records(type: RecordType.agent, limit: 1).isEmpty else { return }
+            try rename(seed)
+        } catch {
+            Diagnostics.note(errorKind: .other)
+        }
+    }
+
+    /// What the official apps call an agent that has no name (`AgentConfig.defaultName`).
+    static let officialDefaultName = "Sphinx Agent"
 
     /// Changes the model the connected key uses.
     public func setModel(_ model: String) throws {
@@ -232,7 +251,12 @@ public final class AgentSession {
         }
     }
 
-    /// Renames the agent; an empty name is refused.
+    /// Renames the agent; an empty name is refused. Only the agent's own
+    /// record changes: the name reaches the account's other devices through
+    /// the preferences file (`Engine.agentNameChanged`, called by whoever
+    /// the person renamed it through), not through the Keychain credential.
+    /// The app also calls this to apply a name the file gave, which must not
+    /// call `agentNameChanged` again.
     public func rename(_ newName: String) throws {
         let newName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !newName.isEmpty, newName != name else { return }
@@ -242,13 +266,6 @@ public final class AgentSession {
             try store.add(type: RecordType.agent, name: newName, createdBy: AgentTurn.Author.user.rawValue)
         }
         name = newName
-        // Keep the Keychain copy's name in step so the preferences sync sends
-        // it. No key connected yet: nothing to update. `connection` is left
-        // alone, as reassigning it would restart strut.
-        if var credential = try credentials.read() {
-            credential.agentName = newName
-            try credentials.write(credential)
-        }
     }
 
     // MARK: Records

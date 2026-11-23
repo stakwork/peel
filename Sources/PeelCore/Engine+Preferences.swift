@@ -86,6 +86,21 @@ extension Engine {
         schedulePreferencesSync(after: Self.preferencesDebounce)
     }
 
+    /// The agent's name as last chosen or synced (`peel.agent_name`); nil
+    /// when no device ever chose one, so a device keeps the name it has.
+    /// Every device keeps it, the iPhone too, though only the Mac has an agent.
+    public func syncedAgentName() throws -> String? {
+        try storage.preference(.agentName)
+    }
+
+    /// The person renamed the agent here: the name is stored with a new date
+    /// and a sync goes up shortly. Never for a name a sync applied. Throws
+    /// for a name the file cannot hold unchanged by the official apps (a
+    /// bare number, "true"/"false"): it then stays on this device.
+    public func agentNameChanged(_ name: String) throws {
+        try set(.agentName, name)
+    }
+
     /// Whether the file holds an agent key different from the one
     /// connected here, for the app to offer (`adoptSyncedAgentCredential`).
     public var agentCredentialAdoptable: Bool { preferencesWork.adoptable }

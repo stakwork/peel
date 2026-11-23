@@ -136,6 +136,22 @@ extension Preference where Value == String {
         Self(key: "peel.time_zone", scope: .account, read: \.string, write: { .string($0) })
     }
 
+    /// What the personal agent is called, on every device that shows or
+    /// keeps its name: Peel only (`peel.`: the official apps keep and ignore
+    /// it, and read the name they know from `ai_agent_config`). Its own item,
+    /// not part of the agent's key, so a rename travels on its own date
+    /// (newest wins) and a device without an agent (the iPhone) still keeps
+    /// it in the file and in its database, never an opt-in. Read and stored
+    /// trimmed; a blank name is refused, so an item without a usable name
+    /// never replaces one.
+    public static var agentName: Self {
+        Self(key: Preferences.agentNameKey, scope: .account, read: { $0.string.flatMap(Preferences.agentName(from:)) },
+             write: { name in
+                 guard let trimmed = Preferences.agentName(from: name) else { throw UnwritablePreference(key: Preferences.agentNameKey) }
+                 return .string(trimmed)
+             }, canonical: true)
+    }
+
     /// The memes server this device has seen the account's preferences
     /// file on (one decrypted here, or an upload done). From then on that
     /// server's "not found", which it also says for a storage error, is not
@@ -302,6 +318,13 @@ public enum Preferences {
     static let chatColorKey = "chat_color"
     static let biometricKey = "biometric_enabled"
     static let agentConfigKey = "ai_agent_config"
+    /// The agent's name, its own Peel-only item (identifier `accountWide`).
+    static let agentNameKey = "peel.agent_name"
+
+    /// A name as it is kept: trimmed, nil when nothing is left.
+    static func agentName(from text: String) -> String? {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
 
     /// A registered key: where it goes, and its apply policy
     /// (`Preference.takes`, false for a value that is not one of its) over
@@ -330,6 +353,7 @@ public enum Preferences {
         Preference<UInt64>.preferencesSince.entry,
         Preference<String>.timeZone.entry,
         Preference<String>.chatColor.entry,
+        Preference<String>.agentName.entry,
         Preference<Bool>.biometricEnabled.entry,
         Preference<Bool>.autoDownloadMedia.entry,
         Preference<Bool>.chatsRecentView.entry,

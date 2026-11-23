@@ -19,7 +19,8 @@ Extended 2026-10-21: `chat_color` (import-only), `biometric_enabled` (iOS
 only, never enrolling) and `ai_agent_config` (a secret, Keychain only) now
 sync too (decisions 9 to 12). Extended 2026-11-02: `pin_timeout` syncs too,
 as an opt-in key on devices where the account has a PIN (decision 13,
-which replaces decisions 4 and 12).
+which replaces decisions 4 and 12). Extended: the agent's name syncs as its
+own item, `peel.agent_name` (decision 14).
 
 Three PRs: (a) this file, (b) the layer and the migration onto it, (c) the
 sync. Earlier notes: `05-parity.md`, "Settings sync" (2026-10-08), and
@@ -159,6 +160,7 @@ The keys (`DataSyncModels.swift:13-23`; iOS has the first six only):
 | Colours others gave a person or chat | `preference` (`chat_color`, identifier the colour key) | `chat_color` | **Synced, import-only** (decision 9): shown as the nearest of the eight hues, never uploaded |
 | Face ID on/off (`BiometricUnlock`, Keychain) | `biometric_enabled` row = the person's wish; the PIN stays in the biometric Keychain item | `biometric_enabled` | **Synced on iOS only**, never silently enrolling (decision 10) |
 | The agent's model and key (`Profile.agentCredential`, Keychain) | the key only in the Keychain; a placeholder row holds the date | `ai_agent_config` | **Synced where there is an agent** (the Mac), the key only through the Keychain (decision 11) |
+| The agent's name (`AgentSession.name`, its record in `agent.sqlite`) | `preference` `peel.agent_name`, a trimmed string | none (the official apps read a name only from `ai_agent_config`) | **Synced on every device**, Peel-only, its own item (decision 14) |
 | Mute levels | `chatState`, from the server | none (the server keeps them) | Unchanged: already account-wide |
 | Theme | none (Peel is always dark) | none | Nothing to sync |
 | Tribes, memes and call servers | `setting` | none | Account configuration, not preferences: stay in `setting` |
@@ -565,6 +567,49 @@ change to storage or sync:
       `pinTimeoutHours` again (`AppModel`). v32 moves an old
       `device.pin_timeout_hours` row to it, keeping the row's date.
 
+14. **The agent's name is its own item, `peel.agent_name`** (added with the
+    fix for a Mac rename never reaching the phone). The name used to travel
+    only as the last part of `ai_agent_config`, which is a secret item:
+    dated only by a connect, and uploaded only from a Keychain credential
+    that holds a key. A rename changed neither, so it never went up. Now:
+    - Registered as `Preference<String>.agentName`, key `peel.agent_name`,
+      identifier `"0"`, scope `.account`, **not opt-in**: every device
+      merges it, the iPhone too, which has no agent but keeps the item in
+      its database and in the file, and shows it where it shows the agent's
+      name (`AppModel.syncedAgentName`). The official apps keep and ignore
+      a `peel.` key.
+    - Read and stored trimmed (`canonical`); a blank or non-string value in
+      the file is refused, and the name here stays (the refused value still
+      gives the row the file's date, as for any refused value).
+      Last writer wins by item date, like every other key.
+    - *Mac, a rename*: `AgentSession.rename` changes the agent's record only
+      (it no longer touches the Keychain credential). The rename UI then
+      calls `Engine.agentNameChanged(_:)`, which stores the name with a new
+      date and schedules the debounced sync (`Engine.set`), as a connect
+      calls `agentCredentialConnected()` for the key. A name the official
+      apps would retype ("123", "007", "true") is refused by
+      `setPreference` (the usual fixed-point rule) and stays on this Mac.
+    - *Any device, a sync*: `.preferencesChanged` makes `AppModel` read
+      `Engine.syncedAgentName()`; it sets `syncedAgentName` and, on the Mac,
+      applies it with `AgentSession.rename`, which does not date it again,
+      so applying never uploads.
+    - *Old files*: a file without the item is merged as for any absent key:
+      nothing is applied, so no local name is replaced, and nothing else in
+      the file is touched. A name here with no item in the file is added on
+      the next sync.
+    - *`ai_agent_config` still carries a name*: it is read, kept beside the
+      key and written back unchanged (the official apps use it). It is no
+      longer the way a rename travels. After a key from the file is kept,
+      its name seeds an agent never named here (no `Agent` record, and not
+      the default or "Sphinx Agent"); the `peel.agent_name` item, applied
+      in the same sync, then wins. The name inside `ai_agent_config` is not
+      updated by a rename, so an official app keeps showing the name it
+      last had; changing that would date the key's item and upload the
+      key again, which this decision does not do.
+    - Not done: a Mac that already holds a name chosen before this item
+      existed does not upload it until it is renamed once (a name never
+      dated here would otherwise beat a newer one from another device).
+
 ## Verification plan
 
 - Unit: the registry's encodings are fixed points of a port of the
@@ -685,3 +730,11 @@ change to storage or sync:
   wrote with the new keys, and the iOS and Mac UI, are unverified. The CLI
   has no test target, so its redaction is tested through
   `PreferenceRow.displayValue`.
+- 2026-11-23, the agent's name as its own item (decision 14): `peel.agent_name`
+  in the registry (`Preference<String>.agentName`), `Engine.agentNameChanged`
+  and `syncedAgentName`, `AppModel.syncedAgentName` and the Mac agent's
+  rename applied from the file; `AgentSession.rename` no longer writes the
+  Keychain. Tests: `SyncedPreferencesTests` (the item in the merge),
+  `AgentSessionTests` (rename leaves the credential, the key's name seeds),
+  and `Journeys.Preferences.theAgentNameFollowsTheAccount`. Not run: no
+  Swift toolchain in that checkout.

@@ -301,7 +301,21 @@ private struct CallTileView: View {
             : (tile.isYou ? String(localized: "You") : shown.name)
         ZStack(alignment: .bottomLeading) {
             tile.isScreen ? Theme.callBackground : Theme.quote
-            if tile.paused {
+            if let video = tile.video {
+                // A screen is never cropped.
+                // Clicks go to the tile, not to LiveKit's view.
+                // When paused the track is muted, so the last frame stays.
+                SwiftUIVideoView(video, layoutMode: tile.isScreen ? .fit : .fill)
+                    .allowsHitTesting(false)
+                    .overlay(alignment: .bottomTrailing) {
+                        if tile.paused {
+                            Image(systemName: "pause.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(Theme.secondaryText)
+                                .padding(8)
+                        }
+                    }
+            } else if tile.paused {
                 VStack(spacing: 6) {
                     Image(systemName: "pause.circle")
                         .font(.system(size: 28))
@@ -310,11 +324,6 @@ private struct CallTileView: View {
                 }
                 .foregroundStyle(Theme.secondaryText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let video = tile.video {
-                // A screen is never cropped.
-                // Clicks go to the tile, not to LiveKit's view.
-                SwiftUIVideoView(video, layoutMode: tile.isScreen ? .fit : .fill)
-                    .allowsHitTesting(false)
             } else {
                 Avatar(name: shown.avatarName, url: shown.photoURL, size: avatarSize, hue: shown.hue)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

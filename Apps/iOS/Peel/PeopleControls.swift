@@ -148,7 +148,7 @@ struct CodeEntry: View {
                 PasteButton(payloadType: String.self) { texts in
                     if let first = texts.first { take(first.trimmed) }
                 }
-                .buttonBorderShape(.capsule)
+                .peelPasteButton()
                 .labelStyle(.iconOnly)
                 .accessibilityLabel("Paste")
                 // It decides whether it is enabled only as it appears: looked

@@ -3,7 +3,8 @@ import PeelUI
 import SwiftUI
 
 /// You (docs/design/iphone.md, screen 7): your photo, name and balance; the
-/// agent; Stadeum (`StadeumSection`); the account's words, PIN, Face ID, boost amount and server; then
+/// agent and Voice (one row; its settings are a screen of their own,
+/// `VoiceScreen`); Stadeum (`StadeumSection`); the account's words, PIN, Face ID, boost amount and server; then
 /// Forget, the only red. Every change is an `AppModel` operation, as on the
 /// Mac's `AccountView`.
 struct YouTab: View {
@@ -11,8 +12,6 @@ struct YouTab: View {
     @Environment(PhoneRouter.self) private var router
     @State private var editingName = false
     @AppStorage(VoiceModeSetting.key) private var voiceModeOn = VoiceModeSetting.defaultValue
-    @AppStorage(VoiceModeInteraction.key) private var interaction = VoiceModeInteraction.defaultValue
-    @AppStorage(VoiceModeSubtitlesSetting.key) private var showSubtitles = VoiceModeSubtitlesSetting.defaultValue
     /// What this phone unlocks with, if anything: a system query, made once.
     @State private var biometryName: String?
 
@@ -30,31 +29,11 @@ struct YouTab: View {
                     .listRowSeparator(.hidden)
                 Section {
                     AgentRow()
+                    NavigationLink(value: YouRoute.voice) {
+                        LabeledContent("Voice", value: voiceModeOn ? String(localized: "Voice Mode on") : "")
+                    }
                 } header: {
                     PhoneSectionHeader(String(localized: "Agent"))
-                }
-                .phoneRows(.grouped)
-                Section {
-                    Toggle(isOn: $voiceModeOn) { Text("Voice Mode") }
-                    Picker("Interaction mode", selection: $interaction) {
-                        ForEach(VoiceModeInteraction.allCases, id: \.self) { mode in
-                            Text(mode.accessibilityLabel).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    if interaction.speaksReply {
-                        Toggle("Show subtitles", isOn: $showSubtitles)
-                    }
-                } footer: {
-                    Text("Open Peel on a mic and a text box instead of Chats. The grid icon at the top right turns Voice Mode off.")
-                }
-                .phoneRows(.grouped)
-                Section {
-                    VoiceModeSettingsFields()
-                } header: {
-                    PhoneSectionHeader(String(localized: "Voice mode"))
-                } footer: {
-                    Text("Talk to Peel by voice from its chat. Speech is recognised on this iPhone. Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default.")
                 }
                 .phoneRows(.grouped)
                 StadeumSection()
@@ -123,6 +102,7 @@ struct YouTab: View {
             .navigationDestination(isPresented: $editingName) { NameEditor() }
             .navigationDestination(for: YouRoute.self) { route in
                 switch route {
+                case .voice: VoiceScreen()
                 case .words: WordsScreen()
                 case .changePIN: ChangePIN()
                 case .boostAmount: BoostAmountScreen()
@@ -133,6 +113,47 @@ struct YouTab: View {
                 }
             }
         }
+    }
+}
+
+/// Talking to Peel by voice, off the You page so it stays short: Voice Mode
+/// (Peel opening on a mic) and how it talks, then the voice settings for
+/// talking from its chat.
+private struct VoiceScreen: View {
+    @AppStorage(VoiceModeSetting.key) private var voiceModeOn = VoiceModeSetting.defaultValue
+    @AppStorage(VoiceModeInteraction.key) private var interaction = VoiceModeInteraction.defaultValue
+    @AppStorage(VoiceModeSubtitlesSetting.key) private var showSubtitles = VoiceModeSubtitlesSetting.defaultValue
+
+    var body: some View {
+        List {
+            Section {
+                Toggle(isOn: $voiceModeOn) { Text("Voice Mode") }
+                Picker("Interaction mode", selection: $interaction) {
+                    ForEach(VoiceModeInteraction.allCases, id: \.self) { mode in
+                        Text(mode.accessibilityLabel).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                if interaction.speaksReply {
+                    Toggle("Show subtitles", isOn: $showSubtitles)
+                }
+            } footer: {
+                Text("Open Peel on a mic and a text box instead of Chats. The grid icon at the top right turns Voice Mode off.")
+            }
+            .phoneRows(.grouped)
+            Section {
+                VoiceModeSettingsFields()
+            } header: {
+                PhoneSectionHeader(String(localized: "Talking in a chat"))
+            } footer: {
+                Text("Talk to Peel by voice from its chat. Speech is recognised on this iPhone. Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default.")
+            }
+            .phoneRows(.grouped)
+        }
+        .phoneList(.grouped)
+        .phoneFont(.row)
+        .navigationTitle("Voice")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

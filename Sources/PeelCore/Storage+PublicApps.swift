@@ -17,16 +17,22 @@ public struct OpenedPublicApp: Decodable, Sendable, Equatable, Identifiable, Fet
     /// The title the origin's wallet connection holds, once the app's first
     /// sign-in named it (the app's own claim, cleaned when it was saved).
     public var connectionTitle: String?
+    /// The title the seller's own listing gave the app (`PublicAppLink.appTitle`),
+    /// refreshed at each opening. Android keeps its own copy of this rule.
+    public var appTitle: String?
 
     public var id: String { "\(seller) \(app)" }
 
     /// The link to open it again; nil for an address today's rules refuse.
     public var link: PublicAppLink? { URL(string: url).flatMap { PublicAppLink($0) } }
 
-    /// What the row is called: the connection's title, else the host.
+    /// What the row is called: the connection's title (unless it is only the
+    /// host, an invite's placeholder), else the seller's title, else the host.
     public var title: String {
-        if let connectionTitle, !connectionTitle.isEmpty { return connectionTitle }
-        return link?.host ?? origin
+        let host = link?.host ?? origin
+        if let connectionTitle, !connectionTitle.isEmpty, connectionTitle != host { return connectionTitle }
+        if let appTitle, !appTitle.isEmpty { return appTitle }
+        return host
     }
 
     /// Under the title: where it is and which app, "acme.example.com · strut/worker".
@@ -52,8 +58,21 @@ extension Storage {
     public func rememberPublicApp(_ link: PublicAppLink, at: Int64) throws {
         try pool.write { db in
             try db.execute(
-                sql: "INSERT OR REPLACE INTO publicApp (seller, app, url, origin, openedAt) VALUES (?, ?, ?, ?, ?)",
+                sql: """
+                    INSERT INTO publicApp (seller, app, url, origin, openedAt) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(seller, app) DO UPDATE SET
+                        url = excluded.url, origin = excluded.origin, openedAt = excluded.openedAt
+                    """,
                 arguments: [link.seller.absoluteString, link.app ?? "", link.url.absoluteString, link.origin, at]
+            )
+        }
+    }
+
+    /// Keeps the title the seller gave an opened app; none changes nothing.
+    public func setPublicAppTitle(seller: String, app: String, title: String) throws {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE publicApp SET title = ? WHERE seller = ? AND app = ?", arguments: [title, seller, app]
             )
         }
     }
@@ -74,7 +93,7 @@ extension Storage {
 
     private static func openedPublicApps(_ db: Database) throws -> [OpenedPublicApp] {
         try OpenedPublicApp.fetchAll(db, sql: """
-            SELECT p.seller, p.app, p.url, p.origin, p.openedAt, w.title AS connectionTitle
+            SELECT p.seller, p.app, p.url, p.origin, p.openedAt, w.title AS connectionTitle, p.title AS appTitle
             FROM publicApp p LEFT JOIN walletConnection w ON w.key = ? || p.origin
             ORDER BY p.openedAt DESC, p.url ASC
             """, arguments: [originKeyPrefix])

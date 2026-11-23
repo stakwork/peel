@@ -25,8 +25,8 @@ public enum ContactCode: Sendable, Equatable {
         if text.lowercased().hasPrefix("sphinx.chat://") {
             return try link(text)
         }
-        // Peel's own tribe link.
-        if text.lowercased().hasPrefix("peel://tribe") {
+        // Peel's own links: only a tribe's is a contact code.
+        if text.lowercased().hasPrefix("peel://") {
             guard let tribe = TribeLink(text) else { throw Engine.Failure.notAContactCode }
             return .tribe(tribe)
         }

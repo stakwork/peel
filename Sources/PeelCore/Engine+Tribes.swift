@@ -32,7 +32,7 @@ extension Engine {
         return info
     }
 
-    /// Joins the tribe a `sphinx.chat://?action=tribeV2` link points to, paying
+    /// Joins the tribe a `peel://tribe` (or old `sphinx.chat://?action=tribeV2`) link points to, paying
     /// its price to join (1 sat if it has none, as the official apps do). The
     /// tribe is recorded before the join goes out, so the history it replays
     /// is filed under the tribe. Joining a tribe already joined does nothing.

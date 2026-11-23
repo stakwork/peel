@@ -23,7 +23,7 @@ struct JoinTribeForm: View {
         // The compact form (one field): the link, then the tribe.
         Panel(String(localized: "Join a tribe"), compact: true, close: done) {
             FormItem(label: String(localized: "Tribe link")) {
-                FormTextField(label: String(localized: "Tribe link"), prompt: "sphinx.chat://?action=tribeV2…", text: $lookup.link, axis: .vertical)
+                FormTextField(label: String(localized: "Tribe link"), prompt: "peel://tribe?…", text: $lookup.link, axis: .vertical)
             }
             // Return looks up, then joins once the preview is up, as the buttons would.
             .onSubmit { Task { await submit() } }

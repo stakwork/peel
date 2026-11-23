@@ -33,6 +33,23 @@ extension AppModel {
         } catch {
             notice = PeelError.noted(error, couldNot: String(localized: "keep the app", table: "Shared"))
         }
+        refreshTitle(of: link, storage: storage)
+    }
+
+    /// Asks the seller for the app's title at every opening, so rows made
+    /// before it (and sessions that never sign in again) are named. Failures
+    /// are silent: the old title stays.
+    private func refreshTitle(of link: PublicAppLink, storage: Storage) {
+        Task {
+            guard let title = try? await link.appTitle() else { return }
+            try? storage.setPublicAppTitle(seller: link.seller.absoluteString, app: link.app ?? "", title: title)
+            // An invite's placeholder connection (titled by its place) is named as a first sign-in would.
+            let key = WalletScope.origin(link.origin).key
+            if var held = try? storage.walletConnection(key: key), held.title == held.place, held.title != title {
+                held.title = title
+                try? storage.saveWalletConnection(held)
+            }
+        }
     }
 
     /// Takes one app off Apps' list; its connection stays.

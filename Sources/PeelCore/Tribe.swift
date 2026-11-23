@@ -389,30 +389,34 @@ public struct TribeSettings: Codable, Sendable, Equatable {
     }
 }
 
-/// A tribe link, in either form: the official apps' `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>`
-/// (what Share, Copy and the QR code write) or Peel's own `peel://tribe?pubkey=<pubkey>&host=<host>`, which an
-/// app can register by its host. Read strictly: the scheme and action, a 66-hex pubkey and a plain host
-/// (`isPlainHost`); any other parameter is ignored. Every tribe link is built here (`text`, `peelText`), so
-/// changing which form Peel shares is a one-line change in `Tribe.link`.
+/// A tribe link: `peel://tribe?pubkey=<pubkey>&host=<host>`. Peel registers
+/// only its own scheme, so this is the link it writes; the official apps'
+/// `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>` is still read.
+/// Either needs a 66-hex pubkey and a plain host (`isPlainHost`). Peel's own
+/// is read strictly (`PeelLink.values`); the official form ignores any other
+/// parameter.
 public struct TribeLink: Sendable, Hashable {
     public let pubkey: String
     public let host: String
 
     public init?(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let components = URLComponents(string: trimmed), let scheme = components.scheme?.lowercased() else { return nil }
-        let items = components.queryItems ?? []
-        func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
-        switch scheme {
-        case "sphinx.chat":
+        let pubkey: String?
+        let host: String?
+        if trimmed.lowercased().hasPrefix("peel://") {
+            guard let url = URL(string: trimmed),
+                  let values = PeelLink.values(url, host: "tribe", names: ["pubkey", "host"]) else { return nil }
+            pubkey = values["pubkey"]
+            host = values["host"]
+        } else {
+            guard let components = URLComponents(string: trimmed), components.scheme?.lowercased() == "sphinx.chat" else { return nil }
+            let items = components.queryItems ?? []
+            func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
             guard value("action") == "tribeV2" else { return nil }
-        case "peel":
-            guard components.host?.lowercased() == "tribe", components.path.isEmpty || components.path == "/" else { return nil }
-        default:
-            return nil
+            pubkey = value("pubkey")
+            host = value("host")
         }
-        guard let pubkey = value("pubkey"), pubkey.isPubkey,
-              let host = value("host"), TribeLink.isPlainHost(host) else { return nil }
+        guard let pubkey, pubkey.isPubkey, let host, TribeLink.isPlainHost(host) else { return nil }
         self.pubkey = pubkey.lowercased()
         self.host = host
     }
@@ -423,19 +427,10 @@ public struct TribeLink: Sendable, Hashable {
         self.init(url.absoluteString)
     }
 
-    /// The link as the official apps write it, and nothing else it came with.
+    /// The link as Peel writes it, and nothing else it came with.
     public var text: String { Self.text(pubkey: pubkey, host: host) }
 
-    /// The link in Peel's own form (`peel://tribe?…`).
-    public var peelText: String { Self.peelText(pubkey: pubkey, host: host) }
-
-    /// The one builder of what Peel shares: the official apps' form.
     static func text(pubkey: String, host: String) -> String {
-        "sphinx.chat://?action=tribeV2&pubkey=\(pubkey)&host=\(host)"
-    }
-
-    /// Peel's own form, beside `text`.
-    static func peelText(pubkey: String, host: String) -> String {
         "peel://tribe?pubkey=\(pubkey)&host=\(host)"
     }
 

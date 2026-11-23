@@ -754,6 +754,18 @@ public actor WalletHost {
         let held = try validConnection(caller.scope.key)
         // A challenge for the account's key takes either; one for the domain's, that alone.
         if let key = held?.signIn, challenge.visitorKey == .root || key == .domain {
+            // A grant made before any app of its origin said its name (an invite's page, `grantInvitePage`) is titled by
+            // its place until then: the first sign-in through it names it as the sheet would have. A title the person's
+            // sheet already set is never replaced. As on Android (WalletHost.kt's fast path).
+            if let held, held.title == held.place {
+                let title = TextLine.clean(request.app.title, max: 80), name = TextLine.clean(request.app.name, max: 80)
+                if !title.isEmpty, title != held.title {
+                    var named = held
+                    named.app = "/\(name)"
+                    named.title = title
+                    try storage.saveWalletConnection(named)
+                }
+            }
             let signature = try await wallet.signVisitor(challenge, as: key)
             await caller.person.signedIn(to: host, as: key)
             return signature.result

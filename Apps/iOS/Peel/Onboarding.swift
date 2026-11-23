@@ -105,6 +105,7 @@ struct Onboarding: View {
         case .invite:
             StepPage(title: String(localized: "Paste your invite"), detail: String(localized: "The link or code someone sent you."),
                      progress: progress(step), problem: problem) {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
                 TextField("sphinx.chat/?action=i&d=…", text: $invite, axis: .vertical)
                     .font(Theme.font(16))
                     .textInputAutocapitalization(.never)
@@ -132,6 +133,14 @@ struct Onboarding: View {
                             return nil
                         }
                     }
+                    // Apple's own paste control: pasting from it asks nothing ("Allow Paste?"), unlike reading the
+                    // clipboard unasked. A strut https join link becomes the link the core reads, as the clipboard path does.
+                    PasteButton(payloadType: String.self) { strings in
+                        guard let text = strings.first else { return }
+                        invite = InviteLink.fromClipboard(text) ?? text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    .buttonBorderShape(.capsule)
+                }
             } actions: {
                 continueButton(enabled: !invite.trimmed.isEmpty) {
                     // A worker's invite also names the app to open once the account is ready, wherever the invite came from.

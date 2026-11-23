@@ -198,6 +198,18 @@ struct StorageTests {
         #expect(row["photoURL"] == "https://img/a.png")
     }
 
+    /// An agent renamed on the Mac speaks under its new alias after its
+    /// bridge starts again: the next message it signs renames the contact,
+    /// and one that is not the contact's own does not.
+    @Test func aRenamedAgentsNextMessageRenamesItsContact() throws {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Peel")), true, nil)]))
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u2", chat: "02aa", sender: sender("02aa", alias: "Scout")), false, nil)]))
+        #expect(try contact("02aa")?["alias"] == "Peel")
+        _ = try storage.apply(Storage.Commit(messages: [(.fixture(uuid: "u3", chat: "02aa", sender: sender("02aa", alias: "Scout")), true, nil)]))
+        #expect(try contact("02aa")?["alias"] == "Scout")
+    }
+
     @Test func untrustedSenderIsIgnored() throws {
         let storage = try profile.storage()
         let message = Message.fixture(uuid: "u1", chat: "02aa", sender: sender("02aa", alias: "Ann", photo: nil))

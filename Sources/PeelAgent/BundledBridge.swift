@@ -365,6 +365,40 @@ public final class BundledBridge: CustomReflectable {
                              refused: "your Stadeum workspaces")
     }
 
+    /// Gives the running agent's account a new nickname at once (`PUT /alias`,
+    /// sphinx#443), so no restart is needed: runner takes `RUNNER_ALIAS` at
+    /// launch and this call after. `announce` has runner send one note from
+    /// the agent to its owner, so every client sees the alias (see
+    /// `AliasAnnouncement`). True only when runner applied it. False for
+    /// anything else (404 from a bundled runner older than the route, 503
+    /// before the account registered, 400 for a bad alias, no connection, no
+    /// bridge running): the caller starts the bridge again with the new alias.
+    public func setAlias(_ alias: String, announce: Bool) async -> Bool {
+        await aliasStatus(alias, announce: announce).map(Self.aliasApplied) ?? false
+    }
+
+    /// The status runner answered `PUT /alias` with; nil when none came.
+    public func aliasStatus(_ alias: String, announce: Bool) async -> Int? {
+        guard let server, let admin else { return nil }
+        return await Self.putAlias(alias, announce: announce, base: server.base, token: admin.token)
+    }
+
+    nonisolated static func setAlias(_ alias: String, announce: Bool, base: URL, token: String) async -> Bool {
+        await putAlias(alias, announce: announce, base: base, token: token).map(aliasApplied) ?? false
+    }
+
+    nonisolated static func putAlias(_ alias: String, announce: Bool, base: URL, token: String) async -> Int? {
+        guard let body = try? JSONSerialization.data(withJSONObject: ["alias": alias, "announce": announce] as [String: Any]),
+              let (status, _) = try? await Web.requestStrut(
+                "PUT", base.appending(path: "alias"), json: body,
+                headers: ["x-admin-token": token], limit: 4096, what: "the bridge's alias", timeout: 10
+              ) else { return nil }
+        return status
+    }
+
+    /// Whether runner's answer to `PUT /alias` means the name is live.
+    nonisolated static func aliasApplied(status: Int) -> Bool { status == 200 }
+
     /// One admin call, `POST /<route>` (or `method`) with the admin token:
     /// refused unless it answers 200 (or a status in `allowing`: the seed
     /// already set).

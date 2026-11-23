@@ -207,6 +207,7 @@ struct AgentModelPrompt: View {
 
 /// The agent's name, edited in place as the account's own name is.
 private struct AgentNameRow: View {
+    @Environment(AppModel.self) private var model
     let agent: AgentSession
     @State private var editing = false
     @State private var draft = ""
@@ -247,7 +248,10 @@ private struct AgentNameRow: View {
     private func save() {
         guard !draft.trimmed.isEmpty else { return }
         do {
+            let old = agent.name
             try agent.rename(draft)
+            // The name is the agent's account's: told to its bridge, which announces a real change.
+            model.agentRenamed(from: old, to: agent.name)
             editing = false
         } catch {
             problem = PeelError.readable(error)

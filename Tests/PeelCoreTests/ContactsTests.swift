@@ -162,7 +162,7 @@ struct MessageLinkTests {
 
     @Test func aLinkCardKeepsOnlyTheLink() throws {
         let link = try #require(TribeLink(tribe + "&extra=1"))
-        #expect(link.text == tribe)
+        #expect(link.text == "peel://tribe?pubkey=\(key2G)&host=tribes.example.com")
     }
 }
 

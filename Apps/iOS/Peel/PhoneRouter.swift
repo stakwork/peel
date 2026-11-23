@@ -5,16 +5,14 @@ import SwiftUI
 import UIKit
 
 /// The phone's tabs (docs/design/iphone.md, decision 1): Chats, Payments,
-/// You, and the system's separate search tab.
+/// Apps, You, and the system's separate search tab.
 enum PhoneTab: Hashable {
-    case chats, payments, you, search
+    case chats, payments, apps, you, search
 }
 
 /// What Chats (and Search, which opens chats too) can push.
 enum ChatsRoute: Hashable {
     case automations, threads, mentions
-    /// The Stadeum workspaces' pinned apps (`AppsScreen`).
-    case apps
     /// A tribe or a direct message, by its chat id. The agent is a DM, so
     /// its chat is one of these too.
     case chat(String)
@@ -27,7 +25,6 @@ enum ChatsRoute: Hashable {
     var destination: AppModel.Destination {
         switch self {
         case .automations: .automations
-        case .apps: .apps
         case .threads: .threads
         case .mentions: .mentions
         case .chat(let chat), .details(let chat), .members(let chat): .chat(chat)
@@ -38,11 +35,10 @@ enum ChatsRoute: Hashable {
     init?(_ destination: AppModel.Destination) {
         switch destination {
         case .automations: self = .automations
-        case .apps: self = .apps
         case .threads: self = .threads
         case .mentions: self = .mentions
         case .chat(let chat): self = .chat(chat)
-        case .payments, .account, .agent, .app, .segments: return nil
+        case .payments, .apps, .account, .agent, .app, .segments: return nil
         }
     }
 
@@ -51,7 +47,7 @@ enum ChatsRoute: Hashable {
     var isConversation: Bool {
         switch self {
         case .chat, .details, .members: true
-        case .automations, .apps, .threads, .mentions: false
+        case .automations, .threads, .mentions: false
         }
     }
 }
@@ -61,6 +57,10 @@ enum PaymentsRoute: Hashable {
     /// One payment's detail, by `PaymentItem.id`.
     case payment(PaymentItem.ID)
 }
+
+/// What Apps can push: nothing yet (an app opens in a sheet over everything,
+/// `orgPage`).
+enum AppsRoute: Hashable {}
 
 /// What You can push.
 enum YouRoute: Hashable {
@@ -85,6 +85,7 @@ final class PhoneRouter {
     var chats: [ChatsRoute] = [] { didSet { publish() } }
     var search: [ChatsRoute] = [] { didSet { publish() } }
     var payments: [PaymentsRoute] = []
+    var apps: [AppsRoute] = []
     var you: [YouRoute] = []
     /// An org's page over everything (`OrgPageSheet`): a deliverable from
     /// the agent's DM, or a workspace's app.
@@ -140,6 +141,7 @@ final class PhoneRouter {
         case .chats: chats.last?.destination
         case .search: search.last?.destination
         case .payments: .payments
+        case .apps: .apps
         case .you: .account
         }
     }
@@ -157,6 +159,7 @@ final class PhoneRouter {
         chats = []
         search = []
         payments = []
+        apps = []
         you = []
         orgPage = nil
         publicPage = nil
@@ -416,11 +419,13 @@ final class PhoneRouter {
         switch destination {
         case .chat(let chat):
             changeChatStack { $0 = $0.filter { !$0.isConversation } + [.chat(chat)] }
-        case .threads, .mentions, .automations, .apps:
+        case .threads, .mentions, .automations:
             tab = .chats
             chats = destination.flatMap(ChatsRoute.init).map { [$0] } ?? []
         case .payments:
             tab = .payments
+        case .apps:
+            tab = .apps
         case .account:
             tab = .you
         case .agent, .app, .segments:

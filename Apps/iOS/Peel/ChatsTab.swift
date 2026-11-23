@@ -49,9 +49,6 @@ extension View {
             case .automations:
                 AutomationsScreen()
                     .onCallBannerInset()
-            case .apps:
-                AppsScreen()
-                    .onCallBannerInset()
             }
         }
     }
@@ -82,34 +79,22 @@ struct ChatList: View {
             .flatMap { agent in sections.unread.contains { $0.chat == agent.chat } ? nil : agent }
         let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty && agent == nil
         let recent = model.sidebarLayout.combinedView && !sections.searching
-        // The apps under the Apps row, A–Z, as the Mac's sidebar shows them: the
-        // pinned ones while open (the chevron only with some), or, searching,
+        // The apps pinned to Chats, A–Z: the pinned ones, or, searching,
         // every app that matches. Only with Stadeum connected here.
         let stadeumLive = !model.stadeum.live.isEmpty
         let livePeers = Set(model.stadeum.live.map(\.id))
         let listedApps = model.stadeum.apps.filter { $0.peer.map(livePeers.contains) ?? false }
-        let hasPins = stadeumLive && !model.sidebarLayout.pinned(listedApps).isEmpty
         let pinnedApps: [WorkspaceApp] = {
             guard stadeumLive else { return [] }
             if sections.searching { return listedApps.filter { $0.matches(model.searchQuery) } }
-            return model.sidebarLayout.appsOpen ? model.sidebarLayout.pinned(listedApps) : []
+            return model.sidebarLayout.pinned(listedApps)
         }()
         let showsSources = Set(listedApps.compactMap(\.peer)).count > 1
         List {
             if !sections.searching {
                 Section {
-                    // The workspaces' apps and Talk, once Stadeum is connected here
-                    // (or a development profile names a home, docs/talk.md), or the
-                    // public apps opened here (a worker's Tasks) are kept.
-                    if !model.stadeum.live.isEmpty || model.talk.developmentHome != nil || !model.openedApps.isEmpty {
-                        NavigationLink(value: ChatsRoute.apps) {
-                            NavRow(title: String(localized: "Apps"), icon: WorkspaceAppIcon(nil, size: 20))
-                        }
-                        .overlay(alignment: .trailing) {
-                            if hasPins { AppsFoldButton(open: $model.sidebarLayout.appsOpen) }
-                        }
-                        ForEach(pinnedApps) { PinnedAppRow(app: $0, showsSource: showsSources) }
-                    }
+                    // The apps pinned to Chats, A–Z (Apps itself is a tab).
+                    ForEach(pinnedApps) { PinnedAppRow(app: $0, showsSource: showsSources) }
                     // Automations is Mac-only for now; hidden on iOS until ready.
                     NavigationLink(value: ChatsRoute.threads) {
                         NavRow(title: String(localized: "Threads"), systemImage: "bubble.left", count: model.unreadThreads)
@@ -236,29 +221,7 @@ struct ChatList: View {
     }
 }
 
-/// The chevron over the Apps row's end: shows or hides the pinned apps under
-/// it, kept with the sidebar's layout (the Mac's `AppsFoldButton`).
-private struct AppsFoldButton: View {
-    @Binding var open: Bool
-
-    var body: some View {
-        Button {
-            open.toggle()
-        } label: {
-            Image(systemName: "chevron.down")
-                .font(.system(size: 11, weight: .bold))
-                .rotationEffect(.degrees(open ? 0 : -90))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(width: Theme.touchTarget, height: Theme.touchTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Pinned apps")
-        .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
-    }
-}
-
-/// A pinned app under the Apps row: its icon and title (with its workspace
+/// A pinned app on Chats: its icon and title (with its workspace
 /// when the apps come from several). A tap opens it as Apps does; Unpin is
 /// its swipe and its menu.
 private struct PinnedAppRow: View {

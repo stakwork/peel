@@ -3,7 +3,7 @@ import PeelUI
 import SwiftUI
 import UIKit
 
-/// The tab bar (docs/design/iphone.md, decision 1): Chats, Payments, You,
+/// The tab bar (docs/design/iphone.md, decision 1): Chats, Payments, Apps, You,
 /// and the system's search tab. Each tab is its own `NavigationStack` with
 /// large titles; which tab and what each has pushed is `PhoneRouter`'s.
 struct MainTabs: View {
@@ -23,6 +23,13 @@ struct MainTabs: View {
             }
             // Sats just received, "+350", as the Mac's Payments row shows them.
             .badge(model.money.recentMsat > 0 ? Text(Sats.signed(msat: model.money.recentMsat, incoming: true)) : nil)
+            Tab(String(localized: "Apps"), systemImage: "square.grid.2x2", value: PhoneTab.apps) {
+                NavigationStack(path: $router.apps) {
+                    AppsScreen()
+                        .onCallBannerInset()
+                        .navigationDestination(for: AppsRoute.self) { _ in EmptyView() }
+                }
+            }
             Tab(value: PhoneTab.you) {
                 YouTab()
             } label: {

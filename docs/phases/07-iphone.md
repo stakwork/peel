@@ -723,7 +723,7 @@ phone.
   for both, `Stadeum.readApps`: the Mac's own and the workspaces' through
   its strut, the iPhone's workspaces' each on its own strut with the
   person's token (`WorkspaceApp.pinned(on:)`). On the phone, Chats gets an
-  Apps row once Stadeum is connected (`AppsScreen`): the pinned apps, A–Z,
+  Apps tab (`AppsScreen`, between Payments and You; no longer a Chats row): the pinned apps, A–Z,
   with their icon, what they are for, where they come from when there are
   several workspaces, and their version; a tap opens one in the org page
   sheet (`Stadeum.opening(_ app:)`, `?app=<name>&solo=1` on the org);

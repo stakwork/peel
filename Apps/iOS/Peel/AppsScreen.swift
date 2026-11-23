@@ -3,7 +3,7 @@ import PeelUI
 import SwiftUI
 import UIKit
 
-/// Apps, from Chats' top rows: Talk to Jamie on each workspace (docs/talk.md),
+/// Apps, the tab between Payments and You: Talk to Jamie on each workspace (docs/talk.md),
 /// then the apps the Stadeum workspaces pinned as tabs, A–Z, each read and
 /// opened on its workspace's own strut with the person's token
 /// (`Stadeum.readApps`, `Stadeum.opening`; strut's specs/DESKTOP.md, "A

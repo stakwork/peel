@@ -66,7 +66,7 @@ That is stakwork/strut's change, not made here.
   public page that comes on screen is kept, whichever way it came. The iPhone's Apps lists them with the workspace apps, after
   them as normal rows (last opened first, titled by the origin's connection or the host, caption host · app; their server's host
   is the source, so the filter menu offers it and the search finds them); a tap opens one through the router; long-press › "Remove from Apps" takes one off (its connection stays). Chats'
-  Apps row shows with opened apps even without a Stadeum workspace. Disconnect in You › Connected apps forgets that origin's
+  Apps tab lists opened apps even without a Stadeum workspace. Disconnect in You › Connected apps forgets that origin's
   apps in the same write as the connection (`Storage.deleteWalletConnection`). Each opening also asks the seller for the app's title (`PublicAppLink.appTitle`, `GET <seller>/public/apps/<name>`; v38 `publicApp.title`, kept across openings) and renames an invite's host-titled connection with it, so a worker whose page never signs in again still sees "Tasks"; the row shows a connection's title unless it is just the host, else that title, else the host. Tested in `OpenedPublicAppsTests`.
 - Strings: "Apps you opened", "Remove from Apps", and two notice phrases, in English and Spanish.
 

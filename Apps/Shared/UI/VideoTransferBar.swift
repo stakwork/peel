@@ -9,9 +9,9 @@ import SwiftUI
 /// system colours, no red.
 ///
 /// ```swift
-/// ChatColumn().transferBar()
+/// ChatColumn().videoTransferBar()
 /// ```
-struct TransferBar: View {
+struct VideoTransferBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -61,7 +61,7 @@ struct TransferBar: View {
 
 extension View {
     /// The transfer bar floating at the top of this view.
-    func transferBar() -> some View {
-        overlay(alignment: .top) { TransferBar() }
+    func videoTransferBar() -> some View {
+        overlay(alignment: .top) { VideoTransferBar() }
     }
 }

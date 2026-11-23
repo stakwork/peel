@@ -45,6 +45,7 @@ struct AccountView: View {
                 NameRow()
                 TimeZoneRow()
                 AutoDownloadMediaRow()
+                CompressVideosRow()
                 VoiceModeRow()
                 Fact(String(localized: "Server")) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -836,6 +837,25 @@ private struct AutoDownloadMediaRow: View {
                     options: [(true, String(localized: "On")), (false, String(localized: "Off"))]
                 ) { try await model.setAutoDownloadsMedia($0) }
                 Text("Off: images, videos, voice messages and files wait for a tap.")
+                    .muted()
+            }
+        }
+    }
+}
+
+/// Compress videos for upload: a video over the send limit is compressed
+/// before it is sent (`VideoCompressor`); off, it is refused for its size.
+private struct CompressVideosRow: View {
+    @AppStorage(Engine.compressVideosKey) private var compress = true
+
+    var body: some View {
+        Fact(String(localized: "Compress videos for upload")) {
+            VStack(alignment: .leading, spacing: 2) {
+                SettingDropdown(
+                    selection: compress,
+                    options: [(true, String(localized: "On")), (false, String(localized: "Off"))]
+                ) { compress = $0 }
+                Text("Automatically compress videos larger than 100 MB before uploading.")
                     .muted()
             }
         }

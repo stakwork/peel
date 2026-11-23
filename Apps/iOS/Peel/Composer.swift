@@ -1,5 +1,6 @@
 import PeelCore
 import PeelUI
+import Photos
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -215,7 +216,7 @@ private struct AttachButton: View {
                 Task {
                     switch shot {
                     case .photo(let image): add(await Task.detached { PickedFiles.photo(image) }.value)
-                    case .video(let url): add(await Task.detached { PickedFiles.video(url) }.value)
+                    case .video(let url): add(await PickedFiles.cameraVideo(url))
                     }
                 }
             }
@@ -276,6 +277,28 @@ enum PickedFiles {
             return ([try IncomingFiles.write(data, type: .jpeg)], [])
         } catch {
             return ([], [PeelError.readable(error)])
+        }
+    }
+
+    /// A video the camera recorded. One that will be compressed to send goes
+    /// to Photos untouched first, since Peel keeps only the compressed copy
+    /// (a video from the library is already there). Then as `video(_:)`.
+    static func cameraVideo(_ url: URL) async -> (files: [URL], refused: [String]) {
+        if IncomingFiles.awaitsCompression(url) { await saveToPhotos(url) }
+        return await Task.detached { video(url) }.value
+    }
+
+    /// Adds the video file to the photo library as it is. Without the
+    /// person's yes it does nothing: the send goes on.
+    private static func saveToPhotos(_ url: URL) async {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else { return }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                _ = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            }
+        } catch {
+            Diagnostics.note(errorKind: .refused)
         }
     }
 
@@ -475,8 +498,17 @@ private struct FilesTray: View {
                 ForEach(files, id: \.self) { file in
                     VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Image(systemName: "doc").accessibilityHidden(true)
+                        if let job = model.compression(of: file) {
+                            ProgressView(value: job.progress).progressViewStyle(.circular).controlSize(.small)
+                                .accessibilityHidden(true)
+                        } else {
+                            Image(systemName: "doc").accessibilityHidden(true)
+                        }
                         Text(file.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                        if let job = model.compression(of: file) {
+                            // Send may be tapped meanwhile: the upload starts when this is done.
+                            Text("Compressing \(Int(job.progress * 100))%").foregroundStyle(Theme.secondaryText).lineLimit(1)
+                        }
                         Button { remove(file) } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(Theme.secondaryText)

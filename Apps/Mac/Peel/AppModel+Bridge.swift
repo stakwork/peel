@@ -27,6 +27,8 @@ final class AgentBridge {
     /// The start in flight, and the strut it started beside.
     @ObservationIgnored var starting: Task<Void, Never>?
     @ObservationIgnored var strut: MemoryServer?
+    /// The one announcement of a rename that may still be sent (`AliasAnnouncement`).
+    @ObservationIgnored var aliasAnnouncement = AliasAnnouncement()
     /// This start may pair the agent (an invite, a key exchange): it came
     /// from the person's Set up, where the cost was shown. A start on its
     /// own, never; any stop forgets it.
@@ -194,22 +196,62 @@ extension AppModel {
     /// extra. Only when that fails (a bundled runner older than the route, the
     /// account not registered yet, no answer) is the bridge started again
     /// with the new name, as before. A bridge that is off or failed is left alone.
-    func agentRenamed(to name: String) {
+    /// `old` is the name before the rename, nil if there was none: the
+    /// bridge announces the new name (one note from the agent) only for a
+    /// real change (`AliasAnnouncement.shouldAnnounce`). When the bridge had
+    /// to start again, the note is tried once it runs, a few times, and only
+    /// while this is still the latest rename.
+    func agentRenamed(from old: String?, to name: String) {
         agentWasRenamed(to: name)
         let bridge = agentBridge
+        let announce = AliasAnnouncement.shouldAnnounce(old: old, new: name)
+        let token = bridge.aliasAnnouncement.begin()
+        if !announce { bridge.aliasAnnouncement.finish(token) }
         switch bridge.status {
         case .running:
             guard let running = bridge.bridge else { return }
             Task {
-                if await running.setAlias(name) { return }
+                if await running.setAlias(name, announce: announce) {
+                    bridge.aliasAnnouncement.finish(token)
+                    return
+                }
                 // The name may have changed again, or the bridge gone, meanwhile.
                 guard agent?.name == name, bridge.status == .running else { return }
                 restartBridgeForAlias()
+                if announce { await announceAfterRestart(name, token: token) }
             }
         case .starting:
             // It reads the name the agent has when it launches, which may be the old one.
             restartBridgeForAlias()
+            if announce { Task { await announceAfterRestart(name, token: token) } }
         default: break
+        }
+    }
+
+    /// Once the restarted bridge runs, asks it to announce `name`: up to
+    /// `AliasAnnouncement.tries` times, for an account not registered yet
+    /// (503). Stops on a 404 (no such route: nothing can be announced, and
+    /// the bridge's first message carries the alias anyway), or when a newer
+    /// rename or a change of name has superseded this one.
+    private func announceAfterRestart(_ name: String, token: Int) async {
+        let bridge = agentBridge
+        defer { bridge.aliasAnnouncement.finish(token) }
+        func wanted() -> Bool { bridge.aliasAnnouncement.isCurrent(token) && agent?.name == name }
+        // Until it runs again; a start that fails or is stopped ends the wait.
+        var waited = 0
+        while bridge.status != .running {
+            guard wanted(), bridge.status == .starting || waited == 0, waited < 60 else { return }
+            try? await Task.sleep(for: .seconds(1))
+            waited += 1
+        }
+        for attempt in 0..<AliasAnnouncement.tries {
+            guard wanted(), bridge.status == .running, let running = bridge.bridge else { return }
+            let status = await running.aliasStatus(name, announce: true)
+            switch AliasAnnouncement.step(afterStatus: status) {
+            case .done, .stop: return
+            case .retry:
+                if attempt + 1 < AliasAnnouncement.tries { try? await Task.sleep(for: AliasAnnouncement.wait) }
+            }
         }
     }
 

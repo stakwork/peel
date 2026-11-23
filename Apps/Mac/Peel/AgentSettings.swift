@@ -248,9 +248,10 @@ private struct AgentNameRow: View {
     private func save() {
         guard !draft.trimmed.isEmpty else { return }
         do {
+            let old = agent.name
             try agent.rename(draft)
-            // The name is the agent's account's: its bridge starts again under it.
-            model.agentRenamed(to: agent.name)
+            // The name is the agent's account's: told to its bridge, which announces a real change.
+            model.agentRenamed(from: old, to: agent.name)
             editing = false
         } catch {
             problem = PeelError.readable(error)

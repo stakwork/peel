@@ -250,15 +250,25 @@ struct BundledBridgeTests {
         for status in [400, 404, 503, 500, 204] { #expect(!BundledBridge.aliasApplied(status: status)) }
     }
 
-    @Test func setAliasPutsTheNameWithTheAdminToken() async throws {
+    /// A request's JSON body as it is, `announce` a Bool (`HTTPStub.jsonBody` keeps strings only).
+    private func body(of request: String) throws -> [String: Any] {
+        let text = try #require(request.components(separatedBy: "\r\n\r\n").last)
+        return try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+    }
+
+    @Test(arguments: [true, false])
+    func setAliasPutsTheNameAndAnnounceWithTheAdminToken(announce: Bool) async throws {
         let stub = try await HTTPStub { _ in #"{"ok":true}"# }
         defer { stub.stop() }
         let base = try #require(URL(string: "http://127.0.0.1:\(stub.port)"))
-        #expect(await BundledBridge.setAlias("Scout", base: base, token: "admin token"))
+        #expect(await BundledBridge.setAlias("Scout", announce: announce, base: base, token: "admin token"))
         let request = try #require(stub.requests.first)
         #expect(request.hasPrefix("PUT /alias "))
         #expect(request.lowercased().contains("x-admin-token: admin token"))
-        #expect(HTTPStub.jsonBody(of: request) == ["alias": "Scout"])
+        let sent = try body(of: request)
+        #expect(sent["alias"] as? String == "Scout")
+        #expect(sent["announce"] as? Bool == announce)
+        #expect(sent.count == 2)
     }
 
     @Test func aRunnerWithoutTheRouteOrNotRegisteredFallsBack() async throws {
@@ -266,12 +276,14 @@ struct BundledBridgeTests {
             let stub = try await HTTPStub(status: status) { _ in "{}" }
             defer { stub.stop() }
             let base = try #require(URL(string: "http://127.0.0.1:\(stub.port)"))
-            #expect(await BundledBridge.setAlias("Scout", base: base, token: "t") == false)
+            #expect(await BundledBridge.setAlias("Scout", announce: true, base: base, token: "t") == false)
+            #expect(await BundledBridge.putAlias("Scout", announce: true, base: base, token: "t") == status)
         }
     }
 
     @Test func noBridgeListeningFallsBack() async throws {
         let base = try #require(URL(string: "http://127.0.0.1:9"))
-        #expect(await BundledBridge.setAlias("Scout", base: base, token: "t") == false)
+        #expect(await BundledBridge.setAlias("Scout", announce: false, base: base, token: "t") == false)
+        #expect(await BundledBridge.putAlias("Scout", announce: false, base: base, token: "t") == nil)
     }
 }

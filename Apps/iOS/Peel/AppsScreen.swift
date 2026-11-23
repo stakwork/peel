@@ -25,13 +25,12 @@ struct AppsScreen: View {
         let apps = stadeum.apps.filter { $0.peer.map(live.contains) ?? false }
         // The workspace on each row only when there are several.
         let several = Set(apps.compactMap(\.peer)).count > 1
-        let sources = WorkspaceApp.sources(of: apps)
+        // The public apps opened here (a worker's Tasks) are listed with them, their server as the source.
+        let opened = model.openedApps
+        let sources = AppsListRow.sources(workspace: apps, opened: opened)
         // A source no longer listed, or the only one: all of them.
         let shownSource = sources.count > 1 && sources.contains(source ?? "") ? source : nil
-        let shown = WorkspaceApp.filter(apps, query: query, source: shownSource)
-        // The public apps opened here (a worker's Tasks), kept in Apps with no workspace; not under a workspace's filter.
-        let opened = model.openedApps
-        let openedShown = shownSource == nil ? opened.filter { $0.matches(query) } : []
+        let shown = AppsListRow.merged(workspace: apps, opened: opened, query: query, source: shownSource)
         let unread = stadeum.unreadApps.compactMap { id in stadeum.live.first { $0.id == id }?.name }
         // Not while searching: the search is of the apps.
         let homes = query.isEmpty ? model.talkHomes : []
@@ -56,7 +55,9 @@ struct AppsScreen: View {
                 .phoneRows()
             }
             Section {
-                ForEach(shown) { app in
+                ForEach(shown) { row in
+                    switch row {
+                    case .workspace(let app):
                     Button {
                         if case .page(let page) = stadeum.opening(app) { router.orgPage = page }
                     } label: {
@@ -86,6 +87,18 @@ struct AppsScreen: View {
                             }
                         }
                     }
+                    case .opened(let app):
+                        if let link = app.link {
+                            Button { router.open(link) } label: { OpenedAppRow(app: app) }
+                                .buttonStyle(.plain)
+                                // The app leaves the list; its connection stays under You, so a link someone sent never sticks.
+                                .contextMenu {
+                                    Button("Remove from Apps", systemImage: "minus.circle", role: .destructive) {
+                                        model.forgetOpenedApp(app)
+                                    }
+                                }
+                        }
+                    }
                 }
             } footer: {
                 if !unread.isEmpty, !apps.isEmpty {
@@ -100,25 +113,6 @@ struct AppsScreen: View {
                 }
             }
             .phoneRows()
-            if !openedShown.isEmpty {
-                Section {
-                    ForEach(openedShown) { app in
-                        if let link = app.link {
-                            Button { router.open(link) } label: { OpenedAppRow(app: app) }
-                                .buttonStyle(.plain)
-                                // The app leaves the list; its connection stays under You, so a link someone sent never sticks.
-                                .contextMenu {
-                                    Button("Remove from Apps", systemImage: "minus.circle", role: .destructive) {
-                                        model.forgetOpenedApp(app)
-                                    }
-                                }
-                        }
-                    }
-                } header: {
-                    PhoneSectionHeader(String(localized: "Apps you opened"))
-                }
-                .phoneRows()
-            }
         }
         .phoneList()
         .scrollEdges()
@@ -144,9 +138,9 @@ struct AppsScreen: View {
             }
         }
         .overlay {
-            if !apps.isEmpty || !opened.isEmpty, shown.isEmpty, openedShown.isEmpty {
+            if !apps.isEmpty || !opened.isEmpty, shown.isEmpty {
                 ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
-            } else if apps.isEmpty, !homes.isEmpty {
+            } else if apps.isEmpty, opened.isEmpty, !homes.isEmpty {
                 // The Talk rows show; the apps section says why it is empty.
                 if stadeum.readingApps { ProgressView() }
             } else if apps.isEmpty, opened.isEmpty {

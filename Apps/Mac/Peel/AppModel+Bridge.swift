@@ -186,6 +186,23 @@ extension AppModel {
         lookForBridge(pairing: pair)
     }
 
+    /// The agent was renamed here. The name is the agent's account's nickname
+    /// and runner takes it only at launch (`RUNNER_ALIAS`; it has no call to
+    /// set it live), so a bridge that runs or starts is started again with the
+    /// new name, and its next message carries it to every device and back
+    /// here (`AgentNameFollow`). A bridge that is off or failed is left alone.
+    func agentRenamed(to name: String) {
+        agentWasRenamed(to: name)
+        let bridge = agentBridge
+        switch bridge.status {
+        case .running, .starting:
+            // `lookForBridge` starts again only for a strut it has not started on.
+            bridge.strut = nil
+            lookForBridge()
+        default: break
+        }
+    }
+
     /// Starts the bridge when the agent is open here and Peel's own strut
     /// runs, and stops it when either is no longer so. Looked at when the agent
     /// opens and whenever strut starts or stops; a strut started again

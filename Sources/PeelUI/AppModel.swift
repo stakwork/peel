@@ -428,6 +428,14 @@ public final class AppModel {
     /// never a direct message beside it, and where `.agent` opens.
     public private(set) var agentChat: String?
 
+    /// The agent's name following the alias its contact carries
+    /// (`AgentNameFollow`).
+    var agentNameFollow = AgentNameFollow()
+
+    /// The person renamed the agent here: its contact's alias, which follows
+    /// when the bridge speaks under the new name, must not undo it meanwhile.
+    public func agentWasRenamed(to name: String) { agentNameFollow.renamed(to: name) }
+
     /// Your message the agent is still answering in its open DM
     /// (`AgentDM.unanswered`), worked out with its rows; nil over a jump's
     /// window, which may stop between your message and its reply.
@@ -442,6 +450,16 @@ public final class AppModel {
     /// The agent's contact once it is a chat here: ready, for the phone's agent row.
     static func agentChat(contact: String?, in conversations: [Conversation]) -> String? {
         contact.flatMap { contact in conversations.contains { $0.chat == contact } ? contact : nil }
+    }
+
+    /// The agent takes the name its contact's alias gives: the account is the
+    /// one source of the name (the alias comes only from the contact's own
+    /// signed messages, `Storage.apply`'s `trustSender`).
+    private func followAgentAlias(_ rows: [Conversation]) {
+        guard let agent, let chat = agentChat, let row = rows.first(where: { $0.chat == chat }) else { return }
+        if let name = agentNameFollow.name(forAlias: row.alias, current: agent.name, defaultName: AgentSession.defaultName) {
+            try? agent.rename(name)
+        }
     }
 
     private func followAgentChat() {
@@ -1741,6 +1759,7 @@ public final class AppModel {
         savedLayout = ChatSections.Layout()
         sidebarLayout = savedLayout
         senderZoneCache = [:]
+        agentNameFollow.reset()
         syncedColours = [:]
         biometricsOffered = false
         agentKeyAvailable = false
@@ -1950,6 +1969,7 @@ public final class AppModel {
                 conversations = rows
                 if changed { rebuildRows() }
                 followAgentChat()
+                followAgentAlias(rows)
                 if destination == nil, platform.opensFirstChat, let first = rows.first {
                     destination = .chat(first.chat)
                 }

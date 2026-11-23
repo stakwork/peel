@@ -64,6 +64,7 @@ struct ConversationScreen: View {
             }
         }
         .floatingBar(.bottom) { footer(tribe: tribe) }
+        .videoTransferBar()
         .onCallBannerInset()
         .onAppear { attachVoice() }
         // "Hey Peel" listens only while this chat is on screen and in front.

@@ -79,6 +79,7 @@ struct YouTab: View {
                         LabeledContent("Site location", value: model.siteLocations.isEmpty ? String(localized: "None") : "\(model.siteLocations.count)")
                     }
                     AutoDownloadMediaRow()
+                    CompressVideosRow()
                     NavigationLink("Diagnostics", value: YouRoute.diagnostics)
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
@@ -339,6 +340,22 @@ private struct AutoDownloadMediaRow: View {
                 .foregroundStyle(Theme.secondaryText)
         }
         if let problem { ProblemText(problem) }
+    }
+}
+
+/// Compress videos for upload: a video over the send limit is compressed
+/// before it is sent (`VideoCompressor`); off, it is refused for its size.
+private struct CompressVideosRow: View {
+    @AppStorage(Engine.compressVideosKey) private var compress = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Compress videos for upload", isOn: $compress)
+                .tint(Theme.accent)
+            Text("Automatically compress videos larger than 100 MB before uploading.")
+                .phoneFont(.secondary)
+                .foregroundStyle(Theme.secondaryText)
+        }
     }
 }
 

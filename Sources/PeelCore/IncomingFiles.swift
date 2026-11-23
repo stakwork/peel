@@ -104,7 +104,7 @@ public enum IncomingFiles {
 
     /// A promised file the source says it wrote: only a plain file (no
     /// link, no folder) directly in the folder Peel gave it, and within the
-    /// send limit. Anything else is removed if it is ours and refused.
+    /// send limit (or a video that will be compressed to it). Anything else is removed if it is ours and refused.
     public static func accept(_ file: URL, in folder: URL) throws -> URL {
         let name = file.lastPathComponent
         let inside = file.deletingLastPathComponent().resolvingSymlinksInPath().path
@@ -115,12 +115,24 @@ public enum IncomingFiles {
             guard values.isSymbolicLink != true, values.isRegularFile == true else {
                 throw PeelError(String(localized: "\(name) is not a file", table: "Shared"))
             }
-            try Engine.checkSendable(name, size: values.fileSize ?? 0)
+            // A video over the limit is let in to be compressed (`VideoCompressor`).
+            if !awaitsCompression(file) { try Engine.checkSendable(name, size: values.fileSize ?? 0) }
             return file
         } catch {
             try? FileManager.default.removeItem(at: file)
             throw error
         }
+    }
+
+    /// Whether `file` is a video over the send limit that Peel will compress
+    /// before sending (Compress videos for upload on); anything else over it
+    /// is refused.
+    public static func awaitsCompression(_ file: URL) -> Bool {
+        #if canImport(AVFoundation)
+        Engine.compressVideosEnabled && VideoCompressor.needsCompression(file)
+        #else
+        false
+        #endif
     }
 
     /// Whether `file` is one of Peel's, in its own folder under `root`.

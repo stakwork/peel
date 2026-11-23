@@ -278,6 +278,7 @@ private struct ChatColumn: View {
             )
         }
         .fileDrop(into: composer)
+        .videoTransferBar()
         .onAppear {
             // Opened from the sidebar's keys, the keys stay there.
             if !model.sidebarHasKeys { model.composerFocus[composer, default: 0] += 1 }

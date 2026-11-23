@@ -67,7 +67,7 @@ Record, "Recording…").
   "Stopped at 30 minutes. Saved to Downloads" (board: option A, Tom,
   2026-10-28). H.264, not HEVC: a recording over what a chat takes is
   shared outside Peel, to any device (Tom, 2026-10-29).
-- **Sending.** Peel sends up to 32 MB (`Engine.sendLimit`, what the
+- **Sending.** Peel sends up to 100 MB (`Engine.sendLimit`, what the
   hosted memes server takes), about 8 minutes of a typical segment. A recording over it says "Too large to send in Peel" in
   Account › Segments, and is shared from Finder (Drive, Dropbox): it
   still drags out, to a browser's upload or Finder.

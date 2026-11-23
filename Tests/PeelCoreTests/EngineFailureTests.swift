@@ -45,7 +45,7 @@ struct EngineFailureTests {
         #expect(Engine.Failure.noMemesServer.description == "this account has no memes server for attachments")
         #expect(Engine.Failure.noCallServer.description == "this account has no call server")
         #expect(PeelError.readable(Engine.Failure.tooLargeToSend("big.mov"))
-            == "big.mov is larger than 32 MB, the most Peel can send")
+            == "big.mov is larger than 100 MB, the most Peel can send")
     }
 
     /// A held payment that is gone (expired, or settled already) comes back

@@ -549,6 +549,7 @@ struct PendingFilesTray: View {
 
 /// A file waiting to be sent: a picture's thumbnail, or a card.
 private struct PendingFile: View {
+    @Environment(AppModel.self) private var model
     let file: URL
 
     @State private var image: CGImage?
@@ -584,7 +585,9 @@ private struct PendingFile: View {
                             .font(Theme.font(13, .medium))
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        Text([AttachmentFormat.size(Self.size(file)), AttachmentFormat.kind(file.lastPathComponent)]
+                        // Send may be clicked meanwhile: the upload starts when this is done.
+                        Text(model.compression(of: file).map { String(localized: "Compressing \(Int($0.progress * 100))%") }
+                            ?? [AttachmentFormat.size(Self.size(file)), AttachmentFormat.kind(file.lastPathComponent)]
                             .compactMap { $0 }.joined(separator: " · "))
                             .font(Theme.font(11))
                             .foregroundStyle(Theme.secondaryText)

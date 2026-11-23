@@ -206,11 +206,26 @@ public actor Engine {
     var calls: CallServer?
     /// Largest attachment downloaded, and the most the cache keeps.
     static let attachmentLimit = 100_000_000
-    /// Largest file sent. The memes server takes at most 32 MiB and 512
-    /// bytes per upload, multipart framing included (sphinx-meme
-    /// `lsat/size.go`, unchanged on memes.sphinx.chat), and answers 413
-    /// past it; 32 MB leaves room for the encryption and the framing.
-    public static let sendLimit = 32_000_000
+    /// Largest file sent: 100 MB, within `attachmentLimit`. The memes server
+    /// is raised to take it separately (it answered 413 past 32 MiB before);
+    /// a video over it is compressed first (`VideoCompressor`), and one that
+    /// cannot be, or with compression off, is refused (`checkSendable`).
+    public static let sendLimit = 100_000_000
+    /// What a compressed video aims for: under `sendLimit` with room for the
+    /// encryption, the container and the rate control's overshoot.
+    public static let compressionTarget = 95 * 1024 * 1024
+    /// The lowest video bitrate (bits per second) worth sending: a video so
+    /// long that it would need less is refused as too long to compress.
+    /// Change here to move the cut-off.
+    public static let compressionFloorBitrate = 500_000
+    /// The setting's key in `UserDefaults` (Compress videos for upload).
+    public static let compressVideosKey = "compressVideos"
+    /// Whether a video over `sendLimit` is compressed before it is sent
+    /// (on unless turned off). A device setting, as the voice mode's.
+    public static var compressVideosEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: compressVideosKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: compressVideosKey) }
+    }
     static let mediaCacheLimit = 500_000_000
     /// Videos and recordings up to this size download as they show; larger
     /// ones wait to be asked for (`AutoDownloadPolicy`). Files are never

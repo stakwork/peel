@@ -393,14 +393,21 @@ extension AppModel {
                 return false
             }
         }
+        // A video still compressing is waited for here: the upload starts
+        // by itself when it is done (`VideoUpload`).
+        let ready = await resolveVideos(files)
+        var refused: [(file: URL, reason: String)] = ready.failures
+        let compressed = ready.compressed
         let outcome = await engine.sendAttachments(
-            files, text: text, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats,
+            ready.files, text: text, to: chat, replyTo: replyTo, inThread: inThread, priceSats: priceSats,
             modelMaySee: isAgentChat(composer) ? seen : []
         ) { [weak self] file, id in
             // Shown from this Mac while it uploads.
-            Task { @MainActor in self?.attachment(id).localFile = file }
+            Task { @MainActor in
+                self?.attachment(id).localFile = file
+                if compressed.contains(file) { self?.trackedUpload = id }
+            }
         }
-        var refused: [(file: URL, reason: String)] = []
         for (file, result) in outcome.results {
             switch result {
             case .success(let id):
@@ -416,14 +423,17 @@ extension AppModel {
                 refused.append((file, PeelError.noted(error, couldNot: String(localized: "send \(file.lastPathComponent)", table: "Shared"))))
             }
         }
+        finishTransfer(of: ready.compressed, results: outcome.results, refused: refused)
+        // A video that could not be compressed does not come back: it is over the limit.
+        let kept = refused.filter { !ready.failures.map(\.file).contains($0.file) }
         if !refused.isEmpty {
             conversationNotices[chat] = refused.map(\.reason).joined(separator: " ")
             // What did not go waits in the composer again, with the reply it was for.
-            pendingFiles[composer, default: []].insert(contentsOf: refused.map(\.file), at: 0)
-            modelSight.restore(refused.map(\.file), on: seen, in: composer)
+            pendingFiles[composer, default: []].insert(contentsOf: kept.map(\.file), at: 0)
+            modelSight.restore(kept.map(\.file), on: seen, in: composer)
             // With their price: a refused paid file must never go again free.
-            if let priceText, !priceText.isEmpty { attachmentPrices[composer] = priceText }
-            if replyTargets[composer] == nil { replyTargets[composer] = reply }
+            if !kept.isEmpty, let priceText, !priceText.isEmpty { attachmentPrices[composer] = priceText }
+            if !kept.isEmpty, replyTargets[composer] == nil { replyTargets[composer] = reply }
         }
         return outcome.textSent
     }
@@ -443,6 +453,8 @@ extension AppModel {
         var refused: [String] = []
         let files = urls.filter { file in
             guard file.isFileURL else { return false }
+            // A video over the limit is compressed (below), unless that is off.
+            if IncomingFiles.awaitsCompression(file) { return true }
             do {
                 try Engine.checkSendable(file)
                 return true
@@ -458,6 +470,7 @@ extension AppModel {
         guard !files.isEmpty else { return }
         pendingFiles[composer, default: []].append(contentsOf: files)
         composerFocus[composer, default: 0] += 1
+        for file in files where IncomingFiles.awaitsCompression(file) { compress(file, in: composer) }
     }
 
     /// Shows or clears the drop overlay over `composer`'s conversation.
@@ -467,13 +480,14 @@ extension AppModel {
 
     public func removeFile(_ url: URL, from composer: ComposerID) {
         pendingFiles[composer]?.removeAll { $0 == url }
+        cancelVideoJob(for: url)
         modelSight.drop(url, from: composer)
         release(url)
     }
 
     /// Removes a pasted or promised file of Peel's, and any preview of a sent
     /// row still pointing at it; any other file is left alone.
-    private func release(_ file: URL) {
+    func release(_ file: URL) {
         guard IncomingFiles.owns(file) else { return }
         for handle in attachmentHandles.values where handle.localFile == file { handle.localFile = nil }
         IncomingFiles.discard(file)

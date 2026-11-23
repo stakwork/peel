@@ -111,12 +111,25 @@ struct IncomingFilesTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
 
         let folder = try IncomingFiles.newFolder(in: root)
-        let promised = try sparseFile(folder.appendingPathComponent("Recording.mov"), size: big.count)
-        #expect(throws: Engine.Failure.tooLargeToSend("Recording.mov")) {
+        let promised = try sparseFile(folder.appendingPathComponent("Recording.bin"), size: big.count)
+        #expect(throws: Engine.Failure.tooLargeToSend("Recording.bin")) {
             try IncomingFiles.accept(promised, in: folder)
         }
         #expect(!FileManager.default.fileExists(atPath: promised.path))
     }
+
+    #if canImport(AVFoundation)
+    /// A video over the limit is let in to be compressed (the setting is on
+    /// unless turned off); any other kind is refused above.
+    @Test func letsAnOversizedVideoInToBeCompressed() throws {
+        let root = try scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = try IncomingFiles.newFolder(in: root)
+        let video = try sparseFile(folder.appendingPathComponent("Clip.mov"), size: Engine.sendLimit + 1)
+        #expect(try IncomingFiles.accept(video, in: folder) == video)
+        #expect(VideoCompressor.needsCompression(video))
+    }
+    #endif
 
     @Test func acceptsOnlyAPlainFileInItsFolder() throws {
         let root = try scratch()

@@ -185,6 +185,17 @@ public final class AppModel {
     public var replyTargets: [ComposerID: Message] = [:]
     /// Files waiting in each composer until it sends.
     public var pendingFiles: [ComposerID: [URL]] = [:]
+    /// The video compressions running for files in a tray or being sent, by
+    /// the file picked (`AppModel+VideoUpload`).
+    var videoJobs: [URL: VideoJob] = [:]
+    /// Compressed copies waiting in a tray (or being sent): the bar follows their upload.
+    var compressedCopies: Set<URL> = []
+    /// The progress bar's state: compressing, then uploading a video.
+    public internal(set) var transfer: TransferState = .idle
+    /// The row whose upload feeds `transfer`'s uploading phase.
+    var trackedUpload: Int64?
+    /// Takes `transfer` down a moment after it is done.
+    @ObservationIgnored var transferDismissal: Task<Void, Never>?
     /// The composer files are being dragged towards, for its overlay.
     public var dropTarget: ComposerID?
     /// The price in sats, as typed, the files in a composer are sold for; empty for free.
@@ -1736,6 +1747,7 @@ public final class AppModel {
         (pendingFiles.values.joined() + attachmentHandles.values.compactMap(\.localFile))
             .forEach { IncomingFiles.discard($0) }
         pendingFiles = [:]
+        cancelVideoJobs()
         attachmentPrices = [:]
         modelSight.removeAll()
         composerFocus = [:]
@@ -1936,8 +1948,9 @@ public final class AppModel {
                 // Not the end of the first sync: what Resume brings in is not notified.
                 restoreProgress.outcome = .failed(PeelError.problem(reason))
                 caughtUpHere = false
-            case .transfer(let id, _, let bytes, let total):
+            case .transfer(let id, let direction, let bytes, let total):
                 attachment(id).transfer(bytes: bytes, total: total)
+                if direction == .upload, id == trackedUpload { uploadProgressed(bytes: bytes, total: total) }
             case .message(let row, _) where row.deleted:
                 // Its decrypted file is gone; nothing may still point at it.
                 if let id = row.id { attachmentHandles[id] = nil }

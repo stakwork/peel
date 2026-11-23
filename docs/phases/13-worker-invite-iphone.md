@@ -70,9 +70,23 @@ That is stakwork/strut's change, not made here.
   apps in the same write as the connection (`Storage.deleteWalletConnection`). Each opening also asks the seller for the app's title (`PublicAppLink.appTitle`, `GET <seller>/public/apps/<name>`; v38 `publicApp.title`, kept across openings) and renames an invite's host-titled connection with it, so a worker whose page never signs in again still sees "Tasks"; the row shows a connection's title unless it is just the host, else that title, else the host. Tested in `OpenedPublicAppsTests`.
 - Strings: "Apps you opened", "Remove from Apps", and two notice phrases, in English and Spanish.
 
+## An app opens inside Apps (2026-11-23)
+
+A tester tapped "Done" at the top of Tasks expecting to finish the task: it closed the page and left them on the tab
+underneath, with the photo unsent. The page sheet read as a browser (the host as its title, Reload, Done). Now an app
+opened from Apps, a worker's invite or a `peel://open` link is pushed inside the Apps tab (`AppsRoute.org` / `.visit`,
+`PhoneRouter.openInApps` / `show`), like any screen of Peel's: ‹ steps back through the page's own history, then to
+the list; the title is the app's (`AppModel.openedAppTitle`, never the host; untitled until the seller names it); Reload
+is in ⋯; the tab bar steps aside. Switching tabs keeps the page where it was. A link or a deliverable tapped in a chat
+opens full screen over it (`fullScreenCover`, `orgPage`) with ✕ to close and Reload in ⋯; there is no more Done.
+`router.publicPage` and its sheet are gone. The prototype this came from compared a browser sheet, full screen, a Tasks
+tab and a native button in a chat; Apps being every app's home folded the last two into this.
+
+Not yet: the edge swipe back (Peel draws its own ‹, which turns the system's swipe off), a native primary button the
+app hands Peel (strut kit), and strut's Tasks page dropping its own header when Peel names the app.
+
 ## Not built
 
-- A Tasks tab (Android phase 48).
 - The Mac does not keep opened apps or read `peel://join` (the Mac gets only the shared sign-in change).
 - Strut's join page opening `peel://join` (above).
 - `public_app` rows are not synced or backed up: a restore starts with none.
@@ -90,7 +104,8 @@ On an iPhone with **no Peel**:
 2. Tap Get Peel (TestFlight: https://testflight.apple.com/join/mFsg7Gkb) and install.
 3. Open Peel. iOS asks "Allow Paste": allow. The invite step is filled in (the clipboard is then empty).
 4. Continue, name, PIN, check the words. Tasks opens (`strut/worker`) signed in, with only a toast, no sheet.
-5. Apps (Chats' top row, shown with no workspace) lists it under "Apps you opened"; Disconnect in You › Connected apps removes it.
+5. Tasks opens inside the Apps tab, titled "Tasks" (not the host), the tab bar hidden; ‹ goes back to Apps, which lists it;
+   Disconnect in You › Connected apps removes it. ⋯ › Reload reloads. A Hive app link tapped in a chat opens full screen with ✕.
 
 Then, with Peel installed, tap Open in Peel on a fresh invite (needs strut's join page to open `peel://join`): the invite step
 is filled in; with an account already, the app opens signed in. Also check: "Don't Allow Paste" leaves the invite step empty

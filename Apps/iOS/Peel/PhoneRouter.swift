@@ -58,9 +58,27 @@ enum PaymentsRoute: Hashable {
     case payment(PaymentItem.ID)
 }
 
-/// What Apps can push: nothing yet (an app opens in a sheet over everything,
-/// `orgPage`).
-enum AppsRoute: Hashable {}
+/// What Apps can push: an app, opened inside the tab like any screen of
+/// Peel's, with ‹ to leave it, rather than a sheet over everything. Apps is
+/// every app's home, so whichever way one is opened (its row, a worker's
+/// invite, a `peel://open` link) it is shown here.
+enum AppsRoute: Hashable {
+    /// A Stadeum workspace's app, with the person's token.
+    case org(OrgPageRequest)
+    /// A public app, with no credential (strut's R7).
+    case visit(PublicPage)
+
+    /// One page is one route: the pages are compared by id.
+    private var key: String {
+        switch self {
+        case .org(let page): "org:\(page.id)"
+        case .visit(let page): "visit:\(page.id)"
+        }
+    }
+
+    static func == (a: Self, b: Self) -> Bool { a.key == b.key }
+    func hash(into hasher: inout Hasher) { hasher.combine(key) }
+}
 
 /// What You can push.
 enum YouRoute: Hashable {
@@ -87,15 +105,10 @@ final class PhoneRouter {
     var payments: [PaymentsRoute] = []
     var apps: [AppsRoute] = []
     var you: [YouRoute] = []
-    /// An org's page over everything (`OrgPageSheet`): a deliverable from
-    /// the agent's DM, or a workspace's app.
+    /// An org's page over everything (`OrgPageSheet`, full screen): a
+    /// deliverable from the agent's DM, or a link tapped in a message. An
+    /// app opened from Apps is pushed there instead (`openInApps`).
     var orgPage: OrgPageRequest?
-    /// A stranger's public app over everything (`OrgPageSheet` on a
-    /// `PublicPage`), opened by a `peel://open?url=` link. Its store is
-    /// listed for Forget (`PhoneWeb.remember`).
-    var publicPage: PublicPage? {
-        didSet { if let publicPage { PhoneWeb.remember(publicPage, in: model.profile) } }
-    }
     /// Such a link that came while Peel was locked (or, for a new account,
     /// before it exists): opened once Peel is ready.
     var waitingLink: PublicAppLink?
@@ -162,7 +175,6 @@ final class PhoneRouter {
         apps = []
         you = []
         orgPage = nil
-        publicPage = nil
         waitingTribe = nil
         if !keepingInvite {
             pendingInvite = nil
@@ -234,10 +246,22 @@ final class PhoneRouter {
         show(link, invited: invited)
     }
 
+    /// Shown inside Apps (`AppsRoute.visit`), its store listed for Forget
+    /// (`PhoneWeb.remember`).
     private func show(_ link: PublicAppLink, invited: Bool) {
         model.openingPublicApp(link, invited: invited)
+        let page = PublicPage(link)
+        PhoneWeb.remember(page, in: model.profile)
         orgPage = nil
-        publicPage = PublicPage(link)
+        tab = .apps
+        apps = [.visit(page)]
+    }
+
+    /// A workspace's app from its row in Apps, pushed there.
+    func openInApps(_ page: OrgPageRequest) {
+        orgPage = nil
+        tab = .apps
+        apps = [.org(page)]
     }
 
     // MARK: Worker invites

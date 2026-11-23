@@ -59,7 +59,7 @@ struct AppsScreen: View {
                     switch row {
                     case .workspace(let app):
                     Button {
-                        if case .page(let page) = stadeum.opening(app) { router.orgPage = page }
+                        if case .page(let page) = stadeum.opening(app) { router.openInApps(page) }
                     } label: {
                         AppRow(app: app, showsSource: several, pinned: model.isPinned(app))
                     }

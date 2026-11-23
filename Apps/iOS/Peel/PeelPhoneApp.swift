@@ -111,7 +111,7 @@ struct PeelPhoneApp: App {
                         model.stadeum.close()
                         model.boxes.close()
                         router.orgPage = nil
-                        router.publicPage = nil
+                        router.apps = []
                     }
                 }
                 // A tapped push: opened now if an account is open, else it

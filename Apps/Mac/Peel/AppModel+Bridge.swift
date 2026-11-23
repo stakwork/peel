@@ -186,21 +186,37 @@ extension AppModel {
         lookForBridge(pairing: pair)
     }
 
-    /// The agent was renamed here. The name is the agent's account's nickname
-    /// and runner takes it only at launch (`RUNNER_ALIAS`; it has no call to
-    /// set it live), so a bridge that runs or starts is started again with the
-    /// new name, and its next message carries it to every device and back
-    /// here (`AgentNameFollow`). A bridge that is off or failed is left alone.
+    /// The agent was renamed here. The name is the agent's account's nickname:
+    /// runner takes it at launch (`RUNNER_ALIAS`) and live after
+    /// (`PUT /alias`, `BundledBridge.setAlias`). A running bridge is told at
+    /// once, with no restart, and the agent's next message carries the name to
+    /// every device and back here (`AgentNameFollow`); the agent sends nothing
+    /// extra. Only when that fails (a bundled runner older than the route, the
+    /// account not registered yet, no answer) is the bridge started again
+    /// with the new name, as before. A bridge that is off or failed is left alone.
     func agentRenamed(to name: String) {
         agentWasRenamed(to: name)
         let bridge = agentBridge
         switch bridge.status {
-        case .running, .starting:
-            // `lookForBridge` starts again only for a strut it has not started on.
-            bridge.strut = nil
-            lookForBridge()
+        case .running:
+            guard let running = bridge.bridge else { return }
+            Task {
+                if await running.setAlias(name) { return }
+                // The name may have changed again, or the bridge gone, meanwhile.
+                guard agent?.name == name, bridge.status == .running else { return }
+                restartBridgeForAlias()
+            }
+        case .starting:
+            // It reads the name the agent has when it launches, which may be the old one.
+            restartBridgeForAlias()
         default: break
         }
+    }
+
+    private func restartBridgeForAlias() {
+        // `lookForBridge` starts again only for a strut it has not started on.
+        agentBridge.strut = nil
+        lookForBridge()
     }
 
     /// Starts the bridge when the agent is open here and Peel's own strut

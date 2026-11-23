@@ -365,6 +365,29 @@ public final class BundledBridge: CustomReflectable {
                              refused: "your Stadeum workspaces")
     }
 
+    /// Gives the running agent's account a new nickname at once (`PUT /alias`,
+    /// sphinx#443), so no restart is needed: runner takes `RUNNER_ALIAS` at
+    /// launch and this call after. True only when runner applied it. False
+    /// for anything else (404 from a bundled runner older than the route, 503
+    /// before the account registered, 400 for a bad alias, no connection, no
+    /// bridge running): the caller starts the bridge again with the new alias.
+    public func setAlias(_ alias: String) async -> Bool {
+        guard let server, let admin else { return false }
+        return await Self.setAlias(alias, base: server.base, token: admin.token)
+    }
+
+    nonisolated static func setAlias(_ alias: String, base: URL, token: String) async -> Bool {
+        guard let body = try? JSONSerialization.data(withJSONObject: ["alias": alias]),
+              let (status, _) = try? await Web.requestStrut(
+                "PUT", base.appending(path: "alias"), json: body,
+                headers: ["x-admin-token": token], limit: 4096, what: "the bridge's alias", timeout: 10
+              ) else { return false }
+        return aliasApplied(status: status)
+    }
+
+    /// Whether runner's answer to `PUT /alias` means the name is live.
+    nonisolated static func aliasApplied(status: Int) -> Bool { status == 200 }
+
     /// One admin call, `POST /<route>` (or `method`) with the admin token:
     /// refused unless it answers 200 (or a status in `allowing`: the seed
     /// already set).

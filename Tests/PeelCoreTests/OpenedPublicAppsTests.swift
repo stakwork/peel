@@ -88,4 +88,33 @@ struct OpenedPublicAppsTests {
         let titled = try #require(try storage.openedPublicApps().first)
         #expect(titled.matches("tasks"))
     }
+
+    @Test func titlePrefersAConnectionsNameThenTheSellersThenTheHost() throws {
+        let tasks = try link("https://acme.example.com/public/?app=worker")
+        try storage.rememberPublicApp(tasks, at: 1)
+        let seller = tasks.seller.absoluteString
+        try storage.setPublicAppTitle(seller: seller, app: "worker", title: "Tasks")
+        #expect(try storage.openedPublicApps().first?.title == "Tasks")
+        // A connection titled by the host is the invite's placeholder.
+        try storage.saveWalletConnection(connection("https://acme.example.com", title: "acme.example.com"))
+        #expect(try storage.openedPublicApps().first?.title == "Tasks")
+        try storage.saveWalletConnection(connection("https://acme.example.com", title: "Acme Tasks"))
+        #expect(try storage.openedPublicApps().first?.title == "Acme Tasks")
+    }
+
+    @Test func openingAgainKeepsTheSavedTitleAndTheColumnExists() throws {
+        let tasks = try link("https://acme.example.com/public/?app=worker")
+        try storage.rememberPublicApp(tasks, at: 1)
+        try storage.setPublicAppTitle(seller: tasks.seller.absoluteString, app: "worker", title: "Tasks")
+        try storage.rememberPublicApp(tasks, at: 2)
+        let row = try #require(try storage.openedPublicApps().first)
+        #expect(row.appTitle == "Tasks" && row.openedAt == 2)
+    }
+
+    @Test func theListingsTitleIsRead() {
+        #expect(PublicAppLink.title(in: Data(#"{"name":"strut/worker","title":"  Tasks \n"}"#.utf8)) == "Tasks")
+        #expect(PublicAppLink.title(in: Data(#"{"title":"  "}"#.utf8)) == nil)
+        #expect(PublicAppLink.title(in: Data(#"{"name":"x"}"#.utf8)) == nil)
+        #expect(PublicAppLink.title(in: Data("[]".utf8)) == nil)
+    }
 }

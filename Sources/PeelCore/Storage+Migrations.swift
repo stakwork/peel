@@ -684,6 +684,11 @@ extension Storage {
                 CREATE INDEX publicApp_origin ON publicApp (origin);
                 """)
         }
+        migrator.registerMigration("v38") { db in
+            // The title the seller's own listing gives an opened public app
+            // ("Tasks" for strut/worker), refreshed at each opening.
+            try db.execute(sql: "ALTER TABLE publicApp ADD COLUMN title TEXT")
+        }
         return migrator
     }
 }

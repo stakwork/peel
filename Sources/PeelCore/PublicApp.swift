@@ -73,6 +73,30 @@ public struct PublicAppLink: Sendable, Equatable {
         return name
     }
 
+    /// The title the seller gives the app (`GET <seller>/public/apps/<name>`),
+    /// cleaned; nil without an app name, an answer, or a title.
+    public func appTitle() async throws -> String? {
+        guard let app, let encoded = app.addingPercentEncoding(withAllowedCharacters: Self.segment),
+              let address = URL(string: seller.absoluteString + "/public/apps/" + encoded) else { return nil }
+        let reply = try await Web.get(address, limit: 100_000, what: "the app's title")
+        return Self.title(in: reply)
+    }
+
+    private static let segment: CharacterSet = {
+        var set = CharacterSet.urlPathAllowed
+        set.remove(charactersIn: "/")
+        return set
+    }()
+
+    /// The `title` of a listing's JSON, trimmed and cleaned to one line; nil
+    /// when not an object, or empty.
+    static func title(in reply: Data) -> String? {
+        struct Listing: Decodable { var title: String? }
+        guard let title = (try? JSONDecoder().decode(Listing.self, from: reply))?.title else { return nil }
+        let clean = TextLine.clean(title.trimmingCharacters(in: .whitespacesAndNewlines), max: 80)
+        return clean.isEmpty ? nil : clean
+    }
+
     /// The app a served box's page names in `<meta name="strut-serve"
     /// content="…">`; nil without one, or one strut would not take.
     static func served(in page: String) -> String? {

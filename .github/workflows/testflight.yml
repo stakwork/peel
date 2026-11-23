@@ -1,0 +1,269 @@
+name: TestFlight
+
+# Archives the iPhone app, the Mac app or both from the branch it runs on, on a
+# clean runner, and uploads them to App Store Connect for TestFlight. Each gets
+# the next build number (scripts/build-number.py), committed back to that
+# branch once its upload succeeded. docs/testflight.md lists the secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Which app to upload
+        type: choice
+        options: [both, ios, mac]
+        default: both
+
+# One release at a time: two runs would take the same build number.
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.plan.outputs.platforms }}
+      ios_build: ${{ steps.plan.outputs.ios_build }}
+      mac_build: ${{ steps.plan.outputs.mac_build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: plan
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          case "$PLATFORM" in
+            both) platforms='["ios","mac"]' ;;
+            ios) platforms='["ios"]' ;;
+            mac) platforms='["mac"]' ;;
+            *) echo "unknown platform $PLATFORM" >&2; exit 1 ;;
+          esac
+          ios=$(( $(scripts/build-number.py ios) + 1 ))
+          mac=$(( $(scripts/build-number.py mac) + 1 ))
+          {
+            echo "platforms=$platforms"
+            echo "ios_build=$ios"
+            echo "mac_build=$mac"
+          } >> "$GITHUB_OUTPUT"
+          echo "Uploading $PLATFORM: iOS build $ios, Mac build $mac" >> "$GITHUB_STEP_SUMMARY"
+
+  archive:
+    needs: prepare
+    runs-on: xcode-27
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.prepare.outputs.platforms) }}
+    env:
+      PLATFORM: ${{ matrix.platform }}
+      BUILD_NUMBER: ${{ matrix.platform == 'ios' && needs.prepare.outputs.ios_build || needs.prepare.outputs.mac_build }}
+      SCHEME: ${{ matrix.platform == 'ios' && 'Peel iOS' || 'Peel macOS' }}
+      DESTINATION: ${{ matrix.platform == 'ios' && 'generic/platform=iOS' || 'generic/platform=macOS' }}
+      # A build that ships stops on a core without upstream's client security fixes (build-ffi.sh).
+      PEEL_REQUIRE_CORE_FIXES: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: xcodebuild -version && swift --version
+
+      # The Sphinx core: the Mac slice and its bindings from the pinned
+      # sphinx-rs release, and for the iPhone that release's iOS slices.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .build/sphinx-core
+            .build/sphinx-core-ios
+          key: sphinx-core-${{ hashFiles('Vendor/sphinxrs.lock', 'Vendor/sphinxrs-ios.lock') }}
+      - if: matrix.platform == 'ios'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/fetch-ios-core.sh >> "$GITHUB_ENV"
+      - run: scripts/build-ffi.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.SPHINX_REPO_TOKEN }}
+
+      # The Mac's agent: its bridge (sphinx's runner) and strut, staged from
+      # the commits Vendor/runner.lock and Vendor/strut.lock pin, and cached
+      # by them, so a run builds them again only when a pin moves.
+      - if: matrix.platform == 'mac'
+        id: pins
+        run: |
+          echo "runner=$(awk '!/^#/ && NF { print $1; exit }' Vendor/runner.lock)" >> "$GITHUB_OUTPUT"
+          echo "strut=$(awk '!/^#/ && NF { print $1; exit }' Vendor/strut.lock)" >> "$GITHUB_OUTPUT"
+          echo "PEEL_BRIDGE_STAGE=$PWD/.build/stage/bridge" >> "$GITHUB_ENV"
+          echo "PEEL_STRUT_STAGE=$PWD/.build/stage/strut" >> "$GITHUB_ENV"
+      # Restored and saved apart, so a stage survives a run that fails later.
+      - if: matrix.platform == 'mac'
+        id: bridge-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .build/stage/bridge
+          key: bridge-${{ hashFiles('Vendor/runner.lock', 'Vendor/runner.Cargo.lock') }}
+      - if: matrix.platform == 'mac' && steps.bridge-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: stakwork/sphinx
+          ref: ${{ steps.pins.outputs.runner }}
+          token: ${{ secrets.SPHINX_REPO_TOKEN }}
+          path: .build/src/sphinx
+          persist-credentials: false
+      - if: matrix.platform == 'mac' && steps.bridge-cache.outputs.cache-hit != 'true'
+        run: |
+          if ! command -v cargo > /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          scripts/stage-bridge.sh .build/src/sphinx
+      - if: matrix.platform == 'mac' && steps.bridge-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .build/stage/bridge
+          key: ${{ steps.bridge-cache.outputs.cache-primary-key }}
+      - if: matrix.platform == 'mac'
+        id: strut-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .build/stage/strut
+            .build/stage/strut.node
+          key: strut-${{ hashFiles('Vendor/strut.lock') }}
+      - if: matrix.platform == 'mac' && steps.strut-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: stakwork/strut
+          ref: ${{ steps.pins.outputs.strut }}
+          path: .build/src/strut
+          persist-credentials: false
+      - if: matrix.platform == 'mac' && steps.strut-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - if: matrix.platform == 'mac' && steps.strut-cache.outputs.cache-hit != 'true'
+        run: |
+          command -v yarn > /dev/null || npm install --global yarn
+          # Ladybug's extensions build against it (stage-strut.sh).
+          brew list openssl@3 > /dev/null 2>&1 || brew install openssl@3
+          scripts/stage-strut.sh .build/src/strut
+      - if: matrix.platform == 'mac' && steps.strut-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .build/stage/strut
+            .build/stage/strut.node
+          key: ${{ steps.strut-cache.outputs.cache-primary-key }}
+
+      # Signing: the certificates in a keychain of this run only, and the
+      # App Store Connect key, with which Xcode fetches the profiles.
+      - name: Signing
+        env:
+          CERTIFICATES_P12: ${{ secrets.SIGNING_CERTIFICATES_P12 }}
+          CERTIFICATES_PASSWORD: ${{ secrets.SIGNING_CERTIFICATES_PASSWORD }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          printf '%s' "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificates.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificates.p12" -P "$CERTIFICATES_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificates.p12"
+          security find-identity -v -p codesigning "$keychain"
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+
+      - uses: actions/cache@v4
+        with:
+          path: .build/xcode-packages
+          key: xcode-packages-${{ hashFiles('Apps/Peel.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: xcode-packages-
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          # The Mac's archive must carry the staged agent: missing, it stops (embed-strut.sh).
+          [ "$PLATFORM" = ios ] || set -- PEEL_REQUIRE_STRUT=1 PEEL_BRIDGE_STAGE="$PEEL_BRIDGE_STAGE" PEEL_STRUT_STAGE="$PEEL_STRUT_STAGE"
+          xcodebuild archive -project Apps/Peel.xcodeproj -scheme "$SCHEME" -configuration Release \
+            -destination "$DESTINATION" -archivePath "$RUNNER_TEMP/Peel-$PLATFORM.xcarchive" \
+            -derivedDataPath .build/xcode-archive -clonedSourcePackagesDirPath .build/xcode-packages \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" "$@" 2>&1 | tee "$RUNNER_TEMP/archive.log" | grep -E "error:|warning: |\*\* ARCHIVE"
+      - name: Upload to App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Peel-$PLATFORM.xcarchive" \
+            -exportOptionsPlist Apps/Config/ExportOptions.plist -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee "$RUNNER_TEMP/export.log"
+          echo "$SCHEME build $BUILD_NUMBER uploaded to App Store Connect" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/uploaded" && echo "$BUILD_NUMBER" > "$RUNNER_TEMP/uploaded/$PLATFORM"
+      # What the last job needs to commit this platform's build number.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uploaded-${{ matrix.platform }}
+          path: ${{ runner.temp }}/uploaded/${{ matrix.platform }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/archive.log
+            ${{ runner.temp }}/export.log
+          if-no-files-found: ignore
+      - if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+
+  # The build numbers of what reached App Store Connect, committed to the
+  # branch the run started from: as the manual bumps did, one commit.
+  commit-build-numbers:
+    needs: [prepare, archive]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # None when nothing reached App Store Connect.
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: uploaded-*
+          path: uploaded
+          merge-multiple: true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          path: repo
+      - working-directory: repo
+        run: |
+          message=
+          if [ -f ../uploaded/ios ]; then
+            scripts/build-number.py ios "$(cat ../uploaded/ios)"
+            message="New iOS build $(cat ../uploaded/ios)"
+          fi
+          if [ -f ../uploaded/mac ]; then
+            scripts/build-number.py mac "$(cat ../uploaded/mac)"
+            message="${message:+$message }New Mac build $(cat ../uploaded/mac)"
+          fi
+          [ -n "$message" ] || { echo "Nothing was uploaded: no build number to commit."; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "$message [skip ci]"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          echo "Committed: $message" >> "$GITHUB_STEP_SUMMARY"

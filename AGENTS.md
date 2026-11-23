@@ -1428,6 +1428,8 @@ without replacing the installed app, `./scripts/bundle-app.sh /some/dir/Peel.app
 Or open `Apps/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick "Peel macOS"
 and Product > Archive for a build to distribute: the scheme's Release signs
 with the team in `Apps/Config`, and `scripts/stage-strut.sh` must have run.
+The TestFlight workflow does the same on GitHub Actions for the Mac, the
+iPhone or both, and commits the build numbers it used (docs/testflight.md).
 
 ### The iPhone app
 

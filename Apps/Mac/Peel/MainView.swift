@@ -76,6 +76,13 @@ struct MainView: View {
             }
         }
         .peelMenuHost(main: true)
+        // A `peel://tribe` link: the Join form with it filled in. Nothing is
+        // joined or paid until the person confirms there.
+        .sheet(isPresented: Binding(get: { model.tribeLinkToJoin != nil && model.phase == .ready },
+                                    set: { if !$0 { model.tribeLinkToJoin = nil } })) {
+            JoinTribeForm(link: model.tribeLinkToJoin ?? "") { model.tribeLinkToJoin = nil }
+                .environment(model)
+        }
         .sheet(item: Binding(get: { model.diagnosticsRecord }, set: { model.diagnosticsRecord = $0 })) {
             DiagnosticRecordSheet(record: $0)
                 .environment(model)

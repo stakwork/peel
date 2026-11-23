@@ -300,6 +300,10 @@ public final class AppModel {
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
     public var notice: String?
+    /// A `peel://tribe` link someone opened, for the Join a tribe form to
+    /// show prefilled; the person still looks it up and confirms. Cleared by
+    /// the view that takes it.
+    public var tribeLinkToJoin: String?
     /// Peel recorded a problem from the last run (a crash, or ended while it
     /// was in front): the notice offers the record (`AppModel+Diagnostics`).
     public var diagnosticsNotice = Diagnostics.previousRun().isProblem

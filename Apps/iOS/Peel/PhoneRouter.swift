@@ -182,6 +182,14 @@ final class PhoneRouter {
             you = []
             return true
         }
+        if url.host?.lowercased() == "tribe" {
+            // Held until Peel is unlocked and Chats shows it; the person still
+            // confirms the join there.
+            guard let link = TribeLink(url.absoluteString) else { return false }
+            model.tribeLinkToJoin = link.text
+            tab = .chats
+            return true
+        }
         if let invite = InviteLink.fromPeelLink(url) {
             take(invite: invite)
             return true

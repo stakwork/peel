@@ -25,6 +25,10 @@ public enum ContactCode: Sendable, Equatable {
         if text.lowercased().hasPrefix("sphinx.chat://") {
             return try link(text)
         }
+        if text.lowercased().hasPrefix("peel://") {
+            guard let tribe = TribeLink(text) else { throw Engine.Failure.notAContactCode }
+            return .tribe(tribe)
+        }
         if let info = contactInfo(text) { return .contact(info: info) }
         if text.isPubkey { throw Engine.Failure.keyWithoutRoute }
         // An invite without its prefix, as the core also reads them.
@@ -142,7 +146,8 @@ public enum MessageLink: Sendable, Equatable {
         var code: [Range<String.Index>]?
         for word in text.split(whereSeparator: \.isWhitespace) {
             var candidate: Substring
-            if let scheme = word.range(of: "sphinx.chat://", options: .caseInsensitive) {
+            if let scheme = word.range(of: "sphinx.chat://", options: .caseInsensitive)
+                ?? word.range(of: "peel://tribe", options: .caseInsensitive) {
                 candidate = word[scheme.lowerBound...]
             } else if word.count >= minContactInfoLength, word.contains("_") {
                 candidate = word

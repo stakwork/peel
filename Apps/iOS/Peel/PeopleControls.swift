@@ -14,6 +14,8 @@ import UIKit
 /// sections and a pending invite.
 enum PeopleSheet: Identifiable, Hashable {
     case addContact, inviteSomeone, joinTribe, createTribe
+    /// Opened by a `peel://tribe` link, with it filled in.
+    case joinTribeLink(String)
     /// A pending invite, by its code.
     case invite(String)
 
@@ -25,6 +27,7 @@ enum PeopleSheet: Identifiable, Hashable {
             case .addContact: AddContactSheet()
             case .inviteSomeone: InviteSheet()
             case .joinTribe: JoinTribeSheet()
+            case .joinTribeLink(let link): JoinTribeSheet(link: link)
             case .createTribe: TribeSettingsSheet(editing: nil)
             case .invite(let code): InviteDetailScreen(code: code)
             }

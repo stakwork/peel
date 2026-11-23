@@ -389,28 +389,40 @@ public struct TribeSettings: Codable, Sendable, Equatable {
     }
 }
 
-/// A tribe link: `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>`.
+/// A tribe link: `peel://tribe?pubkey=<pubkey>&host=<host>`. Peel registers
+/// only its own scheme, so this is the link it writes; the official apps'
+/// `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>` is still read.
 public struct TribeLink: Sendable, Hashable {
     public let pubkey: String
     public let host: String
 
     public init?(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let components = URLComponents(string: trimmed), components.scheme == "sphinx.chat" else { return nil }
-        let items = components.queryItems ?? []
-        func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
-        guard value("action") == "tribeV2",
-              let pubkey = value("pubkey"), pubkey.isPubkey,
-              let host = value("host"), TribeLink.isPlainHost(host) else { return nil }
+        let pubkey: String?
+        let host: String?
+        if trimmed.lowercased().hasPrefix("peel://") {
+            guard let url = URL(string: trimmed),
+                  let values = PeelLink.values(url, host: "tribe", names: ["pubkey", "host"]) else { return nil }
+            pubkey = values["pubkey"]
+            host = values["host"]
+        } else {
+            guard let components = URLComponents(string: trimmed), components.scheme == "sphinx.chat" else { return nil }
+            let items = components.queryItems ?? []
+            func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+            guard value("action") == "tribeV2" else { return nil }
+            pubkey = value("pubkey")
+            host = value("host")
+        }
+        guard let pubkey, pubkey.isPubkey, let host, TribeLink.isPlainHost(host) else { return nil }
         self.pubkey = pubkey.lowercased()
         self.host = host
     }
 
-    /// The link as the official apps write it, and nothing else it came with.
+    /// The link as Peel writes it, and nothing else it came with.
     public var text: String { Self.text(pubkey: pubkey, host: host) }
 
     static func text(pubkey: String, host: String) -> String {
-        "sphinx.chat://?action=tribeV2&pubkey=\(pubkey)&host=\(host)"
+        "peel://tribe?pubkey=\(pubkey)&host=\(host)"
     }
 
     /// `name[:port]` and nothing else, so a link cannot smuggle a path or

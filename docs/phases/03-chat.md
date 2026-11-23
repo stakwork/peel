@@ -112,7 +112,7 @@ messages, payments and boosts are separate tasks and not listed.
   holds unchanged. The member is only the alias and photo in `sender`.
 - Our own messages come back from the tribe (`bounce_back_pubkey`), marked
   `fromMe`. A tribe send has no copy to self (`send.rs`).
-- Link: `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>`.
+- Link: `peel://tribe?pubkey=<pubkey>&host=<host>` (Peel registers only its own scheme); the official apps' `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>` is still read.
   Production host comes from the config endpoint's `tribe_host`
   (`tribes.v2.sphinx.chat`); https except for a loopback host.
 - Only the owner gets the member list (`TribeCmd::ListMembers` checks the

@@ -224,13 +224,6 @@ struct ChatList: View {
             }
         }
         .sheet(item: $sheet) { $0.screen }
-        // A `peel://tribe` link, held in the model until Chats is on screen.
-        .onChange(of: model.tribeLinkToJoin, initial: true) {
-            if let link = model.tribeLinkToJoin {
-                model.tribeLinkToJoin = nil
-                sheet = .joinTribeLink(link)
-            }
-        }
         // Pinned apps are read without opening Apps first, and again when the
         // workspaces change (a read under way is cut short by the next one).
         .task(id: model.stadeum.live.map(\.id)) {

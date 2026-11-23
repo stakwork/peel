@@ -267,7 +267,13 @@ is a short plan. Update the status and the journal when you finish something.
     (the amount the engine sends, and why it is more than the owner's
     price), the only price shown to someone who will pay it; `Tribe.exit`
     (leave, remove from Peel, or neither) and `Tribe.pages` (its app and
-    second brain, in their one order)
+    second brain, in their one order). `TribeLink` reads a tribe link in both forms
+    (`sphinx.chat://?action=tribeV2&pubkey=…&host=…` and `peel://tribe?pubkey=…&host=…`)
+    and is the one place one is built (`text`, `peelText`); `TribeRoute` is the one
+    decision for what a tribe link does in Peel (in the tribe: its chat; else the
+    Join form filled in), used by `AppModel.openTribeLink` for a tapped link, the
+    Mac's card and an opened `peel://tribe` link. `MessageMarkup` links both forms
+    (tapped, they go to the root `openURL` handlers, which take them before the system).
   - `NotificationPolicy.swift` — what notifies (messages, payment
     requests, announced calls, join requests to owned tribes) and the one
     "quiet here" rule (the chat in view, its mute level) that messages,

@@ -25,6 +25,7 @@ public enum ContactCode: Sendable, Equatable {
         if text.lowercased().hasPrefix("sphinx.chat://") {
             return try link(text)
         }
+        // Peel's own links: only a tribe's is a contact code.
         if text.lowercased().hasPrefix("peel://") {
             guard let tribe = TribeLink(text) else { throw Engine.Failure.notAContactCode }
             return .tribe(tribe)
@@ -132,7 +133,7 @@ public enum MessageLink: Sendable, Equatable {
     }
 
     /// The card for `text`, if any: its first link outside code. Each word
-    /// is read on its own, from a `sphinx.chat://` in it (so a Markdown
+    /// is read on its own, from a `sphinx.chat://` or `peel://tribe` in it (so a Markdown
     /// `[label](link)` counts) and without the brackets, quotes and
     /// punctuation around it. Copying and quoting keep the whole text.
     public static func card(in text: String) -> Card? {

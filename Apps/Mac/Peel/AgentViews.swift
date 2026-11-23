@@ -129,7 +129,7 @@ private struct AgentChatColumn: View {
         // A reply's View opens the message; any other link goes where a
         // message's link goes (`WebPane.linkAction`).
         .environment(\.openURL, OpenURLAction { url in
-            if model.openAgentLink(url) || model.openHiveAppLink(url) { return .handled }
+            if model.openAgentLink(url) || model.openHiveAppLink(url) || model.openTribeLink(url.absoluteString) { return .handled }
             model.web.linkAction(url)
             return .handled
         })

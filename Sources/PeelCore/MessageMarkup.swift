@@ -258,6 +258,9 @@ public enum MessageMarkup {
             }
             links = (named + links.filter(outside(named))).sorted(by: inOrder)
         }
+        // Tribe links (either form) are Peel's own to open: found here, as the detector reads only https.
+        let tribes = tribeLinks(in: text)
+        if !tribes.isEmpty { links = (links + tribes.filter(outside(links))).sorted(by: inOrder) }
         // Links, codes and mentions each come in order and never overlap
         // their own kind, so every check below walks forward once: a long
         // message of many spans costs no more than its length.
@@ -287,6 +290,33 @@ public enum MessageMarkup {
             spans = (spans + mentions.filter(outside(spans))).sorted(by: inOrder)
         }
         return spans
+    }
+
+    /// `sphinx.chat://?…` and `peel://tribe?…`, not glued to a word before it, up to white space or a character no
+    /// address holds.
+    private static let tribeAddress = try? NSRegularExpression(
+        pattern: #"(?<![A-Za-z0-9])(?:sphinx\.chat://\?|peel://tribe\?)[^\s<>"\[\]{}|\\^]+"#, options: .caseInsensitive)
+
+    /// The tribe links in `text` (`TribeLink`, either form) as link spans, in order: trailing sentence
+    /// punctuation, closing emphasis marks and an unbalanced `)` are not part of one, and a link that is
+    /// not a well-formed tribe link stays text. Tapped, they open in Peel (`TribeRoute`), never in the system.
+    static func tribeLinks(in text: String) -> [Span] {
+        guard text.contains("://") else { return [] }
+        let whole = NSRange(text.startIndex..., in: text)
+        return (tribeAddress?.matches(in: text, range: whole) ?? []).compactMap { match -> Span? in
+            guard var range = Range(match.range, in: text) else { return nil }
+            while range.upperBound > range.lowerBound {
+                let last = text[text.index(before: range.upperBound)]
+                let address = text[range]
+                let drop = ".,;:!?'*_~".contains(last)
+                    || (last == ")" && address.filter { $0 == ")" }.count > address.filter { $0 == "(" }.count)
+                guard drop else { break }
+                range = range.lowerBound..<text.index(before: range.upperBound)
+            }
+            let address = String(text[range])
+            guard TribeLink(address) != nil, let url = URL(string: address) else { return nil }
+            return Span(kind: .link(url), range: range, text: address)
+        }
     }
 
     /// `range` without the emphasis marks at its end, which close what is

@@ -102,6 +102,8 @@ final class PhoneRouter {
     /// page signs the account in with no question (`WalletHost.grantInvitePage`).
     /// Only that link: never carried to another one, and dropped with it.
     var waitingLinkInvited = false
+    /// A `peel://tribe` link that came while Peel was locked: opened once Peel is ready (`openWaitingLink`).
+    var waitingTribe: String?
     /// The invite a tapped `peel://join` link or the clipboard brought, as the
     /// `sphinx.chat://?…` link the core reads, for onboarding to fill in
     /// (`take(invite:)`). Held in memory only and never logged: an invite is a
@@ -158,6 +160,7 @@ final class PhoneRouter {
         you = []
         orgPage = nil
         publicPage = nil
+        waitingTribe = nil
         if !keepingInvite {
             pendingInvite = nil
             waitingLink = nil
@@ -182,16 +185,20 @@ final class PhoneRouter {
             you = []
             return true
         }
-        if url.host?.lowercased() == "tribe" {
-            // Held until Peel is unlocked and Chats shows it; the person still
-            // confirms the join there.
-            guard let link = TribeLink(url.absoluteString) else { return false }
-            model.tribeLinkToJoin = link.text
-            tab = .chats
-            return true
-        }
         if let invite = InviteLink.fromPeelLink(url) {
             take(invite: invite)
+            return true
+        }
+        // A tribe's `peel://tribe?pubkey=…&host=…`: its chat when this account is in it, else the Join sheet
+        // filled in (`AppModel.openTribeLink`), once Peel is unlocked.
+        if url.scheme?.lowercased() == "peel", url.host?.lowercased() == "tribe" {
+            if TribeLink(peelLink: url) == nil {
+                model.notice = String(localized: "That tribe link doesn't work: it needs the tribe's key and its tribes server.")
+            } else if model.phase == .ready {
+                model.openTribeLink(url.absoluteString)
+            } else {
+                waitingTribe = url.absoluteString
+            }
             return true
         }
         guard let link = PublicAppLink(peelLink: url) else { return false }
@@ -206,6 +213,10 @@ final class PhoneRouter {
 
     /// Peel ready: the link that waited for it opens.
     func openWaitingLink() {
+        if model.phase == .ready, let tribe = waitingTribe {
+            waitingTribe = nil
+            model.openTribeLink(tribe)
+        }
         guard model.phase == .ready, let link = waitingLink else { return }
         let invited = waitingLinkInvited
         waitingLink = nil

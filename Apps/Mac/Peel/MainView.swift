@@ -42,9 +42,18 @@ struct MainView: View {
         // link goes where a message's link goes (`WebPane.linkAction`).
         .environment(\.openURL, OpenURLAction { url in
             if model.openHiveAppLink(url) { return .handled }
+            // A tribe link opens in Peel: its chat, or the Join form; never the system's.
+            if model.openTribeLink(url.absoluteString) { return .handled }
             model.web.linkAction(url)
             return .handled
         })
+        // The Join form a tapped tribe link asked for (`AppModel.openTribeLink`).
+        .peelPopover(isPresented: Binding(
+            get: { model.joiningTribeLink != nil },
+            set: { if !$0 { model.joiningTribeLink = nil } }
+        )) {
+            JoinTribeForm(link: model.joiningTribeLink ?? "") { model.joiningTribeLink = nil }
+        }
         .ignoresSafeArea(edges: .top)
         .foregroundStyle(Theme.text)
         .overlay {
@@ -76,13 +85,6 @@ struct MainView: View {
             }
         }
         .peelMenuHost(main: true)
-        // A `peel://tribe` link: the Join form with it filled in. Nothing is
-        // joined or paid until the person confirms there.
-        .sheet(isPresented: Binding(get: { model.tribeLinkToJoin != nil && model.phase == .ready },
-                                    set: { if !$0 { model.tribeLinkToJoin = nil } })) {
-            JoinTribeForm(link: model.tribeLinkToJoin ?? "") { model.tribeLinkToJoin = nil }
-                .environment(model)
-        }
         .sheet(item: Binding(get: { model.diagnosticsRecord }, set: { model.diagnosticsRecord = $0 })) {
             DiagnosticRecordSheet(record: $0)
                 .environment(model)

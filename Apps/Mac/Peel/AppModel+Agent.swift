@@ -332,6 +332,12 @@ extension AppModel {
             } else {
                 notice = String(localized: "That link doesn't name an app Peel can open: only https addresses open.")
             }
+        } else if url.host?.lowercased() == "tribe" {
+            if let link = TribeLink(url.absoluteString) {
+                tribeLinkToJoin = link.text
+            } else {
+                notice = String(localized: "That tribe link doesn't work.")
+            }
         } else if url.host?.lowercased() == "brain" {
             notice = String(localized: "That link is for the old home server, which Peel no longer uses. Set up Always on again and open the new link.")
         } else {

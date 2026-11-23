@@ -27,7 +27,7 @@ struct JoinTribeSheet: View {
         @Bindable var lookup = lookup
         SheetPage(title: String(localized: "Join a tribe")) {
             CodeEntry(
-                label: String(localized: "Tribe link"), prompt: "sphinx.chat://?action=tribeV2…", text: $lookup.link,
+                label: String(localized: "Tribe link"), prompt: "peel://tribe?…", text: $lookup.link,
                 scanTitle: String(localized: "Scan a tribe's code"), scanPrompt: String(localized: "Point the camera at a tribe's QR code."),
                 accept: { TribeLink($0) == nil ? String(localized: "That code isn't a tribe link.") : nil },
                 choose: { $0.first { TribeLink($0) != nil } },

@@ -28,6 +28,8 @@
 # then gets those two slices beside the Mac one. The lock does not pin them
 # yet, so the script prints their sha256 rather than checking it. Without
 # them it writes the Mac slice alone, and a later run without them drops the iOS slices.
+# SPHINX_IOS_LIB alone gives a device slice and no simulator one, enough to
+# archive (scripts/fetch-ios-core.sh, .github/workflows/testflight.yml).
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -160,14 +162,19 @@ stage macos "$LIB"
 set -- -library "$STAGE/macos/libsphinxrs.a" -headers "$STAGE/Headers"
 IDS="macos-arm64_x86_64"
 if [ -n "$IOS_LIB$IOS_SIM_LIB" ]; then
-  [ -n "$IOS_LIB" ] && [ -n "$IOS_SIM_LIB" ] || die "set both SPHINX_IOS_LIB and SPHINX_IOS_SIM_LIB, or neither"
+  [ -n "$IOS_LIB" ] || die "SPHINX_IOS_SIM_LIB needs SPHINX_IOS_LIB"
   stage ios "$IOS_LIB"
-  stage ios-simulator "$IOS_SIM_LIB"
   echo "unpinned iOS library $(sha256 "$IOS_LIB") $IOS_LIB" >&2
-  echo "unpinned iOS library $(sha256 "$IOS_SIM_LIB") $IOS_SIM_LIB" >&2
-  set -- "$@" -library "$STAGE/ios/libsphinxrs.a" -headers "$STAGE/Headers" \
-    -library "$STAGE/ios-simulator/libsphinxrs.a" -headers "$STAGE/Headers"
-  IDS="$IDS ios-arm64 ios-arm64-simulator"
+  set -- "$@" -library "$STAGE/ios/libsphinxrs.a" -headers "$STAGE/Headers"
+  IDS="$IDS ios-arm64"
+  if [ -n "$IOS_SIM_LIB" ]; then
+    stage ios-simulator "$IOS_SIM_LIB"
+    echo "unpinned iOS library $(sha256 "$IOS_SIM_LIB") $IOS_SIM_LIB" >&2
+    set -- "$@" -library "$STAGE/ios-simulator/libsphinxrs.a" -headers "$STAGE/Headers"
+    IDS="$IDS ios-arm64-simulator"
+  else
+    echo "no SPHINX_IOS_SIM_LIB: the xcframework builds for iOS devices only, not the simulator" >&2
+  fi
 fi
 # xcodebuild reads each library's platform from its load commands and writes
 # the Info.plist from them. The new framework is built and checked beside the

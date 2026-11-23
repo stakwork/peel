@@ -1,0 +1,3 @@
+# The sha256 of universal-sphinxrs.a from the sphinx-rs release named after it, the iPhone's
+# core (scripts/fetch-ios-core.sh). The release must be the one Vendor/sphinxrs.lock names.
+ebc8bffa7df757d732c1429ee4bd5364cb1f3a303989d024626d8e638189c403 v0.8.44

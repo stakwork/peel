@@ -51,7 +51,9 @@ extension OrgPageRequest: PhonePage {
 }
 
 /// A stranger's page is no strut UI Peel knows: no app of it is named or
-/// opened by Peel, and the sheet names it by its host.
+/// opened by Peel. It is pushed in Apps under the app's own title
+/// (`openedAppTitle`), never its host, which over the page read as a
+/// browser's address bar; untitled until the seller names it.
 extension PublicPage: PhonePage {
     var script: String? { nil }
     /// Kept, one store per origin (`storeIdentifier`): a visitor's sign-in
@@ -61,7 +63,7 @@ extension PublicPage: PhonePage {
     func appLink(_ other: URL, from current: URL?) -> StrutAppLink? { nil }
     func request(for link: StrutAppLink) -> URLRequest? { nil }
     func shownApp(_ current: URL) -> AgentArtifact.Handle? { nil }
-    func title(showingAnotherApp: Bool) -> String { host }
+    func title(showingAnotherApp: Bool) -> String { "" }
     var walletPlace: String { host }
 }
 
@@ -79,8 +81,19 @@ extension PublicPage: PhonePage {
 /// (`PublicPage`, strut's R7): its own address, no credential, the origin
 /// alone, and the app wallet keyed by that origin, which signs the person
 /// in only there.
+///
+/// Shown one of two ways, neither of them a browser: pushed inside Apps
+/// (`leave` set, `AppsRoute`), where ‹ steps back through the page's own
+/// history and then to the list, and the tab bar steps aside; or full screen
+/// over everything (a link or a deliverable from a chat), with ✕ to close.
+/// Either way the page's title is the app's, and Reload waits in ⋯, out of
+/// a thumb's way: one slip there loses what the page has not sent.
 struct OrgPageSheet<Page: PhonePage>: View {
     let page: Page
+    /// Its title pushed in Apps, when Peel knows the app's own (`openedAppTitle`).
+    var appTitle: String? = nil
+    /// Pushed inside Apps: how ‹ leaves the page. Nil for full screen.
+    var leave: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
     @State private var controller = OrgPageController<Page>()
@@ -91,7 +104,33 @@ struct OrgPageSheet<Page: PhonePage>: View {
     @State private var visible = false
 
     var body: some View {
-        NavigationStack {
+        frame
+            .onAppear { visible = true }
+            .onDisappear { visible = false }
+            .modifier(OrgPagePrompts(controller: controller, wallet: wallet, location: location))
+    }
+
+    /// Its own navigation stack full screen; the tab's, pushed in Apps.
+    @ViewBuilder private var frame: some View {
+        if leave != nil {
+            content
+        } else {
+            NavigationStack { content }
+        }
+    }
+
+    private var title: String {
+        appTitle ?? page.title(showingAnotherApp: controller.showsAnotherApp)
+    }
+
+    /// Whether the page paints itself dark (`underPageBackgroundColor`).
+    private var pageIsDark: Bool {
+        var white: CGFloat = 1
+        guard let color = controller.pageBackground, color.getWhite(&white, alpha: nil) else { return false }
+        return white < 0.5
+    }
+
+    private var content: some View {
             OrgWebView(page: page, controller: controller, model: model, wallet: wallet, location: location, visible: visible)
                 .overlay(alignment: .top) {
                     if controller.isLoading {
@@ -125,22 +164,48 @@ struct OrgPageSheet<Page: PhonePage>: View {
                 }
                 .animation(CopyFeedback.exit, value: wallet.toast)
                 .background { Color(uiColor: controller.pageBackground ?? .systemBackground).ignoresSafeArea() }
-                .navigationTitle(page.title(showingAnotherApp: controller.showsAnotherApp))
+                .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
+                // The bar reads on the page's own background: a dark page (strut's, with no theme) gets a light title.
+                .toolbarColorScheme(pageIsDark ? .dark : nil, for: .navigationBar)
+                // Pushed: ‹ is Peel's own, so it can step through the page first.
+                .navigationBarBackButtonHidden(leave != nil)
+                .toolbar(leave != nil ? .hidden : .automatic, for: .tabBar)
                 .toolbar {
-                    if controller.canGoBack {
+                    if let leave {
                         ToolbarItem(placement: .topBarLeading) {
-                            Button("Back", systemImage: "chevron.backward") { controller.goBack() }
+                            Button(controller.canGoBack ? String(localized: "Back") : String(localized: "Apps"), systemImage: "chevron.backward") {
+                                if controller.canGoBack { controller.goBack() } else { leave() }
+                            }
+                        }
+                    } else {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close", systemImage: "xmark") { dismiss() }
+                        }
+                        if controller.canGoBack {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Back", systemImage: "chevron.backward") { controller.goBack() }
+                            }
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Reload", systemImage: "arrow.clockwise") { controller.reload(page) }
+                        Menu("More", systemImage: "ellipsis") {
+                            Button("Reload", systemImage: "arrow.clockwise") { controller.reload(page) }
+                        }
                     }
-                    ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
                 }
-        }
-        .onAppear { visible = true }
-        .onDisappear { visible = false }
+    }
+}
+
+/// What a page asks over itself, pushed or full screen: the location
+/// question, a download to share, the app wallet's sheets, and a failed save.
+private struct OrgPagePrompts<Page: PhonePage>: ViewModifier {
+    @Bindable var controller: OrgPageController<Page>
+    @Bindable var wallet: PhoneWalletSheets
+    @Bindable var location: PageLocationPrompts
+
+    func body(content: Content) -> some View {
+        content
         .sheet(item: $location.asking) { ask in
             PageLocationPromptSheet(host: ask.host) { location.answer($0) }
         }

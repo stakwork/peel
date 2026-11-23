@@ -3,8 +3,8 @@ import PeelUI
 import SwiftUI
 import UIKit
 
-/// The tab bar (docs/design/iphone.md, decision 1): Chats, Payments, You,
-/// and the system's search tab. Each tab is its own `NavigationStack` with
+/// The tab bar (docs/design/iphone.md, decision 1): Chats, Payments, Apps,
+/// You. Search is a button in Chats' bar, not a tab. Each tab is its own `NavigationStack` with
 /// large titles; which tab and what each has pushed is `PhoneRouter`'s.
 struct MainTabs: View {
     @Environment(AppModel.self) private var model
@@ -23,6 +23,20 @@ struct MainTabs: View {
             }
             // Sats just received, "+350", as the Mac's Payments row shows them.
             .badge(model.money.recentMsat > 0 ? Text(Sats.signed(msat: model.money.recentMsat, incoming: true)) : nil)
+            Tab(String(localized: "Apps"), systemImage: "square.grid.2x2", value: PhoneTab.apps) {
+                NavigationStack(path: $router.apps) {
+                    AppsScreen()
+                        .onCallBannerInset()
+                        .navigationDestination(for: AppsRoute.self) { route in
+                            switch route {
+                            case .org(let page):
+                                OrgPageSheet(page: page, leave: leaveApp)
+                            case .visit(let page):
+                                OrgPageSheet(page: page, appTitle: model.openedAppTitle(page.link), leave: leaveApp)
+                            }
+                        }
+                }
+            }
             Tab(value: PhoneTab.you) {
                 YouTab()
             } label: {
@@ -32,14 +46,9 @@ struct MainTabs: View {
                     YouTabIcon(selected: router.tab == .you)
                 }
             }
-            Tab(value: PhoneTab.search, role: .search) {
-                SearchTab()
-            }
         }
-        .sheet(item: $router.orgPage) { page in
-            OrgPageSheet(page: page)
-        }
-        .sheet(item: $router.publicPage) { page in
+        // A link or a deliverable from a chat: full screen over it, ✕ to close (Apps pushes its own).
+        .fullScreenCover(item: $router.orgPage) { page in
             OrgPageSheet(page: page)
         }
         // The Join sheet a tapped tribe link asked for (`AppModel.openTribeLink`).
@@ -85,9 +94,20 @@ struct MainTabs: View {
         }
     }
 
+    /// Back from an app pushed in Apps, to the list.
+    private func leaveApp() {
+        if !router.apps.isEmpty { router.apps.removeLast() }
+    }
+
     private func closeGoneOrgPage() {
-        guard let page = router.orgPage else { return }
-        if !model.stadeum.live.contains(where: { $0.id == page.peer }), !model.boxes.shows(page) { router.orgPage = nil }
+        let gone = { (page: OrgPageRequest) in
+            !model.stadeum.live.contains(where: { $0.id == page.peer }) && !model.boxes.shows(page)
+        }
+        if let page = router.orgPage, gone(page) { router.orgPage = nil }
+        // One pushed in Apps leaves the stack the same way.
+        if router.apps.contains(where: { if case .org(let page) = $0 { gone(page) } else { false } }) {
+            router.apps.removeAll { if case .org(let page) = $0 { gone(page) } else { false } }
+        }
     }
 }
 
@@ -155,34 +175,5 @@ private struct YouTabIcon: View {
         let renderer = ImageRenderer(content: icon.environment(\.colorScheme, key.scheme))
         renderer.scale = key.scale
         return renderer.uiImage?.withRenderingMode(.alwaysOriginal)
-    }
-}
-
-/// The system's search tab: chats whose name matches, through the same
-/// sections as Chats (`sidebarSections` filters by `searchQuery`, which the
-/// router clears on leaving). Results across messages are still to design.
-private struct SearchTab: View {
-    @Environment(AppModel.self) private var model
-    @Environment(PhoneRouter.self) private var router
-
-    var body: some View {
-        @Bindable var model = model
-        @Bindable var router = router
-        NavigationStack(path: $router.search) {
-            Group {
-                if model.searchQuery.trimmed.isEmpty {
-                    ContentUnavailableView("Search chats", systemImage: "magnifyingglass",
-                                           description: Text("Tribes and people by name."))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Theme.background)
-                } else {
-                    ChatList()
-                }
-            }
-            .onCallBannerInset()
-            .navigationTitle("Search")
-            .searchable(text: $model.searchQuery, prompt: Text("Search chats"))
-            .chatsDestinations()
-        }
     }
 }

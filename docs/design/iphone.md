@@ -36,8 +36,9 @@ state. iOS 26's Liquid Glass is the chrome, never the content.
 
 All by Tom, 2026-10-14.
 
-1. **Tabs: Chats, Payments, You**, plus the system's separate search tab
-   (the search role). No Agent tab and no Activity tab.
+1. **Tabs: Chats, Payments, Apps, You.** No Agent tab and no Activity tab.
+   Search is a magnifying glass at the top left of Chats, not a tab
+   (2026-11-23: it only ever searched chats by name).
 2. **The agent is a DM**, not a tab. Its row sits in Direct messages with
    the AGENT label, and shows an orange count when it needs you.
 3. **Chats opens with three sidebar-style rows**: Automations, Threads,

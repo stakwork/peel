@@ -5,16 +5,14 @@ import SwiftUI
 import UIKit
 
 /// The phone's tabs (docs/design/iphone.md, decision 1): Chats, Payments,
-/// You, and the system's separate search tab.
+/// Apps, You. Searching chats is a button in Chats' own bar (`ChatsTab`).
 enum PhoneTab: Hashable {
-    case chats, payments, you, search
+    case chats, payments, apps, you
 }
 
-/// What Chats (and Search, which opens chats too) can push.
+/// What Chats can push.
 enum ChatsRoute: Hashable {
     case automations, threads, mentions
-    /// The Stadeum workspaces' pinned apps (`AppsScreen`).
-    case apps
     /// A tribe or a direct message, by its chat id. The agent is a DM, so
     /// its chat is one of these too.
     case chat(String)
@@ -27,7 +25,6 @@ enum ChatsRoute: Hashable {
     var destination: AppModel.Destination {
         switch self {
         case .automations: .automations
-        case .apps: .apps
         case .threads: .threads
         case .mentions: .mentions
         case .chat(let chat), .details(let chat), .members(let chat): .chat(chat)
@@ -38,11 +35,10 @@ enum ChatsRoute: Hashable {
     init?(_ destination: AppModel.Destination) {
         switch destination {
         case .automations: self = .automations
-        case .apps: self = .apps
         case .threads: self = .threads
         case .mentions: self = .mentions
         case .chat(let chat): self = .chat(chat)
-        case .payments, .account, .agent, .app, .segments: return nil
+        case .payments, .apps, .account, .agent, .app, .segments: return nil
         }
     }
 
@@ -51,7 +47,7 @@ enum ChatsRoute: Hashable {
     var isConversation: Bool {
         switch self {
         case .chat, .details, .members: true
-        case .automations, .apps, .threads, .mentions: false
+        case .automations, .threads, .mentions: false
         }
     }
 }
@@ -60,6 +56,28 @@ enum ChatsRoute: Hashable {
 enum PaymentsRoute: Hashable {
     /// One payment's detail, by `PaymentItem.id`.
     case payment(PaymentItem.ID)
+}
+
+/// What Apps can push: an app, opened inside the tab like any screen of
+/// Peel's, with ‹ to leave it, rather than a sheet over everything. Apps is
+/// every app's home, so whichever way one is opened (its row, a worker's
+/// invite, a `peel://open` link) it is shown here.
+enum AppsRoute: Hashable {
+    /// A Stadeum workspace's app, with the person's token.
+    case org(OrgPageRequest)
+    /// A public app, with no credential (strut's R7).
+    case visit(PublicPage)
+
+    /// One page is one route: the pages are compared by id.
+    private var key: String {
+        switch self {
+        case .org(let page): "org:\(page.id)"
+        case .visit(let page): "visit:\(page.id)"
+        }
+    }
+
+    static func == (a: Self, b: Self) -> Bool { a.key == b.key }
+    func hash(into hasher: inout Hasher) { hasher.combine(key) }
 }
 
 /// What You can push.
@@ -83,18 +101,13 @@ final class PhoneRouter {
         didSet { if tab != oldValue { changedTab(from: oldValue) } }
     }
     var chats: [ChatsRoute] = [] { didSet { publish() } }
-    var search: [ChatsRoute] = [] { didSet { publish() } }
     var payments: [PaymentsRoute] = []
+    var apps: [AppsRoute] = []
     var you: [YouRoute] = []
-    /// An org's page over everything (`OrgPageSheet`): a deliverable from
-    /// the agent's DM, or a workspace's app.
+    /// An org's page over everything (`OrgPageSheet`, full screen): a
+    /// deliverable from the agent's DM, or a link tapped in a message. An
+    /// app opened from Apps is pushed there instead (`openInApps`).
     var orgPage: OrgPageRequest?
-    /// A stranger's public app over everything (`OrgPageSheet` on a
-    /// `PublicPage`), opened by a `peel://open?url=` link. Its store is
-    /// listed for Forget (`PhoneWeb.remember`).
-    var publicPage: PublicPage? {
-        didSet { if let publicPage { PhoneWeb.remember(publicPage, in: model.profile) } }
-    }
     /// Such a link that came while Peel was locked (or, for a new account,
     /// before it exists): opened once Peel is ready.
     var waitingLink: PublicAppLink?
@@ -120,7 +133,7 @@ final class PhoneRouter {
     var talkMinimized = false
 
     @ObservationIgnored private let model: AppModel
-    /// The thread open over a chat when its tab (Chats or Search) was
+    /// The thread open over a chat when its tab (Chats) was
     /// left, opened again on coming back to that chat: leaving clears the
     /// model's, as the destination moves.
     @ObservationIgnored private var threadAway: [PhoneTab: ThreadRef] = [:]
@@ -138,8 +151,8 @@ final class PhoneRouter {
     var shown: AppModel.Destination? {
         switch tab {
         case .chats: chats.last?.destination
-        case .search: search.last?.destination
         case .payments: .payments
+        case .apps: .apps
         case .you: .account
         }
     }
@@ -155,11 +168,10 @@ final class PhoneRouter {
         holding = true
         tab = .chats
         chats = []
-        search = []
         payments = []
+        apps = []
         you = []
         orgPage = nil
-        publicPage = nil
         waitingTribe = nil
         if !keepingInvite {
             pendingInvite = nil
@@ -231,10 +243,22 @@ final class PhoneRouter {
         show(link, invited: invited)
     }
 
+    /// Shown inside Apps (`AppsRoute.visit`), its store listed for Forget
+    /// (`PhoneWeb.remember`).
     private func show(_ link: PublicAppLink, invited: Bool) {
         model.openingPublicApp(link, invited: invited)
+        let page = PublicPage(link)
+        PhoneWeb.remember(page, in: model.profile)
         orgPage = nil
-        publicPage = PublicPage(link)
+        tab = .apps
+        apps = [.visit(page)]
+    }
+
+    /// A workspace's app from its row in Apps, pushed there.
+    func openInApps(_ page: OrgPageRequest) {
+        orgPage = nil
+        tab = .apps
+        apps = [.org(page)]
     }
 
     // MARK: Worker invites
@@ -332,17 +356,12 @@ final class PhoneRouter {
         changeChatStack { $0.append(.members(chat)) }
     }
 
-    /// Changes the stack chats are shown in: Search's while it is the tab,
-    /// else Chats', which it brings to the front.
+    /// Changes Chats' stack, and brings Chats to the front.
     private func changeChatStack(_ change: (inout [ChatsRoute]) -> Void) {
-        if tab == .search {
-            change(&search)
-        } else {
-            var stack = chats
-            change(&stack)
-            tab = .chats
-            chats = stack
-        }
+        var stack = chats
+        change(&stack)
+        tab = .chats
+        chats = stack
     }
 
     /// A thread: its chat with the thread sheet over it.
@@ -397,11 +416,9 @@ final class PhoneRouter {
     }
 
     private func changedTab(from old: PhoneTab) {
-        if old == .chats || old == .search, let thread = model.openThread {
+        if old == .chats, let thread = model.openThread {
             threadAway[old] = thread
         }
-        // Search's words filter the chat list everywhere (`sidebarSections`).
-        if old == .search { model.searchQuery = "" }
         publish()
     }
 
@@ -416,11 +433,13 @@ final class PhoneRouter {
         switch destination {
         case .chat(let chat):
             changeChatStack { $0 = $0.filter { !$0.isConversation } + [.chat(chat)] }
-        case .threads, .mentions, .automations, .apps:
+        case .threads, .mentions, .automations:
             tab = .chats
             chats = destination.flatMap(ChatsRoute.init).map { [$0] } ?? []
         case .payments:
             tab = .payments
+        case .apps:
+            tab = .apps
         case .account:
             tab = .you
         case .agent, .app, .segments:
@@ -431,7 +450,6 @@ final class PhoneRouter {
         case nil:
             // What was open is gone (a chat removed): back to its list.
             chats.removeAll { $0.isConversation }
-            search.removeAll { $0.isConversation }
         }
         holding = false
         publish()

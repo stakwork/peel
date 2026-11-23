@@ -52,6 +52,14 @@ extension AppModel {
         }
     }
 
+    /// What an app pushed in Apps is called in its bar: its row's title, never
+    /// its host (a host over the page reads as a browser's address bar); nil
+    /// until the seller has named it.
+    public func openedAppTitle(_ link: PublicAppLink) -> String? {
+        guard let app = openedApps.first(where: { $0.seller == link.seller.absoluteString && $0.app == (link.app ?? "") }) else { return nil }
+        return app.title == link.host ? nil : app.title
+    }
+
     /// Takes one app off Apps' list; its connection stays.
     public func forgetOpenedApp(_ app: OpenedPublicApp) {
         do {

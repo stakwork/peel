@@ -184,9 +184,9 @@ it, and the person is then `secp:<x-only key>` there.
   `signIn: [sphinx]`) opens it in the web pane, and the page reaches the
   box (its app and document, `/public/mcp`, `/visitors`). The sign-in
   itself needs a person's click in the page, which the offscreen check
-  cannot make. The iPhone loads the address directly in the page sheet
-  (`OrgPageSheet` over a `PublicPage`), with no credential, kept to its
-  origin; a link that comes while Peel is locked opens once it unlocks.
+  cannot make. The iPhone loads the address directly, pushed inside
+  the Apps tab (`AppsRoute.visit`, `OrgPageSheet` over a `PublicPage`),
+  with no credential, kept to its origin; a link that comes while Peel is locked opens once it unlocks.
 - **Where the visitor's session lives.** strut keeps a signed-in visitor
   for 30 days (`VISITOR_SESSION_DAYS`) in a cookie and the page's
   localStorage (`strut.visitorSession:<base>`, strut's

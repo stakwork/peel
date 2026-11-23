@@ -106,6 +106,16 @@ extension View {
             .controlSize(.large)
     }
 
+    /// The system's Paste button (no "Allow Paste" question, so it takes no
+    /// `.peel` style) in `.peel(.primary)`'s corners and blue, beside Scan
+    /// and Photo. Its height is the system's own (about 34 pt): neither a
+    /// control size nor a frame changes it.
+    func peelPasteButton() -> some View {
+        buttonBorderShape(.roundedRectangle(radius: Theme.Radius.control))
+            .tint(Theme.button)
+            .labelStyle(.titleAndIcon)
+    }
+
     /// A boxed field, its border ringed in the accent while it has the cursor.
     func fieldBox(focused: Bool) -> some View {
         background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))

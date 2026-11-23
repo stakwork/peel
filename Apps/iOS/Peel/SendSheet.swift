@@ -55,27 +55,40 @@ struct SendSheet: View {
         let contacts = model.conversations.filter { !$0.isTribe }
         return SheetPage(title: String(localized: "Send")) {
             FieldLabel(String(localized: "Pay an invoice")) {
-                TextField("Invoice", text: $text, prompt: Text("lnbc…"), axis: .vertical)
-                    .font(.system(.body, design: .monospaced))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .lineLimit(1...4)
-                    .padding(Theme.Space.md)
-                    .frame(minHeight: 48)
-                    .fieldBox(focused: false)
-                if unreadable {
-                    ProblemText(String(localized: "That isn't an invoice."))
-                }
-                HStack(spacing: Theme.Space.md) {
+                // One input: type an invoice, or paste or scan one into it.
+                // The system's Paste (no "Allow Paste" question) is an icon
+                // here, a circle that fits the field, so nothing beside it
+                // is a different size.
+                HStack(spacing: Theme.Space.xs) {
+                    TextField("Invoice", text: $text, prompt: Text("lnbc…"), axis: .vertical)
+                        .font(.system(.body, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .lineLimit(1...4)
+                        .padding(.vertical, Theme.Space.md)
                     PasteButton(payloadType: String.self) { texts in
                         if let first = texts.first { text = first.trimmed }
                     }
-                    .buttonBorderShape(.capsule)
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.circle)
+                    .tint(Theme.button)
+                    .accessibilityLabel("Paste")
                     Button { scanning = true } label: {
-                        Label("Scan", systemImage: "qrcode.viewfinder")
+                        Image(systemName: "qrcode.viewfinder")
+                            .font(.title3)
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.peel(.outline, size: .touch))
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Scan a QR code")
+                }
+                .padding(.leading, Theme.Space.md)
+                .padding(.trailing, Theme.Space.xs)
+                .frame(minHeight: 48)
+                .fieldBox(focused: false)
+                if unreadable {
+                    ProblemText(String(localized: "That isn't an invoice."))
                 }
             }
             if !contacts.isEmpty {

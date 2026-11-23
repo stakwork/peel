@@ -256,8 +256,9 @@ Review findings not applied (2026-10-14):
 [../design/iphone.md](../design/iphone.md), with the Mac unchanged.
 
 **Built.**
-- **The tab shell** (`MainTabs`): Chats, Payments, You and the system's
-  search tab (`role: .search`), each its own `NavigationStack` with large
+- **The tab shell** (`MainTabs`): Chats, Payments, Apps and You (the
+  system's search tab was removed 2026-11-23 for a magnifying glass at the
+  top left of Chats, `ChatsTab`), each its own `NavigationStack` with large
   titles. The Chats badge is the unread count in Sphinx blue. You's icon
   is your 30 pt photo (your initial on your colour without one), larger
   than a glyph (Tom); selected, a 2 pt accent ring and a thin gap sit

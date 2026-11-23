@@ -7,17 +7,28 @@ import SwiftUI
 /// not), the top rows, then Unread, Tribes and Direct messages in the Mac
 /// sidebar's order and trimming (`AppModel.sidebarSections`), each section
 /// ending in its actions as on the Mac; or, with Recent chosen, one list of
-/// both, newest first. Its stack is the router's `chats`.
+/// both, newest first. Its stack is the router's `chats`. The magnifying
+/// glass top left brings up a search field under the title that narrows the
+/// list to chats whose name matches (`sidebarSections` filters by
+/// `searchQuery`); Cancel puts it away and clears it. There is no Search tab.
 struct ChatsTab: View {
     @Environment(PhoneRouter.self) private var router
+    @Environment(AppModel.self) private var model
+    @State private var searching = false
 
     var body: some View {
         @Bindable var router = router
+        @Bindable var model = model
         NavigationStack(path: $router.chats) {
             ChatList()
                 .onCallBannerInset()
                 .navigationTitle("Chats")
+                .modifier(ChatsSearchField(on: $searching, query: $model.searchQuery))
+                .onChange(of: searching) { if !searching { model.searchQuery = "" } }
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Search chats", systemImage: "magnifyingglass") { searching = true }
+                    }
                     ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }
                 }
                 .chatsDestinations()
@@ -25,8 +36,23 @@ struct ChatsTab: View {
     }
 }
 
+/// Chats' search field, there only while it is up: under the title, focused
+/// as it comes.
+private struct ChatsSearchField: ViewModifier {
+    @Binding var on: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if on {
+            content.searchable(text: $query, isPresented: $on, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search chats"))
+        } else {
+            content
+        }
+    }
+}
+
 extension View {
-    /// What Chats and Search push, by `ChatsRoute`: a conversation hides
+    /// What Chats pushes, by `ChatsRoute`: a conversation hides
     /// the tab bar.
     func chatsDestinations() -> some View {
         navigationDestination(for: ChatsRoute.self) { route in

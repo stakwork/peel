@@ -300,6 +300,9 @@ public final class AppModel {
     /// The latest error that belongs to no conversation (the engine's own,
     /// a failed observation), shown across the main window until dismissed.
     public var notice: String?
+    /// A tribe link to join that is waiting for its form (`openTribeLink`): the Join form over the window
+    /// (the Mac's popover, the iPhone's sheet) with it filled in, until it closes.
+    public var joiningTribeLink: String?
     /// Peel recorded a problem from the last run (a crash, or ended while it
     /// was in front): the notice offers the record (`AppModel+Diagnostics`).
     public var diagnosticsNotice = Diagnostics.previousRun().isProblem
@@ -1431,6 +1434,20 @@ public final class AppModel {
     public func previewTribe(_ link: String) async throws -> TribeInfo {
         guard let engine else { throw PeelError("not signed in") }
         return try await engine.tribeInfo(link: link)
+    }
+
+    /// Opens the tribe a link names, inside Peel (`TribeRoute`): its chat when this account is in it, else
+    /// the Join form with the link filled in (`joiningTribeLink`), which looks up the price and waits for the
+    /// person's tap. The one place a tapped link, a card and an opened `peel://tribe` link go through.
+    /// False when `text` is not a tribe link.
+    @discardableResult
+    public func openTribeLink(_ text: String) -> Bool {
+        guard let route = TribeRoute.decide(text, tribes: tribes) else { return false }
+        switch route {
+        case .open(let pubkey): destination = .chat(pubkey)
+        case .join(let link): joiningTribeLink = link
+        }
+        return true
     }
 
     /// Reads a tribe linked in a message for its card, once per link

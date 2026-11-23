@@ -25,6 +25,11 @@ public enum ContactCode: Sendable, Equatable {
         if text.lowercased().hasPrefix("sphinx.chat://") {
             return try link(text)
         }
+        // Peel's own tribe link.
+        if text.lowercased().hasPrefix("peel://tribe") {
+            guard let tribe = TribeLink(text) else { throw Engine.Failure.notAContactCode }
+            return .tribe(tribe)
+        }
         if let info = contactInfo(text) { return .contact(info: info) }
         if text.isPubkey { throw Engine.Failure.keyWithoutRoute }
         // An invite without its prefix, as the core also reads them.
@@ -128,7 +133,7 @@ public enum MessageLink: Sendable, Equatable {
     }
 
     /// The card for `text`, if any: its first link outside code. Each word
-    /// is read on its own, from a `sphinx.chat://` in it (so a Markdown
+    /// is read on its own, from a `sphinx.chat://` or `peel://tribe` in it (so a Markdown
     /// `[label](link)` counts) and without the brackets, quotes and
     /// punctuation around it. Copying and quoting keep the whole text.
     public static func card(in text: String) -> Card? {
@@ -142,7 +147,8 @@ public enum MessageLink: Sendable, Equatable {
         var code: [Range<String.Index>]?
         for word in text.split(whereSeparator: \.isWhitespace) {
             var candidate: Substring
-            if let scheme = word.range(of: "sphinx.chat://", options: .caseInsensitive) {
+            if let scheme = word.range(of: "sphinx.chat://", options: .caseInsensitive)
+                ?? word.range(of: "peel://tribe", options: .caseInsensitive) {
                 candidate = word[scheme.lowerBound...]
             } else if word.count >= minContactInfoLength, word.contains("_") {
                 candidate = word

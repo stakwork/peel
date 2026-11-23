@@ -17,7 +17,7 @@ struct TribeLinkCard: View {
         let read = model.linkedTribes[link]
         let info = read?.info
         let name = info?.name.trimmed.nilIfEmpty ?? known?.name?.trimmed.nilIfEmpty
-        let member = known.map { !$0.left && ($0.status == .active || $0.status == .pending) } ?? false
+        let member = TribeRoute.isMember(known)
         let deleted = read == .deleted || known?.status == .deleted
         LinkCardLayout(
             title: name ?? (read == nil || read == .loading ? String(localized: "Loading tribe") : String(localized: "Tribe on \(link.host)")),
@@ -35,7 +35,7 @@ struct TribeLinkCard: View {
             facts(read, info: info, known: known, member: member, deleted: deleted)
         } action: {
             if member {
-                Button("Open") { model.destination = .chat(link.pubkey) }
+                Button("Open") { model.openTribeLink(link.text) }
                     .buttonStyle(.peel(.outline, size: .sm))
                     .help("Open this tribe")
             } else if !deleted {

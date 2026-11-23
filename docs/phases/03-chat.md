@@ -3458,3 +3458,19 @@ sheet is down, so sheets never stack. The Mac's tribe and direct ••• menus
 Search (⌘F). `ChatSearch.historyNote` says older messages may be missing while
 history syncs. Tests: `ChatSearchTests` (stepping, the note), `SearchTests` (a
 match older than one page).
+
+## Tribe links open in Peel
+
+Built, not compiled or run (no Swift toolchain on the dev server). Bug: a shared tribe link "does not open".
+Cause: `MessageMarkup` linked https only, so on the iPhone (which has no link cards) a `sphinx.chat://` tribe
+link was plain text; the root `openURL` handlers would have returned `.systemAction` for it anyway, and Info.plists
+register only `peel`. The Mac's card was sound: Open set `destination = .chat(pubkey)` for a member, Join showed
+`JoinTribeForm`; only the link in the text was dead. Now `TribeLink` reads `peel://tribe?…` too (strictly: 66-hex key,
+plain host; `TribeLink(peelLink:)` for the URL form), `MessageMarkup.tribeLinks` links both forms, `TribeRoute.decide`
+(joined and not left, active or pending: open the chat; else Join prefilled) is used through `AppModel.openTribeLink`
+by the Mac card, both root `openURL` handlers (and the agent chat's), and the `peel://tribe` link
+(Mac `openPeelLink`, iPhone `PhoneRouter.open(peelLink:)`, which holds one that comes while locked). Join is the
+form/sheet (`AppModel.joiningTribeLink`): it looks up the price; paying still needs the tap. What Share/Copy/QR write is
+unchanged (`TribeLink.text`). Open: an iPhone tribe card (the card views are the Mac's `LinkCards`); `sphinx.chat://`
+from outside Peel (no URL scheme registered, on purpose: `docs/reviews/2026-10-09-parity-sweep.md`). Tests:
+`TribeLinkTests`.

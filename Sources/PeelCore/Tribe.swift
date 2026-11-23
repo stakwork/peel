@@ -389,28 +389,54 @@ public struct TribeSettings: Codable, Sendable, Equatable {
     }
 }
 
-/// A tribe link: `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>`.
+/// A tribe link, in either form: the official apps' `sphinx.chat://?action=tribeV2&pubkey=<pubkey>&host=<host>`
+/// (what Share, Copy and the QR code write) or Peel's own `peel://tribe?pubkey=<pubkey>&host=<host>`, which an
+/// app can register by its host. Read strictly: the scheme and action, a 66-hex pubkey and a plain host
+/// (`isPlainHost`); any other parameter is ignored. Every tribe link is built here (`text`, `peelText`), so
+/// changing which form Peel shares is a one-line change in `Tribe.link`.
 public struct TribeLink: Sendable, Hashable {
     public let pubkey: String
     public let host: String
 
     public init?(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let components = URLComponents(string: trimmed), components.scheme == "sphinx.chat" else { return nil }
+        guard let components = URLComponents(string: trimmed), let scheme = components.scheme?.lowercased() else { return nil }
         let items = components.queryItems ?? []
         func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
-        guard value("action") == "tribeV2",
-              let pubkey = value("pubkey"), pubkey.isPubkey,
+        switch scheme {
+        case "sphinx.chat":
+            guard value("action") == "tribeV2" else { return nil }
+        case "peel":
+            guard components.host?.lowercased() == "tribe", components.path.isEmpty || components.path == "/" else { return nil }
+        default:
+            return nil
+        }
+        guard let pubkey = value("pubkey"), pubkey.isPubkey,
               let host = value("host"), TribeLink.isPlainHost(host) else { return nil }
         self.pubkey = pubkey.lowercased()
         self.host = host
     }
 
+    /// A `peel://tribe?…` link Peel was opened with: that form only.
+    public init?(peelLink url: URL) {
+        guard url.scheme?.lowercased() == "peel", url.host?.lowercased() == "tribe" else { return nil }
+        self.init(url.absoluteString)
+    }
+
     /// The link as the official apps write it, and nothing else it came with.
     public var text: String { Self.text(pubkey: pubkey, host: host) }
 
+    /// The link in Peel's own form (`peel://tribe?…`).
+    public var peelText: String { Self.peelText(pubkey: pubkey, host: host) }
+
+    /// The one builder of what Peel shares: the official apps' form.
     static func text(pubkey: String, host: String) -> String {
         "sphinx.chat://?action=tribeV2&pubkey=\(pubkey)&host=\(host)"
+    }
+
+    /// Peel's own form, beside `text`.
+    static func peelText(pubkey: String, host: String) -> String {
+        "peel://tribe?pubkey=\(pubkey)&host=\(host)"
     }
 
     /// `name[:port]` and nothing else, so a link cannot smuggle a path or
@@ -665,5 +691,30 @@ extension MentionScan {
     init?(stored: String) {
         guard let scan = JSON.decode(Self.self, from: stored) else { return nil }
         self = scan
+    }
+}
+
+/// What a tribe link does inside Peel, wherever it came from (a tapped link in a message, a tribe card,
+/// an opened `peel://tribe` link): the tribe's chat when this account is in it, else the Join form with
+/// the link filled in. Opening a link joins and pays nothing: Join looks up the price and waits for the tap.
+public enum TribeRoute: Equatable, Sendable {
+    /// The tribe's chat, by its pubkey.
+    case open(String)
+    /// The Join form, with this link (in the form Peel shares) filled in.
+    case join(String)
+
+    /// Whether this account is in the tribe: not left, and let in or asking (a pending request has a chat too).
+    public static func isMember(_ tribe: Tribe?) -> Bool {
+        tribe.map { !$0.left && ($0.status == .active || $0.status == .pending) } ?? false
+    }
+
+    /// Where `link` goes, given the tribes this account has (`AppModel.tribes`, by pubkey).
+    public static func decide(_ link: TribeLink, tribes: [String: Tribe]) -> TribeRoute {
+        isMember(tribes[link.pubkey]) ? .open(link.pubkey) : .join(link.text)
+    }
+
+    /// Where the tribe link in `text` goes; nil when `text` is not a tribe link.
+    public static func decide(_ text: String, tribes: [String: Tribe]) -> TribeRoute? {
+        TribeLink(text).map { decide($0, tribes: tribes) }
     }
 }

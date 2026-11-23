@@ -313,7 +313,7 @@ extension AppModel {
     /// A `peel://` link Peel takes: a Peel Home link (`HomeLink`), which waits
     /// in Account › Peel Home for the person's yes, a box's link
     /// (`BoxLinkOffer`), whose question waits over the main window, or a
-    /// stranger's public app to open (`PublicAppLink`). False for any other scheme.
+    /// stranger's public app to open (`PublicAppLink`), or a tribe (`TribeLink`). False for any other scheme.
     func openPeelLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "peel" else { return false }
         if url.host?.lowercased() == "home-setup", let link = HomeLink(url) {
@@ -331,6 +331,15 @@ extension AppModel {
                 openPublicApp(link)
             } else {
                 notice = String(localized: "That link doesn't name an app Peel can open: only https addresses open.")
+            }
+        } else if url.host?.lowercased() == "tribe" {
+            // A tribe's link: its chat when this account is in it, else the Join form filled in (`TribeRoute`).
+            if TribeLink(peelLink: url) == nil {
+                notice = String(localized: "That tribe link doesn't work: it needs the tribe's key and its tribes server.")
+            } else if phase == .ready {
+                openTribeLink(url.absoluteString)
+            } else {
+                notice = String(localized: "Open Peel's account first, then open the tribe link again.")
             }
         } else if url.host?.lowercased() == "brain" {
             notice = String(localized: "That link is for the old home server, which Peel no longer uses. Set up Always on again and open the new link.")

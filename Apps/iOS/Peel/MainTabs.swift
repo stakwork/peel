@@ -42,11 +42,20 @@ struct MainTabs: View {
         .sheet(item: $router.publicPage) { page in
             OrgPageSheet(page: page)
         }
+        // The Join sheet a tapped tribe link asked for (`AppModel.openTribeLink`).
+        .sheet(isPresented: Binding(
+            get: { model.joiningTribeLink != nil },
+            set: { if !$0 { model.joiningTribeLink = nil } }
+        )) {
+            SheetStack { JoinTribeSheet(link: model.joiningTribeLink ?? "") }
+        }
         // A tapped Hive link to an app opens it when its workspace is paired
         // here. Otherwise it says to connect that workspace first and still
         // goes to the browser, so Hive shows its own sign-in or not-found;
         // any other link is the system's, as before.
         .environment(\.openURL, OpenURLAction { url in
+            // A tribe link opens in Peel: its chat, or the Join sheet filled in; never the system's.
+            if model.openTribeLink(url.absoluteString) { return .handled }
             switch model.stadeum.tap(url) {
             case .open(let page, _):
                 if case .page(let request) = model.stadeum.opening(page) { router.orgPage = request }

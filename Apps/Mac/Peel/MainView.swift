@@ -42,9 +42,18 @@ struct MainView: View {
         // link goes where a message's link goes (`WebPane.linkAction`).
         .environment(\.openURL, OpenURLAction { url in
             if model.openHiveAppLink(url) { return .handled }
+            // A tribe link opens in Peel: its chat, or the Join form; never the system's.
+            if model.openTribeLink(url.absoluteString) { return .handled }
             model.web.linkAction(url)
             return .handled
         })
+        // The Join form a tapped tribe link asked for (`AppModel.openTribeLink`).
+        .peelPopover(isPresented: Binding(
+            get: { model.joiningTribeLink != nil },
+            set: { if !$0 { model.joiningTribeLink = nil } }
+        )) {
+            JoinTribeForm(link: model.joiningTribeLink ?? "") { model.joiningTribeLink = nil }
+        }
         .ignoresSafeArea(edges: .top)
         .foregroundStyle(Theme.text)
         .overlay {

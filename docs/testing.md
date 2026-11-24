@@ -273,6 +273,14 @@ animated`), each move outside a change (a jump, the pill) and its
 dismantle. Never message text, names, keys, ids or amounts. The log changes
 nothing about how a list runs.
 
+On the iPhone the setting comes from a launch argument: in Xcode, the
+scheme's Run › Arguments › Arguments Passed On Launch, `-PeelTimelineLog YES`,
+and the lines show in Xcode's console. The iPhone's table adds `size`,
+`open` (rows, content height, offset and its range, the bars' insets),
+`reveal`, and `slow <what> <ms>` for any of the list's own work over 16 ms
+(`scroll`, `idle`, `rows`, `rows after scroll`, `open`, `resize`,
+`corrections`), with the rows it measured and those still unmeasured.
+
 ## Proposal cards check
 
 The proposal cards at the end of the agent chat (docs/agent-on-strut.md,

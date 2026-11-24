@@ -588,22 +588,11 @@ it never slides down blank. A chat's screen keeps the rows it last showed
 (`HeldRows`) and its list stays made, with its place, while the model
 clears them: through the pop, under another tab and while a jump's window
 reloads. The list is made once per chat, when `AppModel.loadedChat` says
-its messages are in, and where it opens is worked out then, once. It
-opens at a message asked for, else at "New messages"
-(`opensAtNewMessages`), else where it last stood (`ListAnchor`, kept with
-`keep(_:of:)` each time it comes to rest), else at the newest, and is
-hidden until that row is laid out where it belongs: no 80 ms timer, no
-jump to the divider after it shows. Back from another tab, "New messages"
-that came meanwhile wins; left at the newest, it goes to the newest past
-what came meanwhile. Rows report where they are in the content as they
-lay out, not on every scroll frame. `ListAnchor`, `loadedChat`,
-`anchor(of:)`, `keep(_:of:)` and `opensAtNewMessages(in:)` are PeelUI's,
-from the Mac's list PRs (2 and 4); the iPhone does not use
-`ChatListController` yet.
-
-**Interim:** `MessageList.place` is a timed retry (a frame at a time, at
-most a dozen) against the lazy stack's estimates. The shared list engine
-(the review's PR 6) deletes it.
+its messages are in. Where it opens and goes is `ChatListController`'s
+since the native list (below, "The native list"): a message asked for,
+else where it last stood (`ListAnchor`), else "New messages", else the
+newest, hidden until placed. The lazy stack and its timed placement retry
+(`MessageList.place`) are gone.
 
 **Checked** in the simulator on a seeded local stack, frame by frame:
 thread close kept its rows (about 20 blank frames before, none after),
@@ -615,15 +604,84 @@ messages", without the jump.
 **Not yet, and why:**
 - A chat pushed in is blank until its rows load (about 15 frames on a
   warm database): nothing is held for a chat not yet open.
-- The keyboard keeps the old re-pin: the bottom snaps after the keyboard
-  rises, with a few frames of overlapping rows. `.sizeChanges` anchoring
-  rode the keyboard but blanked the top of the list (the Mac's F8), so it
-  waits for PR 6's engine.
+- The keyboard kept the old re-pin: the bottom snapped after the keyboard
+  rose, with a few frames of overlapping rows. The native list (below)
+  moves with the keyboard's animation instead.
 - With the keyboard up, a message arriving at the bottom lands a few
   points short and shows "1 new message", as before.
 - Anchors live while Peel runs. Older pages are dropped when a chat is
   left, so a place in them is not restored. Not checked: a jump from a
   notification.
+
+### The native list (2026-11-24, `ios-native-list`)
+
+The review's PR 6 ([../reviews/2026-10-14-message-lists.md](../reviews/2026-10-14-message-lists.md)):
+the iPhone's chat and thread lists on a native table and the Mac's
+`ChatListController`.
+
+**Why.** The list was a SwiftUI `ScrollView` over a `LazyVStack`, which
+estimates the heights of rows it has not drawn. Opening at the newest
+scrolled to an offset worked out from those estimates; when the rows
+measured shorter, the content shrank under an offset nothing moved again,
+and UIKit puts an offset back in range only when touched. So a chat (or a
+thread) could open blank, its rows above the screen, until a drag
+bounced them in: intermittent, as it hung on the chat's mix of row heights
+and on how busy the phone was while the timed retries and blank rescues
+watched (Paul's recording, 2026-11-23).
+
+**Built.**
+- `MessageTable.swift`: `MessageTableEngine` (a `ChatListEngine`), the
+  Mac's `MessageTableEngine` on UIKit. A `UITableView` whose rows have
+  exact heights (`estimatedRowHeight` 0, `heightForRowAt` from a cache):
+  each row's SwiftUI content measured by a sizer per kind at the table's
+  width, per version of the row; the rows in view first, the rest in idle
+  time (4 ms slices; far rows' heights handed to the table 40 at a time).
+  Cells host the same rows as before (day line, "New messages",
+  `ConversationRow`) in `UIHostingConfiguration`; a cell whose content
+  lays out at another height (an image's size) corrects it right after.
+  `UITableView` rather than `UICollectionView`: per-row heights and batch
+  updates, the Mac's `NSTableView` model, so the port follows code proven
+  there.
+- Placement is `ChatListController`'s, as on the Mac: opening, following
+  the newest, the reading anchor, jumps (`goToMessage`, `model.focus`),
+  the pill (`ListPill`), older pages (`onLoadOlder`), `jumpMissed`. Every
+  offset the engine sets is clamped to the content, and one left past it
+  is put back on the next layout, so the list never stands where no row is.
+- `MessageList.swift` is the SwiftUI side: the table, the pill, and the
+  bars' room. The table reaches under the header and the composer; the
+  room between them (above the keyboard) is measured on the screen
+  against what the table covers, and the difference is its content
+  insets (`GeometryProxy.safeAreaInsets` read zero there). An inset change
+  holds the placement in the keyboard's animation.
+- Under the finger: a scroll by hand measures only the stale rows in view
+  and, within 4 ms, half a view ahead in its direction, and the table
+  takes the heights once a frame. Row changes wait until the scroll ends,
+  so nothing moves under the finger (your own message pulls the list down
+  then). The older-messages spinner coming or going is held like any change.
+- The table tells its engine its size from `layoutSubviews`: SwiftUI sizes
+  it by its frame, which never goes through `bounds`' setter (the first
+  build opened nothing and stayed hidden).
+- Timeline log (docs/testing.md, "Timeline log"): `size`, `open` (its
+  geometry), `reveal`, `rows a->b move …`, and `slow <what> <ms>` for any
+  of the list's own work over 16 ms.
+- `ConversationScreen` and `ThreadSheet` no longer work out a start.
+
+**Checked:** built for the simulator and a device (Release); Tom's phone:
+chats and threads open placed, the bars' room is kept, scrolling no
+longer stalls after the hold-ups were cut.
+
+**Not yet, and why:**
+- No automated check of the iPhone engine: the offscreen driver and
+  `check-app.sh` drive the Mac app only. `ChatListController` is tested.
+- A hard flick into rows not yet measured can show a small shift (a row
+  measured as it comes into view), and one pass a frame can leave a row
+  at its estimate for a frame. Row changes during a long fling show once
+  it stops.
+- Coming back from another tab does not go to "New messages" that came
+  meanwhile (the Mac's list does not either).
+- The Mac and iPhone engines share the controller but not their height
+  cache, measuring and idle loop, which are written twice.
+- `ListBottom.needsRescue` has no caller left.
 
 ### Org pages on the iPhone (2026-10-26, `feature/phone-org-pages`)
 

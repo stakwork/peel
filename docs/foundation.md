@@ -226,7 +226,7 @@ Each step starts when the one before it is agreed or merged.
    stack (done: sphinx#382). The agent's seed is `agent_seed` in the core.
 4. **Finish the structure.** `WalletStore` and `ComposerStore` out of
    `AppModel` (still about 4,300 lines over 14 files, counting its extensions in PeelApp), the iPhone list
-   engine (list PR 6), and the brain-handover PRs.
+   engine (list PR 6, built 2026-11-24), and the brain-handover PRs.
 5. **Make it impossible to lose.** Encrypted whole-brain backups in two
    places, the restore matrix, kill-mid-send tests and nightly journeys on
    tribes with threads (finding-bugs.md, sections 4, 6 and 10).

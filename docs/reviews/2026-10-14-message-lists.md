@@ -214,7 +214,7 @@ diagnostic `scrollTargetLayout` switch.
 | — | Spike: engine N vs today, numbers in the PR description, not committed | — |
 | 4 | `ChatListController` in PeelUI and the Mac engine; chat and thread lists on it; Mac loads older history | `ListEnd`, `ListTracking`, re-pin, step loop, reveal timer, most of `MessageViews.swift`'s list state |
 | 5 | Agent chat on it | The agent's fork |
-| 6 | iPhone engine on it | The iPhone's copies |
+| 6 | iPhone engine on it (built 2026-11-24: `UITableView`, docs/phases/07-iphone.md, "The native list") | The iPhone's copies |
 
 PRs 2 and 3 are worth shipping on their own: they fix what Tom sees on
 thread close and on the iPhone without waiting for the engine.

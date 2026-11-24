@@ -135,6 +135,53 @@ struct MessageMarkupTests {
         #expect(shown(text) == [text])
     }
 
+    /// The welcome message's link: the Tasks app on a strut, its address percent-encoded.
+    private static let tasks = "peel://open?url=https%3A%2F%2Fstrut.stadeum.stakwork.ai%2F%3Fapp%3Dstrut%2Fworker"
+
+    @Test func aPublicAppLinkIsALinkLabelledByWhatItOpens() throws {
+        let address = Self.tasks
+        #expect(shown("Open \(address) now") == ["Open ", "\(address)[link \(address)]", " now"])
+        let url = try #require(URL(string: address))
+        #expect(MessageMarkup.linkLabel(address, url: url) == "Open strut/worker on strut.stadeum.stakwork.ai")
+        let bare = try #require(URL(string: "peel://open?url=https%3A%2F%2Fa.co%2F"))
+        #expect(MessageMarkup.linkLabel(bare.absoluteString, url: bare) == "Open a.co")
+        let app = try #require(PublicAppLink(peelLink: url))
+        #expect(app.app == "strut/worker" && app.host == "strut.stadeum.stakwork.ai")
+        #expect(AgentArtifact.Handle.isAppName("strut/worker"))
+    }
+
+    @Test func aPublicAppLinkLosesItsTrailingPunctuation() {
+        let address = Self.tasks
+        #expect(shown("(\(address)).") == ["(", "\(address)[link \(address)]", ")."])
+        #expect(shown("**\(address)**") == ["\(address)[b link \(address)]"])
+        #expect(shown("see PEEL://OPEN?url=https%3A%2F%2Fa.co%2F, ok").count == 3)
+    }
+
+    @Test func aNamedLinkShowsWhereItGoes() throws {
+        let tasks = try #require(URL(string: Self.tasks))
+        #expect(MessageMarkup.destination(of: tasks) == "strut.stadeum.stakwork.ai")
+        let web = try #require(URL(string: "https://a.co/x"))
+        #expect(MessageMarkup.destination(of: web) == "a.co")
+        let key = String(repeating: "ab", count: 33)
+        let tribe = try #require(URL(string: "peel://tribe?pubkey=\(key)&host=tribes.sphinx.chat"))
+        #expect(MessageMarkup.destination(of: tribe) == "tribes.sphinx.chat")
+    }
+
+    @Test func aNamedPublicAppLink() {
+        let address = Self.tasks
+        #expect(shown("[Open Tasks](\(address)) now") == ["Open Tasks[named \(address)]", " now"])
+    }
+
+    @Test(arguments: [
+        "peel://open?url=http%3A%2F%2Fa.co%2F", "peel://open?url=https%3A%2F%2Fa.co%2F&x=1",
+        "peel://open?url=https%3A%2F%2Fa.co%2F%3Fapp%3D..%2Fx", "peel://open?x=1", "peel://open/path?url=https%3A%2F%2Fa.co",
+        "[x](peel://open?url=http%3A%2F%2Fa.co%2F)", "xpeel://open?url=https%3A%2F%2Fa.co%2F",
+    ])
+    func aPublicAppLinkPeelWouldNotOpenStaysText(text: String) {
+        #expect(MessageMarkup.inlines(text).allSatisfy { $0.kind == nil })
+        #expect(shown(text) == [text])
+    }
+
     @Test func headingsQuotesAndNumbers() {
         let text = "# Title\n## Sub\n#tag\n####### seven\n> one\n>two\n\n> three\n1. first\n12) second\n3.no"
         #expect(MessageMarkup.blocks(text) == [

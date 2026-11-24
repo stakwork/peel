@@ -148,7 +148,7 @@ enum LinkText {
                 shown.foregroundColor = Theme.link
                 // Isolated left to right, so a direction override in the
                 // text before it cannot turn the host around.
-                var host = AttributedString(" (\u{2066}\(MessageMarkup.host(of: url) ?? url.absoluteString)\u{2069})")
+                var host = AttributedString(" (\u{2066}\(MessageMarkup.destination(of: url) ?? url.absoluteString)\u{2069})")
                 host.foregroundColor = Theme.secondaryText
                 shown += host
                 shown.link = url

@@ -245,8 +245,12 @@ public enum MessageMarkup {
         // The detector is the costly part; only https links are kept.
         let mayLink = text.range(of: "https", options: .caseInsensitive) != nil
         var links = (mayLink ? detector?.matches(in: text, range: whole) ?? [] : []).compactMap { link($0, in: text) }
-        // A named link opens only an address the detector read as an https
-        // link, the whole of it, so it follows the same rules as one typed out.
+        // Tribe links (either form) and public-app links (`peel://open?url=…`) are Peel's own to open: found
+        // here, as the detector reads only https. They win over an https address inside them.
+        let own = (tribeLinks(in: text) + publicAppLinks(in: text)).sorted(by: inOrder)
+        if !own.isEmpty { links = (own + links.filter(outside(own))).sorted(by: inOrder) }
+        // A named link opens only an address read as a link above, the whole of it,
+        // so it follows the same rules as one typed out.
         if !links.isEmpty, text.contains("](") {
             var next = links.startIndex
             let named: [Span] = (namedLink?.matches(in: text, range: whole) ?? []).compactMap { match in
@@ -258,9 +262,6 @@ public enum MessageMarkup {
             }
             links = (named + links.filter(outside(named))).sorted(by: inOrder)
         }
-        // Tribe links (either form) are Peel's own to open: found here, as the detector reads only https.
-        let tribes = tribeLinks(in: text)
-        if !tribes.isEmpty { links = (links + tribes.filter(outside(links))).sorted(by: inOrder) }
         // Links, codes and mentions each come in order and never overlap
         // their own kind, so every check below walks forward once: a long
         // message of many spans costs no more than its length.
@@ -301,9 +302,29 @@ public enum MessageMarkup {
     /// punctuation, closing emphasis marks and an unbalanced `)` are not part of one, and a link that is
     /// not a well-formed tribe link stays text. Tapped, they open in Peel (`TribeRoute`), never in the system.
     static func tribeLinks(in text: String) -> [Span] {
+        addressLinks(in: text, matching: tribeAddress) { TribeLink($0) != nil }
+    }
+
+    /// `peel://open?…`, not glued to a word before it, up to white space or a character no address holds.
+    private static let publicAppAddress = try? NSRegularExpression(
+        pattern: #"(?<![A-Za-z0-9])peel://open\?[^\s<>"\[\]{}|\\^]+"#, options: .caseInsensitive)
+
+    /// The `peel://open?url=<address>` links in `text` as link spans, in order, trimmed as tribe links are;
+    /// kept only when `PublicAppLink(peelLink:)` accepts it, anything else stays text. Tapped, they open
+    /// the public app in Peel, never in the system.
+    static func publicAppLinks(in text: String) -> [Span] {
+        addressLinks(in: text, matching: publicAppAddress) { address in
+            URL(string: address).flatMap { PublicAppLink(peelLink: $0) } != nil
+        }
+    }
+
+    /// The matches of `pattern` with trailing sentence punctuation, closing emphasis marks and an unbalanced
+    /// `)` taken off, kept as link spans when `accepts` their address.
+    private static func addressLinks(in text: String, matching pattern: NSRegularExpression?,
+                                     accepts: (String) -> Bool) -> [Span] {
         guard text.contains("://") else { return [] }
         let whole = NSRange(text.startIndex..., in: text)
-        return (tribeAddress?.matches(in: text, range: whole) ?? []).compactMap { match -> Span? in
+        return (pattern?.matches(in: text, range: whole) ?? []).compactMap { match -> Span? in
             guard var range = Range(match.range, in: text) else { return nil }
             while range.upperBound > range.lowerBound {
                 let last = text[text.index(before: range.upperBound)]
@@ -314,7 +335,7 @@ public enum MessageMarkup {
                 range = range.lowerBound..<text.index(before: range.upperBound)
             }
             let address = String(text[range])
-            guard TribeLink(address) != nil, let url = URL(string: address) else { return nil }
+            guard accepts(address), let url = URL(string: address) else { return nil }
             return Span(kind: .link(url), range: range, text: address)
         }
     }
@@ -482,11 +503,25 @@ public enum MessageMarkup {
         }
     }
 
+    /// Where a link goes, as the person reads it beside a named link: the host of a public app's
+    /// `peel://open` link (its address's, never "open"), the tribes server of a tribe link, else
+    /// the address's own host (`host(of:)`). Nil when the address names none.
+    public static func destination(of url: URL) -> String? {
+        if let app = PublicAppLink(peelLink: url) { return app.host }
+        if url.scheme?.lowercased() == "peel" || url.scheme?.lowercased() == "sphinx.chat",
+           let tribe = TribeLink(url.absoluteString) { return tribe.host }
+        return host(of: url)
+    }
+
     /// How a link reads in a message: the whole address as written, scheme
     /// and all, never shortened, so selecting it copies a working link. The
     /// host is never disguised: one written in another script (a look-alike)
     /// shows as the address names it (`host(of:)`).
     public static func linkLabel(_ text: String, url: URL) -> String {
+        // A public app's link carries its address percent-encoded: said as what it opens, the host never disguised.
+        if let app = PublicAppLink(peelLink: url) {
+            return app.app.map { "Open \($0) on \(app.host)" } ?? "Open \(app.host)"
+        }
         let start = text.range(of: "://")?.upperBound ?? text.startIndex
         let hostEnd = text[start...].firstIndex { "/?#".contains($0) } ?? text.endIndex
         guard let shownHost = host(of: url), text[start..<hostEnd].lowercased() != shownHost.lowercased() else { return text }

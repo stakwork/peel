@@ -65,6 +65,8 @@ struct MainTabs: View {
         .environment(\.openURL, OpenURLAction { url in
             // A tribe link opens in Peel: its chat, or the Join sheet filled in; never the system's.
             if model.openTribeLink(url.absoluteString) { return .handled }
+            // A public app's link opens in Peel (queued while locked), never in the system's browser.
+            if PublicAppLink(peelLink: url) != nil, router.open(peelLink: url) { return .handled }
             switch model.stadeum.tap(url) {
             case .open(let page, _):
                 if case .page(let request) = model.stadeum.opening(page) { router.orgPage = request }

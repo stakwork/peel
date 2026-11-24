@@ -2,15 +2,15 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// A conversation's or a thread's rows, newest at the bottom, as the
-/// Mac's `MessageList` places them: a list opens at a message asked for,
-/// else at "New messages" when it has one, else where it last stood
-/// (`AppModel.anchor(of:)`), else at its newest, and is shown only once
-/// it is there. Others' messages take it down only while it is at the
-/// bottom (yours always do); scrolled up, what arrives below is counted on
-/// the "N new messages" pill (`ListBottom`). Near the top a chat asks the
-/// model for an older page (`loadOlder`). The keyboard goes down with a
-/// drag down the list.
+/// A conversation's or a thread's rows, newest at the bottom. Where it goes
+/// is `ChatListController`'s, as on the Mac: it opens at a message asked
+/// for, else where it last stood (`AppModel.anchor(of:)`), else at "New
+/// messages", else at its newest, and is shown only once it is there.
+/// Others' messages take it down only while it follows the newest (yours
+/// always do); scrolled up, what arrives below is counted on the pill. Near
+/// the top a chat asks the model for an older page. The table under it is
+/// `MessageTable`, which reaches under the header and the composer and
+/// keeps their room (and the keyboard's) as its content's insets.
 struct MessageList: View {
     @Environment(AppModel.self) private var model
     let rows: [ChatRow]
@@ -18,620 +18,73 @@ struct MessageList: View {
     /// False while its screen goes (popped, or under another tab) or waits
     /// for a reload, showing the rows it last had: it keeps its place and
     /// tells the model nothing.
-    let live: Bool
+    var live = true
 
-    @State private var position: ScrollPosition
-    /// Where it opens, until it is there; it is hidden until then.
-    @State private var start: Start?
-    @State private var phase = ScrollPhase.idle
-    /// Others' messages take the list down while it is at the bottom or on
-    /// its way there, until you scroll away or it opens at "New messages".
-    @State private var following = true
-    @State private var farFromBottom = false
-    /// "New messages" still marks what is unread below it.
-    @State private var dividerUnread = false
-    @State private var bottom = ListBottom()
-    @State private var opening = true
-    /// The chat was left (another tab) since the list was placed: coming
-    /// back, "New messages" that came meanwhile wins over where it stood.
-    @State private var left = false
-    /// The jump button asked for the newest past a jump's window: the list
-    /// goes there once the newest page has loaded.
-    @State private var wantsNewest = false
-    /// A row just gone to from a quote or a jump, lit for a moment.
-    @State private var flashed: String?
-    @State private var layout = Layout()
-    /// The pin by the last row after the container's height stops changing
-    /// (the keyboard's animation), replaced by each change.
-    @State private var settledPin: Task<Void, Never>?
-    /// The check after a size change that the list is not blank, replaced by each change.
-    @State private var blankCheck: Task<Void, Never>?
-    /// Your message, or the newest's follower's, came while the list opened: it goes there once open.
-    @State private var newestWhileOpening = false
-
-    /// Where a list opens.
-    enum Start: Equatable {
-        case newest
-        /// A row with its top `offset` points below the list's top: "New
-        /// messages" (at 0), or where the list last stood.
-        case row(id: String, offset: CGFloat)
-        /// A message asked for, centred and lit.
-        case focus(id: String)
-    }
-
-    init(rows: [ChatRow], composer: ComposerID, live: Bool = true, start: Start) {
-        self.rows = rows
-        self.composer = composer
-        self.live = live
-        // Asked for before the list is first laid out, so its first frame
-        // is at the row, not at the bottom and then the row.
-        switch start {
-        case .newest:
-            _position = State(initialValue: ScrollPosition(idType: String.self))
-            // The initial anchor places it, but before the composer has
-            // taken its room below: shown once the last row is above it.
-            _start = State(initialValue: rows.isEmpty ? nil : start)
-        case .row(let id, _):
-            _position = State(initialValue: ScrollPosition(id: id, anchor: .top))
-            _start = State(initialValue: start)
-        case .focus(let id):
-            _position = State(initialValue: ScrollPosition(id: id, anchor: .center))
-            _start = State(initialValue: start)
-        }
-    }
-
-    /// Where a list of `rows` made now opens: a message asked for wins over
-    /// "New messages" (`AppModel.opensAtNewMessages`), and both over where
-    /// it last stood, kept as a row it still has.
-    static func start(of composer: ComposerID, rows: [ChatRow], in model: AppModel) -> Start {
-        if let target = focusTarget(model.focus, of: composer, rows: rows) {
-            // One folded into a thread opens the thread (`go(to:)`).
-            return rows.first(where: { $0.holds(target.message.uuid) }).map { .focus(id: $0.id) } ?? .newest
-        }
-        if model.opensAtNewMessages(in: composer), let divider = rows.first(where: \.startsNew) {
-            return .row(id: divider.id, offset: 0)
-        }
-        if case .row(let id, let offset) = model.anchor(of: composer), let index = rows.firstIndex(where: { $0.id == id }) {
-            // Within a few rows of the end it pins by the last row: an offset
-            // there is read off the stack's estimates and can land past the
-            // content, a blank list.
-            if rows.count - index <= 4 { return .newest }
-            return .row(id: id, offset: offset)
-        }
-        return .newest
-    }
-
-    private var userScrolling: Bool { phase == .interacting || phase == .decelerating }
-    private var isThread: Bool { composer.thread != nil }
-    /// A thread's list always ends at its newest; the chat's unless a
-    /// jump's window stops short of it.
-    private var reachesNewest: Bool { isThread || model.timelineReachesNewest }
-    private var divider: ChatRow? { rows.first(where: \.startsNew) }
-
-    private struct Edges: Equatable {
-        /// The list's own height: the keyboard or the composer growing takes room from it.
-        var container: CGFloat
-        var atBottom: Bool
-        var far: Bool
-        var nearTop: Bool
-    }
+    @State private var link = PhoneListLink()
+    /// On the screen: the room between the bars (above the keyboard), and
+    /// all the table covers, under them. The bars' room is the difference.
+    @State private var safe = CGRect.zero
+    @State private var full = CGRect.zero
 
     var body: some View {
-        let newCount = newSinceScrolledUp
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                // Kept while the page loads, so nothing moves under the finger.
-                if !isThread, model.mayHaveOlder || model.loadingOlder, !rows.isEmpty {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, Theme.Space.md)
-                }
-                ForEach(rows) { row in
-                    VStack(alignment: .leading, spacing: 0) {
-                        if row.startsDay { DayDividerLine(date: row.date) }
-                        if row.startsNew { NewMessagesLine() }
-                        ConversationRow(row: row, composer: composer, flashed: flashed == row.id)
-                            .equatable()
-                    }
-                    // Where each made row is in the content, to place the list
-                    // and keep its place: reported as rows lay out, not as
-                    // the list scrolls, and not state, so nothing is drawn again.
-                    .onGeometryChange(for: ClosedRange<CGFloat>.self) { geometry in
-                        let frame = geometry.frame(in: .named(Layout.space))
-                        return frame.minY...frame.maxY
-                    } action: { [layout] span in
-                        layout.tops[row.id] = span.lowerBound
-                        layout.bottoms[row.id] = span.upperBound
-                    }
-                    .onDisappear { [layout] in
-                        layout.tops[row.id] = nil
-                        layout.bottoms[row.id] = nil
-                    }
-                    .id(row.id)
-                }
-            }
-            .scrollTargetLayout()
-            .padding(.vertical, Theme.Space.sm)
-            .coordinateSpace(.named(Layout.space))
-            .environment(\.goToMessage) { go(to: $0) }
-        }
-        .scrollPosition($position)
-        .defaultScrollAnchor(isThread ? .top : .bottom, for: .alignment)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .scrollDismissesKeyboard(.interactively)
-        .scrollEdges()
-        .onScrollPhaseChange { _, new in
-            phase = new
-            if new == .idle { settled() }
-        }
-        .onScrollGeometryChange(for: Layout.Viewport.self) { geometry in
-            Layout.Viewport(inset: geometry.contentInsets.top, offset: geometry.contentOffset.y, end: geometry.endOffset,
-                             container: geometry.containerSize.height)
-        } action: { [layout] _, new in
-            layout.viewport = new
-        }
-        .onScrollGeometryChange(for: Edges.self) { geometry in
-            let below = geometry.endOffset - geometry.contentOffset.y
-            return Edges(container: geometry.containerSize.height, atBottom: below <= 24, far: below > geometry.containerSize.height,
-                         nearTop: geometry.contentOffset.y + geometry.contentInsets.top < geometry.containerSize.height)
-        } action: { old, new in
-            // The keyboard came up (or the composer grew) under a list
-            // following its bottom: it stays at the bottom, and the room
-            // taken is not a leaving. Each frame of the keyboard's rise moves
-            // the end down until the pin catches up; taken as leaving, the
-            // first frame stopped the pinning and left the list short.
-            // Not while it opens, which places it at its own row.
-            // Only a list that was at the bottom, and only as the container
-            // shrinks: a list scrolled up keeps its offset (a thread's
-            // `following` starts true), and the composer growing a line while
-            // typing re-pinned and jumped the reading position.
-            let resized = new.container != old.container && !userScrolling && !opening
-            if resized, new.container > old.container || !(old.atBottom && following && reachesNewest) {
-                // The container grew (the mentions list went, the input
-                // shrank), or a scrolled-up list was resized: the offset is
-                // kept, but the end moved up under it, so it can stand past the
-                // content, or past the rows the stack has made: a blank list.
-                // Not a re-pin of a scrolled-up list (that was the jump while
-                // typing): only a check, once the stack has laid out, that
-                // something shows.
-                checkNotBlank()
-            }
-            if resized, new.container != old.container, old.atBottom, following, reachesNewest {
-                keepLastRowInView()
-                repinOnceSettled()
-                var pinned = new
-                pinned.atBottom = true
-                pinned.far = false
-                return moved(pinned)
-            }
-            moved(new)
-        }
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentSize.height
-        } action: { old, new in
-            // Rows measure taller than the lazy stack estimated, or grow after
-            // load (a thread-reply preview, images, avatars): a pin made from
-            // the estimate then stands short of the end, the newest row under
-            // the composer. A list following its bottom (never one the reader
-            // scrolled up: that clears `following`), opening at the newest or
-            // standing there, is pinned again by its last row.
-            guard new != old, !isThread, following, reachesNewest, !userScrolling, !rows.isEmpty,
-                  opening ? start == .newest : bottom.atBottom || layout.viewport.end - layout.viewport.offset <= 24 + max(0, new - old)
-            else { return }
-            keepLastRowInView()
-        }
-        .onAppear(perform: open)
-        .onChange(of: model.focus?.message.id) { _, _ in if live { takeFocus() } }
-        .onChange(of: divider?.id) { _, id in if id != nil { dividerUnread = true } }
-        .onChange(of: model.selectedChat == composer.chat) { _, selected in if !selected { left = true } }
-        .onChange(of: live) { _, live in if live { resume() } }
-        // Yours always take you to the newest; others' only while following.
-        .onChange(of: rows.last?.id) { _, _ in
-            guard live, reachesNewest else { return }
-            // Not followed by the opening pass: once it is open (never over "New messages"' anchor).
-            if opening {
-                if rows.last?.shown.last?.fromMe == true || (following && start == .newest) { newestWhileOpening = true }
-                return
-            }
-            // Following means still at the bottom: one scrolled up stays put.
-            if rows.last?.shown.last?.fromMe == true || (following && bottom.atBottom) { scrollToNewest() }
-        }
-        .overlay(alignment: .bottom) {
-            if showsJump(newCount) {
-                JumpToNewest(count: newCount, action: jumpToNewest)
-                    .padding(.bottom, Theme.Space.sm)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            }
-        }
-        .animation(.easeOut(duration: 0.2), value: showsJump(newCount))
-        .opacity(start == nil ? 1 : 0)
-    }
-
-    // MARK: Placing it
-
-    /// The initial anchor (the newest) or position (a row) has asked for
-    /// it; it is shown once that row is laid out where it belongs.
-    private func open() {
-        guard let start else {
-            opening = false
-            settled()
-            return
-        }
-        Task {
-            await place(start)
-            // A message folded into a thread: its thread opens.
-            if start == .newest { takeFocus() }
-        }
-    }
-
-    /// Live again after a reload or another tab, the same list with the
-    /// rows it kept: to a message asked for, to the newest the jump button
-    /// asked for, to "New messages" that came while away, or, left at the
-    /// newest, to the newest, past what came meanwhile; else it stays.
-    private func resume() {
-        let returned = left
-        left = false
-        if focusTarget != nil {
-            takeFocus()
-        } else if wantsNewest {
-            wantsNewest = false
-            scrollToNewest()
-        } else if returned, model.opensAtNewMessages(in: composer), let divider {
-            let start = Start.row(id: divider.id, offset: 0)
-            self.start = start
-            opening = true
-            Task { await place(start) }
-        } else if model.anchor(of: composer) == .newest, reachesNewest {
-            following = true
-            keepLastRowInView()
-        }
-    }
-
-    /// To the row by where it is laid out, a frame at a time until it is
-    /// where it belongs or goes no further (the end of the list), then
-    /// shown. Not once you take the list; at most a dozen frames.
-    ///
-    /// Interim: a timed retry against the lazy stack's estimates, which the
-    /// shared list engine (the review's PR 6) deletes.
-    private func place(_ start: Start) async {
-        let id: String, anchor: UnitPoint, offset: CGFloat?
-        switch start {
-        case .newest:
-            (id, anchor, offset) = (rows.last?.id ?? "", .bottom, nil)
-        case .row(let row, let rowOffset): (id, anchor, offset) = (row, .top, rowOffset)
-        case .focus(let row): (id, anchor, offset) = (row, .center, nil)
-        }
-        if case .row = start {
-            following = false
-            dividerUnread = divider?.id == id
-        }
-        var last: CGFloat?
-        for _ in 0..<12 {
-            try? await Task.sleep(for: .milliseconds(16))
-            guard !userScrolling, rows.contains(where: { $0.id == id }) else { break }
-            guard let top = layout.top(of: id) else {
-                position.scrollTo(id: id, anchor: anchor)
-                last = nil
-                continue
-            }
-            if let offset, abs(top - offset) <= 0.5 { break }
-            if top == last { break }
-            last = top
-            guard let offset else {
-                // The newest: again by the last row, as the composer's room comes.
-                if start == .newest { keepLastRowInView() }
-                continue
-            }
-            let y = layout.viewport.offset + top - offset
-            // Past the end the row cannot go; the end then, by the last
-            // row, which counts the composer's room below it (an offset
-            // stops short of that room).
-            // Nor within a screen of it, where the end is still being laid out.
-            if y >= layout.viewport.end - layout.viewport.container { keepLastRowInView() } else { position.scrollTo(y: y) }
-        }
-        // The loop above can end (a settled estimate, a break) with the viewport
-        // past the made rows, a blank list; pin by the last row again until one shows.
-        for _ in 0..<6 where !userScrolling && !rows.isEmpty && !layout.showsRow {
-            keepLastRowInView()
-            try? await Task.sleep(for: .milliseconds(16))
-        }
-        // The newest: shown only once the last row's bottom is at the end of the
-        // content, above the composer's room (the end counts the bottom inset).
-        // A row showing is not enough: the estimate can still be short, the rows
-        // measured taller after the pin, leaving the newest behind the composer
-        // and empty room above. Pin again until the end holds still for a few
-        // frames (at most ~0.6 s), not once you take the list.
-        // A pin by the last row leaves the stack's bottom padding below it:
-        // within that it is at the end (asked for 2, it never held, and every
-        // chat stayed hidden the whole 0.6 s).
-        if start == .newest {
-            var steady = 0
-            for _ in 0..<40 where !userScrolling && !rows.isEmpty && steady < 3 {
-                let below = layout.viewport.end - layout.viewport.offset
-                if below <= Theme.Space.sm + 2, layout.showsRow {
-                    steady += 1
-                } else {
-                    steady = 0
-                    keepLastRowInView()
-                }
-                try? await Task.sleep(for: .milliseconds(16))
-            }
-        }
-        self.start = nil
-        if case .focus(let id) = start {
-            following = false
-            model.focus = nil
-            flash(id)
-        }
-        opening = false
-        settled()
-        if newestWhileOpening {
-            newestWhileOpening = false
-            scrollToNewest(animated: false)
-        }
-        // Rows and none made in view, whatever `following` says and whatever the size did.
-        blankCheck?.cancel()
-        blankCheck = Task {
-            try? await Task.sleep(for: .milliseconds(80))
-            guard !Task.isCancelled else { return }
-            rescueBlank("opened")
-        }
-    }
-
-    /// A list with rows but none made in its viewport is blank, at "New
-    /// messages" (`following` false) as at the newest: back to the unread
-    /// marker while it still marks what is unread, else the end. Not one with
-    /// a row in view (the reader's place), nor while it opens or is dragged.
-    private func rescueBlank(_ path: String) {
-        guard live, !opening, !userScrolling,
-              ListBottom.needsRescue(rowsCount: rows.count, realisedCount: layout.showsRow ? layout.tops.count : 0) else { return }
-        if dividerUnread, !following, let divider {
-            TimelineLog.log("\(TimelineLog.tag(composer)) blank rescue (\(path)): to new messages, rows \(rows.count)")
-            position.scrollTo(id: divider.id, anchor: .top)
-        } else if reachesNewest {
-            TimelineLog.log("\(TimelineLog.tag(composer)) blank rescue (\(path)): to newest, rows \(rows.count)")
-            keepLastRowInView()
-        }
-    }
-
-    /// Never over a list that stands at the newest, however stale the flags.
-    private func showsJump(_ newCount: Int) -> Bool {
-        // Not while it opens (the pin is still landing): the arrow showed at the bottom.
-        !opening && start == nil && !(bottom.atBottom && reachesNewest) && (newCount > 0 || farFromBottom || !reachesNewest)
-    }
-
-    private func moved(_ edges: Edges) {
-        if edges.nearTop, !isThread, !opening, live { model.loadOlder() }
-        var bottom = self.bottom
-        if reachesNewest {
-            bottom.report(atBottom: edges.atBottom, settled: !opening && phase == .idle, newest: newestIndex)
-        }
-        switch bottom.cross(atBottom: edges.atBottom) {
-        case .reached:
-            if userScrolling, reachesNewest { reachedBottom() }
-            if reachesNewest { following = true }
-            if !isThread, live, reachesNewest || userScrolling { model.chatListAtBottom() }
-        case .left:
-            if userScrolling {
-                following = false
-                dividerUnread = false
-            }
-            bottom.left(byItself: !userScrolling && !following, otherwiseSeen: seenWhenScrolledUp)
-        case nil:
-            break
-        }
-        if bottom != self.bottom { self.bottom = bottom }
-        if edges.far != farFromBottom { farFromBottom = edges.far }
-    }
-
-    /// Still after opening or a scroll: where it stands is kept, and at the
-    /// bottom all of it was seen.
-    private func settled() {
-        // Blank-list guard, only for a list at its bottom: `layout.tops` can be
-        // transiently empty while lazy rows recycle mid-scroll, and pinning then
-        // would yank a scrolled-up reader to the bottom at the idle transition.
-        if !opening, !rows.isEmpty, layout.tops.isEmpty, following, bottom.atBottom, reachesNewest { keepLastRowInView() }
-        rescueBlank("settled")
-        // The end read now, not as it was mid-pin: a list at its bottom hides the arrow.
-        if !opening, reachesNewest, farFromBottom, layout.viewport.end - layout.viewport.offset <= 24 { farFromBottom = false }
-        keepPlace()
-        guard !opening, bottom.atBottom, phase == .idle else { return }
-        var bottom = self.bottom
-        bottom.report(atBottom: true, settled: true, newest: newestIndex)
-        if bottom != self.bottom { self.bottom = bottom }
-        if reachesNewest, farFromBottom { farFromBottom = false }
-    }
-
-    /// Where the list stands, kept in the model for a list of these rows
-    /// made again (`AppModel.keep`): the newest at the bottom, else the
-    /// row at the top, never "New messages"' row or a thread's lines.
-    private func keepPlace() {
-        guard live, !opening, phase == .idle, !rows.isEmpty else { return }
-        if reachesNewest, bottom.atBottom { return model.keep(.newest, of: composer) }
-        let anchors = Set(rows.lazy.filter { row in
-            switch row.kind {
-            case .replies, .missingOriginal: false
-            default: !row.startsNew
-            }
-        }.map(\.id))
-        // The lowest made row whose top is at or above the list's top.
-        let top = layout.viewport.offset + layout.viewport.inset
-        if let reading = layout.tops.filter({ anchors.contains($0.key) && $0.value <= top + 0.5 }).max(by: { $0.value < $1.value }) {
-            model.keep(.row(id: reading.key, offset: Double(reading.value - top)), of: composer)
-        }
-    }
-
-    /// To the last row, not the edge: a scroll to the edge while the lazy
-    /// stack resizes can leave it with no row made there, a blank list
-    /// (the Mac's `repin` by its last row). Except when all of it fits.
-    private func keepLastRowInView() {
-        guard let last = rows.last?.id else { return }
-        // All of it fits: the bottom edge, which the list clamps. By the last
-        // row it went above the top (the bottom alignment's inset already
-        // takes the room below), where no gesture stands, and stayed there
-        // until a drag bounced it back. Every row is made, so no blank list.
-        if layout.viewport.end <= -layout.viewport.inset + 0.5 {
-            position.scrollTo(edge: .bottom)
-            return
-        }
-        position.scrollTo(id: last, anchor: .bottom)
-    }
-
-    /// After a size change, once the lazy stack has laid out for it: a list
-    /// with no made row in its viewport is blank. At the bottom (and following)
-    /// it is pinned by its last row; otherwise it goes to the nearest valid
-    /// offset, or failing that the made row nearest where it stood, so the
-    /// reading place is kept and the reader never has to scroll to find content.
-    private func checkNotBlank() {
-        blankCheck?.cancel()
-        blankCheck = Task {
-            try? await Task.sleep(for: .milliseconds(80))
-            guard !Task.isCancelled, live, !userScrolling, !opening, !rows.isEmpty, !layout.showsRow else { return }
-            if following, bottom.atBottom, reachesNewest { return keepLastRowInView() }
-            let view = layout.viewport
-            let y = min(max(view.offset, -view.inset), max(view.end, -view.inset))
-            if abs(y - view.offset) > 0.5 {
-                position.scrollTo(y: y)
-            } else if let nearest = layout.tops.min(by: { abs($0.value - view.offset) < abs($1.value - view.offset) }) {
-                position.scrollTo(id: nearest.key, anchor: .top)
-            } else {
-                keepLastRowInView()
+        ZStack(alignment: .bottom) {
+            Color.clear
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { safe = $0 }
+            MessageTable(
+                model: model, rows: rows, composer: composer, live: live, focus: live ? focusTarget : nil,
+                // A thread's list always ends at its newest; the chat's unless a
+                // jump's window stops short of it.
+                reachesNewest: composer.thread != nil || model.timelineReachesNewest,
+                hasOlder: composer.thread == nil && model.mayHaveOlder,
+                insets: barsRoom, link: link
+            )
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { full = $0 }
+            .ignoresSafeArea(.all, edges: .vertical)
+            if let controller = link.controller {
+                JumpPill(controller: controller)
             }
         }
     }
 
-    /// Once the container's height has stopped changing, by the last row
-    /// again: the pins made mid-animation land among rows the stack has
-    /// not yet laid out for the final height, and can leave a blank list.
-    private func repinOnceSettled() {
-        settledPin?.cancel()
-        settledPin = Task {
-            try? await Task.sleep(for: .milliseconds(150))
-            // Still at the bottom: a list the reader has since left stays put.
-            guard !Task.isCancelled, following, bottom.atBottom, reachesNewest, !userScrolling, !opening else { return }
-            keepLastRowInView()
-        }
+    /// The header's room above the rows and the composer's (and the
+    /// keyboard's) below them, as the table's content insets.
+    private var barsRoom: EdgeInsets {
+        guard !safe.isEmpty, !full.isEmpty else { return EdgeInsets() }
+        return EdgeInsets(top: max(0, safe.minY - full.minY), leading: 0,
+                          bottom: max(0, full.maxY - safe.maxY), trailing: 0)
     }
-
-    /// Animated for the jump button and for what arrives; not for the opening's own pin.
-    private func scrollToNewest(animated: Bool = true) {
-        following = true
-        guard animated else {
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { keepLastRowInView() }
-            return settled()
-        }
-        withAnimation(.easeOut(duration: 0.25)) { keepLastRowInView() } completion: { settled() }
-    }
-
-    private func jumpToNewest() {
-        if reachesNewest {
-            scrollToNewest()
-        } else {
-            // The newest page replaces the window, kept rows on screen until
-            // it has loaded (`resume`).
-            wantsNewest = true
-            model.showNewest()
-        }
-        reachedBottom()
-    }
-
-    private func reachedBottom() {
-        dividerUnread = false
-        if !isThread, live, let chat = composer.chat { model.reachedBottom(of: chat) }
-    }
-
-    // MARK: Counting what came below
-
-    private var newestIndex: Int64? {
-        rows.lazy.compactMap { $0.shown.last?.serverIndex }.max()
-    }
-
-    private var seenWhenScrolledUp: Int64 {
-        if dividerUnread, let index = divider?.shown.first?.serverIndex { return index - 1 }
-        return newestIndex ?? -1
-    }
-
-    private var newSinceScrolledUp: Int {
-        bottom.newBelow(newestFirst: rows.reversed().lazy.map(\.shown))
-    }
-
-    // MARK: Going to a message
 
     /// The model's focused message, when it belongs in this list.
     private var focusTarget: FocusTarget? {
-        Self.focusTarget(model.focus, of: composer, rows: rows)
-    }
-
-    private static func focusTarget(_ target: FocusTarget?, of composer: ComposerID, rows: [ChatRow]) -> FocusTarget? {
-        guard let target, target.message.chat == composer.chat,
+        guard let target = model.focus, target.message.chat == composer.chat,
               composer.thread.map({ $0 == target.message.threadRoot }) ?? !target.inThread,
               !rows.isEmpty else { return nil }
         return target
     }
+}
 
-    private func takeFocus() {
-        guard let target = focusTarget else { return }
-        if go(to: target.message) { model.focus = nil }
-    }
+/// The controller's pill over the list: an arrow, "N new messages", or the
+/// way back to the newest from a jump's window.
+private struct JumpPill: View {
+    let controller: ChatListController
 
-    /// To a message, lit for a moment; one folded into a thread opens it.
-    @discardableResult
-    private func go(to message: Message) -> Bool {
-        if let row = rows.first(where: { $0.holds(message.uuid) }) {
-            following = false
-            withAnimation(.easeInOut(duration: 0.25)) { position.scrollTo(id: row.id, anchor: .center) }
-            flash(row.id)
-            return true
-        } else if !isThread, message.threadUUID != nil {
-            model.focus(on: message, inThread: true)
+    var body: some View {
+        let pill = controller.pill
+        ZStack {
+            if let pill {
+                JumpToNewest(count: pill.count) { controller.jumpToPresent() }
+                    .padding(.bottom, Theme.Space.sm)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
         }
-        return false
-    }
-
-    private func flash(_ id: String) {
-        flashed = id
-        Task {
-            try? await Task.sleep(for: .seconds(0.5))
-            if flashed == id { withAnimation(.easeOut(duration: 1.2)) { flashed = nil } }
-        }
+        .animation(.easeOut(duration: 0.2), value: pill == nil)
     }
 }
 
-/// Where a list's rows are: each made row's top in the content, and the
-/// content's top inset and offset as it scrolls. Not observed: the list
-/// reads it only to place itself and to keep its place.
-private final class Layout {
-    static let space = "MessageList.content"
-
-    struct Viewport: Equatable {
-        /// The content's top inset (under the header) and offset.
-        var inset: CGFloat = 0
-        var offset: CGFloat = 0
-        /// The offset at the end of the content (`ScrollGeometry.endOffset`).
-        var end: CGFloat = 0
-        var container: CGFloat = 0
-    }
-
-    var tops: [String: CGFloat] = [:]
-    /// Each made row's bottom, for a row taller than the viewport.
-    var bottoms: [String: CGFloat] = [:]
-    var viewport = Viewport()
-
-    /// Whether any made row is within the viewport.
-    var showsRow: Bool {
-        // Any part of it, not its top: an agent's long reply fills the
-        // viewport from above it, and by tops the list read as blank and
-        // stayed hidden, re-pinned, for the whole open (~1 s).
-        tops.contains { id, top in
-            top < viewport.offset + viewport.container && (bottoms[id] ?? top) > viewport.offset
-        }
-    }
-
-    /// A made row's top below the list's top (under its inset), as on screen now.
-    func top(of id: String) -> CGFloat? {
-        tops[id].map { $0 - viewport.offset - viewport.inset }
+private extension ListPill {
+    /// The messages below it counts, 0 for none.
+    var count: Int {
+        if case .count(let count) = self { count } else { 0 }
     }
 }
 
@@ -662,17 +115,5 @@ private struct JumpToNewest: View {
         } else {
             GlassButton("arrow.down", label: String(localized: "Jump to newest"), action: action)
         }
-    }
-}
-
-private extension ScrollGeometry {
-    /// The offset at the end of the content, its last row just above the
-    /// composer (or the keyboard). `containerSize` is already the room
-    /// between the bars, which take `contentInsets`: adding the bottom inset
-    /// to it again put the end a composer (with the keyboard, about 500
-    /// points) further down, so the list never read as at its bottom and
-    /// what arrived stayed counted on the pill.
-    var endOffset: CGFloat {
-        contentSize.height - containerSize.height - contentInsets.top
     }
 }

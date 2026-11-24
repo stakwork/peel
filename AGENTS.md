@@ -939,9 +939,11 @@ is a short plan. Update the status and the journal when you finish something.
   now"),
   `ChatSearch` (`PhoneChatSearchBar`: the search under a chat's header, from More › Search, in place of the composer; `PhoneSearchResultsSheet`, the matches as a list; over PeelUI's `ChatSearch`, main chat only), `ConversationScreen` (the header with Call and More in one capsule, the
   rows, the composer on `.floatingBar`, the thread sheet on
-  `router.thread`), `MessageList` (opening at "New messages", following
-  the newest at the bottom, the "N new messages" pill over `ListBottom`,
-  older pages through `AppModel.loadOlder`), `MessageRows` (the flat rows:
+  `router.thread`), `MessageList` (the list's SwiftUI side: the table, the
+  bars' room as its insets, the jump pill) over `MessageTable`
+  (`MessageTableEngine`: a `UITableView` of measured rows placed by PeelUI's
+  `ChatListController`, as the Mac's table is; docs/phases/07-iphone.md,
+  "The native list"), `MessageRows` (the flat rows:
   messages, payments, requests, notes, quotes, boosts, thread summaries,
   Retry and Discard; an agent reply's tool lines and its deliverables,
   `AgentArtifactLines`, each opening in `OrgPageSheet` or saying why it

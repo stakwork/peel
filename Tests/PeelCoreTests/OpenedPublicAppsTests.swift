@@ -117,4 +117,30 @@ struct OpenedPublicAppsTests {
         #expect(PublicAppLink.title(in: Data(#"{"name":"x"}"#.utf8)) == nil)
         #expect(PublicAppLink.title(in: Data("[]".utf8)) == nil)
     }
+
+    @Test func theListingsIconIsReadAndOddOnesRefused() {
+        let tasks = Data(#"{"name":"strut/worker","title":"Tasks","icon":"list-checks"}"#.utf8)
+        #expect(PublicAppLink.icon(in: tasks) == "list-checks")
+        let both = PublicAppLink.listing(in: tasks)
+        #expect(both.title == "Tasks")
+        #expect(both.icon == "list-checks")
+        #expect(PublicAppLink.icon(in: Data(#"{"icon":" square "}"#.utf8)) == "square")
+        #expect(PublicAppLink.icon(in: Data(#"{"icon":"square.grid.2x2"}"#.utf8)) == nil)
+        #expect(PublicAppLink.icon(in: Data(#"{"icon":"  "}"#.utf8)) == nil)
+        #expect(PublicAppLink.icon(in: Data(#"{"icon":"List-Checks"}"#.utf8)) == nil)
+        #expect(PublicAppLink.icon(in: Data(#"{"icon":"\#(String(repeating: "a", count: 65))"}"#.utf8)) == nil)
+        #expect(PublicAppLink.icon(in: Data(#"{"icon":3,"title":"Tasks"}"#.utf8)) == nil)
+        #expect(PublicAppLink.title(in: Data(#"{"icon":3,"title":"Tasks"}"#.utf8)) == "Tasks")
+    }
+
+    @Test func theIconIsStoredReadBackAndNeverErasedByNone() throws {
+        let tasks = try link("https://acme.example.com/public/?app=worker")
+        try storage.rememberPublicApp(tasks, at: 1)
+        let seller = tasks.seller.absoluteString
+        #expect(try storage.openedPublicApps().first?.icon == nil)
+        try storage.setPublicAppIcon(seller: seller, app: "worker", icon: "list-checks")
+        try storage.setPublicAppIcon(seller: seller, app: "worker", icon: nil)
+        try storage.rememberPublicApp(tasks, at: 2)
+        #expect(try storage.openedPublicApps().first?.icon == "list-checks")
+    }
 }

@@ -36,12 +36,14 @@ extension AppModel {
         refreshTitle(of: link, storage: storage)
     }
 
-    /// Asks the seller for the app's title at every opening, so rows made
-    /// before it (and sessions that never sign in again) are named. Failures
-    /// are silent: the old title stays.
+    /// Asks the seller for the app's title and icon at every opening, so rows
+    /// made before it (and sessions that never sign in again) are named and
+    /// drawn. Failures are silent: the old title and icon stay.
     private func refreshTitle(of link: PublicAppLink, storage: Storage) {
         Task {
-            guard let title = try? await link.appTitle() else { return }
+            guard let listing = try? await link.appListing() else { return }
+            try? storage.setPublicAppIcon(seller: link.seller.absoluteString, app: link.app ?? "", icon: listing.icon)
+            guard let title = listing.title else { return }
             try? storage.setPublicAppTitle(seller: link.seller.absoluteString, app: link.app ?? "", title: title)
             // An invite's placeholder connection (titled by its place) is named as a first sign-in would.
             let key = WalletScope.origin(link.origin).key

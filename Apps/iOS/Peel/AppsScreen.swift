@@ -234,7 +234,7 @@ private struct OpenedAppRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.md) {
-            WorkspaceAppIcon(nil, size: 20)
+            WorkspaceAppIcon(app.icon, size: 20)
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: 30, height: 30)
                 .accessibilityHidden(true)

@@ -17,9 +17,12 @@ public struct OpenedPublicApp: Decodable, Sendable, Equatable, Identifiable, Fet
     /// The title the origin's wallet connection holds, once the app's first
     /// sign-in named it (the app's own claim, cleaned when it was saved).
     public var connectionTitle: String?
-    /// The title the seller's own listing gave the app (`PublicAppLink.appTitle`),
+    /// The title the seller's own listing gave the app (`PublicAppLink.appListing`),
     /// refreshed at each opening. Android keeps its own copy of this rule.
     public var appTitle: String?
+    /// The lucide icon the seller's listing named for the app, refreshed at
+    /// each opening; nil until it has, and the row then draws the fallback.
+    public var icon: String?
 
     public var id: String { "\(seller) \(app)" }
 
@@ -77,6 +80,17 @@ extension Storage {
         }
     }
 
+    /// Keeps the icon the seller's listing named for an opened app; none
+    /// changes nothing, so an answer without one never erases a stored icon.
+    public func setPublicAppIcon(seller: String, app: String, icon: String?) throws {
+        guard let icon else { return }
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE publicApp SET icon = ? WHERE seller = ? AND app = ?", arguments: [icon, seller, app]
+            )
+        }
+    }
+
     /// The public apps opened here, last opened first.
     public func openedPublicApps() throws -> [OpenedPublicApp] {
         try pool.read { db in try Self.openedPublicApps(db) }
@@ -93,7 +107,7 @@ extension Storage {
 
     private static func openedPublicApps(_ db: Database) throws -> [OpenedPublicApp] {
         try OpenedPublicApp.fetchAll(db, sql: """
-            SELECT p.seller, p.app, p.url, p.origin, p.openedAt, w.title AS connectionTitle, p.title AS appTitle
+            SELECT p.seller, p.app, p.url, p.origin, p.openedAt, w.title AS connectionTitle, p.title AS appTitle, p.icon
             FROM publicApp p LEFT JOIN walletConnection w ON w.key = ? || p.origin
             ORDER BY p.openedAt DESC, p.url ASC
             """, arguments: [originKeyPrefix])

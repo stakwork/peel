@@ -689,6 +689,11 @@ extension Storage {
             // ("Tasks" for strut/worker), refreshed at each opening.
             try db.execute(sql: "ALTER TABLE publicApp ADD COLUMN title TEXT")
         }
+        migrator.registerMigration("v39") { db in
+            // The lucide icon the seller's listing names for an opened public
+            // app ("list-checks" for strut/worker), refreshed at each opening.
+            try db.execute(sql: "ALTER TABLE publicApp ADD COLUMN icon TEXT")
+        }
         return migrator
     }
 }

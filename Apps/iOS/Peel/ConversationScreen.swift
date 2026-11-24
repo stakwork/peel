@@ -33,25 +33,25 @@ struct ConversationScreen: View {
     /// reloads, and the list keeps showing these through the pop and the
     /// reload rather than going blank. Not observed.
     @State private var held = HeldRows()
-    /// Where the list opens, worked out once, as its messages first load:
-    /// here, not in the body, which would then follow what it reads.
-    @State private var start: MessageList.Start?
+    /// The list is made once, as the chat's messages first load; where it
+    /// opens is its controller's.
+    @State private var opened = false
 
     var body: some View {
         let live = isLive
         let tribe = model.tribes[chat]
         Group {
-            if let start {
+            if opened {
                 // Made once per chat, with its messages, so it opens placed
                 // among them; kept, with its place, while the chat is away.
-                MessageList(rows: live ? model.chatRows : held.rows, composer: .chat(chat), live: live, start: start)
+                MessageList(rows: live ? model.chatRows : held.rows, composer: .chat(chat), live: live)
                     .id(chat)
             } else {
                 Color.clear
             }
         }
         .onChange(of: live, initial: true) { _, live in
-            if live, start == nil { start = MessageList.start(of: .chat(chat), rows: model.chatRows, in: model) }
+            if live, !opened { opened = true }
         }
         .onChange(of: model.chatRows, initial: true) { _, rows in
             if isLive { held.rows = rows }

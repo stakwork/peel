@@ -13,8 +13,8 @@ struct ThreadSheet: View {
     @Environment(\.dismiss) private var dismiss
     let thread: ThreadRef
     let conversation: Conversation?
-    /// Where its list opens, worked out once, as its rows first load.
-    @State private var start: MessageList.Start?
+    /// Its list is made once, as its rows first load; where it opens is its controller's.
+    @State private var opened = false
 
     private var loaded: Bool { model.thread != nil && model.openThread == thread }
 
@@ -27,8 +27,8 @@ struct ThreadSheet: View {
             Group {
                 // Open, with its rows, until the sheet has gone
                 // (`PhoneRouter.threadDismissed`).
-                if let start, loaded {
-                    MessageList(rows: model.threadRows, composer: composer, start: start)
+                if opened, loaded {
+                    MessageList(rows: model.threadRows, composer: composer)
                         .id(thread)
                 } else {
                     // Until its rows load, or if they never do: the sheet
@@ -39,7 +39,7 @@ struct ThreadSheet: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: loaded, initial: true) { _, loaded in
-                if loaded, start == nil { start = MessageList.start(of: composer, rows: model.threadRows, in: model) }
+                if loaded, !opened { opened = true }
             }
             .floatingBar(.bottom) {
                 VStack(spacing: Theme.Space.sm) {

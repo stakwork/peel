@@ -238,6 +238,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
             }
         }
         takeFocus(focus)
+        // Not yet open: in case the size came without a layout pass telling it.
+        if pendingOpen != nil { openIfSized() }
     }
 
     func dismantle() {
@@ -335,6 +337,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
     /// The view changed size (`MessageTableView`): the held placement put
     /// back, the rows in view measured at the new width first.
     func sizeChanged() {
+        log("size \(Int(table.bounds.width))x\(Int(table.bounds.height)) placed=\(placed)")
         if pendingOpen != nil { return openIfSized() }
         guard placed, !gone else { return }
         let hold = lastVisual.map { controller.placement == .keep ? $0 : controller.placement } ?? controller.placement
@@ -359,6 +362,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         place(open.to)
         placed = true
         report()
+        log("open \(open.to) rows=\(rows.count) content=\(Int(table.contentSize.height)) offset=\(Int(offset)) "
+            + "range=\(Int(minOffset))...\(Int(maxOffset)) insets=\(Int(insets.top))/\(Int(insets.bottom))")
         queueIdle()
     }
 
@@ -540,6 +545,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
     }
 
     func reveal() {
+        log("reveal")
         table.alpha = 1
     }
 
@@ -936,15 +942,27 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
 final class MessageTableView: UITableView {
     weak var engine: MessageTableEngine?
 
-    override var bounds: CGRect {
-        didSet {
-            guard bounds.size != oldValue.size else { return }
-            engine?.sizeChanged()
-        }
-    }
+    /// The size last told to the engine. Read in the layout pass, which
+    /// every resize brings: SwiftUI sizes the view by its frame, which
+    /// never goes through `bounds`' setter.
+    private var toldSize = CGSize.zero
+    private var telling = false
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if bounds.size != toldSize, !telling {
+            toldSize = bounds.size
+            // Past this pass: the engine updates the table's rows and offset.
+            telling = true
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.telling = false
+                    self.toldSize = self.bounds.size
+                    self.engine?.sizeChanged()
+                }
+            }
+        }
         engine?.laidOut()
     }
 }

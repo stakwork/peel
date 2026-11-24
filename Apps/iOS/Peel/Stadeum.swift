@@ -111,12 +111,18 @@ struct BoxesSection: View {
                 ForEach(boxes.links) { box in
                     Button { open(box) } label: {
                         HStack {
-                            LabeledContent(box.host, value: box.person)
+                            // Its name, and its whole address under it: the one place a person reads that.
+                            LabeledContent {
+                                Text(box.person)
+                            } label: {
+                                Text(box.title)
+                                Text(box.host)
+                            }
                             if opening == box.url { ProgressView() }
                         }
                     }
                     .disabled(opening != nil)
-                    .accessibilityHint("Opens \(box.host) as \(box.person)")
+                    .accessibilityHint("Opens \(box.title) as \(box.person)")
                     .swipeActions { Button("Forget", role: .destructive) { boxes.forget(box) } }
                     .contextMenu { Button("Forget", systemImage: "trash", role: .destructive) { boxes.forget(box) } }
                 }

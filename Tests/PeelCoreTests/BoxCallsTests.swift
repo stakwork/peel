@@ -137,7 +137,9 @@ struct BoxCallsTests {
         #expect(HTTPStub.jsonBody(of: try #require(stub.requests.last))?["name"]?.utf16.count == 128)
         #expect(!String(describing: ticket).contains("eyJ"))
         #expect(try await client.callTicket(box, room: "sphinx.call.other", name: "Ada") == nil)
-        await #expect(throws: PeelError.self) { _ = try await client.callTicket(box, room: "sphinx.call.elsewhere", name: "Ada") }
+        // Refused in words that name the server, never the person joining.
+        let refused = await #expect(throws: PeelError.self) { _ = try await client.callTicket(box, room: "sphinx.call.elsewhere", name: "Ada") }
+        #expect(refused?.description == "\(box.title)'s call ticket could not be read.")
         // Only an identity the box mints, never another participant's.
         await #expect(throws: PeelError.self) { _ = try await client.callTicket(box, room: "sphinx.call.someone", name: "Ada") }
     }

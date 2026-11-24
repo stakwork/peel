@@ -24,11 +24,11 @@ extension AppModel {
         return boxes.links.lazy.compactMap { box in self.boxes.places[box.url] == nil ? self.boxes.placesProblems[box.url] : nil }.first
     }
 
-    /// The box a tribe's Jamie row is still asking, by its host, once
+    /// The box a tribe's Jamie row is still asking, by its name, once
     /// Stadeum has said; nil while Stadeum is being asked.
     public var jamieAskingBox: String? {
         guard stadeum.jamieOrgs.map({ $0.links != nil }) ?? true else { return nil }
-        return boxes.links.first { boxes.places[$0.url] == nil && boxes.placesProblems[$0.url] == nil }?.host
+        return boxes.links.first { boxes.places[$0.url] == nil && boxes.placesProblems[$0.url] == nil }?.title
     }
 
     /// Reads again what every source says of Jamie: Hive while Stadeum is

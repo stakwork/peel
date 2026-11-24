@@ -141,10 +141,10 @@ struct BoxPlacesTests {
     }
 
     /// The row offers each org in use, an org the tribe is linked to that
-    /// is no longer in use, each box with a Jamie ready by its host (one
-    /// without only when it has the tribe; two on one host by their paths
-    /// too), then No Jamie; each by an id that reads back as its source, a
-    /// box's never an org's.
+    /// is no longer in use, each box with a Jamie ready by its name (one
+    /// without only when it has the tribe; two of one name by their hosts,
+    /// and on one host by their paths too), then No Jamie; each by an id
+    /// that reads back as its source, a box's never an org's.
     @Test func theRowOffersOrgsThenBoxesThenNoJamie() throws {
         let unready = BoxFixture.box("https://old.example.com")
         let choices = JamieChoices(orgs: Self.hive("initech"), boxes: [Self.lab, unready, Self.shop], places: [
@@ -153,7 +153,7 @@ struct BoxPlacesTests {
             Self.shop.url: BoxPlaces(jamie: nil, tribes: [Self.tribe]),
         ])
         let options = choices.options(for: Self.tribe)
-        #expect(options.map(\.name) == ["Acme", "@initech", "lab.example.com", "shop.example.com", "No Jamie"])
+        #expect(options.map(\.name) == ["Acme", "@initech", "lab", "shop", "No Jamie"])
         #expect(options.map { JamieSource(id: $0.id) } == [.org("acme"), .org("initech"), JamieSource(Self.lab), JamieSource(Self.shop), .noJamie])
         #expect(JamieSource(id: JamieSource(Self.shop).id) == .box("https://shop.example.com/jamie"))
         #expect(!AgentArtifact.Handle.isPeerID(JamieSource(Self.lab).id))
@@ -162,7 +162,11 @@ struct BoxPlacesTests {
         let a = BoxFixture.box("https://lab.example.com/a"), b = BoxFixture.box("https://lab.example.com/b")
         let ready = BoxPlaces(jamie: Self.boxJamie, tribes: [])
         #expect(JamieChoices(orgs: nil, boxes: [a, b, Self.shop], places: [a.url: ready, b.url: ready, Self.shop.url: ready])
-            .options(for: Self.tribe).map(\.name) == ["lab.example.com/a", "lab.example.com/b", "shop.example.com", "No Jamie"])
+            .options(for: Self.tribe).map(\.name) == ["lab.example.com/a", "lab.example.com/b", "shop", "No Jamie"])
+        // Two servers of one name on different hosts: each by its host.
+        let mine = BoxFixture.box("https://strut.stadeum.example.com"), theirs = BoxFixture.box("https://strut.stadeum.example.org")
+        #expect(JamieChoices(orgs: nil, boxes: [mine, theirs], places: [mine.url: ready, theirs.url: ready])
+            .options(for: Self.tribe).map(\.name) == ["strut.stadeum.example.com", "strut.stadeum.example.org", "No Jamie"])
     }
 
     /// A pick adds the new source first, then removes every other that has
@@ -199,7 +203,7 @@ struct BoxPlacesTests {
         tribe.appURL = "https://LAB.example.com/apps/board"
         let ready = BoxPlaces(jamie: Self.boxJamie, tribes: [])
         let choices = JamieChoices(orgs: Self.hive(nil), boxes: [Self.shop, Self.lab], places: [Self.shop.url: ready, Self.lab.url: ready])
-        #expect(choices.suggestion(for: tribe) == .init(id: JamieSource(Self.lab).id, name: "lab.example.com"))
+        #expect(choices.suggestion(for: tribe) == .init(id: JamieSource(Self.lab).id, name: "lab"))
 
         tribe.secondBrainURL = "https://swarm38.sphinx.chat/brain"
         #expect(choices.suggestion(for: tribe) == .init(id: "acme", name: "Acme"))

@@ -91,7 +91,7 @@ public final class CallStore {
     /// key, recording on the canvas or not (`Boxes.startCall`). Throws why
     /// it would not come.
     @ObservationIgnored var boxCall: (_ box: BoxLink, _ link: CallLink, _ record: Bool) async throws -> Void = { box, _, _ in
-        throw PeelError(String(localized: "Peel is no longer linked to \(box.host).", table: "Shared"))
+        throw PeelError(String(localized: "Peel is no longer linked to \(box.title).", table: "Shared"))
     }
     /// Where a join of an encrypted call asks the boxes this device is
     /// linked to for the person's own ticket (`Boxes.callTicket`), so what

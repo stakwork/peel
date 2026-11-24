@@ -178,7 +178,7 @@ public final class Boxes {
             forgetPlaces(of: box.url)
             problem = nil
         } catch {
-            problem = PeelError.noted(error, couldNot: String(localized: "forget \(box.host)", table: "Shared"))
+            problem = PeelError.noted(error, couldNot: String(localized: "forget \(box.title)", table: "Shared"))
         }
     }
 
@@ -199,7 +199,7 @@ public final class Boxes {
     /// as is one that refuses even a renewed token.
     private func asMember<T>(_ box: BoxLink, _ call: (BoxLink) async throws -> T) async throws -> T {
         guard let kept = links.first(where: { $0.url == box.url }) else {
-            throw PeelError(String(localized: "Peel is no longer linked to \(box.host).", table: "Shared"))
+            throw PeelError(String(localized: "Peel is no longer linked to \(box.title).", table: "Shared"))
         }
         do { return try await call(kept) } catch is BoxClient.TokenRefused {}
         guard let renewed = try await renewOnce(kept) else { throw PeelError(Self.unlinked(kept)) }
@@ -220,7 +220,7 @@ public final class Boxes {
             return generation == self.generation ? page : nil
         } catch {
             guard generation == self.generation, !(error is CancellationError) else { return nil }
-            if links.contains(where: { $0.url == box.url }) { problem = PeelError.noted(error, couldNot: String(localized: "open \(box.host)", table: "Shared")) }
+            if links.contains(where: { $0.url == box.url }) { problem = PeelError.noted(error, couldNot: String(localized: "open \(box.title)", table: "Shared")) }
             return nil
         }
     }
@@ -260,7 +260,7 @@ public final class Boxes {
                 placesReadAt[box.url] = Date()
             } catch {
                 guard generation == self.generation, links.contains(where: { $0.url == box.url }), !(error is CancellationError) else { return }
-                placesProblems[box.url] = PeelError.noted(error, couldNot: String(localized: "read which tribes have Jamie on \(box.host)", table: "Shared"))
+                placesProblems[box.url] = PeelError.noted(error, couldNot: String(localized: "read which tribes have Jamie on \(box.title)", table: "Shared"))
             }
         }
         placesReading[box.url] = reading
@@ -384,8 +384,8 @@ public final class Boxes {
         }
         guard calls[box.url]?.joins(callServer: callServer) == true else {
             throw PeelError(calls[box.url]?.group == true
-                ? String(localized: "Jamie from \(box.host) joins calls on another call server.", table: "Shared")
-                : String(localized: "Jamie from \(box.host) can't join calls yet.", table: "Shared"))
+                ? String(localized: "Jamie from \(box.title) joins calls on another call server.", table: "Shared")
+                : String(localized: "Jamie from \(box.title) can't join calls yet.", table: "Shared"))
         }
         try await asMember(box) { try await BoxClient(box: $0.url).startGroupCall($0, link: link, record: record) }
     }
@@ -454,7 +454,7 @@ public final class Boxes {
                 guard generation == self.generation else { return }
                 // Forgotten meanwhile: the others are still renewed.
                 if error is CancellationError { continue }
-                problem = PeelError.noted(error, couldNot: String(localized: "renew Peel's link to \(box.host)", table: "Shared"))
+                problem = PeelError.noted(error, couldNot: String(localized: "renew Peel's link to \(box.title)", table: "Shared"))
             }
         }
     }
@@ -512,7 +512,7 @@ public final class Boxes {
 
     /// What is said of a box that no longer links the key.
     static func unlinked(_ box: BoxLink) -> String {
-        String(localized: "\(box.host) removed Peel's link, so Peel let it go. Link it again from Connect there.", table: "Shared")
+        String(localized: "\(box.title) removed Peel's link, so Peel let it go. Link it again from Connect there.", table: "Shared")
     }
 }
 
@@ -522,7 +522,7 @@ extension BoxLink {
     /// address. strut's UI lists the box's apps and opens them in place.
     public var home: OrgPageRequest {
         let folder = URL(string: url.absoluteString + "/") ?? url
-        return OrgPageRequest(url: folder, token: token, peer: "box:" + url.absoluteString, workspace: host, title: host)
+        return OrgPageRequest(url: folder, token: token, peer: "box:" + url.absoluteString, workspace: title, title: title)
     }
 }
 

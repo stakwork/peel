@@ -82,6 +82,13 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
     private var corrections: [String: CGFloat] = [:]
     private var correctionsQueued = false
     private var idleGeneration = 0
+    /// Heights `idle` measured that the table has not taken yet: rows away
+    /// from the view, taken in batches rather than after every slice.
+    private var idleUnapplied = 0
+    /// The offset at the last scroll report, for the direction a scroll moves.
+    private var lastOffset: CGFloat = 0
+    /// Rows measured, for the hitch log.
+    private var measuredCount = 0
     /// Above a chat's rows while they are shorter than the view, so they sit at its bottom.
     private var fill: CGFloat = 0
 
@@ -171,18 +178,11 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         let resized = self.look.map { $0.dynamicType != look.dynamicType || $0.direction != look.direction } ?? false
         self.look = look
         setInsets(newInsets)
-        // The same rows in the same order (a reply growing, a reaction):
-        // those that changed, found in one pass; nil when the rows differ.
-        let inPlace = Self.changedInPlace(rows, new)
-        let changed = inPlace.map { !$0.isEmpty } ?? true || reachesNewest != self.reachesNewest
-            || hasOlder != self.hasOlder
-        self.reachesNewest = reachesNewest
-        if hasOlder != self.hasOlder {
-            self.hasOlder = hasOlder
-            updateHeader()
-        }
         if !appeared {
             appeared = true
+            self.reachesNewest = reachesNewest
+            self.hasOlder = hasOlder
+            updateHeader()
             setRows(new)
             stale = Set(ids)
             adjust {
@@ -200,26 +200,14 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
             openIfSized()
             return
         }
-        if changed {
-            let old = rows
-            let visual = captureVisual()
-            let oldIDs = ids
-            setRows(new, sameIDs: inPlace != nil)
-            let changedIDs = inPlace ?? Self.changed(old, rows)
-            let difference = inPlace != nil
-                ? CollectionDifference<String>([])!
-                : ids.difference(from: oldIDs).inferringMoves()
-            let diff = ListDiff(difference)
-            stale.formUnion(diff.inserted)
-            stale.formUnion(changedIDs)
-            let move = controller.contentWillChange(to: listContent, diff: diff)
-            applyRows(difference, oldCount: oldIDs.count, changed: changedIDs)
-            log("rows \(old.count)->\(rows.count) move \(move.to)\(move.animated ? " animated" : "")")
-            if placed {
-                apply(move, from: visual)
-            } else if move.to != .keep {
-                pendingOpen = move
-            }
+        let differs = new != rows || reachesNewest != self.reachesNewest || hasOlder != self.hasOlder
+        if differs, placed, userScrolling {
+            // Under the finger nothing moves by itself: what changed is
+            // applied the moment the scroll ends (`userScrollEnded`).
+            waiting = Waiting(rows: new, reachesNewest: reachesNewest, hasOlder: hasOlder)
+        } else if differs {
+            waiting = nil
+            timed("rows") { change(to: new, reachesNewest: reachesNewest, hasOlder: hasOlder) }
         } else if restyled {
             refreshVisibleCells()
             if resized, placed {
@@ -240,6 +228,47 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         takeFocus(focus)
         // Not yet open: in case the size came without a layout pass telling it.
         if pendingOpen != nil { openIfSized() }
+    }
+
+    /// Rows (or what the model says about them) held back during a scroll by hand.
+    private struct Waiting {
+        var rows: [ChatRow]
+        var reachesNewest: Bool
+        var hasOlder: Bool
+    }
+    private var waiting: Waiting?
+
+    /// The rows change: the controller says where the list goes, and the
+    /// table takes them in the same pass, from where the rows were on the screen.
+    private func change(to new: [ChatRow], reachesNewest: Bool, hasOlder: Bool) {
+        // Where the rows are, before anything (the header too) moves them.
+        let visual = captureVisual()
+        // The same rows in the same order (a reply growing, a reaction):
+        // those that changed, found in one pass; nil when the rows differ.
+        let inPlace = Self.changedInPlace(rows, new)
+        self.reachesNewest = reachesNewest
+        if hasOlder != self.hasOlder {
+            self.hasOlder = hasOlder
+            updateHeader()
+        }
+        let old = rows
+        let oldIDs = ids
+        setRows(new, sameIDs: inPlace != nil)
+        let changedIDs = inPlace ?? Self.changed(old, rows)
+        let difference = inPlace != nil
+            ? CollectionDifference<String>([])!
+            : ids.difference(from: oldIDs).inferringMoves()
+        let diff = ListDiff(difference)
+        stale.formUnion(diff.inserted)
+        stale.formUnion(changedIDs)
+        let move = controller.contentWillChange(to: listContent, diff: diff)
+        applyRows(difference, oldCount: oldIDs.count, changed: changedIDs)
+        log("rows \(old.count)->\(rows.count) move \(move.to)\(move.animated ? " animated" : "")")
+        if placed {
+            apply(move, from: visual)
+        } else if move.to != .keep {
+            pendingOpen = move
+        }
     }
 
     func dismantle() {
@@ -344,7 +373,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         setWidth(table.bounds.width)
         updateHeader()
         updateFill()
-        if !userScrolling { place(hold, margin: 0) }
+        if !userScrolling { timed("resize") { place(hold, margin: 0) } }
         report()
         queueIdle(after: 0.15)
     }
@@ -359,7 +388,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         // The content's size from the rows' heights, before the first offset is worked out from it.
         adjust { table.layoutIfNeeded() }
         updateHeader()
-        place(open.to)
+        timed("open") { place(open.to) }
         placed = true
         report()
         log("open \(open.to) rows=\(rows.count) content=\(Int(table.contentSize.height)) offset=\(Int(offset)) "
@@ -634,6 +663,12 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
             place(controller.placement)
             report()
         }
+        if let waiting {
+            self.waiting = nil
+            timed("rows after scroll") {
+                change(to: waiting.rows, reachesNewest: waiting.reachesNewest, hasOlder: waiting.hasOlder)
+            }
+        }
         queueIdle()
     }
 
@@ -649,10 +684,34 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
             report()
             return
         }
-        // The rows coming into view measured before they are drawn,
-        // holding what is there.
-        if userScrolling, let visual = captureVisual() { place(visual) }
+        if userScrolling { timed("scroll") { measureAhead() } }
+        lastOffset = offset
         report()
+    }
+
+    /// During a scroll by hand, only what it needs: the stale rows in view
+    /// (drawn now, so always) and, within a few milliseconds, those half a
+    /// view ahead in the direction it moves. The table takes their heights
+    /// once, holding what is on the screen; the rest waits for `idle`.
+    private func measureAhead() {
+        guard !stale.isEmpty || idleUnapplied > 0 else { return }
+        let view = viewRect
+        let lead = view.height / 2
+        let ahead = offset >= lastOffset
+            ? CGRect(x: 0, y: view.maxY, width: view.width, height: lead)
+            : CGRect(x: 0, y: view.minY - lead, width: view.width, height: lead)
+        // Before any height moves the rows.
+        let hold = captureVisual()
+        // Heights `idle` measured and the table has not taken: taken now, before they scroll into view.
+        var changed = measureRows(in: view) || idleUnapplied > 0
+        let deadline = ContinuousClock.now + .milliseconds(4)
+        forEachRow(in: ahead) { index, _ in
+            guard ContinuousClock.now < deadline, stale.contains(rows[index].id) else { return }
+            if remeasure(index) { changed = true }
+        }
+        guard changed else { return }
+        noteHeights()
+        if let hold { setOffset(for: hold) }
     }
 
     // MARK: Heights
@@ -698,6 +757,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         let size = sizer.sizeThatFits(in: CGSize(width: width, height: 100_000))
         let height = max(ceil(size.height), 1)
         setHeight(height, of: index)
+        measuredCount += 1
         return height
     }
 
@@ -720,6 +780,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
 
     /// The table takes the heights again, in place, without animating.
     private func noteHeights() {
+        // Whatever `idle` measured goes with it.
+        idleUnapplied = 0
         adjust {
             UIView.performWithoutAnimation {
                 table.beginUpdates()
@@ -772,13 +834,18 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
     }
 
     private func idle() {
-        guard !gone, placed, !stale.isEmpty else { return }
+        guard !gone, placed, !stale.isEmpty || idleUnapplied > 0 else { return }
         guard animatingTo == nil, !userScrolling else { return queueIdle(after: 0.2) }
-        let deadline = ContinuousClock.now + .milliseconds(8)
+        let started = ContinuousClock.now
+        measuredCount = 0
+        let deadline = started + .milliseconds(4)
         let hold = holdNow()
         let count = rows.count
-        let middle = table.indexPathsForRows(in: viewRect)?.first?.row ?? count - 1
-        var changed = false
+        let visible = table.indexPathsForRows(in: viewRect)?.map(\.row) ?? []
+        let middle = visible.first ?? count - 1
+        // Rows within a view's height of it: their height shows soon, so it is taken at once.
+        let near = visible.isEmpty ? 0..<0 : (visible[0] - visible.count)..<(visible[visible.count - 1] + visible.count + 1)
+        var nearChanged = false
         var left = false
         var step = 0
         outward: while step <= count {
@@ -787,16 +854,20 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
                     left = true
                     break outward
                 }
-                if remeasure(index) { changed = true }
+                if remeasure(index) {
+                    if near.contains(index) { nearChanged = true } else { idleUnapplied += 1 }
+                }
             }
             step += 1
         }
-        if changed {
+        // Far rows' heights go to the table every few dozen, and once all are measured.
+        if nearChanged || idleUnapplied >= 40 || (!left && idleUnapplied > 0) {
             noteHeights()
             updateFill()
             setOffset(for: hold)
             report()
         }
+        slow("idle", since: started)
         if left { queueIdle() }
     }
 
@@ -811,7 +882,7 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         guard !correctionsQueued else { return }
         correctionsQueued = true
         DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated { self?.applyCorrections() }
+            MainActor.assumeIsolated { self?.timed("corrections") { self?.applyCorrections() } }
         }
     }
 
@@ -934,6 +1005,24 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
 
     private func log(_ event: @autoclosure () -> String) {
         TimelineLog.log("\(TimelineLog.tag(composer)) \(event())")
+    }
+
+    /// The list's own work, timed: a frame's worth or more is logged.
+    private func timed(_ what: String, _ body: () -> Void) {
+        let started = ContinuousClock.now
+        measuredCount = 0
+        body()
+        slow(what, since: started)
+    }
+
+    /// Logs work that took over a frame (16 ms) on the main thread, where it
+    /// holds up scrolling: what it was, how long, and the rows it measured.
+    private func slow(_ what: String, since started: ContinuousClock.Instant) {
+        let elapsed = ContinuousClock.now - started
+        defer { measuredCount = 0 }
+        guard elapsed > .milliseconds(16) else { return }
+        let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
+        log("slow \(what) \(String(format: "%.0f", ms)) ms, measured \(measuredCount), stale \(stale.count), rows \(rows.count)")
     }
 }
 

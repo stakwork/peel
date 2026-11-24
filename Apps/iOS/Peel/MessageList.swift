@@ -21,24 +21,37 @@ struct MessageList: View {
     var live = true
 
     @State private var link = PhoneListLink()
+    /// On the screen: the room between the bars (above the keyboard), and
+    /// all the table covers, under them. The bars' room is the difference.
+    @State private var safe = CGRect.zero
+    @State private var full = CGRect.zero
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            GeometryReader { geometry in
-                MessageTable(
-                    model: model, rows: rows, composer: composer, live: live, focus: live ? focusTarget : nil,
-                    // A thread's list always ends at its newest; the chat's unless a
-                    // jump's window stops short of it.
-                    reachesNewest: composer.thread != nil || model.timelineReachesNewest,
-                    hasOlder: composer.thread == nil && model.mayHaveOlder,
-                    insets: geometry.safeAreaInsets, link: link
-                )
-            }
+            Color.clear
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { safe = $0 }
+            MessageTable(
+                model: model, rows: rows, composer: composer, live: live, focus: live ? focusTarget : nil,
+                // A thread's list always ends at its newest; the chat's unless a
+                // jump's window stops short of it.
+                reachesNewest: composer.thread != nil || model.timelineReachesNewest,
+                hasOlder: composer.thread == nil && model.mayHaveOlder,
+                insets: barsRoom, link: link
+            )
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { full = $0 }
             .ignoresSafeArea(.all, edges: .vertical)
             if let controller = link.controller {
                 JumpPill(controller: controller)
             }
         }
+    }
+
+    /// The header's room above the rows and the composer's (and the
+    /// keyboard's) below them, as the table's content insets.
+    private var barsRoom: EdgeInsets {
+        guard !safe.isEmpty, !full.isEmpty else { return EdgeInsets() }
+        return EdgeInsets(top: max(0, safe.minY - full.minY), leading: 0,
+                          bottom: max(0, full.maxY - safe.maxY), trailing: 0)
     }
 
     /// The model's focused message, when it belongs in this list.

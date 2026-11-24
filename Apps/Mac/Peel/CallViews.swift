@@ -159,8 +159,9 @@ struct CallCard: View {
 /// Video call (⌥⌘V). While a recent call here has someone on it, "● Join · N"
 /// joins the newest such call instead, with "Start a new call" behind its
 /// chevron. On another call, either asks in place to leave it first (C5).
-/// With Stadeum connected, the menu also picks who a call here brings
-/// Jamie from: one of the person's workspaces, or none (docs/hive-calls.md).
+/// The menu also picks who a call here brings Jamie from: one of the
+/// person's Stadeum workspaces, a box Peel is linked to (whose call is
+/// encrypted, and may record on the canvas), or none (docs/hive-calls.md).
 struct CallHeaderButton: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
@@ -213,6 +214,8 @@ struct CallHeaderButton: View {
         // A tribe's header is kept when another tribe opens: a question
         // asked in one chat is never answered in the next.
         .onChange(of: chat) { pending = nil }
+        // The boxes whose Jamie can join a call now, for the menu.
+        .task(id: chat) { await model.readCallBoxes() }
         // The header's own watch, while the chat is open: `CallStore` watches
         // only each chat's newest call, this the next two.
         .task(id: recent.map(\.room)) {
@@ -265,20 +268,27 @@ struct CallHeaderButton: View {
 
     private func showMenu(header: Bool) {
         let jamie = model.callJamie(in: chat)
-        let with = jamie.map { String(localized: "With Jamie from \($0.name)") }
+        let with = jamie.map { String(localized: "With Jamie from \(model.name(of: $0))") }
         let items: [MenuEntry] = [
             .button("Audio call", subtitle: with, systemImage: "phone", shortcut: .optionCommand("a")) { start(audioOnly: true) },
             .button("Video call", subtitle: with, systemImage: "video", shortcut: .optionCommand("v")) { start(audioOnly: false) },
         ]
-        let workspaces = model.stadeum.live
-        let picks: [MenuEntry] = workspaces.isEmpty ? [] : [.header("Jamie")]
-            + workspaces.map { peer in
-                .button(peer.name, checked: peer.id == jamie?.id) { model.calls.pickJamie(peer, in: chat) }
+        let jamies = model.callJamies(in: chat)
+        let picks: [MenuEntry] = jamies.isEmpty ? [] : [.header("Jamie")]
+            + jamies.map { choice in
+                .button(model.name(of: choice), checked: choice == jamie) { model.calls.pickJamie(choice.source, in: chat) }
             }
-            + [.button("No Jamie", checked: jamie == nil) { model.calls.pickJamie(nil, in: chat) }]
+            + [.button("No Jamie", checked: jamie == nil) { model.calls.pickJamie(.noJamie, in: chat) }]
+        // A box's Jamie may keep what is said on its canvas.
+        let records = model.calls.recordsOnCanvas.contains(chat)
+        let canvas: [MenuEntry] = jamie?.isBox == true
+            ? [.button("Record on the canvas", checked: records) { model.calls.setRecordsOnCanvas(!records, in: chat) }]
+            : []
         presenter?.show(
-            .sections((header ? [.header("Start a new call")] : []) + items, picks), at: header ? chevron : anchor, source: menuSource
+            .sections((header ? [.header("Start a new call")] : []) + items, picks, canvas), at: header ? chevron : anchor, source: menuSource
         )
+        // A box that got ready since is in the menu next time.
+        Task { await model.readCallBoxes() }
     }
 
     private func start(audioOnly: Bool) {
@@ -436,19 +446,18 @@ struct OnCallBar: View {
 
 // MARK: - Jamie picker in the call chat
 
-/// A card shown at the top of the call chat to let the person choose the
-/// Stadeum workspace (Jamie) for this call. Defaults to the tribe's setting;
-/// overridable per call.
+/// A card shown at the top of the call chat to let the person choose who
+/// calls in this chat bring Jamie from: a Stadeum workspace or a box
+/// (`AppModel.callJamies`). Defaults to the tribe's setting; overridable per
+/// chat.
 struct JamiePickCard: View {
     @Environment(AppModel.self) private var model
     let call: CallSession
-    let workspaces: [HivePeer]
-
-    private var currentId: String { model.calls.jamiePicks[call.chat] ?? model.calls.tribeOrgs[call.chat] ?? "" }
+    let jamies: [CallJamie]
 
     var body: some View {
         let options: [(value: String, label: String)] = [("", String(localized: "No Jamie"))]
-            + workspaces.map { (value: $0.id, label: $0.name) }
+            + jamies.map { (value: $0.id, label: model.name(of: $0)) }
         Card(.inset) {
             HStack(spacing: Theme.Space.sm) {
                 Image(systemName: "sparkles")
@@ -457,9 +466,8 @@ struct JamiePickCard: View {
                 Text("Jamie")
                     .font(Theme.font(13, .semibold))
                 Spacer(minLength: 0)
-                PeelDropdown(selection: currentId, options: options) { id in
-                    let peer = workspaces.first { $0.id == id }
-                    model.calls.pickJamie(peer, in: call.chat)
+                PeelDropdown(selection: model.callJamie(in: call.chat)?.id ?? "", options: options) { id in
+                    model.calls.pickJamie(JamieSource(id: id), in: call.chat)
                 }
                 .fixedSize()
             }

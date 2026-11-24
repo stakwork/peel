@@ -14,16 +14,48 @@ extension AppModel {
         )
     }
 
-    /// The Stadeum workspace a call started in `chat` brings Jamie from:
-    /// the one picked there, else the tribe's own (its `app_url`'s swarm),
-    /// else none (`HivePeer.jamie`, docs/hive-calls.md).
-    public func callJamie(in chat: String) -> HivePeer? {
+    /// Where a call started in `chat` brings Jamie from: the org or box
+    /// picked there (a box while Peel is linked to it), else the tribe's
+    /// own org (its `app_url`'s swarm), else none (`HivePeer.jamie`,
+    /// docs/hive-calls.md).
+    public func callJamie(in chat: String) -> CallJamie? {
         let tribe = tribes[chat]
         // Per-chat pick (""=no Jamie, nil=unset) wins; otherwise the tribe-level default.
         let picked = calls.jamiePicks[chat] ?? calls.tribeOrgs[chat]
+        if let picked, case .box(let url) = JamieSource(id: picked) {
+            return boxes.links.first { $0.url.absoluteString == url }.map(CallJamie.box)
+        }
         return HivePeer.jamie(
             picked: picked, pages: [tribe?.appURL, tribe?.secondBrainURL], in: stadeum.live
-        )
+        ).map(CallJamie.org)
+    }
+
+    /// What a chat's call menu offers to bring Jamie from: each Stadeum
+    /// org in use, then each box Peel is linked to whose Jamie can join a
+    /// call on this account's call server (`BoxCalls.joins`), and the one
+    /// picked in `chat` even while it cannot, so the menu says what is true.
+    public func callJamies(in chat: String) -> [CallJamie] {
+        let picked = callJamie(in: chat)
+        let boxes = boxes.links.filter { box in
+            self.boxes.calls[box.url]?.joins(callServer: calls.server) == true || picked == .box(box)
+        }
+        return stadeum.live.map(CallJamie.org) + boxes.map(CallJamie.box)
+    }
+
+    /// A call's Jamie as the menu names it: an org's name, a box's host
+    /// (with its path beside another box on the same host).
+    public func name(of jamie: CallJamie) -> String {
+        switch jamie {
+        case .org(let peer): peer.name
+        case .box(let box): JamieChoices(orgs: nil, boxes: boxes.links).name(of: box)
+        }
+    }
+
+    /// Reads again what each box says of its group calls, unless read in
+    /// the last minute: as a chat that may start a call opens, so its menu
+    /// offers the boxes ready then.
+    public func readCallBoxes() async {
+        await boxes.readCalls(ifOlderThan: 60)
     }
 
     /// "#tribe" or the contact's name, for the call window.

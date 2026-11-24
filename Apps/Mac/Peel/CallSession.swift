@@ -10,6 +10,11 @@ import PeelUI
 /// microphone, camera and devices, and what the window and the sidebar show
 /// of it. The ticket's token goes to LiveKit and is not kept.
 ///
+/// A link with a key (a box's Jamie is in the call) is joined end-to-end
+/// encrypted with it (`CallRoom.options`): media, the call's chat and
+/// Jamie's replies. What will not encrypt or decrypt is said
+/// (`encryptionNotice`), and nothing is ever sent in the clear.
+///
 /// The microphone starts on and the camera off; only the person who started
 /// a video call starts with the camera on.
 @MainActor @Observable
@@ -81,9 +86,13 @@ final class CallSession {
     /// Everyone on the call, the others in the order they joined, you last.
     private(set) var tiles: [Tile] = []
     private(set) var micOn = false
-    /// Whether the call server is recording the call (the room says so);
-    /// everyone on it must be told.
+    /// Whether the call is recorded: by the call server (the room says
+    /// so), or on the canvas by a box's Jamie (its `recording` attribute,
+    /// `CallChatWire.jamieRecords`). Everyone on it must be told.
     private(set) var isRecording = false
+    /// What will not encrypt or decrypt on an encrypted call
+    /// (`CallEncryption`), said before anything else; nil while nothing fails.
+    private(set) var encryptionNotice: String?
     private(set) var cameraOn = false
     /// Whether you last chose the camera on (or started a video call):
     /// what a rejoin brings back.
@@ -151,7 +160,11 @@ final class CallSession {
     private var log = CallChatLog()
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
 
-    @ObservationIgnored private let room = Room(roomOptions: RoomOptions(adaptiveStream: true, dynacast: true))
+    /// One room per call, encrypted with the link's key when it has one.
+    @ObservationIgnored private let room: Room
+    @ObservationIgnored private var encryption = CallEncryption()
+    /// Hears the room's encryption state; the room holds its delegates weakly.
+    @ObservationIgnored private var encryptionWatch: CallEncryptionWatch?
     @ObservationIgnored private var connecting: Task<Void, Never>?
     @ObservationIgnored private var failed = false
     @ObservationIgnored private var leaving = false
@@ -197,6 +210,7 @@ final class CallSession {
     private static let deviceLog = Logger(subsystem: "dev.peel.mac", category: "call-audio")
 
     init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) {
+        room = Room(roomOptions: CallRoom.options(for: link))
         self.link = link
         self.chat = chat
         self.title = title
@@ -231,10 +245,16 @@ final class CallSession {
                 MainActor.assumeIsolated { self?.refreshAccess() }
             },
         ]
+        room.add(delegate: self)
+        // Before the room connects, so a key that doesn't match is heard.
+        if link.encryptionKey != nil {
+            let watch = CallEncryptionWatch { [weak self] change in self?.encryptionChanged(change) }
+            room.add(delegate: watch)
+            encryptionWatch = watch
+        }
         let url = ticket.serverURL.absoluteString, token = ticket.token
         connecting = Task { [weak self] in await self?.connect(url: url, token: token, camera: camera) }
         Task { await refreshCameras() }
-        room.add(delegate: self)
         // Your own tile from the start, while the room connects.
         refresh()
     }
@@ -302,6 +322,18 @@ final class CallSession {
             return
         }
         guard !Task.isCancelled else { return }
+        // A call meant to be encrypted that the room would not encrypt is
+        // left before anything is published. The SDK makes its manager
+        // whenever `encryptionOptions` are set, so this holds it to that;
+        // a track published in the clear all the same is said
+        // (`refreshEncryption`).
+        if link.encryptionKey != nil, room.e2eeManager == nil {
+            encryptionNotice = CallEncryption.unavailable
+            failed = true
+            await room.disconnect()
+            refresh()
+            return
+        }
         refresh()
         announce(stay: stay)
         // Not awaited by `leave`: a microphone prompt nobody answers must not
@@ -780,8 +812,11 @@ final class CallSession {
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
-        if room.isRecording != isRecording { isRecording = room.isRecording }
         let jamie = others.first(where: Self.isJamie)
+        // Any Jamie's: one who joined first under that name cannot hide the box's.
+        let recording = room.isRecording || others.contains { Self.isJamie($0) && CallChatWire.jamieRecords($0.attributes) }
+        if recording != isRecording { isRecording = recording }
+        refreshEncryption()
         jamieIdentity = jamie?.identity
         if (jamie != nil) != jamieInCall {
             jamieInCall = jamie != nil
@@ -884,6 +919,35 @@ final class CallSession {
         let person = CallParticipant(identity: id, name: name, metadata: metadata)
         readPeople[id] = (name, metadata, person)
         return person
+    }
+}
+
+// MARK: - Encryption
+
+extension CallSession {
+    fileprivate func encryptionChanged(_ change: CallEncryptionWatch.Change) {
+        guard !leaving else { return }
+        switch change {
+        case let .track(id, local, failed):
+            encryption.track(id, whose: local ? .yours : .theirs(room.publisherName(ofTrack: id)), failed: failed)
+        case .data:
+            encryption.dataFailedToDecrypt()
+        }
+        if encryption.notice != encryptionNotice { encryptionNotice = encryption.notice }
+    }
+
+    /// Who publishes in the clear on an encrypted call, or, on a call in the
+    /// clear, whether others encrypt it (a link posted without its key): from
+    /// the room as it is, on each refresh.
+    fileprivate func refreshEncryption() {
+        guard !leaving else { return }
+        let published = room.publishing()
+        if link.encryptionKey != nil {
+            encryption.published(clear: published.clear, othersEncrypt: false)
+        } else {
+            encryption.published(clear: [], othersEncrypt: published.othersEncrypt)
+        }
+        if encryption.notice != encryptionNotice { encryptionNotice = encryption.notice }
     }
 }
 

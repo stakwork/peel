@@ -52,7 +52,7 @@ final class TalkSession: TalkMedia {
     @ObservationIgnored private let room = Room()
     @ObservationIgnored private var encryption = TalkEncryption()
     /// Hears the room's encryption state; the room holds its delegates weakly.
-    @ObservationIgnored private var encryptionWatch: TalkEncryptionWatch?
+    @ObservationIgnored private var encryptionWatch: CallEncryptionWatch?
     @ObservationIgnored private var connecting: Task<Void, Never>?
     @ObservationIgnored private var changes: AnyCancellable?
     @ObservationIgnored private var failed = false
@@ -96,7 +96,7 @@ final class TalkSession: TalkMedia {
         // The microphone after voice processing, as the agent hears it.
         AudioManager.shared.add(localAudioRenderer: micMeter)
         // Before the room connects, so a key that doesn't match is heard.
-        let watch = TalkEncryptionWatch { [weak self] change in self?.encryptionChanged(change) }
+        let watch = CallEncryptionWatch { [weak self] change in self?.encryptionChanged(change) }
         room.add(delegate: watch)
         encryptionWatch = watch
         let url = ticket.url.absoluteString, token = ticket.token, options = Self.options(key: ticket.key)
@@ -112,10 +112,7 @@ final class TalkSession: TalkMedia {
     ///   for an encrypted track and this SDK leaves on under encryption, and
     ///   without DTX, so packets keep a steady rate through silence.
     static func options(key: String) -> RoomOptions {
-        RoomOptions(
-            defaultAudioPublishOptions: AudioPublishOptions(dtx: false, red: false),
-            encryptionOptions: EncryptionOptions(keyProvider: BaseKeyProvider(isSharedKey: true, sharedKey: key))
-        )
+        RoomOptions(defaultAudioPublishOptions: CallRoom.encryptedAudio, encryptionOptions: CallRoom.encryption(key: key))
     }
 
     private func connect(url: String, token: String, options: RoomOptions) async {
@@ -270,11 +267,11 @@ final class TalkSession: TalkMedia {
 
     // MARK: Encryption
 
-    private func encryptionChanged(_ change: TalkEncryptionWatch.Change) {
+    private func encryptionChanged(_ change: CallEncryptionWatch.Change) {
         guard !leaving else { return }
         switch change {
         case let .track(id, local, failed): encryption.track(id, local: local, failed: failed)
-        case .text: encryption.textFailedToDecrypt()
+        case .data: encryption.textFailedToDecrypt()
         }
         if encryption.notice != encryptionNotice { encryptionNotice = encryption.notice }
     }
@@ -328,39 +325,6 @@ struct TalkCard: Identifiable, Equatable {
     let id: String
     let artifact: AgentArtifact
     let anchor: TalkCardAnchor
-}
-
-/// Hears a Talk room's encryption (a `RoomDelegate`, which LiveKit calls on
-/// its own queues) and hands each change to the session on the main queue,
-/// in order.
-private final class TalkEncryptionWatch: NSObject, RoomDelegate, Sendable {
-    enum Change: Sendable {
-        /// A track's state: `failed` for a missing key or frames that will
-        /// not encrypt or decrypt; `local` for the member's own track.
-        case track(String, local: Bool, failed: Bool)
-        /// A packet of the agent's text would not decrypt.
-        case text
-    }
-
-    private let onChange: @MainActor @Sendable (Change) -> Void
-
-    init(_ onChange: @escaping @MainActor @Sendable (Change) -> Void) {
-        self.onChange = onChange
-    }
-
-    func room(_ room: Room, trackPublication: TrackPublication, didUpdateE2EEState state: E2EEState) {
-        let failed = [.missing_key, .encryption_failed, .decryption_failed, .internal_error].contains(state)
-        send(.track(trackPublication.sid.stringValue, local: trackPublication is LocalTrackPublication, failed: failed))
-    }
-
-    func room(_ room: Room, didFailToDecryptDataWithEror error: LiveKitError) {
-        send(.text)
-    }
-
-    private func send(_ change: Change) {
-        let onChange = onChange
-        DispatchQueue.main.async { MainActor.assumeIsolated { onChange(change) } }
-    }
 }
 
 /// The loudness of one side of a Talk call, fed from LiveKit's audio thread

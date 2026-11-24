@@ -533,6 +533,9 @@ private struct CallControls: View {
     /// Quiet lines under the bar: access macOS refused, a device that went,
     /// a connection that was lost.
     @ViewBuilder private var notes: some View {
+        if let notice = call.encryptionNotice {
+            note(notice)
+        }
         if let sharing = call.sharing {
             if call.sharePaused {
                 note(String(localized: "Sharing paused: no one sees your screen"), action: String(localized: "Resume"), perform: call.resumeScreenShare)

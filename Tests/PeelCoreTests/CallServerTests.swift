@@ -432,3 +432,97 @@ struct CallTicketFromHiveTests {
         #expect(stub.requests.isEmpty)
     }
 }
+
+/// A join of an encrypted call asks the boxes this device is linked to for
+/// the person's own ticket first (docs/hive-calls.md, "From a box"): the box
+/// whose Jamie is in the room records that identity against the person, so
+/// what they ask runs as them. The call server is a loopback stub that would
+/// answer every join as someone else.
+struct CallTicketFromBoxTests {
+    /// Each test's own profile, kept while its engine runs.
+    let profile = TempProfile()
+    private static let boxIdentity = "box_0123456789abcdef0123456789abcdef"
+
+    private func callServer() async throws -> HTTPStub {
+        try await HTTPStub { port in
+            #"{"serverUrl":"ws://127.0.0.1:\#(port)","participantToken":"\#(token(claims(room: room)))"}"#
+        }
+    }
+
+    private func engine(callServer port: UInt16, _ profile: TempProfile) async throws -> Engine {
+        let storage = try profile.storage()
+        _ = try storage.apply(Storage.Commit(state: [:], settings: [.server: "mqtts://lsp.example.com:8883"]))
+        let engine = try testEngine(storage)
+        try await engine.setCallServer("127.0.0.1:\(port)")
+        return engine
+    }
+
+    /// The encrypted call `link`'s room on the stub, with a key.
+    private func encrypted(_ port: UInt16) throws -> CallLink {
+        try #require(CallLink(link: "http://127.0.0.1:\(port)/rooms/\(room)#\(CallLink.newKey())", server: "127.0.0.1:\(port)"))
+    }
+
+    private static func boxTicket(port: UInt16, identity: String = boxIdentity, sub: String = boxIdentity,
+                           serverURL: String? = nil) -> BoxCallTicket {
+        var mine = claims(room: room)
+        mine["sub"] = sub
+        return BoxCallTicket(url: serverURL ?? "ws://127.0.0.1:\(port)", token: token(mine), identity: identity)
+    }
+
+    @Test func anEncryptedCallJoinsWithTheBoxsTicketUnderTheNameTheCallServerWouldGet() async throws {
+        let stub = try await callServer()
+        defer { stub.stop() }
+        let engine = try await engine(callServer: stub.port, profile)
+        let asked = OSAllocatedUnfairLock(initialState: [String]())
+        let answer = Self.boxTicket(port: stub.port)
+
+        let ticket = try await engine.callTicket(for: try encrypted(stub.port), in: nil, box: { room, name in
+            asked.withLock { $0.append("\(room)|\(name)") }
+            return answer
+        })
+
+        #expect(ticket.identity == Self.boxIdentity && ticket.participantName == "Peel user")
+        #expect(asked.withLock { $0 } == ["\(room)|Peel user"])
+        #expect(stub.requests.isEmpty)
+    }
+
+    /// Anything short of a ticket that passes the call server's checks joins
+    /// through the call server, as the call's starter: no box with Jamie in
+    /// the room, a box that fails, a token under another identity than the
+    /// one the box recorded, a media host Peel does not know.
+    @Test(arguments: ["none", "refused", "another identity", "another media host"])
+    func anyFailureJoinsThroughTheCallServer(failure: String) async throws {
+        let stub = try await callServer()
+        defer { stub.stop() }
+        let engine = try await engine(callServer: stub.port, profile)
+        let answer: BoxCallTicket? = switch failure {
+        case "another identity": Self.boxTicket(port: stub.port, sub: "box_ffffffffffffffffffffffffffffffff")
+        case "another media host": Self.boxTicket(port: stub.port, serverURL: "wss://media.example.com")
+        default: nil
+        }
+
+        let ticket = try await engine.callTicket(for: try encrypted(stub.port), in: nil, box: { _, _ in
+            if failure == "refused" { throw PeelError("lab.example.com gave no call ticket: boom.") }
+            return answer
+        })
+
+        #expect(ticket.identity == "alice-1")
+        #expect(stub.requests.count == 1)
+    }
+
+    /// A call in the clear is never a box's: no box is asked.
+    @Test func aCallInTheClearNeverAsksABox() async throws {
+        let stub = try await callServer()
+        defer { stub.stop() }
+        let engine = try await engine(callServer: stub.port, profile)
+        let link = try #require(CallLink(link: "http://127.0.0.1:\(stub.port)/rooms/\(room)", server: "127.0.0.1:\(stub.port)"))
+        let asked = OSAllocatedUnfairLock(initialState: 0)
+
+        let ticket = try await engine.callTicket(for: link, in: nil, box: { [port = stub.port] _, _ in
+            asked.withLock { $0 += 1 }
+            return Self.boxTicket(port: port)
+        })
+
+        #expect(ticket.identity == "alice-1" && asked.withLock { $0 } == 0)
+    }
+}

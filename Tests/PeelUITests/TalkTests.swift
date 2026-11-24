@@ -180,6 +180,49 @@ struct TalkEncryptionTests {
     }
 }
 
+/// An encrypted group call's encryption as its screen says it
+/// (docs/hive-calls.md, "From a box"): who can't be heard, by the name they
+/// joined with and in the order they failed, before that no one hears you,
+/// before messages that won't read; a track that recovers clears its part.
+struct CallEncryptionTests {
+    @Test func saysWhoCantBeHeardFirstAndClearsWhatRecovers() {
+        var encryption = CallEncryption()
+        #expect(encryption.notice == nil)
+        encryption.dataFailedToDecrypt()
+        #expect(encryption.notice == "This call's encryption failed: some messages can't be read.")
+        encryption.track("TR_mic", whose: .yours, failed: true)
+        #expect(encryption.notice == "This call's encryption failed: no one can hear you.")
+        encryption.track("TR_bob", whose: .theirs("Bob"), failed: true)
+        encryption.track("TR_cam", whose: .theirs(" "), failed: true)
+        encryption.track("TR_ann", whose: .theirs("Ann"), failed: true)
+        encryption.track("TR_bob2", whose: .theirs("Bob"), failed: true)
+        #expect(encryption.notice == "This call's encryption failed: you can't hear Bob, Ann, and someone.")
+        for track in ["TR_bob", "TR_cam", "TR_ann", "TR_bob2"] { encryption.track(track, whose: .theirs(nil), failed: false) }
+        #expect(encryption.notice == "This call's encryption failed: no one can hear you.")
+        encryption.track("TR_mic", whose: .yours, failed: false)
+        #expect(encryption.notice == "This call's encryption failed: some messages can't be read.")
+    }
+
+    /// LiveKit plays a track in the clear on an encrypted call without a
+    /// word: who publishes so is said, yours first of all; and on a call in
+    /// the clear, that others encrypt it (its link posted without the key).
+    @Test func saysWhoIsInTheClear() {
+        var encryption = CallEncryption()
+        encryption.published(clear: [.theirs("Bob"), .theirs(nil)], othersEncrypt: false)
+        #expect(encryption.notice == "Bob and someone joined without encryption: what they say isn't private, and they can't hear the call.")
+        encryption.track("TR_ann", whose: .theirs("Ann"), failed: true)
+        #expect(encryption.notice == "This call's encryption failed: you can't hear Ann.")
+        encryption.published(clear: [.yours, .theirs("Bob")], othersEncrypt: false)
+        #expect(encryption.notice == "This call's encryption failed: what you say isn't private.")
+
+        var clearCall = CallEncryption()
+        clearCall.published(clear: [], othersEncrypt: true)
+        #expect(clearCall.notice == "This call is encrypted, and this link has no key: join from the one that has it.")
+        clearCall.published(clear: [], othersEncrypt: false)
+        #expect(clearCall.notice == nil)
+    }
+}
+
 /// What the call screen says, from the room's connection and the agent's
 /// `lk.agent.state` (agents-js 1.x's states).
 struct TalkPhaseTests {

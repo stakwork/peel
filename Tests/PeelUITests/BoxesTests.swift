@@ -199,13 +199,68 @@ struct BoxesTests {
         #expect(boxes.places.isEmpty && boxes.placesProblems.isEmpty)
     }
 
+    /// A box's Jamie in a group call (docs/hive-calls.md, "From a box"):
+    /// asked in as the member only once the box says it is ready on the
+    /// call server's LiveKit, never while it loads; the person's own ticket
+    /// from whichever box has Jamie in the room, the first to give one, and
+    /// none after the wait when a box is slow: the join never waits on it.
+    @Test func aBoxsJamieComesIntoACallOnlyWhenReadyAndGivesThePersonsTicket() async throws {
+        let callServer = "127.0.0.1:7880", room = "sphinx.call.0123456789abcdef0123456789abcdef"
+        let ticket = #"{"url":"ws://127.0.0.1:7880","room":"\#(room)","token":"t","identity":"box_0123456789abcdef0123456789abcdef"}"#
+        let voice = { (ready: Bool, inRoom: Bool, slow: Bool) -> @Sendable (String) -> (Int, String) in
+            { request in
+                if request.hasPrefix("GET ") { return (200, #"{"group":\#(ready),"livekit":"ws://127.0.0.1:7880"}"#) }
+                if request.contains("/voice/calls/ticket") {
+                    if slow { Thread.sleep(forTimeInterval: 3) }
+                    return inRoom && HTTPStub.jsonBody(of: request)?["room"] == room ? (200, ticket) : (404, #"{"error":"not in that call"}"#)
+                }
+                return (200, #"{"agent":"jamie-1","encrypted":true}"#)
+            }
+        }
+        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }
+        let inCall = try await Self.strut(token: renewed, voice: voice(true, true, false))
+        let slow = try await Self.strut(token: renewed, voice: voice(true, false, true))
+        let loading = try await Self.strut(token: renewed, voice: voice(false, false, false))
+        defer { [inCall, slow, loading].forEach { $0.stop() } }
+        let profile = try profile()
+        try BoxLink.write([inCall, slow, loading].map { BoxFixture.box("http://127.0.0.1:\($0.port)", renewedAt: Date(),
+                                                                       exp: Date().addingTimeInterval(7 * 86_400)) }, to: profile.boxes)
+        let boxes = boxes(on: profile, signed: OSAllocatedUnfairLock(initialState: 0))
+        defer { boxes.close() }
+        let (inCallBox, loadingBox) = (boxes.links[0], boxes.links[2])
+        let link = try CallLink.new(server: callServer, audioOnly: true, encrypted: true)
+
+        try await boxes.startCall(on: inCallBox, link: link, record: true, callServer: callServer)
+        let asked = try #require(inCall.requests.last { $0.hasPrefix("POST /voice/calls ") })
+        #expect(asked.contains("Bearer \(inCallBox.token)") && asked.contains(#""room":"\#(link.room)""#))
+        #expect(boxes.calls[inCallBox.url]?.joins(callServer: callServer) == true)
+        let refused = await #expect(throws: PeelError.self) {
+            try await boxes.startCall(on: loadingBox, link: link, record: false, callServer: callServer)
+        }
+        #expect(refused?.description.contains("can't join calls yet") == true)
+        #expect(!loading.requests.contains { $0.hasPrefix("POST ") })
+
+        let clock = ContinuousClock()
+        let started = clock.now
+        let mine = await boxes.callTicket(room: room, name: "Ada", callServer: callServer)
+        #expect(mine?.identity == "box_0123456789abcdef0123456789abcdef")
+        #expect(await boxes.callTicket(room: "sphinx.call.other", name: "Ada", callServer: callServer, wait: .milliseconds(300)) == nil)
+        #expect(clock.now - started < .seconds(2))
+        // A box still loading, or on another call server's LiveKit, has no Jamie in this call: it is not told the room.
+        #expect(!loading.requests.contains { $0.contains("/voice/calls/ticket") })
+        let elsewhere = inCall.requests.count
+        #expect(await boxes.callTicket(room: room, name: "Ada", callServer: "calls.example.com") == nil)
+        #expect(inCall.requests.count == elsewhere)
+    }
+
     /// A stand-in strut: a renewal's challenge for 127.0.0.1, `token`'s
-    /// answer to `POST /people/token`, `apps`' to `GET /apps`, and `places`'
-    /// to `/people/places`.
+    /// answer to `POST /people/token`, `apps`' to `GET /apps`, `places`'
+    /// to `/people/places`, and `voice`'s to `/voice/calls` and its ticket.
     private static func strut(
         token: @escaping @Sendable (String) -> (Int, String),
         apps: @escaping @Sendable (String) -> (Int, String) = { _ in (200, #"{"apps":[]}"#) },
-        places: @escaping @Sendable (String) -> (Int, String) = { _ in (404, #"{"error":"not here"}"#) }
+        places: @escaping @Sendable (String) -> (Int, String) = { _ in (404, #"{"error":"not here"}"#) },
+        voice: @escaping @Sendable (String) -> (Int, String) = { _ in (404, #"{"error":"not here"}"#) }
     ) async throws -> HTTPStub {
         try await HTTPStub(respond: { _, request in
             let line = request.prefix(while: { $0 != "\r" })
@@ -215,6 +270,7 @@ struct BoxesTests {
             }
             if line.contains("/people/token") { return token(request) }
             if line.contains("/people/places") { return places(request) }
+            if line.contains("/voice/calls") { return voice(request) }
             if line.contains("/apps") { return apps(request) }
             return (404, #"{"error":"not here"}"#)
         })

@@ -556,6 +556,13 @@ public final class AppModel {
             guard let self else { throw PeelError(String(localized: "Peel is closing.", table: "Shared")) }
             return try await stadeum.callTicket(room: room, participantName: name, metadata: metadata)
         }
+        calls.boxCall = { [weak self] box, link, record in
+            guard let self else { throw PeelError(String(localized: "Peel is closing.", table: "Shared")) }
+            try await boxes.startCall(on: box, link: link, record: record, callServer: link.server)
+        }
+        calls.boxTicket = { @MainActor [weak self] room, name in
+            await self?.boxes.callTicket(room: room, name: name, callServer: self?.calls.server)
+        }
         calls.chatNotice = { [weak self] chat, change in
             guard let self else { return }
             let notice = change(conversationNotices[chat])

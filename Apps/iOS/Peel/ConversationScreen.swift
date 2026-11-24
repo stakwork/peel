@@ -86,6 +86,8 @@ struct ConversationScreen: View {
             OrientationLock.shared.update()
         }
         .toolbar { header(tribe: tribe) }
+        // The boxes whose Jamie can join a call now, for the call menu.
+        .task(id: chat) { await model.readCallBoxes() }
         .callSwitchConfirmation($pendingCall, model: model, router: router)
         .sheet(item: threadHere, onDismiss: router.threadDismissed) { thread in
             ThreadSheet(thread: thread, conversation: conversation)
@@ -165,19 +167,26 @@ struct ConversationScreen: View {
         }
     }
 
-    /// Who a call here brings Jamie from, with Stadeum connected: one of
-    /// the person's workspaces, or none (docs/hive-calls.md).
+    /// Who a call here brings Jamie from: one of the person's Stadeum
+    /// workspaces, a box Peel is linked to (whose call is encrypted, and may
+    /// record on the canvas), or none (docs/hive-calls.md).
     @ViewBuilder private var jamiePicker: some View {
-        let workspaces = model.stadeum.live
-        if !workspaces.isEmpty {
+        let jamies = model.callJamies(in: chat)
+        if !jamies.isEmpty {
             Picker("Jamie", selection: Binding(
                 get: { model.callJamie(in: chat)?.id ?? "" },
-                set: { id in model.calls.pickJamie(workspaces.first { $0.id == id }, in: chat) }
+                set: { id in model.calls.pickJamie(JamieSource(id: id), in: chat) }
             )) {
-                ForEach(workspaces, id: \.id) { Text($0.name).tag($0.id) }
+                ForEach(jamies) { Text(model.name(of: $0)).tag($0.id) }
                 Text("No Jamie").tag("")
             }
             .pickerStyle(.inline)
+            if model.callJamie(in: chat)?.isBox == true {
+                Toggle("Record on the canvas", isOn: Binding(
+                    get: { model.calls.recordsOnCanvas.contains(chat) },
+                    set: { model.calls.setRecordsOnCanvas($0, in: chat) }
+                ))
+            }
         }
     }
 

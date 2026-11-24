@@ -84,16 +84,30 @@ public final class CallStore {
     }
     /// Where a join asks Hive for its ticket to a call Hive made, so this
     /// device's person speaks as themselves there (`Stadeum.callTicket`,
-    /// `Engine.callTicket(for:in:hive:)`). Nil: every call joins through
+    /// `Engine.callTicket(for:in:hive:box:)`). Nil: every call joins through
     /// the call server.
     @ObservationIgnored var hiveTicket: Engine.HiveTicketSource?
+    /// Asks a box's Jamie into a call about to be posted, with the call's
+    /// key, recording on the canvas or not (`Boxes.startCall`). Throws why
+    /// it would not come.
+    @ObservationIgnored var boxCall: (_ box: BoxLink, _ link: CallLink, _ record: Bool) async throws -> Void = { box, _, _ in
+        throw PeelError(String(localized: "Peel is no longer linked to \(box.host).", table: "Shared"))
+    }
+    /// Where a join of an encrypted call asks the boxes this device is
+    /// linked to for the person's own ticket (`Boxes.callTicket`), so what
+    /// they ask the box's Jamie runs as them. Nil: through the call server.
+    @ObservationIgnored var boxTicket: Engine.BoxTicketSource?
     /// Why no call can be joined or started now, in words: a Talk call is on
     /// (`TalkStore.isOn`). Nil when one can.
     @ObservationIgnored var busy: () -> String? = { nil }
-    /// The Jamie picked for calls in each chat, by peer id, "" for none
-    /// (`Engine.callJamie`): this device's. A chat with no pick takes its
-    /// tribe's (`HivePeer.jamie`).
+    /// The Jamie picked for calls in each chat, by `JamieSource.id` (an
+    /// org's peer id, `box:<address>`), "" for none (`Engine.callJamie`):
+    /// this device's. A chat with no pick takes its tribe's (`HivePeer.jamie`).
     public private(set) var jamiePicks: [String: String] = [:]
+    /// The chats whose calls with a box's Jamie record on the canvas from
+    /// the start (call-canvas.md §4): this device's, for this run of Peel.
+    /// Off unless chosen, since everything said then reaches the box's model.
+    public private(set) var recordsOnCanvas: Set<String> = []
 
     /// The default Stadeum workspace per tribe for calls (`Engine.tribeCallOrg`):
     /// tribe pubkey → peer id, "" for none. This device's.
@@ -137,6 +151,7 @@ public final class CallStore {
         engine = nil
         server = nil
         jamiePicks = [:]
+        recordsOnCanvas = []
         tribeOrgs = [:]
         presence = [:]
         watchers = [:]
@@ -253,10 +268,17 @@ public final class CallStore {
         // Presence is asked only for calls that may be live (`CallLink.mayBeLive`).
         // A plain loop, run on every change of the rows: a chain of lazy
         // collections here costs a busy chat milliseconds per message.
+        // One per room, the link with a key winning: an encrypted call
+        // posted again without its key is never joined in the clear from here.
         var calls: [CallLink] = []
         for row in rows.reversed() {
             guard calls.count < 3, now.timeIntervalSince(row.date) < CallLink.liveAge else { break }
-            if let call = row.call, CallLink.mayBeLive(row.message, now: now) { calls.append(call) }
+            guard let call = row.call, CallLink.mayBeLive(row.message, now: now) else { continue }
+            if let at = calls.firstIndex(where: { $0.room == call.room }) {
+                if calls[at].encryptionKey == nil, call.encryptionKey != nil { calls[at] = call }
+            } else {
+                calls.append(call)
+            }
         }
         if calls != recent { recent = calls }
     }
@@ -286,7 +308,8 @@ public final class CallStore {
     /// out of sight. The call you were on (its leaving already confirmed)
     /// goes only once the ticket has come, so a failed join leaves you on it.
     public func join(_ link: CallLink, in chat: String, camera: Bool = false, failureInChat: Bool = false) async -> Bool {
-        if isOnCall(link.room) { return true }
+        // The same room with another key (or none) is another call: joined in its place.
+        if isOnCall(link.room), call?.link.encryptionKey == link.encryptionKey { return true }
         if let reason = provider.unavailable ?? busy() {
             Diagnostics.note(errorKind: .call)
             if failureInChat { chatNotice(chat) { _ in reason } } else { failures[link.room] = reason }
@@ -301,7 +324,7 @@ public final class CallStore {
             chatNotice(chat) { $0?.hasPrefix("Could not join the call") == true ? nil : $0 }
         }
         do {
-            let ticket = try await engine.callTicket(for: link, in: chat, hive: hiveTicket)
+            let ticket = try await engine.callTicket(for: link, in: chat, hive: hiveTicket, box: boxTicket)
             guard self.engine === engine else { return false }
             return try await join(with: ticket, link: link, chat: chat, camera: camera, engine: engine)
         } catch {
@@ -405,13 +428,18 @@ public final class CallStore {
         waiting?.resume(returning: choice)
     }
 
-    /// Calls in `chat` bring Jamie from `peer`'s workspace, or none (nil),
-    /// kept with the account on this device.
-    public func pickJamie(_ peer: HivePeer?, in chat: String) {
-        jamiePicks[chat] = peer?.id ?? ""
+    /// Calls in `chat` bring Jamie from `source` (an org's workspace or a
+    /// box), or none (`.noJamie`), kept with the account on this device.
+    public func pickJamie(_ source: JamieSource, in chat: String) {
+        jamiePicks[chat] = source.id
         guard let engine else { return }
         let picks = jamiePicks
         Task { try? await engine.setCallJamie(picks) }
+    }
+
+    /// Whether calls in `chat` with a box's Jamie record on the canvas.
+    public func setRecordsOnCanvas(_ on: Bool, in chat: String) {
+        if on { recordsOnCanvas.insert(chat) } else { recordsOnCanvas.remove(chat) }
     }
 
     /// Sets the default Stadeum workspace for calls in `tribe` on this device.
@@ -424,11 +452,14 @@ public final class CallStore {
 
     /// Starts a call in `chat` (the call message, free in a DM and 3 sats
     /// in a tribe) and joins it, with your camera on for a video call.
-    /// With `jamie`, Hive makes the call with Jamie in it for that
-    /// workspace first; nothing is posted if it cannot, never a call
-    /// without Jamie in its place (docs/hive-calls.md). Nothing is sent
-    /// while a join or another start runs.
-    public func start(in chat: String, audioOnly: Bool, jamie: HivePeer? = nil) async -> Bool {
+    /// With Jamie from an org, Hive makes the call with Jamie in it first
+    /// (docs/hive-calls.md). With Jamie from a box, the call is encrypted:
+    /// a new room and key, the box's Jamie asked in with them (recording on
+    /// the canvas if `chat` says so), and only then the link posted with
+    /// its key (docs/hive-calls.md, "From a box"). Either way nothing is
+    /// posted if Jamie cannot come, never a call without Jamie in its
+    /// place. Nothing is sent while a join or another start runs.
+    public func start(in chat: String, audioOnly: Bool, jamie: CallJamie? = nil) async -> Bool {
         // Nothing posted (a call message costs 3 sats in a tribe) for a
         // call this device could not join.
         if let reason = provider.unavailable ?? busy() {
@@ -440,9 +471,22 @@ public final class CallStore {
         startingIn = chat
         defer { startingIn = nil }
         do {
-            var hiveLink: String?
-            if let jamie { hiveLink = try await hiveCall(jamie) }
-            let link = try await engine.startCall(in: chat, audioOnly: audioOnly, hiveLink: hiveLink).link
+            let link: CallLink
+            switch jamie {
+            case .org(let peer):
+                link = try await engine.startCall(in: chat, audioOnly: audioOnly, hiveLink: try await hiveCall(peer)).link
+            case .box(let box):
+                let call = try await engine.newCall(in: chat, audioOnly: audioOnly, encrypted: true)
+                try await boxCall(box, call, recordsOnCanvas.contains(chat))
+                guard self.engine === engine else { return false }
+                // A Talk call begun while the box was asked: nothing posted.
+                // The box's Jamie leaves a room no one joins within a minute.
+                if let reason = busy() { throw PeelError(reason) }
+                _ = try await engine.postCall(call, in: chat)
+                link = call
+            case nil:
+                link = try await engine.startCall(in: chat, audioOnly: audioOnly).link
+            }
             return await join(link, in: chat, camera: !audioOnly, failureInChat: true)
         } catch {
             let notice = PeelError.noted(error, couldNot: String(localized: "start the call", table: "Shared"))
@@ -517,5 +561,28 @@ public final class CallStore {
     public func rejoin() {
         guard let call, !call.isOn else { return }
         Task { _ = await join(call.link, in: call.chat, camera: call.wantsCamera) }
+    }
+}
+
+/// Where a call started in a chat brings Jamie from: one of the person's
+/// Stadeum orgs (Hive makes the call), or one of the boxes Peel is linked
+/// to (its own Jamie, asked into Peel's encrypted room; docs/hive-calls.md,
+/// "From a box").
+public enum CallJamie: Equatable, Identifiable, Sendable {
+    case org(HivePeer)
+    case box(BoxLink)
+
+    /// What `CallStore.jamiePicks` keeps for it.
+    public var source: JamieSource {
+        switch self {
+        case .org(let peer): .org(peer.id)
+        case .box(let box): JamieSource(box)
+        }
+    }
+
+    public var id: String { source.id }
+
+    public var isBox: Bool {
+        if case .box = self { true } else { false }
     }
 }

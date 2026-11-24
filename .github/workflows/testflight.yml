@@ -54,7 +54,12 @@ jobs:
 
   archive:
     needs: prepare
-    runs-on: xcode-27
+    # The Xcode the releases were archived with by hand (26.2). Mac build 35,
+    # the first from xcode-27 (Xcode 27.1, Swift 6.4), crashed in the Swift
+    # concurrency runtime on the same code build 34 ran clean; the xcode-27
+    # image has no 26.x, so the archive runs on macos-26. Tests stay on
+    # xcode-27 (build.yml).
+    runs-on: macos-26
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -67,6 +72,7 @@ jobs:
       DESTINATION: ${{ matrix.platform == 'ios' && 'generic/platform=iOS' || 'generic/platform=macOS' }}
       # A build that ships stops on a core without upstream's client security fixes (build-ffi.sh).
       PEEL_REQUIRE_CORE_FIXES: 1
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
@@ -200,6 +206,15 @@ jobs:
             -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" "$@" 2>&1 | tee "$RUNNER_TEMP/archive.log" | grep -E "error:|warning: |\*\* ARCHIVE"
+      # Its debug symbols, for symbolicating a crash report of this build
+      # (docs/testflight.md): the archive itself is not kept.
+      - name: Keep the dSYMs
+        run: ditto -c -k --keepParent "$RUNNER_TEMP/Peel-$PLATFORM.xcarchive/dSYMs" "$RUNNER_TEMP/dSYMs.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dSYMs-${{ matrix.platform }}-${{ env.BUILD_NUMBER }}
+          path: ${{ runner.temp }}/dSYMs.zip
+          retention-days: 90
       - name: Upload to App Store Connect
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

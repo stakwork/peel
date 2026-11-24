@@ -10,6 +10,7 @@ import PeelUI
 struct CallChatView: View {
     static let width: CGFloat = 300
 
+    @Environment(AppModel.self) private var model
     let call: CallSession
     @State private var draft = ""
     @FocusState private var focused: Bool
@@ -41,6 +42,10 @@ struct CallChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Theme.Space.md) {
+                    let workspaces = model.stadeum.live
+                    if !workspaces.isEmpty {
+                        JamiePickCard(call: call, workspaces: workspaces)
+                    }
                     ForEach(call.chatRows) { row in
                         ChatRowView(call: call, row: row)
                             .id(row.id)

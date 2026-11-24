@@ -41,6 +41,10 @@ struct TribeDetailsPanel: View {
                 TribeJamieSection(tribe: tribe)
                     .padding(.top, 18)
             }
+            if !model.stadeum.live.isEmpty {
+                TribeCallOrgSection(tribe: tribe)
+                    .padding(.top, 18)
+            }
             if tribe.canPost {
                 TribeIdentitySection(tribe: tribe)
                     .padding(.top, 18)
@@ -378,6 +382,35 @@ struct TagChips: View {
                 } else {
                     Chip(tag)
                 }
+            }
+        }
+    }
+}
+
+/// "Call workspace" — the Stadeum workspace that calls started in
+/// this tribe default to, on this device.
+private struct TribeCallOrgSection: View {
+    @Environment(AppModel.self) private var model
+    let tribe: Tribe
+
+    var body: some View {
+        let orgs = model.stadeum.live
+        let currentId = model.calls.tribeOrgs[tribe.pubkey]
+        let options: [(value: String, label: String)] = [("", String(localized: "No default"))]
+            + orgs.map { (value: $0.id, label: $0.name) }
+        FormSection(String(localized: "Call workspace")) {
+            FormItem(
+                label: String(localized: "Default workspace"),
+                helper: String(localized: "Calls started in this tribe will use this workspace by default.")
+            ) {
+                PeelDropdown(
+                    selection: currentId ?? "",
+                    options: options
+                ) { id in
+                    let peer = orgs.first { $0.id == id }
+                    model.calls.setTribeOrg(peer, for: tribe.pubkey)
+                }
+                .fixedSize()
             }
         }
     }

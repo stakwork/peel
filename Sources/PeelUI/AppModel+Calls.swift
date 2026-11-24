@@ -19,8 +19,10 @@ extension AppModel {
     /// else none (`HivePeer.jamie`, docs/hive-calls.md).
     public func callJamie(in chat: String) -> HivePeer? {
         let tribe = tribes[chat]
+        // Per-chat pick (""=no Jamie, nil=unset) wins; otherwise the tribe-level default.
+        let picked = calls.jamiePicks[chat] ?? calls.tribeOrgs[chat]
         return HivePeer.jamie(
-            picked: calls.jamiePicks[chat], pages: [tribe?.appURL, tribe?.secondBrainURL], in: stadeum.live
+            picked: picked, pages: [tribe?.appURL, tribe?.secondBrainURL], in: stadeum.live
         )
     }
 

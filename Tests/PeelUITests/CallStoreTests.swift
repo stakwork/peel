@@ -81,6 +81,21 @@ struct CallStoreTests {
         #expect(calls.otherCall(than: nil) == nil)
     }
 
+    /// An encrypted call posted again without its key is another call: on
+    /// the room in the clear, opening the link with the key joins that, never
+    /// the call already on (docs/hive-calls.md, "From a box").
+    @Test func theSameRoomWithItsKeyIsAnotherCall() async throws {
+        let (calls, engine, _) = try attached()
+        let keyed = try #require(CallLink(link: "http://\(server)/rooms/sphinx.call.1#\(CallLink.newKey())", server: server))
+        let clear = OnCall(link: try link(1), chat: "02aa", people: people(2))
+        calls.call = clear
+        #expect(await calls.join(try link(1), in: "02aa"))
+        // Asked of the call server (which never answers here), not taken for the call already on.
+        #expect(await calls.join(keyed, in: "02aa") == false)
+        #expect(calls.failures[keyed.room] != nil)
+        await engine.close()
+    }
+
     @Test func aNewerDeviceTakesTheCallYouAreOnButNotAnEarlierOne() throws {
         let (calls, _, _) = try attached()
         var notices: [String: String?] = [:]

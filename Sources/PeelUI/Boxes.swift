@@ -403,22 +403,27 @@ public final class Boxes {
         guard !asked.isEmpty else { return nil }
         let generation = generation
         let race = TicketRace(boxes: asked.count)
-        let ticket = await withCheckedContinuation { continuation in
-            race.waiting = continuation
-            for box in asked {
-                Task {
-                    do {
-                        race.answer(try await asMember(box) { try await BoxClient(box: $0.url).callTicket($0, room: room, name: name) })
-                    } catch {
-                        Diagnostics.note(error: error)
-                        race.answer(nil)
+        // A join given up ends the race at once.
+        let ticket = await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                race.waiting = continuation
+                for box in asked {
+                    Task {
+                        do {
+                            race.answer(try await asMember(box) { try await BoxClient(box: $0.url).callTicket($0, room: room, name: name) })
+                        } catch {
+                            Diagnostics.note(error: error)
+                            race.answer(nil)
+                        }
                     }
                 }
+                race.timer = Task {
+                    try? await Task.sleep(for: wait)
+                    if !Task.isCancelled { race.end() }
+                }
             }
-            Task {
-                try? await Task.sleep(for: wait)
-                race.end()
-            }
+        } onCancel: {
+            Task { @MainActor in race.end() }
         }
         return generation == self.generation ? ticket : nil
     }
@@ -543,6 +548,8 @@ public enum BoxWords {
 @MainActor
 private final class TicketRace {
     var waiting: CheckedContinuation<BoxCallTicket?, Never>?
+    /// The wait, stopped once the race ends.
+    var timer: Task<Void, Never>?
     private var unanswered: Int
 
     init(boxes: Int) {
@@ -557,5 +564,6 @@ private final class TicketRace {
     func end(_ ticket: BoxCallTicket? = nil) {
         waiting?.resume(returning: ticket)
         waiting = nil
+        timer?.cancel()
     }
 }

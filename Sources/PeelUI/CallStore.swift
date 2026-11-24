@@ -268,10 +268,17 @@ public final class CallStore {
         // Presence is asked only for calls that may be live (`CallLink.mayBeLive`).
         // A plain loop, run on every change of the rows: a chain of lazy
         // collections here costs a busy chat milliseconds per message.
+        // One per room, the link with a key winning: an encrypted call
+        // posted again without its key is never joined in the clear from here.
         var calls: [CallLink] = []
         for row in rows.reversed() {
             guard calls.count < 3, now.timeIntervalSince(row.date) < CallLink.liveAge else { break }
-            if let call = row.call, CallLink.mayBeLive(row.message, now: now) { calls.append(call) }
+            guard let call = row.call, CallLink.mayBeLive(row.message, now: now) else { continue }
+            if let at = calls.firstIndex(where: { $0.room == call.room }) {
+                if calls[at].encryptionKey == nil, call.encryptionKey != nil { calls[at] = call }
+            } else {
+                calls.append(call)
+            }
         }
         if calls != recent { recent = calls }
     }
@@ -301,7 +308,8 @@ public final class CallStore {
     /// out of sight. The call you were on (its leaving already confirmed)
     /// goes only once the ticket has come, so a failed join leaves you on it.
     public func join(_ link: CallLink, in chat: String, camera: Bool = false, failureInChat: Bool = false) async -> Bool {
-        if isOnCall(link.room) { return true }
+        // The same room with another key (or none) is another call: joined in its place.
+        if isOnCall(link.room), call?.link.encryptionKey == link.encryptionKey { return true }
         if let reason = provider.unavailable ?? busy() {
             Diagnostics.note(errorKind: .call)
             if failureInChat { chatNotice(chat) { _ in reason } } else { failures[link.room] = reason }
@@ -471,6 +479,9 @@ public final class CallStore {
                 let call = try await engine.newCall(in: chat, audioOnly: audioOnly, encrypted: true)
                 try await boxCall(box, call, recordsOnCanvas.contains(chat))
                 guard self.engine === engine else { return false }
+                // A Talk call begun while the box was asked: nothing posted.
+                // The box's Jamie leaves a room no one joins within a minute.
+                if let reason = busy() { throw PeelError(reason) }
                 _ = try await engine.postCall(call, in: chat)
                 link = call
             case nil:

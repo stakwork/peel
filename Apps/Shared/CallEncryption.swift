@@ -1,6 +1,7 @@
 import Foundation
 import LiveKit
 import PeelCore
+import PeelUI
 
 /// A call room's end-to-end encryption, the same for Talk and group calls
 /// on the phone and the Mac (docs/talk.md; docs/hive-calls.md, "From a box").
@@ -69,5 +70,24 @@ extension Room {
     /// encryption notice; nil for this side's own, or a track gone.
     func publisherName(ofTrack sid: String) -> String? {
         remoteParticipants.values.first { $0.trackPublications.keys.contains { $0.stringValue == sid } }?.name
+    }
+
+    /// What `CallEncryption.published` takes from the room as it is: whose
+    /// tracks are in the clear (this side's own, then the others by name, in
+    /// the order they joined) and whether anyone else publishes encrypted.
+    /// LiveKit plays a track in the clear on an encrypted call without a
+    /// word (`E2EEManager.addRtpReceiver` skips it), so this is the only place
+    /// it is seen.
+    func publishing() -> (clear: [CallEncryption.Whose], othersEncrypt: Bool) {
+        var clear: [CallEncryption.Whose] = []
+        if localParticipant.trackPublications.values.contains(where: { $0.encryptionType == .none }) { clear.append(.yours) }
+        var othersEncrypt = false
+        let others = remoteParticipants.values.sorted { ($0.joinedAt ?? .distantPast) < ($1.joinedAt ?? .distantPast) }
+        for participant in others {
+            let types = participant.trackPublications.values.map(\.encryptionType)
+            if types.contains(.none) { clear.append(.theirs(participant.name)) }
+            if types.contains(where: { $0 != .none }) { othersEncrypt = true }
+        }
+        return (clear, othersEncrypt)
     }
 }

@@ -323,7 +323,10 @@ final class CallSession {
         }
         guard !Task.isCancelled else { return }
         // A call meant to be encrypted that the room would not encrypt is
-        // left before anything is published.
+        // left before anything is published. The SDK makes its manager
+        // whenever `encryptionOptions` are set, so this holds it to that;
+        // a track published in the clear all the same is said
+        // (`refreshEncryption`).
         if link.encryptionKey != nil, room.e2eeManager == nil {
             encryptionNotice = CallEncryption.unavailable
             failed = true
@@ -810,8 +813,10 @@ final class CallSession {
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
         let jamie = others.first(where: Self.isJamie)
-        let recording = room.isRecording || jamie.map { CallChatWire.jamieRecords($0.attributes) } == true
+        // Any Jamie's: one who joined first under that name cannot hide the box's.
+        let recording = room.isRecording || others.contains { Self.isJamie($0) && CallChatWire.jamieRecords($0.attributes) }
         if recording != isRecording { isRecording = recording }
+        refreshEncryption()
         jamieIdentity = jamie?.identity
         if (jamie != nil) != jamieInCall {
             jamieInCall = jamie != nil
@@ -927,6 +932,20 @@ extension CallSession {
             encryption.track(id, whose: local ? .yours : .theirs(room.publisherName(ofTrack: id)), failed: failed)
         case .data:
             encryption.dataFailedToDecrypt()
+        }
+        if encryption.notice != encryptionNotice { encryptionNotice = encryption.notice }
+    }
+
+    /// Who publishes in the clear on an encrypted call, or, on a call in the
+    /// clear, whether others encrypt it (a link posted without its key): from
+    /// the room as it is, on each refresh.
+    fileprivate func refreshEncryption() {
+        guard !leaving else { return }
+        let published = room.publishing()
+        if link.encryptionKey != nil {
+            encryption.published(clear: published.clear, othersEncrypt: false)
+        } else {
+            encryption.published(clear: [], othersEncrypt: published.othersEncrypt)
         }
         if encryption.notice != encryptionNotice { encryptionNotice = encryption.notice }
     }

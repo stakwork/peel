@@ -1939,5 +1939,17 @@ joins on the box's ticket, and "Record on the canvas" is sent and its
   one agent and one person, its words and tests stay its own; the shared
   part, the E2EE watch and the room's encryption, is `CallRoom` and
   `CallEncryptionWatch`).
+- Independent security review: fixed: a track in the clear on an
+  encrypted call (LiveKit plays it without a word) is said, as is your
+  own; on a call in the clear whose others encrypt, that its link has no
+  key; the header takes a room's keyed link over a keyless repost, and the
+  same room with another key is another call (`theSameRoomWithItsKeyIsAnotherCall`,
+  shown failing before the fix); a box's ticket must be `box_<32 hex>`;
+  Recording shows from any Jamie, not the first so named; a join given up
+  ends the boxes' race; Talk is checked again before a box's call is
+  posted. Not applied: telling the box to leave when the post fails after
+  it joined (no route for it; the box leaves an empty room within a
+  minute), and asking the chat's picked box first for a ticket (the boxes
+  are asked at once and only one is in the room).
 - Next: captions on group calls; the menus checked in the apps against a
   box with the voice PRs deployed.

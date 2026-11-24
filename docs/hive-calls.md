@@ -307,20 +307,27 @@ box's strut as the person, with the token it keeps for the box
 - **Joining encrypted** (`CallRoom.options`, `Apps/Shared/CallEncryption.swift`):
   `encryptionOptions` with `BaseKeyProvider(isSharedKey: true,
   sharedKey: key)`, the key's UTF-8 bytes as the box and meet key it, and
-  the microphone without DTX or RED, as Talk. What will not encrypt or
-  decrypt is said under the call (`CallEncryption`): who can't be heard by
-  the name they joined with, then that no one hears you, then messages
-  that can't be read. A room that would not encrypt is left before
-  anything is published.
+  the microphone without DTX or RED, as Talk. What is wrong is said under
+  the call (`CallEncryption`), the worst first: your own track in the
+  clear, who can't be heard (by the name they joined with), who joined
+  without encryption (LiveKit plays a track in the clear on an encrypted
+  call without a word, `E2EEManager.addRtpReceiver`, so Peel looks at
+  every publication's `encryptionType`, `Room.publishing`), that no one
+  hears you, messages that can't be read. On a call in the clear whose
+  others encrypt (its link posted again without the key), that it has no
+  key. The header's Join takes the keyed link of a room over a keyless
+  one, and the same room with another key is another call
+  (`CallStore.join`).
 - **Who is speaking** (group-calls.md §7). A join of an encrypted call asks
   every linked box at once, but one that said `group: false`, for the
   person's own ticket (`POST /voice/calls/ticket { room, name }`,
   `Boxes.callTicket`), takes the first, waits at most 8 s and otherwise
   joins through the call server, as the call's starter (404: that box's
   Jamie is not in the room). The box's ticket goes through the call
-  server's checks (`CallServer.ticket(fromBox:)`), and its token's `sub`
-  must be the identity the box recorded (`box_<32 hex>`). It carries the
-  name only: no photo.
+  server's checks (`CallServer.ticket(fromBox:)`); its identity must be
+  `box_<32 hex>`, never another participant's, and the token's `sub` that
+  identity. It carries the name only: no photo. A join given up ends the
+  asking at once.
 - **Recorded.** While Jamie's `recording` attribute is `"true"`, the call
   shows Recording, with its toast, on the Mac and the iPhone
   (`CallChatWire.jamieRecords`); the iPhone's call screen shows the

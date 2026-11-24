@@ -115,8 +115,9 @@ extension BoxClient {
         if status == 404 { return nil }
         guard status == 200 else { throw PeelError("\(host) gave no call ticket: \(Self.said(data) ?? "HTTP \(status)").") }
         struct Answer: Decodable { let url: String; let room: String; let token: String; let identity: String }
+        // `box_` and 32 hex, as the box mints one: never another participant's identity.
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data), answer.room == room,
-              CallServer.isIdentity(answer.identity) else {
+              answer.identity.range(of: #"^box_[0-9a-f]{32}$"#, options: .regularExpression) != nil else {
             throw PeelError(String(localized: "\(host)'s call ticket could not be read.", table: "Shared"))
         }
         return BoxCallTicket(url: answer.url, token: answer.token, identity: answer.identity)

@@ -123,6 +123,7 @@ struct BoxCallsTests {
             guard request.hasPrefix("POST /lab/voice/calls/ticket ") else { return (404, #"{"error":"not found"}"#) }
             let asked = HTTPStub.jsonBody(of: request)?["room"] ?? ""
             if asked == "sphinx.call.elsewhere" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(room)","token":"t","identity":"\#(Self.identity)"}"#) }
+            if asked == "sphinx.call.someone" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"sphinx.call.someone","token":"t","identity":"alice-1"}"#) }
             guard asked == room else { return (404, #"{"error":"Jamie from this box is not in that call"}"#) }
             return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(room)","token":"eyJ.t.s","identity":"\#(Self.identity)"}"#)
         }
@@ -137,5 +138,7 @@ struct BoxCallsTests {
         #expect(!String(describing: ticket).contains("eyJ"))
         #expect(try await client.callTicket(box, room: "sphinx.call.other", name: "Ada") == nil)
         await #expect(throws: PeelError.self) { _ = try await client.callTicket(box, room: "sphinx.call.elsewhere", name: "Ada") }
+        // Only an identity the box mints, never another participant's.
+        await #expect(throws: PeelError.self) { _ = try await client.callTicket(box, room: "sphinx.call.someone", name: "Ada") }
     }
 }

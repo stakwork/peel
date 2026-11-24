@@ -114,10 +114,9 @@ extension Engine {
         }
         if ticket == nil, let box, link.encryptionKey != nil {
             do {
-                if let answer = try await box(link.room, name) {
-                    let checked = try await server.ticket(fromBox: answer, room: link.room, participantName: name)
-                    ticket = checked
-                }
+                let answer = try await box(link.room, name)
+                try Task.checkCancellation()
+                if let answer { ticket = try await server.ticket(fromBox: answer, room: link.room, participantName: name) }
             } catch {
                 try Task.checkCancellation()
                 Diagnostics.note(error: error)

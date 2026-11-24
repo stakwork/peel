@@ -202,6 +202,25 @@ struct CallEncryptionTests {
         encryption.track("TR_mic", whose: .yours, failed: false)
         #expect(encryption.notice == "This call's encryption failed: some messages can't be read.")
     }
+
+    /// LiveKit plays a track in the clear on an encrypted call without a
+    /// word: who publishes so is said, yours first of all; and on a call in
+    /// the clear, that others encrypt it (its link posted without the key).
+    @Test func saysWhoIsInTheClear() {
+        var encryption = CallEncryption()
+        encryption.published(clear: [.theirs("Bob"), .theirs(nil)], othersEncrypt: false)
+        #expect(encryption.notice == "Bob and someone joined without encryption: what they say isn't private, and they can't hear the call.")
+        encryption.track("TR_ann", whose: .theirs("Ann"), failed: true)
+        #expect(encryption.notice == "This call's encryption failed: you can't hear Ann.")
+        encryption.published(clear: [.yours, .theirs("Bob")], othersEncrypt: false)
+        #expect(encryption.notice == "This call's encryption failed: what you say isn't private.")
+
+        var clearCall = CallEncryption()
+        clearCall.published(clear: [], othersEncrypt: true)
+        #expect(clearCall.notice == "This call is encrypted, and this link has no key: join from the one that has it.")
+        clearCall.published(clear: [], othersEncrypt: false)
+        #expect(clearCall.notice == nil)
+    }
 }
 
 /// What the call screen says, from the room's connection and the agent's

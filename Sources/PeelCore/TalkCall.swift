@@ -78,11 +78,9 @@ public struct TalkHome: Sendable, Equatable, Identifiable, CustomStringConvertib
         return try TalkTicket(reply: data, home: name, key: key)
     }
 
-    /// A call's key: 32 random bytes as base64, made for one call and never
-    /// kept. LiveKit keys the room with this string's UTF-8 bytes, on the
-    /// phone (`BaseKeyProvider(sharedKey:)`) and in the home's agent alike.
+    /// A call's key (`CallLink.newKey`), made for one call and never kept.
     static func newKey() -> String {
-        MediaCrypto.randomBytes(32).base64EncodedString()
+        CallLink.newKey()
     }
 
     /// `POST /voice/calls`'s body:

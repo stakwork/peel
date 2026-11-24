@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import PeelCore
 @testable import PeelTestSupport
@@ -226,6 +227,51 @@ struct CallStoreTests {
         #expect(calls.failures[call.room] == "Hang up the call with Jamie first.")
         #expect(await calls.start(in: "02dm", audioOnly: true) == false)
         await engine.close()
+    }
+}
+
+extension CallStoreTests {
+    /// A call with a box's Jamie (docs/hive-calls.md, "From a box"): a new
+    /// room with a key, the box asked in with them before anything is
+    /// posted, recording on the canvas only where the chat says so. A box
+    /// that would not come posts nothing and says why in the chat; one that
+    /// came has the link posted with its key after `#`.
+    @Test func aBoxsJamieIsAskedInBeforeTheCallIsPosted() async throws {
+        let storage = try registeredStorage(profile, contact: key2G)
+        try storage.set(server, for: .callServer)
+        let writes = OSAllocatedUnfairLock(initialState: 0)
+        let engine = try testEngine(storage)
+        await engine.useTransportForTesting(Transport(publishing: { _, _ in writes.withLock { $0 += 1 } }))
+        let calls = CallStore(provider: NoCalls())
+        calls.attach(engine, server: server)
+        var notices: [String: String] = [:]
+        calls.chatNotice = { chat, change in notices[chat] = change(notices[chat]) }
+        var asked: [(link: CallLink, record: Bool, writes: Int)] = []
+        calls.boxCall = { _, link, record in
+            asked.append((link, record, writes.withLock { $0 }))
+            throw PeelError("Jamie from lab.example.com can't join a call right now: it isn't ready.")
+        }
+        let jamie = CallJamie.box(BoxFixture.box("https://lab.example.com"))
+        let posted = { try rows(self.profile, "SELECT content FROM message WHERE type = \(MessageType.call)").map { $0["content"] as String } }
+
+        let refused = await calls.start(in: key2G, audioOnly: true, jamie: jamie)
+        let said = notices[key2G]
+        calls.setRecordsOnCanvas(true, in: key2G)
+        calls.boxCall = { _, link, record in asked.append((link, record, writes.withLock { $0 })) }
+        let postedBefore = try posted(), writesBefore = writes.withLock { $0 }
+        // The call server never answers: the join fails, after the call was posted.
+        _ = await calls.start(in: key2G, audioOnly: true, jamie: jamie)
+        // Shut down whatever the expectations say: mqtt-nio requires it before its client is freed.
+        await engine.disconnect()
+
+        #expect(!refused && postedBefore.isEmpty && writesBefore == 0)
+        #expect(asked.count == 2 && asked[0].link.encryptionKey != nil && !asked[0].record)
+        #expect(said == "Could not start the call. Jamie from lab.example.com can't join a call right now: it isn't ready.")
+        let call = try #require(asked.last)
+        #expect(call.record && call.writes == 0)
+        let content = try #require(try posted().first)
+        #expect(content.contains(call.link.url.absoluteString) && call.link.url.fragment != nil)
+        #expect(CallLink(message: content, server: server) == call.link)
     }
 }
 

@@ -232,6 +232,14 @@ is a short plan. Update the status and the journal when you finish something.
     id) and `JamieChoices`, a tribe's Jamie row from Stadeum's orgs and the
     boxes: options, pick, what a pick adds and removes (`plan`), the one-tap
     suggestion (tested)
+  - `BoxCalls.swift` — a box's own Jamie in a group call
+    (docs/hive-calls.md, "From a box"; stadeum plans/group-calls.md §5,
+    §7): `BoxCalls` (`GET /voice/calls`: ready, its LiveKit, and `joins`,
+    whether a call on this account's call server may bring it),
+    `BoxClient.groupCalls`, `startGroupCall` (`POST /voice/calls { mode:
+    "group", room, key, record? }`, refusals in words) and `callTicket`
+    (`POST /voice/calls/ticket`, the person's own, `BoxCallTicket`, never
+    described with its token; 404 is none), as the person (tested)
   - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
     server for a visitor's page (strut's specs/WALLET.md §1.2) and its
     `problems` (a port of strut's `creditPurchaseProblems`, held to its
@@ -282,7 +290,9 @@ is a short plan. Update the status and the journal when you finish something.
     colour key and its hue, FNV-1a mod 8
   - `Call.swift` — `CallLink`: reads and validates call links against the
     account's call server, and makes new rooms (phase 6), or takes Hive's
-    for a call with Jamie in it (`CallLink.hive`, docs/hive-calls.md); `WatchedCall`,
+    for a call with Jamie in it (`CallLink.hive`, docs/hive-calls.md); an
+    encrypted call's key after `#`, as meet writes it (`encryptionKey`,
+    `newKey`, `new(encrypted:)`; never described with it); `WatchedCall`,
     the recent calls across chats whose presence the app keeps, and their
     live query (`Storage.recentCallMessages`, beside them as
     `PaymentHistory.swift` keeps its own)
@@ -547,7 +557,10 @@ is a short plan. Update the status and the journal when you finish something.
   not_linked`; `page(of:)`, the box's own strut UI as its member, a 401
   renewed once (`asMember`, every call as the member); a box's places,
   the tribes its own Jamie answers in (`places`, `readPlaces`, `addJamie`,
-  `removeJamie`); `BoxWords`, the question for both apps);
+  `removeJamie`); a box's Jamie in calls (`calls`, `readCalls`,
+  `startCall`, and `callTicket`, every box asked at once for the person's
+  own ticket, the first taken, at most 8 s); `BoxWords`, the question for
+  both apps);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
   the iPhone), Connect (Hive's device flow; `cameToFront`, from
@@ -572,9 +585,14 @@ is a short plan. Update the status and the journal when you finish something.
   the recent calls across chats watched while unlocked and the open chat's,
   the call you are on, join, start (with Jamie from a Stadeum workspace:
   `jamiePicks`, `pickJamie`, `hiveCall`; a join of a call Hive made asks
-  Hive for the ticket first, `hiveTicket`), leave; the view passes the call
+  Hive for the ticket first, `hiveTicket`; or from a box, `CallJamie`: the
+  call encrypted, the box asked in before it is posted, `boxCall`,
+  `recordsOnCanvas`, and an encrypted call's join asking the boxes first,
+  `boxTicket`; docs/hive-calls.md, "From a box"), leave; the view passes the call
   window's opening in; `AppModel` attaches it with the account, says when
   it locks and hands it the open chat's rows and its chats' notices);
+  `CallEncryption` (an encrypted group call's notice: who can't be heard,
+  no one hears you, messages that can't be read);
   `TalkStore` (`AppModel.talk`, beside `CallStore`: the Talk call with an
   org's agent, starting, failed in words or in its room, `hangUp`,
   `toggleVoice` (Jamie's voice, kept and told to the room); one call
@@ -856,7 +874,9 @@ is a short plan. Update the status and the journal when you finish something.
   compiles for both apps (edit it in Icon Composer); `Assets/peel.svg` is the
   flat logo for docs and pages. `Shared/` holds the files both apps
   compile: `TalkSession` and `TalkView` (Talk to Jamie's room and screen,
-  docs/talk.md; the Mac's `TalkWindow`), `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
+  docs/talk.md; the Mac's `TalkWindow`), `CallEncryption` (`CallRoom`, a
+  call room's encryption for Talk and group calls, and
+  `CallEncryptionWatch`, its E2EE states to the session), `Theme`, `Avatar`, `Clipboard`, `CopyButton`, `MessageText`,
   `QRCode` and `UI/`'s `Badge`, `Card`, `IconButton`, `PeelButton`,
   `RecordingIndicator` (the "this call is being recorded" dot and toast; its words are PeelUI's `RecordingNotice`) and
   `PaymentKit` (`SignedAmount`, `BigAmount`, `UntilExpiry`, `presets`) and
@@ -1234,7 +1254,10 @@ is a short plan. Update the status and the journal when you finish something.
   sign, the signature as strut's `ln-message` checks it, the list beside
   Hive's pairing, the three routes on a stand-in), `BoxPlacesTests` (a
   box's places as the person on a stand-in, and a tribe's Jamie row from
-  orgs and boxes: pick, options, plan, suggestion),
+  orgs and boxes: pick, options, plan, suggestion), `BoxCallsTests` (a
+  box's group calls as the person on a stand-in: offered only when ready
+  on the call server's LiveKit, Jamie asked in with the room and key, its
+  refusals, the person's ticket),
   `ProposalTests` (strut's record and card read, each status, a record
   without a card, the words cleaned, the store, a workspace's strut asked
   with the person's token, a tribe post's proposals and outcomes);

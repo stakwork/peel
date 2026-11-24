@@ -169,6 +169,17 @@ actor CallServer {
         )
     }
 
+    /// A ticket a box minted for this device's person (`BoxClient.callTicket`),
+    /// checked as this server's own are, and named for the identity the box
+    /// recorded against the person: a token under any other is refused.
+    func ticket(fromBox answer: BoxCallTicket, room: String, participantName: String) throws -> CallTicket {
+        let ticket = try Self.ticket(
+            serverURL: answer.url, token: answer.token, room: room, callServer: base, participantName: participantName
+        )
+        guard ticket.identity == answer.identity else { throw Failure.malformedToken }
+        return ticket
+    }
+
     /// `GET /api/connection-details` with every value percent-encoded to
     /// unreserved characters, as the official apps' `urlEncode` does, so a
     /// `+` arrives as `+` and never as a space.

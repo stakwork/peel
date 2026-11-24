@@ -47,10 +47,12 @@ struct CallLinkTests {
         "https://chat.sphinx.chat.evil.example/rooms/\(room)", "https://evilchat.sphinx.chat/rooms/\(room)",
         "https://evil.example/chat.sphinx.chat/rooms/\(room)", "https://chat.sphinx.chat@evil.example/rooms/\(room)",
         "https://user:pass@chat.sphinx.chat/rooms/\(room)", "https://chat%2esphinx.chat/rooms/\(room)",
-        // Not https, another port, another path, a fragment.
+        // Not https, another port, another path, a fragment that is no key.
         "http://chat.sphinx.chat/rooms/\(room)", "wss://chat.sphinx.chat/rooms/\(room)", "//chat.sphinx.chat/rooms/\(room)",
         "https://chat.sphinx.chat:8443/rooms/\(room)", "https://chat.sphinx.chat/room/\(room)",
-        "https://chat.sphinx.chat/api/rooms/\(room)", "https://chat.sphinx.chat/rooms/\(room)#x",
+        "https://chat.sphinx.chat/api/rooms/\(room)", "https://chat.sphinx.chat/rooms/\(room)#a%20b",
+        "https://chat.sphinx.chat/rooms/\(room)#%zz", "https://chat.sphinx.chat/rooms/\(room)#a%26isHost%3Dtrue",
+        "https://chat.sphinx.chat/rooms/\(room)#" + String(repeating: "a", count: 2049),
         "https://chat.sphinx.chat/rooms/\(room)/x", "https://chat.sphinx.chat/rooms//\(room)",
     ])
     func refusesOtherHostsSchemesAndPaths(link: String) {
@@ -111,6 +113,24 @@ struct CallLinkTests {
         #expect(CallLink(message: padded, server: server) == nil)
     }
 
+    /// A call with a box's Jamie is end-to-end encrypted, its key after
+    /// `#` as meet writes it (`encodeURIComponent`) and reads it
+    /// (`decodeURIComponent`, so a key written bare reads the same): kept as
+    /// the call's key, written back meet's way in the link and its `call::`
+    /// form, and never in a description. A bare `#` is a call in the clear.
+    @Test func readsTheKeyAfterTheHashAsMeetWritesIt() throws {
+        let key = "q8Vx+0/Ab3kLm9pQrStUvWxYz0123456789abcdEFG="
+        let written = "\(base)\(room)?startAudioOnly=true#q8Vx%2B0%2FAb3kLm9pQrStUvWxYz0123456789abcdEFG%3D"
+        let link = try #require(CallLink(message: written, server: server))
+        #expect(link.encryptionKey == key && link.audioOnly)
+        #expect(link.url.absoluteString == written)
+        #expect(CallLink(message: link.message, server: server) == link)
+        #expect(CallLink(message: "\(base)\(room)#\(key)", server: server)?.encryptionKey == key)
+        #expect(!String(describing: link).contains("q8Vx") && !String(reflecting: link).contains("q8Vx"))
+        let bare = try #require(CallLink(message: "\(base)\(room)#", server: server))
+        #expect(bare.encryptionKey == nil && bare.url.absoluteString == base + room)
+    }
+
     @Test func newRoomsAreRandomAndReadBack() throws {
         let video = try CallLink.new(server: server, audioOnly: false)
         let audio = try CallLink.new(server: server, audioOnly: true)
@@ -120,7 +140,14 @@ struct CallLinkTests {
         #expect(audio.url.absoluteString == "\(base)\(audio.room)?startAudioOnly=true")
         #expect(CallLink(message: video.message, server: server) == video)
         #expect(CallLink(message: audio.message, server: server) == audio)
+        #expect(video.encryptionKey == nil && audio.encryptionKey == nil)
         #expect(throws: (any Error).self) { try CallLink.new(server: "chat.sphinx.chat/x", audioOnly: false) }
+        // An encrypted call's key: 32 fresh bytes as base64, as a box's voice service takes one.
+        let encrypted = try CallLink.new(server: server, audioOnly: false, encrypted: true)
+        let key = try #require(encrypted.encryptionKey)
+        #expect(Data(base64Encoded: key)?.count == 32)
+        #expect(try CallLink.new(server: server, audioOnly: false, encrypted: true).encryptionKey != key)
+        #expect(CallLink(message: encrypted.message, server: server) == encrypted)
     }
 
     /// The `call::` form as iOS and Android send it: valid JSON with all three fields.

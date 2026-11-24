@@ -42,9 +42,9 @@ struct CallChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Theme.Space.md) {
-                    let workspaces = model.stadeum.live
-                    if !workspaces.isEmpty {
-                        JamiePickCard(call: call, workspaces: workspaces)
+                    let jamies = model.callJamies(in: call.chat)
+                    if !jamies.isEmpty {
+                        JamiePickCard(call: call, jamies: jamies)
                     }
                     ForEach(call.chatRows) { row in
                         ChatRowView(call: call, row: row)

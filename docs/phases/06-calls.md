@@ -55,6 +55,11 @@ decided (Tom, 2026-10-08; see "Decided" below).
   for the ticket first, so the person speaks to Jamie as themselves
   (`../hive-calls.md`, "Who is speaking"; stakwork/hive#5699,
   stakwork/sphinx-voice#23). Any failure joins as before.
+- Built (Jamie from a box, 2026-11-24): a box Peel is linked to joins a
+  call in place of Hive's Jamie, the call end-to-end encrypted with a key
+  in its link; the person joins with the box's own ticket, and may have
+  the call recorded on the canvas. See `../hive-calls.md`, "From a box",
+  and the journal below.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), PR 8 (the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
@@ -1885,3 +1890,42 @@ open; for 6, Tom checks PR 2's token and presence on production himself.
 - Not checked: no macOS toolchain in this session, so it is not built and
   not tried on a live call. No unit test: the logic sits on `CallSession`
   and LiveKit's room, and the repo has no Mac test target.
+
+## Jamie from a box (2026-11-24)
+
+Plan: stadeum `plans/group-calls.md` work item 3 and `plans/call-canvas.md`
+work item 6; the design as built is `../hive-calls.md`, "From a box".
+Done when: the call menu offers each linked box ready on the call
+server's LiveKit, a call with one asks the box in before anything is
+posted and posts the link with its key, any Peel that opens such a link
+joins encrypted (and says so when it can't), a person linked to the box
+joins on the box's ticket, and "Record on the canvas" is sent and its
+`recording` attribute shown, on the Mac and the iPhone, with tests.
+
+- PeelCore: `CallLink.encryptionKey` (the fragment), `CallLink.new(encrypted:)`,
+  `CallLink.newKey` (Talk's too); `BoxCalls.swift` (`BoxClient.groupCalls`,
+  `startGroupCall`, `callTicket`; `BoxCalls.joins`); `Engine.newCall` and
+  `postCall` split from `startCall`; `Engine.callTicket(…box:)` and
+  `CallServer.ticket(fromBox:)`; `CallChatWire.jamieRecords`.
+- PeelUI: `Boxes.calls`, `readCalls`, `startCall`, `callTicket`;
+  `CallStore.pickJamie(JamieSource)`, `recordsOnCanvas`, `boxCall`,
+  `boxTicket`, `start(…jamie: CallJamie?)`; `AppModel.callJamie(in:)` now a
+  `CallJamie`, `callJamies(in:)`, `name(of:)`, `readCallBoxes`;
+  `CallEncryption`.
+- Apps: `Apps/Shared/CallEncryption.swift` (`CallRoom`, `CallEncryptionWatch`,
+  Talk's watch moved there); both sessions join with `CallRoom.options`,
+  say `encryptionNotice`, and count Jamie's `recording`; the Mac's menu and
+  call-chat Jamie card, the iPhone's menu (a `Toggle` for the canvas) and
+  its call screen's Recording indicator and toast.
+- Tests: `BoxCallsTests`, `CallLinkTests` (the key), `CallTicketFromBoxTests`,
+  `CallStoreTests.aBoxsJamieIsAskedInBeforeTheCallIsPosted`,
+  `BoxesTests.aBoxsJamieComesIntoACallOnlyWhenReadyAndGivesThePersonsTicket`,
+  `CallEncryptionTests`.
+- Learned: LiveKit Swift 2.10.2 hands a decrypted data packet to the
+  delegate as `encryptionType` none with no sender, so a guard dropping
+  plaintext chat on an encrypted call dropped Jamie's own (found in the
+  live check, removed). `Web.Transfer` does not cancel on task
+  cancellation, so the boxes' ticket race resumes on the first answer
+  rather than waiting on a task group.
+- Next: captions on group calls; the menus checked in the apps against a
+  box with the voice PRs deployed.

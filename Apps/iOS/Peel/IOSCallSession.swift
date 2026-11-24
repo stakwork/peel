@@ -16,6 +16,11 @@ import UIKit
 ///
 /// The microphone starts on and the camera off; only the person who started
 /// a video call starts with the camera on.
+///
+/// A link with a key (a box's Jamie is in the call) is joined end-to-end
+/// encrypted with it (`CallRoom.options`), as the Mac's is; what will not
+/// encrypt or decrypt is said (`encryptionNotice`), and nothing is ever
+/// sent in the clear.
 @MainActor @Observable
 final class IOSCallSession {
     enum State: Equatable {
@@ -78,9 +83,13 @@ final class IOSCallSession {
     /// Everyone on the call, the others in the order they joined, you last.
     private(set) var tiles: [Tile] = []
     private(set) var micOn = false
-    /// Whether the call server is recording the call (the room says so);
-    /// everyone on it must be told.
+    /// Whether the call is recorded: by the call server (the room says
+    /// so), or on the canvas by a box's Jamie (its `recording` attribute,
+    /// `CallChatWire.jamieRecords`). Everyone on it must be told.
     private(set) var isRecording = false
+    /// What will not encrypt or decrypt on an encrypted call
+    /// (`CallEncryption`), said before anything else; nil while nothing fails.
+    private(set) var encryptionNotice: String?
     private(set) var cameraOn = false
     /// Whether you last chose the camera on (or started a video call):
     /// what a rejoin brings back.
@@ -106,7 +115,11 @@ final class IOSCallSession {
     /// recorded meanwhile neither change its category nor deactivate it.
     static private(set) var isLive = false
 
-    @ObservationIgnored private let room = Room(roomOptions: RoomOptions(adaptiveStream: true, dynacast: true))
+    /// One room per call, encrypted with the link's key when it has one.
+    @ObservationIgnored private let room: Room
+    @ObservationIgnored private var encryption = CallEncryption()
+    /// Hears the room's encryption state; the room holds its delegates weakly.
+    @ObservationIgnored private var encryptionWatch: CallEncryptionWatch?
     @ObservationIgnored private var connecting: Task<Void, Never>?
     @ObservationIgnored private var failed = false
     @ObservationIgnored private var leaving = false
@@ -132,6 +145,7 @@ final class IOSCallSession {
     @ObservationIgnored private var readPeople: [String: (name: String?, metadata: String?, person: CallParticipant?)] = [:]
 
     init(ticket: CallTicket, link: CallLink, chat: String, title: String, camera: Bool, stay: Bool) {
+        room = Room(roomOptions: CallRoom.options(for: link))
         self.link = link
         self.chat = chat
         self.title = title
@@ -218,6 +232,12 @@ final class IOSCallSession {
                 MainActor.assumeIsolated { self?.routeChanged(reason: raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))) }
             },
         ]
+        // Before the room connects, so a key that doesn't match is heard.
+        if link.encryptionKey != nil {
+            let watch = CallEncryptionWatch { [weak self] change in self?.encryptionChanged(change) }
+            room.add(delegate: watch)
+            encryptionWatch = watch
+        }
         let url = ticket.serverURL.absoluteString, token = ticket.token
         connecting = Task { [weak self] in await self?.connect(url: url, token: token, camera: camera) }
         // Your own tile from the start, while the room connects.
@@ -252,6 +272,15 @@ final class IOSCallSession {
             return
         }
         guard !Task.isCancelled else { return }
+        // A call meant to be encrypted that the room would not encrypt is
+        // left before anything is published.
+        if link.encryptionKey != nil, room.e2eeManager == nil {
+            encryptionNotice = CallEncryption.unavailable
+            failed = true
+            await room.disconnect()
+            refresh()
+            return
+        }
         refresh()
         callKit.connected()
         announce(stay: stay)
@@ -559,8 +588,9 @@ final class IOSCallSession {
         let mic = local.isMicrophoneEnabled(), cam = local.isCameraEnabled()
         if mic != micOn { micOn = mic }
         if cam != cameraOn { cameraOn = cam }
-        if room.isRecording != isRecording { isRecording = room.isRecording }
         let jamie = others.first(where: Self.isJamie)
+        let recording = room.isRecording || jamie.map { CallChatWire.jamieRecords($0.attributes) } == true
+        if recording != isRecording { isRecording = recording }
         jamieIdentity = jamie?.identity
         let speaks = jamie.map { CallChatWire.jamieSpeaks($0.attributes) } ?? false
         if speaks != jamieSpeaks { jamieSpeaks = speaks }
@@ -635,6 +665,21 @@ final class IOSCallSession {
         let person = CallParticipant(identity: id, name: name, metadata: metadata)
         readPeople[id] = (name, metadata, person)
         return person
+    }
+}
+
+// MARK: - Encryption
+
+extension IOSCallSession {
+    fileprivate func encryptionChanged(_ change: CallEncryptionWatch.Change) {
+        guard !leaving else { return }
+        switch change {
+        case let .track(id, local, failed):
+            encryption.track(id, whose: local ? .yours : .theirs(room.publisherName(ofTrack: id)), failed: failed)
+        case .data:
+            encryption.dataFailedToDecrypt()
+        }
+        if encryption.notice != encryptionNotice { encryptionNotice = encryption.notice }
     }
 }
 

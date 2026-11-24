@@ -97,9 +97,10 @@ extension BoxClient {
     }
 
     /// One request as `person`, their token the bearer; a 401 is `TokenRefused`.
-    private func asPerson(_ method: String, _ path: String, _ person: BoxLink, _ body: Data?) async throws -> (Int, Data) {
+    func asPerson(_ method: String, _ path: String, _ person: BoxLink, _ body: Data?,
+                  timeout: TimeInterval = 30) async throws -> (Int, Data) {
         let (status, data) = try await Web.requestStrut(method, box.appending(path: path), json: body, bearer: person.token,
-                                                        limit: Self.limit, what: host, timeout: 30)
+                                                        limit: Self.limit, what: host, timeout: timeout)
         if status == 401 { throw TokenRefused() }
         return (status, data)
     }
@@ -294,7 +295,7 @@ public struct JamieChoices: Sendable {
 
     /// A box as the row names it: its host, and its path when another box
     /// linked here is on the same host.
-    func name(of box: BoxLink) -> String {
+    public func name(of box: BoxLink) -> String {
         let shared = boxes.contains { $0.url != box.url && $0.host == box.host }
         let path = box.url.path
         return shared && !path.isEmpty && path != "/" ? box.host + path : box.host

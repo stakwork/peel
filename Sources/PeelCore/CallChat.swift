@@ -144,6 +144,13 @@ public enum CallChatWire {
         attributes["tts"] == "on"
     }
 
+    /// Whether a box's Jamie is recording the call on the canvas, as its
+    /// `recording` attribute has it (stadeum plans/call-canvas.md §4): "true"
+    /// while it records, empty once it stops.
+    public static func jamieRecords(_ attributes: [String: String]) -> Bool {
+        attributes["recording"] == "true"
+    }
+
     /// Turns Jamie's voice on or off for the whole call:
     /// `{"type":"tts-toggle","enabled":…}`, which sphinx-voice answers by
     /// setting its `tts` attribute. `decode` never reads it as a message.

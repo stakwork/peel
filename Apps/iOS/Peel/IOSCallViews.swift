@@ -250,6 +250,8 @@ private struct OnCallBarLayout<Status: View>: View {
 struct IOSCallScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
+    @State private var notice = RecordingNotice()
+    @State private var toast: String?
 
     var body: some View {
         Group {
@@ -265,6 +267,11 @@ struct IOSCallScreen: View {
         }
         .background(Theme.callBackground.ignoresSafeArea())
         .foregroundStyle(Theme.text)
+        // Everyone on the call is told it is being recorded, and when it stops.
+        .onChange(of: model.calls.phoneSession?.isRecording ?? false, initial: true) { _, recording in
+            if let words = notice.update(recording) { toast = words }
+        }
+        .recordingToast($toast)
         // The call went from anywhere (Leave, another call): the screen goes.
         .onChange(of: model.calls.call == nil) { _, gone in if gone { router.callShown = false } }
         .onAppear { if model.calls.call == nil { router.callShown = false } }
@@ -286,7 +293,10 @@ struct IOSCallScreen: View {
                     CallTitle(title: call.title)
                         .phoneFont(.row)
                         .lineLimit(1)
-                    IOSCallStatusText(call: call)
+                    HStack(spacing: Theme.Space.sm) {
+                        IOSCallStatusText(call: call)
+                        if call.isRecording { RecordingIndicator() }
+                    }
                 }
                 .padding(.horizontal, Theme.touchTarget)
             }
@@ -487,6 +497,9 @@ private struct IOSCallControls: View {
                  action: String(localized: "Open Settings")) {
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
             }
+        }
+        if let notice = call.encryptionNotice {
+            note(notice)
         }
         if let notice = call.deviceNotice {
             note(notice)

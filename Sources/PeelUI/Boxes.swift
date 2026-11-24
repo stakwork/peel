@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import PeelCore
+import PeelDiagnostics
 
 /// The strut boxes this account is linked to (strut's
 /// plans/people-and-hosts.md §2.1; `BoxLink`), one model for the Mac and the
@@ -12,7 +13,9 @@ import PeelCore
 /// said once. Opening one shows its own strut UI as the member, where its
 /// apps are listed and opened (`home(of:)`). A box's own Jamie answers in
 /// the tribes the person adds there (`places`, `addJamie`, `removeJamie`;
-/// docs/hive-tribes.md, "From a box"). A token the box no longer takes is
+/// docs/hive-tribes.md, "From a box"), and joins group calls the person
+/// starts with it, encrypted (`calls`, `startCall`, `callTicket`;
+/// docs/hive-calls.md, "From a box"). A token the box no longer takes is
 /// renewed once before any of these gives up (`asMember`).
 @MainActor @Observable
 public final class Boxes {
@@ -41,6 +44,11 @@ public final class Boxes {
     /// Jamie key the box answered then (`addJamie`): the only box Jamies
     /// Peel approves unasked (`jamiesAdded`).
     @ObservationIgnored private var added: [URL: [String: String]] = [:]
+    /// What each box last said of its group calls (`readCalls`), by its
+    /// address: absent until read. Never kept on disk.
+    public private(set) var calls: [URL: BoxCalls] = [:]
+    @ObservationIgnored private var callsReadAt: [URL: Date] = [:]
+    @ObservationIgnored private var callsReading: [URL: Task<Void, Never>] = [:]
     /// The renewal under way for each box (`renewOnce`).
     @ObservationIgnored private var renewals: [URL: Task<BoxLink?, any Error>] = [:]
     /// Signs a box's challenge with the open account's key
@@ -312,9 +320,10 @@ public final class Boxes {
         }
     }
 
-    /// What `box`'s places said, and their reads, let go; every box's with nil.
+    /// What `box`'s places and calls said, and their reads, let go; every box's with nil.
     private func forgetPlaces(of box: URL?) {
-        let gone = box.map { [$0] } ?? Array(Set(places.keys).union(placesProblems.keys).union(placesReading.keys).union(added.keys))
+        let gone = box.map { [$0] } ?? Array(Set(places.keys).union(placesProblems.keys).union(placesReading.keys).union(added.keys)
+            .union(calls.keys).union(callsReading.keys))
         for box in gone {
             placesReading[box]?.cancel()
             places[box] = nil
@@ -323,7 +332,88 @@ public final class Boxes {
             placesReading[box] = nil
             placesChanges[box] = nil
             added[box] = nil
+            callsReading[box]?.cancel()
+            calls[box] = nil
+            callsReadAt[box] = nil
+            callsReading[box] = nil
         }
+    }
+
+    // MARK: - Jamie in calls
+
+    /// Reads what every box says of its group calls (`BoxClient.groupCalls`),
+    /// each unless read in the last `age` seconds; one read per box at a
+    /// time, the boxes side by side. A read that fails keeps what was read
+    /// before: a box down at that moment is said when a call asks it in.
+    public func readCalls(ifOlderThan age: TimeInterval = 0) async {
+        let reads = links.map { readCalls(of: $0, ifOlderThan: age) }
+        for read in reads { await read.value }
+    }
+
+    private func readCalls(of box: BoxLink, ifOlderThan age: TimeInterval) -> Task<Void, Never> {
+        if calls[box.url] != nil, let at = callsReadAt[box.url], Date().timeIntervalSince(at) < age { return Task {} }
+        if let reading = callsReading[box.url] { return reading }
+        let generation = generation
+        let reading = Task {
+            defer { if generation == self.generation { callsReading[box.url] = nil } }
+            do {
+                let read = try await asMember(box) { try await BoxClient(box: $0.url).groupCalls($0) }
+                guard generation == self.generation, links.contains(where: { $0.url == box.url }) else { return }
+                calls[box.url] = read
+                callsReadAt[box.url] = Date()
+            } catch {
+                guard generation == self.generation, !(error is CancellationError) else { return }
+                Diagnostics.note(error: error)
+            }
+        }
+        callsReading[box.url] = reading
+        return reading
+    }
+
+    /// Asks `box`'s Jamie into `link`'s call (`BoxClient.startGroupCall`),
+    /// as this person, its starter; with `record`, recording on the canvas.
+    /// The box is asked again first whether it can join a call on
+    /// `callServer` (`BoxCalls.joins`), unless it said so in the last
+    /// minute. Throws why not, in words; nothing is posted then.
+    public func startCall(on box: BoxLink, link: CallLink, record: Bool, callServer: String) async throws {
+        await readCalls(of: box, ifOlderThan: 60).value
+        guard calls[box.url]?.joins(callServer: callServer) == true else {
+            throw PeelError(calls[box.url]?.group == true
+                ? String(localized: "Jamie from \(box.host) joins calls on another call server.", table: "Shared")
+                : String(localized: "Jamie from \(box.host) can't join calls yet.", table: "Shared"))
+        }
+        try await asMember(box) { try await BoxClient(box: $0.url).startGroupCall($0, link: link, record: record) }
+    }
+
+    /// The person's own ticket into an encrypted call in `room`, under
+    /// `name`, from the box whose Jamie is in it (`BoxClient.callTicket`):
+    /// each box that may be in a call is asked at once, and the first ticket
+    /// is taken. Nil when none is in it, or none answers in `wait`: the join
+    /// goes through the call server then, without waiting on a slow box. A
+    /// box's failure is noted, never said: the call is joined all the same.
+    public func callTicket(room: String, name: String, wait: Duration = .seconds(8)) async -> BoxCallTicket? {
+        let asked = links.filter { calls[$0.url]?.group != false }
+        guard !asked.isEmpty else { return nil }
+        let generation = generation
+        let race = TicketRace(boxes: asked.count)
+        let ticket = await withCheckedContinuation { continuation in
+            race.waiting = continuation
+            for box in asked {
+                Task {
+                    do {
+                        race.answer(try await asMember(box) { try await BoxClient(box: $0.url).callTicket($0, room: room, name: name) })
+                    } catch {
+                        Diagnostics.note(error: error)
+                        race.answer(nil)
+                    }
+                }
+            }
+            Task {
+                try? await Task.sleep(for: wait)
+                race.end()
+            }
+        }
+        return generation == self.generation ? ticket : nil
     }
 
     // MARK: - Renewing
@@ -439,4 +529,26 @@ public enum BoxWords {
 
     /// Where a box is linked from, for the rows.
     public static var howToLink: String { String(localized: "To link Peel to a box, choose Link Peel in Connect in its Jamie app.", table: "Shared") }
+}
+
+/// The boxes asked for a ticket at once (`Boxes.callTicket`): the first
+/// ticket ends it, as does the last box saying it has none, or the wait.
+@MainActor
+private final class TicketRace {
+    var waiting: CheckedContinuation<BoxCallTicket?, Never>?
+    private var unanswered: Int
+
+    init(boxes: Int) {
+        unanswered = boxes
+    }
+
+    func answer(_ ticket: BoxCallTicket?) {
+        unanswered -= 1
+        if ticket != nil || unanswered == 0 { end(ticket) }
+    }
+
+    func end(_ ticket: BoxCallTicket? = nil) {
+        waiting?.resume(returning: ticket)
+        waiting = nil
+    }
 }

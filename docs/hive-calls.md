@@ -259,6 +259,95 @@ Done when: a Hive room's join asks Hive first and uses its ticket, any
 failure falls back to the call server, another room never asks Hive, and
 the tests say so.
 
+## From a box (2026-11-24)
+
+stadeum `plans/group-calls.md` (work item 3) and `plans/call-canvas.md`
+(work item 6); strut#881 (`GET /voice/calls`, `POST /voice/calls/ticket`,
+`POST /voice/calls` forwarded to the box's voice service as the person);
+stakwork/sphinx-voice#45–#47 (the group session). A box has no Hive: its
+own voice service joins a Peel call itself, end-to-end encrypted with the
+call's key, hearing and speaking with the box's own models. Peel asks the
+box's strut as the person, with the token it keeps for the box
+(`BoxLink`). Hive's calls are unchanged and stay in the clear.
+
+- **Which boxes the menu offers.** Each linked box is asked
+  `GET /voice/calls` as the person when a chat opens (unless asked in the
+  last minute) and again as the Mac's menu opens (`Boxes.readCalls`). A
+  box is listed beside the Stadeum orgs only when it answers
+  `group: true` and its `livekit`, read as LiveKit reads it, is a media
+  server this account's call server may name in its tickets
+  (`BoxCalls.joins`, `CallServer.mediaURL`): a box on another LiveKit
+  would sit in a room nobody on the call is in. A box picked earlier stays
+  listed while Peel is linked to it, so the menu says what is true. The
+  pick is kept per chat with the org picks (`Setting.callJamie`, the box
+  as `box:<address>`, as a tribe's Jamie row names it; `CallJamie`).
+- **Record on the canvas.** Beside a box pick, off unless chosen, per
+  chat and for this run of Peel: everything said then reaches the box's
+  model (call-canvas.md §7). Sent as `record: true`.
+- **Starting** (`CallStore.start` with `.box`). The engine makes the room
+  and a fresh key (`CallLink.newKey`: 32 random bytes as base64) and checks
+  it could post the call (`Engine.newCall`); the box is asked in,
+  `POST /voice/calls { mode: "group", room, key, record? }`
+  (`Boxes.startCall`, which first asks the box again whether it can join a
+  call on this call server, unless it said so in the last minute); only
+  then is the link posted with its key (`Engine.postCall`) and joined. A
+  refusal posts nothing and is said in the chat, as for Hive: 400 in the
+  box's words, 409 Jamie already in that room, 503 not ready or could not
+  join, and an answer from a voice service before group calls (a room of
+  its own, or not `encrypted: true`).
+- **The key in the link.** `https://<call server>/rooms/<room>?startAudioOnly=true#<key>`,
+  the key percent-encoded as meet's `encodePassphrase`
+  (`encodeURIComponent`) writes it and read as its `decodeURIComponent`
+  reads it, so a key written bare reads the same (`CallLink.encryptionKey`;
+  never in a description). A fragment that is not a key (1–2048 of
+  base64, base64url or JWT characters) refuses the whole link, so a link
+  meant to be encrypted is never joined in the clear; a bare `#` is a call
+  in the clear. The official apps join such a link in the clear and hear
+  nothing.
+- **Joining encrypted** (`CallRoom.options`, `Apps/Shared/CallEncryption.swift`):
+  `encryptionOptions` with `BaseKeyProvider(isSharedKey: true,
+  sharedKey: key)`, the key's UTF-8 bytes as the box and meet key it, and
+  the microphone without DTX or RED, as Talk. What will not encrypt or
+  decrypt is said under the call (`CallEncryption`): who can't be heard by
+  the name they joined with, then that no one hears you, then messages
+  that can't be read. A room that would not encrypt is left before
+  anything is published.
+- **Who is speaking** (group-calls.md §7). A join of an encrypted call asks
+  every linked box at once, but one that said `group: false`, for the
+  person's own ticket (`POST /voice/calls/ticket { room, name }`,
+  `Boxes.callTicket`), takes the first, waits at most 8 s and otherwise
+  joins through the call server, as the call's starter (404: that box's
+  Jamie is not in the room). The box's ticket goes through the call
+  server's checks (`CallServer.ticket(fromBox:)`), and its token's `sub`
+  must be the identity the box recorded (`box_<32 hex>`). It carries the
+  name only: no photo.
+- **Recorded.** While Jamie's `recording` attribute is `"true"`, the call
+  shows Recording, with its toast, on the Mac and the iPhone
+  (`CallChatWire.jamieRecords`); the iPhone's call screen shows the
+  indicator for the call server's recording now too.
+
+Checked live (2026-11-24, strut `main` @11517b34, voice #47 @c7f9068,
+LiveKit 1.13 dev): Peel's `BoxClient` through strut as a person (ready,
+asked in with `record: true` and the box's scribe job started, the same
+room again 409, a `box_` ticket that passes the call server's checks,
+another room 404); and the LiveKit Swift SDK 2.10.2 with these room
+options and that ticket, which saw Jamie with `tts` and `recording: "true"`,
+its audio decrypting, and its history line ("Jamie is taking notes on the
+canvas.") decrypted; with a wrong key, that line failed to decrypt. Not
+checked live: the menus in the apps, Jamie heard aloud or answering, meet
+in the same call, a call message posted on a real server.
+
+Not done: captions on group calls (the box sends them as `lk.transcription`
+text streams, the speaker by `lk.transcribed_track_id`); meet (work item 4).
+Known: on LiveKit Swift 2.10.2 a decrypted data packet reaches the room's
+delegate with `encryptionType` none and no sender (the SDK replaces the
+packet's encrypted case with the user packet, and looks the sender up from
+the inner packet, which senders leave empty). So chat sent in the clear
+into an encrypted call, by someone holding the LiveKit admin key every box
+shares, cannot be told apart and is shown; and Jamie's artifacts in the
+call chat, read only from a sender known to be Jamie, are not shown on a
+box's call.
+
 ## Found along the way
 
 The Mac app makes an audio call with `link + "&startAudioOnly=true"`

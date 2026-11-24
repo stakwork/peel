@@ -1814,7 +1814,8 @@ public final class AppModel {
         echoedAliases = settings.echoedAliases
         refreshMentionAliases()
         myServer = settings.server
-        calls.attach(engine, server: settings.callServer, jamiePicks: settings.callJamie ?? [:])
+        calls.attach(engine, server: settings.callServer, jamiePicks: settings.callJamie ?? [:],
+                     tribeOrgs: settings.tribeCallOrg ?? [:])
         boxes.sign = { try await engine.signBoxLink($0) }
         boxes.accountName = { [weak self] in self?.myAlias }
         if let profile { boxes.open(profile) }

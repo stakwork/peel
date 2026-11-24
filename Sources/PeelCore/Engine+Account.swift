@@ -312,6 +312,17 @@ extension Engine {
         JSON.decode([String: String].self, from: try storage.value(for: .callJamie)) ?? [:]
     }
 
+    /// The default Stadeum workspace for calls in each tribe (`Setting.tribeCallOrg`).
+    public func tribeCallOrg() throws -> [String: String] {
+        JSON.decode([String: String].self, from: try storage.value(for: .tribeCallOrg)) ?? [:]
+    }
+
+    public func setTribeCallOrg(_ orgs: [String: String]) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        try storage.set(String(decoding: try encoder.encode(orgs), as: UTF8.self), for: .tribeCallOrg)
+    }
+
     public func setCallJamie(_ picks: [String: String]) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -340,6 +351,7 @@ extension Engine {
         public let sidebarLayout: ChatSections.Layout?
         public let chatsRecentView: Bool?
         public let callJamie: [String: String]?
+        public let tribeCallOrg: [String: String]?
         public let wordsConfirmed: Bool?
         public let connection: ConnectionState
         /// A restore from the words has not finished (`Setting.needsRestore`).
@@ -357,7 +369,7 @@ extension Engine {
             autoDownloadsMedia: try? autoDownloadsMedia(),
             notificationStyle: try? notificationStyle(), notificationSound: try? notificationSound(), sidebarLayout: try? sidebarLayout(),
             chatsRecentView: (try? chatsRecentView()) ?? nil,
-            callJamie: try? callJamie(), wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
+            callJamie: try? callJamie(), tribeCallOrg: try? tribeCallOrg(), wordsConfirmed: try? wordsConfirmed(), connection: connection, restoring: restoring
         )
     }
 

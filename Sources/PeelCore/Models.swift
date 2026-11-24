@@ -90,6 +90,10 @@ public enum Setting: String, Sendable {
     /// workspace picked there, "" for none (`[chat: peer id]` as JSON,
     /// docs/hive-calls.md). This device's; a chat with no pick has none.
     case callJamie
+    /// The default Stadeum workspace for calls started in each tribe:
+    /// the peer id picked per tribe, "" for none. `[tribePubkey: peerId]`
+    /// as JSON (like `callJamie`).
+    case tribeCallOrg
 }
 
 /// One chat in the sidebar: a contact or a tribe, plus the newest text message or attachment.

@@ -95,6 +95,10 @@ public final class CallStore {
     /// tribe's (`HivePeer.jamie`).
     public private(set) var jamiePicks: [String: String] = [:]
 
+    /// The default Stadeum workspace per tribe for calls (`Engine.tribeCallOrg`):
+    /// tribe pubkey → peer id, "" for none. This device's.
+    public private(set) var tribeOrgs: [String: String] = [:]
+
     /// A join waiting for the person's choice about their other device.
     public struct PendingJoin {
         public let link: CallLink
@@ -121,10 +125,11 @@ public final class CallStore {
 
     /// The account's engine and call server, once it opens, and the Jamie
     /// picked in each chat.
-    func attach(_ engine: Engine, server: String?, jamiePicks: [String: String] = [:]) {
+    func attach(_ engine: Engine, server: String?, jamiePicks: [String: String] = [:], tribeOrgs: [String: String] = [:]) {
         self.engine = engine
         self.server = server
         self.jamiePicks = jamiePicks
+        self.tribeOrgs = tribeOrgs
     }
 
     /// The account is gone: no watch, no failure, and the call is left.
@@ -132,6 +137,7 @@ public final class CallStore {
         engine = nil
         server = nil
         jamiePicks = [:]
+        tribeOrgs = [:]
         presence = [:]
         watchers = [:]
         recentMessages = []
@@ -406,6 +412,14 @@ public final class CallStore {
         guard let engine else { return }
         let picks = jamiePicks
         Task { try? await engine.setCallJamie(picks) }
+    }
+
+    /// Sets the default Stadeum workspace for calls in `tribe` on this device.
+    public func setTribeOrg(_ peer: HivePeer?, for tribe: String) {
+        tribeOrgs[tribe] = peer?.id ?? ""
+        guard let engine else { return }
+        let orgs = tribeOrgs
+        Task { try? await engine.setTribeCallOrg(orgs) }
     }
 
     /// Starts a call in `chat` (the call message, free in a DM and 3 sats

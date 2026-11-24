@@ -433,3 +433,38 @@ struct OnCallBar: View {
         .accessibilityLabel("On a call in \(call.title)")
     }
 }
+
+// MARK: - Jamie picker in the call chat
+
+/// A card shown at the top of the call chat to let the person choose the
+/// Stadeum workspace (Jamie) for this call. Defaults to the tribe's setting;
+/// overridable per call.
+struct JamiePickCard: View {
+    @Environment(AppModel.self) private var model
+    let call: CallSession
+    let workspaces: [HivePeer]
+
+    private var currentId: String { model.calls.jamiePicks[call.chat] ?? model.calls.tribeOrgs[call.chat] ?? "" }
+
+    var body: some View {
+        let options: [(value: String, label: String)] = [("", String(localized: "No Jamie"))]
+            + workspaces.map { (value: $0.id, label: $0.name) }
+        Card(.inset) {
+            HStack(spacing: Theme.Space.sm) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.secondaryText)
+                Text("Jamie")
+                    .font(Theme.font(13, .semibold))
+                Spacer(minLength: 0)
+                PeelDropdown(selection: currentId, options: options) { id in
+                    let peer = workspaces.first { $0.id == id }
+                    model.calls.pickJamie(peer, in: call.chat)
+                }
+                .fixedSize()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, Theme.Space.sm)
+        }
+    }
+}

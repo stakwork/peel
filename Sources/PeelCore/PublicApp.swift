@@ -73,13 +73,15 @@ public struct PublicAppLink: Sendable, Equatable {
         return name
     }
 
-    /// The title the seller gives the app (`GET <seller>/public/apps/<name>`),
-    /// cleaned; nil without an app name, an answer, or a title.
-    public func appTitle() async throws -> String? {
+    /// The title and icon the seller gives the app in one
+    /// `GET <seller>/public/apps/<name>`, each cleaned; nil without an app
+    /// name or an answer, and nil for a field the listing lacks. Android
+    /// keeps its own copy of this rule.
+    public func appListing() async throws -> (title: String?, icon: String?)? {
         guard let app, let encoded = app.addingPercentEncoding(withAllowedCharacters: Self.segment),
               let address = URL(string: seller.absoluteString + "/public/apps/" + encoded) else { return nil }
-        let reply = try await Web.get(address, limit: 100_000, what: "the app's title")
-        return Self.title(in: reply)
+        let reply = try await Web.get(address, limit: 100_000, what: "the app's listing")
+        return Self.listing(in: reply)
     }
 
     private static let segment: CharacterSet = {
@@ -90,11 +92,38 @@ public struct PublicAppLink: Sendable, Equatable {
 
     /// The `title` of a listing's JSON, trimmed and cleaned to one line; nil
     /// when not an object, or empty.
-    static func title(in reply: Data) -> String? {
-        struct Listing: Decodable { var title: String? }
-        guard let title = (try? JSONDecoder().decode(Listing.self, from: reply))?.title else { return nil }
-        let clean = TextLine.clean(title.trimmingCharacters(in: .whitespacesAndNewlines), max: 80)
-        return clean.isEmpty ? nil : clean
+    static func title(in reply: Data) -> String? { listing(in: reply).title }
+
+    /// The `icon` of a listing's JSON: a lucide name, trimmed; nil unless a
+    /// lowercase kebab-case name of at most 64 characters, so nothing odd is
+    /// stored or looked up.
+    static func icon(in reply: Data) -> String? { listing(in: reply).icon }
+
+    /// Both fields of a listing's JSON, read once. Each is read on its own,
+    /// so one of the wrong type does not cost the other.
+    static func listing(in reply: Data) -> (title: String?, icon: String?) {
+        struct Listing: Decodable {
+            var title: String?
+            var icon: String?
+            enum Key: String, CodingKey { case title, icon }
+            init(from decoder: any Decoder) throws {
+                let box = try decoder.container(keyedBy: Key.self)
+                title = try? box.decode(String.self, forKey: .title)
+                icon = try? box.decode(String.self, forKey: .icon)
+            }
+        }
+        guard let found = try? JSONDecoder().decode(Listing.self, from: reply) else { return (nil, nil) }
+        var title: String?
+        if let raw = found.title {
+            let clean = TextLine.clean(raw.trimmingCharacters(in: .whitespacesAndNewlines), max: 80)
+            title = clean.isEmpty ? nil : clean
+        }
+        var icon: String?
+        if let raw = found.icon?.trimmingCharacters(in: .whitespacesAndNewlines), raw.count <= 64,
+           raw.wholeMatch(of: try! Regex(#"[a-z0-9]+(-[a-z0-9]+)*"#)) != nil {
+            icon = raw
+        }
+        return (title, icon)
     }
 
     /// The app a served box's page names in `<meta name="strut-serve"

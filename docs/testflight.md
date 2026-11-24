@@ -1,7 +1,7 @@
 # TestFlight from GitHub Actions
 
 `.github/workflows/testflight.yml` archives the iPhone app, the Mac app or both
-on a clean `xcode-27` runner and uploads them to App Store Connect, where they
+on a clean `macos-26` runner with Xcode 26.2 and uploads them to App Store Connect, where they
 show up in TestFlight once Apple has processed them. Run it from the Actions
 tab ("TestFlight", Run workflow): pick the branch (normally `main`) and the
 platform (`both`, `ios` or `mac`).
@@ -21,8 +21,9 @@ platform (`both`, `ios` or `mac`).
      is built again only when the pin moves; the first run after a move takes
      longer;
    - `xcodebuild archive` (Release, automatic signing) with the new build
-     number, then `xcodebuild -exportArchive` with
-     `Apps/Config/ExportOptions.plist`, which uploads to App Store Connect.
+     number; the archive's dSYMs are kept as the run's artifact
+     `dSYMs-<platform>-<build>` for 90 days. Then `xcodebuild -exportArchive`
+     with `Apps/Config/ExportOptions.plist`, which uploads to App Store Connect.
 3. Commits the build numbers of what was uploaded to the branch it ran on, as
    one "New iOS build N New Mac build M" commit. A platform that failed keeps
    its old number, so running again reuses it.
@@ -57,6 +58,32 @@ whoever exported it: when it expires or is revoked, export a new one.
 
 `SPHINX_REPO_TOKEN`: a fine-grained personal access token with read access to
 the contents of `stakwork/sphinx`.
+
+## Which Xcode
+
+The archive uses Xcode 26.2 (`DEVELOPER_DIR`), the one the releases were
+archived with by hand, on GitHub's `macos-26` image; the `xcode-27` image has
+only 27.x. Mac build 35, the first archived on `xcode-27` (Xcode 27.1, Swift
+6.4), crashed in the Swift concurrency runtime (coming back to the front, or
+just after launch) on code that build 34 ran without trouble. Moving to a newer
+Xcode is a change to test on its own: change `runs-on` and `DEVELOPER_DIR`
+together, and ship it to a few people first.
+
+## Symbolicating a crash
+
+A crash report of a build from this workflow lists bare addresses in Peel. The
+run that uploaded build N has the artifact `dSYMs-mac-N` (or `dSYMs-ios-N`);
+check that its UUID matches the report's Binary Images line for Peel, then
+resolve the addresses against the image's load address:
+
+```sh
+gh run download <run id> -n dSYMs-mac-N && unzip dSYMs.zip
+dwarfdump --uuid dSYMs/Peel.app.dSYM
+atos -arch arm64 -o dSYMs/Peel.app.dSYM/Contents/Resources/DWARF/Peel -l <load address> <address> ...
+```
+
+Artifacts last 90 days; an older build has to be symbolicated from App Store
+Connect (Xcode's Organizer, Crashes), where the upload sent the symbols too.
 
 ## Moving a pin
 

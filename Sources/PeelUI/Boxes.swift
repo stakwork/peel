@@ -377,6 +377,11 @@ public final class Boxes {
     /// minute. Throws why not, in words; nothing is posted then.
     public func startCall(on box: BoxLink, link: CallLink, record: Bool, callServer: String) async throws {
         await readCalls(of: box, ifOlderThan: 60).value
+        // Never read: asked once more, so why it can't be read is what is said.
+        if calls[box.url] == nil {
+            let read = try await asMember(box) { try await BoxClient(box: $0.url).groupCalls($0) }
+            if links.contains(where: { $0.url == box.url }) { calls[box.url] = read }
+        }
         guard calls[box.url]?.joins(callServer: callServer) == true else {
             throw PeelError(calls[box.url]?.group == true
                 ? String(localized: "Jamie from \(box.host) joins calls on another call server.", table: "Shared")
@@ -387,12 +392,14 @@ public final class Boxes {
 
     /// The person's own ticket into an encrypted call in `room`, under
     /// `name`, from the box whose Jamie is in it (`BoxClient.callTicket`):
-    /// each box that may be in a call is asked at once, and the first ticket
-    /// is taken. Nil when none is in it, or none answers in `wait`: the join
-    /// goes through the call server then, without waiting on a slow box. A
-    /// box's failure is noted, never said: the call is joined all the same.
-    public func callTicket(room: String, name: String, wait: Duration = .seconds(8)) async -> BoxCallTicket? {
-        let asked = links.filter { calls[$0.url]?.group != false }
+    /// each box that may be in a call on `callServer` is asked at once (one
+    /// not read yet, or that joins calls there: no other box is told the
+    /// room), and the first ticket is taken. Nil when none is in it, or none
+    /// answers in `wait`: the join goes through the call server then, without
+    /// waiting on a slow box. A box's failure is noted, never said: the call
+    /// is joined all the same.
+    public func callTicket(room: String, name: String, callServer: String?, wait: Duration = .seconds(8)) async -> BoxCallTicket? {
+        let asked = links.filter { calls[$0.url].map { $0.joins(callServer: callServer) } ?? true }
         guard !asked.isEmpty else { return nil }
         let generation = generation
         let race = TicketRace(boxes: asked.count)

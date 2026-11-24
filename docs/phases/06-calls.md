@@ -1927,5 +1927,17 @@ joins on the box's ticket, and "Record on the canvas" is sent and its
   live check, removed). `Web.Transfer` does not cancel on task
   cancellation, so the boxes' ticket race resumes on the first answer
   rather than waiting on a task group.
+- Review (/code-review, high): fixed: only boxes that may be in a call on
+  this call server are told its room; a fragment under 16 characters is
+  no key (an anchor like `#top`); a box's 5xx no longer marks it not
+  ready; a start with a box never read says why it can't be read; the
+  ticket's name is cut by UTF-16 units, as the box counts. Not applied:
+  telling plaintext chat apart on an encrypted call (the SDK gives a
+  decrypted packet no encryption type, and a Peel's own encrypted packets
+  carry their sender, so neither marks plaintext; see `../hive-calls.md`);
+  folding `TalkEncryption` into `CallEncryption` (Talk's notice is about
+  one agent and one person, its words and tests stay its own; the shared
+  part, the E2EE watch and the room's encryption, is `CallRoom` and
+  `CallEncryptionWatch`).
 - Next: captions on group calls; the menus checked in the apps against a
   box with the voice PRs deployed.

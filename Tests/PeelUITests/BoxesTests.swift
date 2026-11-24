@@ -242,12 +242,15 @@ struct BoxesTests {
 
         let clock = ContinuousClock()
         let started = clock.now
-        let mine = await boxes.callTicket(room: room, name: "Ada")
+        let mine = await boxes.callTicket(room: room, name: "Ada", callServer: callServer)
         #expect(mine?.identity == "box_0123456789abcdef0123456789abcdef")
-        #expect(await boxes.callTicket(room: "sphinx.call.other", name: "Ada", wait: .milliseconds(300)) == nil)
+        #expect(await boxes.callTicket(room: "sphinx.call.other", name: "Ada", callServer: callServer, wait: .milliseconds(300)) == nil)
         #expect(clock.now - started < .seconds(2))
-        // A box still loading has no Jamie in any call: it is not asked.
+        // A box still loading, or on another call server's LiveKit, has no Jamie in this call: it is not told the room.
         #expect(!loading.requests.contains { $0.contains("/voice/calls/ticket") })
+        let elsewhere = inCall.requests.count
+        #expect(await boxes.callTicket(room: room, name: "Ada", callServer: "calls.example.com") == nil)
+        #expect(inCall.requests.count == elsewhere)
     }
 
     /// A stand-in strut: a renewal's challenge for 127.0.0.1, `token`'s

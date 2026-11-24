@@ -130,11 +130,12 @@ public struct CallLink: Sendable, Equatable, CustomStringConvertible, CustomRefl
               parts.percentEncodedPath.hasPrefix(Self.roomsPath) else { return nil }
         let room = String(parts.percentEncodedPath.dropFirst(Self.roomsPath.count))
         guard Self.isRoom(room) else { return nil }
-        // A fragment that is not a key is a link meant to be encrypted that
-        // Peel cannot key: refused, never joined in the clear.
+        // A fragment that is not a key (an anchor like `#top`, too short to be
+        // one) is a link Peel cannot key: refused, never joined in the clear.
         var key: String?
         if let fragment = parts.percentEncodedFragment, !fragment.isEmpty {
-            guard let decoded = fragment.removingPercentEncoding, Self.isToken(decoded) else { return nil }
+            guard let decoded = fragment.removingPercentEncoding, decoded.utf8.count >= Self.minKey, Self.isToken(decoded)
+            else { return nil }
             key = decoded
         }
         var query: [String: String] = [:]
@@ -235,6 +236,9 @@ public struct CallLink: Sendable, Equatable, CustomStringConvertible, CustomRefl
     public var message: String {
         #"\#(Self.prefix){"link":"\#(url.absoluteString)","recurring":false,"cron":""}"#
     }
+
+    /// The shortest key read from a link: Peel's are 44 characters, meet's 64.
+    static let minKey = 16
 
     static let prefix = "call::"
     static let roomPrefix = "sphinx.call."

@@ -60,11 +60,14 @@ public struct BoxCallTicket: Sendable, CustomStringConvertible, CustomReflectabl
 
 extension BoxClient {
     /// What the box says of its group calls, asked as `person`. A strut or
-    /// voice service from before them answers anything but 200: nothing to
-    /// offer. A token the box no longer takes (401) is `TokenRefused`.
+    /// voice service from before them (404, 405), or a box with none set up
+    /// or not answering it (403, 503), has nothing to offer; any other
+    /// refusal throws, so what was read before stays. A token the box no
+    /// longer takes (401) is `TokenRefused`.
     public func groupCalls(_ person: BoxLink) async throws -> BoxCalls {
         let (status, data) = try await asPerson("GET", "voice/calls", person, nil, timeout: 15)
-        guard status == 200 else { return .noGroupCalls }
+        if [403, 404, 405, 503].contains(status) { return .noGroupCalls }
+        guard status == 200 else { throw PeelError("\(host) could not say whether Jamie can join calls: \(Self.said(data) ?? "HTTP \(status)").") }
         struct Answer: Decodable { let group: Bool?; let livekit: String? }
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data) else {
             throw PeelError(String(localized: "\(host)'s answer about calls could not be read.", table: "Shared"))
@@ -104,7 +107,10 @@ extension BoxClient {
     /// `name`: `POST /voice/calls/ticket { room, name }`. Nil when the box's
     /// Jamie is not in that room (404).
     public func callTicket(_ person: BoxLink, room: String, name: String) async throws -> BoxCallTicket? {
-        let body = try JSONEncoder.hive.encode(["room": room, "name": String(name.prefix(128))])
+        // The box counts a name's UTF-16 units, at most 128.
+        var name = name
+        while name.utf16.count > 128 { name.removeLast() }
+        let body = try JSONEncoder.hive.encode(["room": room, "name": name])
         let (status, data) = try await asPerson("POST", "voice/calls/ticket", person, body, timeout: 15)
         if status == 404 { return nil }
         guard status == 200 else { throw PeelError("\(host) gave no call ticket: \(Self.said(data) ?? "HTTP \(status)").") }

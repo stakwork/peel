@@ -561,7 +561,7 @@ public final class AppModel {
             try await boxes.startCall(on: box, link: link, record: record, callServer: link.server)
         }
         calls.boxTicket = { @MainActor [weak self] room, name in
-            await self?.boxes.callTicket(room: room, name: name)
+            await self?.boxes.callTicket(room: room, name: name, callServer: self?.calls.server)
         }
         calls.chatNotice = { [weak self] chat, change in
             guard let self else { return }

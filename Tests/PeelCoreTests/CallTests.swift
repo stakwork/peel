@@ -52,6 +52,7 @@ struct CallLinkTests {
         "https://chat.sphinx.chat:8443/rooms/\(room)", "https://chat.sphinx.chat/room/\(room)",
         "https://chat.sphinx.chat/api/rooms/\(room)", "https://chat.sphinx.chat/rooms/\(room)#a%20b",
         "https://chat.sphinx.chat/rooms/\(room)#%zz", "https://chat.sphinx.chat/rooms/\(room)#a%26isHost%3Dtrue",
+        "https://chat.sphinx.chat/rooms/\(room)#top", "https://chat.sphinx.chat/rooms/\(room)#" + String(repeating: "a", count: 15),
         "https://chat.sphinx.chat/rooms/\(room)#" + String(repeating: "a", count: 2049),
         "https://chat.sphinx.chat/rooms/\(room)/x", "https://chat.sphinx.chat/rooms//\(room)",
     ])

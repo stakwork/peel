@@ -53,6 +53,10 @@ struct BoxCallsTests {
         }
         defer { stub.stop() }
         #expect(try await BoxClient(box: box.url).groupCalls(box) == .noGroupCalls)
+        // A box that fails another way keeps what was read before: the read throws.
+        let (failing, failingBox) = try await Self.box { _ in (502, #"{"error":"bad gateway"}"#) }
+        defer { failing.stop() }
+        await #expect(throws: PeelError.self) { _ = try await BoxClient(box: failingBox.url).groupCalls(failingBox) }
         var gone = box
         gone.token = "strut-person.gone"
         await #expect(throws: BoxClient.TokenRefused.self) { _ = try await BoxClient(box: box.url).groupCalls(gone) }
@@ -127,6 +131,9 @@ struct BoxCallsTests {
         let ticket = try #require(try await client.callTicket(box, room: room, name: "Ada"))
         #expect(ticket.identity == Self.identity && ticket.token == "eyJ.t.s" && ticket.url == "wss://livekit.sphinx.chat")
         #expect(HTTPStub.jsonBody(of: try #require(stub.requests.first)) == ["room": room, "name": "Ada"])
+        // The box counts UTF-16 units: a long name is cut to 128 of them, never refused.
+        _ = try await client.callTicket(box, room: room, name: String(repeating: "😀", count: 70))
+        #expect(HTTPStub.jsonBody(of: try #require(stub.requests.last))?["name"]?.utf16.count == 128)
         #expect(!String(describing: ticket).contains("eyJ"))
         #expect(try await client.callTicket(box, room: "sphinx.call.other", name: "Ada") == nil)
         await #expect(throws: PeelError.self) { _ = try await client.callTicket(box, room: "sphinx.call.elsewhere", name: "Ada") }

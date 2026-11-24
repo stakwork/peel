@@ -446,7 +446,7 @@ extension Journeys {
                 #expect(await card(first)?.status == .done)
                 let shown = try #require(cards.withLock { $0 }.first)
                 #expect(shown.action == "Send this to Acme?" && shown.content == "What is Acme shipping?")
-                #expect(shown.details == ["To Acme's assistant (@acme) in Stadeum, as you"] && shown.target?.id == "acme/orchestrator")
+                #expect(shown.details == ["To Acme's assistant (@acme) in Hive, as you"] && shown.target?.id == "acme/orchestrator")
                 #expect(try rules.all().map { "\($0.tool) \($0.target?.id ?? "-")" } == ["strut/run-workflow acme/orchestrator"])
 
                 // Allowed: strut runs the call (as the bridge's decide will), and Acme's assistant answers as the person.

@@ -114,7 +114,7 @@ public struct BoxLinkOffer: Sendable, Equatable, Identifiable {
             return String(localized: "This link ran out. Choose Link Peel in Connect on \(host) again.", table: "Shared")
         }
         guard BoxLink.reachable(box, allowsLoopback: allowsLoopback) else {
-            return String(localized: "Peel links only to a box at an https address, not \(host).", table: "Shared")
+            return String(localized: "Peel links only to a Stadeum server at an https address, not \(host).", table: "Shared")
         }
         return nil
     }
@@ -212,7 +212,7 @@ public struct BoxClient: Sendable {
         self.box = box
     }
 
-    var host: String { Seller.host(of: box) ?? "the box" }
+    var host: String { Seller.host(of: box) ?? "the Stadeum server" }
 
     /// What a link or a renewal answers: the member and their token.
     public struct Answer: Sendable, Equatable {

@@ -92,8 +92,8 @@ struct HiveTests {
         #expect(link.credential == "hivedev_abc" && polls.withLock { $0 } == 3)
 
         // Each polled once: past its end, a 5xx is said; a refusal ends it however long is left.
-        for (code, deadline, said) in [("dc-down", Date(), "Stadeum could not pair: Failed to complete pairing."),
-                                       ("dc-refused", later, "Stadeum could not pair: Not found.")] {
+        for (code, deadline, said) in [("dc-down", Date(), "Hive could not pair: Failed to complete pairing."),
+                                       ("dc-refused", later, "Hive could not pair: Not found.")] {
             let waits = Mutex(0)
             let pairing = try JSONDecoder().decode(HiveClient.Pairing.self, from: Data(Self.pairing(hive.port, code: code).utf8))
             let error = try await #require(throws: PeelError.self) {
@@ -184,13 +184,13 @@ struct HiveTests {
     /// What Hive answers instead of a link, in words. A Hive from before the
     /// route answers its middleware's 401, as for a revoked device.
     @Test(arguments: [
-        (404, #"{"error":"Workspace not found"}"#, "Stadeum could not start a call with Jamie: Workspace not found."),
-        (403, #"{"error":"Access denied"}"#, "Stadeum could not start a call with Jamie: Access denied."),
+        (404, #"{"error":"Workspace not found"}"#, "Hive could not start a call with Jamie: Workspace not found."),
+        (403, #"{"error":"Access denied"}"#, "Hive could not start a call with Jamie: Access denied."),
         (502, #"{"error":"Could not start Jamie for the call"}"#,
-         "Stadeum could not start a call with Jamie: Could not start Jamie for the call."),
+         "Hive could not start a call with Jamie: Could not start Jamie for the call."),
         (401, #"{"error":"Unauthorized"}"#,
-         "Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again."),
-        (200, #"{"link":"x"}"#, "Stadeum's call link could not be read."),
+         "Hive didn't accept this device for a call. If it was disconnected in Hive, connect it again."),
+        (200, #"{"link":"x"}"#, "Hive's call link could not be read."),
     ])
     func aCallHiveCannotMakeIsSaid(status: Int, answer: String, said: String) async throws {
         let hive = try await HTTPStub { _, _ in (status, answer) }
@@ -234,11 +234,11 @@ struct HiveTests {
     /// What Hive answers instead of a ticket, in words: the join goes
     /// through the call server then (`Engine.callTicket(for:in:hive:)`).
     @Test(arguments: [
-        (404, #"{"error":"No Hive call in that room"}"#, "Stadeum could not give a call ticket: No Hive call in that room."),
-        (403, #"{"error":"Access denied"}"#, "Stadeum could not give a call ticket: Access denied."),
+        (404, #"{"error":"No Hive call in that room"}"#, "Hive could not give a call ticket: No Hive call in that room."),
+        (403, #"{"error":"Access denied"}"#, "Hive could not give a call ticket: Access denied."),
         (503, #"{"error":"LiveKit call service not configured"}"#,
-         "Stadeum could not give a call ticket: LiveKit call service not configured."),
-        (200, #"{"url":"x"}"#, "Stadeum's call ticket could not be read."),
+         "Hive could not give a call ticket: LiveKit call service not configured."),
+        (200, #"{"url":"x"}"#, "Hive's call ticket could not be read."),
     ])
     func aTicketHiveCannotGiveIsSaid(status: Int, answer: String, said: String) async throws {
         let hive = try await HTTPStub { _, _ in (status, answer) }
@@ -303,15 +303,15 @@ struct HiveTests {
     /// What Hive answers instead of a link, in words the owner can act on;
     /// an answer naming a key that is not one, or another tribe, is refused.
     @Test(arguments: [
-        (503, #"{"error":"Jamie in tribes is not configured"}"#, "Jamie isn't switched on in Stadeum yet."),
+        (503, #"{"error":"Jamie in tribes is not configured"}"#, "Jamie isn't switched on in Hive yet."),
         (409, #"{"error":"This tribe is linked to an org by someone else."}"#, "Someone else already linked this tribe to an org."),
-        (403, #"{"error":"Access denied"}"#, "Stadeum could not add Jamie: Access denied."),
+        (403, #"{"error":"Access denied"}"#, "Hive could not add Jamie: Access denied."),
         (401, #"{"error":"Unauthorized"}"#,
-         "Stadeum didn't accept this device for Jamie. If it was disconnected in Stadeum, connect it again."),
+         "Hive didn't accept this device for Jamie. If it was disconnected in Hive, connect it again."),
         (200, #"{"jamie":{"pubkey":"02ab","alias":"Jamie"},"tribe":{"pubkey":"\#(HiveTests.tribeKey)","host":"h","workspace":"acme-hive"}}"#,
-         "Stadeum's answer about Jamie could not be read."),
+         "Hive's answer about Jamie could not be read."),
         (200, #"{"jamie":{"pubkey":"\#(HiveTests.jamieKey)","alias":"Jamie"},"tribe":{"pubkey":"\#(HiveTests.jamieKey)","host":"h","workspace":"acme-hive"}}"#,
-         "Stadeum's answer about Jamie could not be read."),
+         "Hive's answer about Jamie could not be read."),
     ])
     func aLinkHiveRefusesIsSaid(status: Int, answer: String, said: String) async throws {
         let hive = try await HTTPStub { _, _ in (status, answer) }

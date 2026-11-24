@@ -246,12 +246,12 @@ private struct TribeJamieSection: View {
             case .connected, .off where choices.offersBoxes(in: tribe.pubkey):
                 EmptyView()
             case .off, .needsPairing:
-                FormItem(label: "Stadeum", helper: model.brain == .thisMac
-                         ? String(localized: "Connect Stadeum to let one of your orgs answer @jamie here.")
-                         : String(localized: "Your assistant runs on your home server. Turn off Always on to connect Stadeum."),
+                FormItem(label: "Hive", helper: model.brain == .thisMac
+                         ? String(localized: "Connect Hive to let one of your workspaces answer @jamie here.")
+                         : String(localized: "Your assistant runs on your home server. Turn off Always on to connect Hive."),
                          problem: stadeum.problem) {
                     if model.brain == .thisMac {
-                        Button(stadeum.status == .off ? String(localized: "Connect Stadeum") : String(localized: "Connect again")) { model.connectHive() }
+                        Button(stadeum.status == .off ? String(localized: "Connect Hive") : String(localized: "Connect again")) { model.connectHive() }
                             .buttonStyle(.peel(.outline))
                     }
                 }
@@ -307,7 +307,7 @@ private struct TribeJamieSection: View {
         } else {
             let problem = model.jamieProblem
             FormItem(label: String(localized: "Answers from"),
-                     helper: problem == nil ? model.jamieAskingBox.map { String(localized: "Asking \($0)…") } ?? String(localized: "Asking Stadeum…") : nil,
+                     helper: problem == nil ? model.jamieAskingBox.map { String(localized: "Asking \($0)…") } ?? String(localized: "Asking Hive…") : nil,
                      problem: problem) {
                 if problem != nil {
                     Button("Try again") { Task { await model.readJamies() } }

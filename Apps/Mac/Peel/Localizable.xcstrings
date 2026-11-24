@@ -2225,18 +2225,18 @@
         }
       }
     },
-    "Approve this Mac in Stadeum. Check the code matches:" : {
+    "Approve this Mac in Hive. Check the code matches:" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Approve this Mac in Stadeum. Check the code matches:"
+            "value" : "Approve this Mac in Hive. Check the code matches:"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aprueba esta Mac en Stadeum. Verifica que el código coincida:"
+            "value" : "Aprueba esta Mac en Hive. Verifica que el código coincida:"
           }
         }
       }
@@ -2321,18 +2321,18 @@
         }
       }
     },
-    "Ask Peel to build you one. Apps your Stadeum workspaces pin show here too." : {
+    "Ask Peel to build you one. Apps your Hive workspaces pin show here too." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ask Peel to build you one. Apps your Stadeum workspaces pin show here too."
+            "value" : "Ask Peel to build you one. Apps your Hive workspaces pin show here too."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pídele a Peel que cree una. Las apps que fijen tus espacios de Stadeum también aparecen aquí."
+            "value" : "Pídele a Peel que cree una. Las apps que fijen tus espacios de Hive también aparecen aquí."
           }
         }
       }
@@ -2449,18 +2449,18 @@
         }
       }
     },
-    "Asking Stadeum…" : {
+    "Asking Hive…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Asking Stadeum…"
+            "value" : "Asking Hive…"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Consultando a Stadeum…"
+            "value" : "Consultando a Hive…"
           }
         }
       }
@@ -2829,22 +2829,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Boosts"
-          }
-        }
-      }
-    },
-    "Boxes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Boxes"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cajas"
           }
         }
       }
@@ -3809,34 +3793,34 @@
         }
       }
     },
-    "Connect Stadeum" : {
+    "Connect Hive" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum"
+            "value" : "Connect Hive"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conectar Stadeum"
+            "value" : "Conectar Hive"
           }
         }
       }
     },
-    "Connect Stadeum to let one of your orgs answer @jamie here." : {
+    "Connect Hive to let one of your workspaces answer @jamie here." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum to let one of your orgs answer @jamie here."
+            "value" : "Connect Hive to let one of your workspaces answer @jamie here."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum para que una de tus organizaciones responda a @jamie aquí."
+            "value" : "Conecta Hive para que uno de tus espacios de trabajo responda a @jamie aquí."
           }
         }
       }
@@ -6925,6 +6909,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El historial está desactivado: los dictados nuevos no se guardan."
+          }
+        }
+      }
+    },
+    "Hive no longer knows this Mac, so your assistant has stopped asking these workspaces. Pair again to use them." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive no longer knows this Mac, so your assistant has stopped asking these workspaces. Pair again to use them."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive ya no reconoce esta Mac, así que tu asistente dejó de consultar estos espacios de trabajo. Vincula de nuevo para usarlos."
+          }
+        }
+      }
+    },
+    "Hive workspaces" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive workspaces"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espacios de trabajo de Hive"
           }
         }
       }
@@ -10465,6 +10481,22 @@
         }
       }
     },
+    "Open in Hive" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in Hive"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir en Hive"
+          }
+        }
+      }
+    },
     "Open in Peel" : {
       "localizations" : {
         "en" : {
@@ -10477,22 +10509,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abrir en Peel"
-          }
-        }
-      }
-    },
-    "Open in Stadeum" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open in Stadeum"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abrir en Stadeum"
           }
         }
       }
@@ -11057,18 +11073,18 @@
         }
       }
     },
-    "Paired, but Stadeum gave no workspaces for this account." : {
+    "Paired, but Hive gave no workspaces for this account." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Paired, but Stadeum gave no workspaces for this account."
+            "value" : "Paired, but Hive gave no workspaces for this account."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vinculada, pero Stadeum no dio espacios de trabajo para esta cuenta."
+            "value" : "Vinculada, pero Hive no dio espacios de trabajo para esta cuenta."
           }
         }
       }
@@ -11617,18 +11633,18 @@
         }
       }
     },
-    "Peel stops opening it as %@. The box keeps the link until you remove it in Connect there." : {
+    "Peel stops opening it as %@. The server keeps the link until you remove it in Connect there." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Peel stops opening it as %@. The box keeps the link until you remove it in Connect there."
+            "value" : "Peel stops opening it as %@. The server keeps the link until you remove it in Connect there."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Peel deja de abrirlo como %@. La caja conserva el vínculo hasta que lo quites en Connect."
+            "value" : "Peel deja de abrirlo como %@. El servidor conserva el vínculo hasta que lo quites en Connect."
           }
         }
       }
@@ -12257,18 +12273,18 @@
         }
       }
     },
-    "QR code of Stadeum's pairing page" : {
+    "QR code of Hive's pairing page" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "QR code of Stadeum's pairing page"
+            "value" : "QR code of Hive's pairing page"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Código QR de la página de vinculación de Stadeum"
+            "value" : "Código QR de la página de vinculación de Hive"
           }
         }
       }
@@ -12977,18 +12993,18 @@
         }
       }
     },
-    "Removes the account and its messages from this Mac. Your assistant still runs on your home server: turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere." : {
+    "Removes the account and its messages from this Mac. Your assistant still runs on your home server: turn off Always on first, or wipe that server, before you sign in with your twelve words anywhere." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Removes the account and its messages from this Mac. Your assistant still runs on your home server: turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere."
+            "value" : "Removes the account and its messages from this Mac. Your assistant still runs on your home server: turn off Always on first, or wipe that server, before you sign in with your twelve words anywhere."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Elimina la cuenta y sus mensajes de este Mac. Tu asistente sigue ejecutándose en tu servidor doméstico: primero desactiva Siempre activo, o borra esa caja, antes de iniciar sesión con tus doce palabras en cualquier lugar."
+            "value" : "Elimina la cuenta y sus mensajes de este Mac. Tu asistente sigue ejecutándose en tu servidor doméstico: primero desactiva Siempre activo, o borra ese servidor, antes de iniciar sesión con tus doce palabras en cualquier lugar."
           }
         }
       }
@@ -15233,34 +15249,18 @@
         }
       }
     },
-    "Stadeum no longer knows this Mac, so your assistant has stopped asking these workspaces. Pair again to use them." : {
+    "Stadeum servers" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stadeum no longer knows this Mac, so your assistant has stopped asking these workspaces. Pair again to use them."
+            "value" : "Stadeum servers"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stadeum ya no reconoce esta Mac, así que tu asistente dejó de consultar estos espacios de trabajo. Vincula de nuevo para usarlos."
-          }
-        }
-      }
-    },
-    "Stadeum workspaces" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum workspaces"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Espacios de trabajo de Stadeum"
+            "value" : "Servidores Stadeum"
           }
         }
       }
@@ -15969,18 +15969,18 @@
         }
       }
     },
-    "That link to a box doesn't work. Choose Link Peel in Connect on the box again." : {
+    "That link to a Stadeum server doesn't work. Choose Link Peel in Connect on the server again." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "That link to a box doesn't work. Choose Link Peel in Connect on the box again."
+            "value" : "That link to a Stadeum server doesn't work. Choose Link Peel in Connect on the server again."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ese enlace a una caja no funciona. Vuelve a elegir Vincular Peel en Connect, en la caja."
+            "value" : "Ese enlace a un servidor Stadeum no funciona. Vuelve a elegir Vincular Peel en Connect, en el servidor."
           }
         }
       }
@@ -18649,34 +18649,34 @@
         }
       }
     },
-    "Your account is back, but not its Stadeum connection. Connect Stadeum again." : {
+    "Your account is back, but not its Hive connection. Connect Hive again." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your account is back, but not its Stadeum connection. Connect Stadeum again."
+            "value" : "Your account is back, but not its Hive connection. Connect Hive again."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu cuenta volvió, pero no su conexión con Stadeum. Conecta Stadeum de nuevo."
+            "value" : "Tu cuenta volvió, pero no su conexión con Hive. Conecta Hive de nuevo."
           }
         }
       }
     },
-    "Your assistant can no longer ask your workspaces. Revoke this Mac in Stadeum's settings too." : {
+    "Your assistant can no longer ask your workspaces. Revoke this Mac in Hive's settings too." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your assistant can no longer ask your workspaces. Revoke this Mac in Stadeum's settings too."
+            "value" : "Your assistant can no longer ask your workspaces. Revoke this Mac in Hive's settings too."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu asistente ya no podrá consultar tus espacios de trabajo. Revoca también esta Mac en los ajustes de Stadeum."
+            "value" : "Tu asistente ya no podrá consultar tus espacios de trabajo. Revoca también esta Mac en los ajustes de Hive."
           }
         }
       }
@@ -18921,18 +18921,18 @@
         }
       }
     },
-    "Your assistant runs on your home server. Turn off Always on to connect Stadeum." : {
+    "Your assistant runs on your home server. Turn off Always on to connect Hive." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your assistant runs on your home server. Turn off Always on to connect Stadeum."
+            "value" : "Your assistant runs on your home server. Turn off Always on to connect Hive."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu asistente se ejecuta en tu servidor doméstico. Desactiva Siempre activo para conectar Stadeum."
+            "value" : "Tu asistente se ejecuta en tu servidor doméstico. Desactiva Siempre activo para conectar Hive."
           }
         }
       }
@@ -19689,34 +19689,34 @@
         }
       }
     },
-    "give the agent your Stadeum workspaces" : {
+    "give the agent your Hive workspaces" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "give the agent your Stadeum workspaces"
+            "value" : "give the agent your Hive workspaces"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "dar al agente tus espacios de Stadeum"
+            "value" : "dar al agente tus espacios de Hive"
           }
         }
       }
     },
-    "give the agent's bridge your Stadeum workspaces" : {
+    "give the agent's bridge your Hive workspaces" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "give the agent's bridge your Stadeum workspaces"
+            "value" : "give the agent's bridge your Hive workspaces"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "dar al puente del agente tus espacios de Stadeum"
+            "value" : "dar al puente del agente tus espacios de Hive"
           }
         }
       }

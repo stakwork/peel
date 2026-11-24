@@ -81,7 +81,7 @@ public final class Boxes {
             links = try BoxLink.read(from: profile.boxes)
         } catch {
             unreadable = true
-            problem = PeelError.noted(error, couldNot: String(localized: "read your linked boxes", table: "Shared"))
+            problem = PeelError.noted(error, couldNot: String(localized: "read your linked Stadeum servers", table: "Shared"))
         }
         keepRenewed()
     }
@@ -141,7 +141,7 @@ public final class Boxes {
             return nil
         }
         guard !unreadable else {
-            problem = String(localized: "Peel couldn't read the boxes it keeps, so it won't change them now. Quit and reopen Peel, then link again.", table: "Shared")
+            problem = String(localized: "Peel couldn't read the Stadeum servers it keeps, so it won't change them now. Quit and reopen Peel, then link again.", table: "Shared")
             return nil
         }
         if let refusal = offer.problem(allowsLoopback: profile.kind == .development) {
@@ -540,7 +540,7 @@ public enum BoxWords {
     }
 
     /// Where a box is linked from, for the rows.
-    public static var howToLink: String { String(localized: "To link Peel to a box, choose Link Peel in Connect in its Jamie app.", table: "Shared") }
+    public static var howToLink: String { String(localized: "To link Peel to a Stadeum server, choose Link Peel in Connect in its Jamie app.", table: "Shared") }
 }
 
 /// The boxes asked for a ticket at once (`Boxes.callTicket`): the first

@@ -20,17 +20,17 @@ struct StadeumSection: View {
                     .foregroundStyle(Theme.quietText(on: .raised))
                     .fixedSize(horizontal: false, vertical: true)
                 if stadeum.reconnectHint {
-                    Text("Your account is back, but not its Stadeum connection. Connect Stadeum again.")
+                    Text("Your account is back, but not its Hive connection. Connect Hive again.")
                         .foregroundStyle(Theme.attention)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button("Connect Stadeum") { stadeum.connect(as: UIDevice.current.name) }
+                Button("Connect Hive") { stadeum.connect(as: UIDevice.current.name) }
                     .buttonStyle(.peel(.outline, size: .touch))
             case .pairing(let pairing):
                 StadeumPairingCode(pairing: pairing)
             case .connected, .needsPairing:
                 if stadeum.status == .needsPairing {
-                    Text("Stadeum no longer knows this iPhone. Connect it again to open your workspaces' work here.")
+                    Text("Hive no longer knows this iPhone. Connect it again to open your workspaces' work here.")
                         .foregroundStyle(Theme.attention)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Connect again") { stadeum.connect(as: UIDevice.current.name) }
@@ -59,7 +59,7 @@ struct StadeumSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         } header: {
-            PhoneSectionHeader(String(localized: "Stadeum"))
+            PhoneSectionHeader(String(localized: "Hive"))
         }
         .phoneRows(.grouped)
         .environment(\.surface, .raised)
@@ -77,7 +77,7 @@ struct StadeumPairingCode: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            Text("Approve this iPhone in Stadeum. Check the code matches:")
+            Text("Approve this iPhone in Hive. Check the code matches:")
                 .foregroundStyle(Theme.quietText(on: surface))
             Text(pairing.userCode)
                 .phoneFont(.title)
@@ -86,7 +86,7 @@ struct StadeumPairingCode: View {
                 .accessibilityLabel("Code \(pairing.userCode)")
         }
         .padding(.vertical, Theme.Space.xs)
-        Button("Open Stadeum") { openURL(pairing.verificationUriComplete) }
+        Button("Open Hive") { openURL(pairing.verificationUriComplete) }
             .buttonStyle(.peel(.primary, size: .touch))
         Button("Cancel") { model.stadeum.cancelPairing() }
             .buttonStyle(.peel(.ghost, size: .touch))
@@ -134,7 +134,7 @@ struct BoxesSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } header: {
-                PhoneSectionHeader(String(localized: "Boxes"))
+                PhoneSectionHeader(String(localized: "Stadeum servers"))
             } footer: {
                 Text(BoxWords.howToLink)
             }

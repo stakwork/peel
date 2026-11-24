@@ -630,7 +630,7 @@ public final class ProposalWatch {
                 if unreachable.contains(peer) { unreachable.remove(peer) }
                 if refused[peer] != nil { refused[peer] = nil }
             case .failure(let refusal as StrutRefusal) where refusal.isAuth:
-                refused[peer] = String(localized: "\(refusal.name) no longer takes this device's token; Stadeum renews it, or connect again.", table: "Shared")
+                refused[peer] = String(localized: "\(refusal.name) no longer takes this device's token; Hive renews it, or connect again.", table: "Shared")
                 if unreachable.contains(peer) { unreachable.remove(peer) }
                 continue
             case .failure:

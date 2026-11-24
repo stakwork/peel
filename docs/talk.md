@@ -15,7 +15,7 @@ it.
 - **iPhone:** Chats › Apps. A "Talk to Jamie" section above the apps, one
   row per workspace in use (`AppModel.talkHomes`). The Apps tab shows
   there is a workspace to talk to.
-- **Mac:** Account › Connections › Stadeum workspaces. A "Talk to Jamie"
+- **Mac:** Account › Connections › Hive workspaces. A "Talk to Jamie"
   button on each paired workspace's row. It opens the Talk window.
 - Not in the agent DM: stakwork/peel#468 puts its own voice mode there.
 

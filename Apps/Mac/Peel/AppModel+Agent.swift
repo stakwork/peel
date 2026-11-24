@@ -324,7 +324,7 @@ extension AppModel {
                 // Why Peel won't sign it, beside the boxes.
                 if boxes.asking == nil, phase == .ready { openAccount(.connections) }
             } else {
-                notice = String(localized: "That link to a box doesn't work. Choose Link Peel in Connect on the box again.")
+                notice = String(localized: "That link to a Stadeum server doesn't work. Choose Link Peel in Connect on the server again.")
             }
         } else if url.host?.lowercased() == "open" {
             if let link = PublicAppLink(peelLink: url) {

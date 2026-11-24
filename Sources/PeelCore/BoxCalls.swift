@@ -84,7 +84,7 @@ extension BoxClient {
     /// encrypted call.
     public func startGroupCall(_ person: BoxLink, link: CallLink, record: Bool) async throws {
         guard let key = link.encryptionKey else {
-            throw PeelError(String(localized: "Jamie from a box joins only an encrypted call.", table: "Shared"))
+            throw PeelError(String(localized: "Jamie from a Stadeum server joins only an encrypted call.", table: "Shared"))
         }
         struct Body: Encodable { let mode = "group"; let room: String; let key: String; let record: Bool? }
         let body = try JSONEncoder.hive.encode(Body(room: link.room, key: key, record: record ? true : nil))

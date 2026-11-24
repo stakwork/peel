@@ -31,12 +31,12 @@ struct AppsView: View {
                 list(apps)
             } else {
                 // Building one is the way in; a workspace's come with Stadeum.
-                EmptyState(String(localized: "Ask Peel to build you one. Apps your Stadeum workspaces pin show here too."),
+                EmptyState(String(localized: "Ask Peel to build you one. Apps your Hive workspaces pin show here too."),
                            title: String(localized: "No apps yet")) {
                     HStack(spacing: Theme.Space.sm) {
                         Button("Ask Peel") { model.destination = .agent }.buttonStyle(.peel(.primary))
                         if model.stadeum.live.isEmpty {
-                            Button("Connect Stadeum") { model.openAccount(.connections) }.buttonStyle(.peel(.outline))
+                            Button("Connect Hive") { model.openAccount(.connections) }.buttonStyle(.peel(.outline))
                         }
                     }
                 }

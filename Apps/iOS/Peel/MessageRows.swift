@@ -941,7 +941,7 @@ struct AgentArtifactLine: View {
         switch model.stadeum.opening(handle) {
         case .page(let page): return page.workspace
         case _ where artifact.url != nil: return artifact.url?.host()
-        case .connectFirst: return String(localized: "Connect Stadeum in You to open")
+        case .connectFirst: return String(localized: "Connect Hive in You to open")
         case .notPaired(let peer): return String(localized: "@\(peer) isn't connected here")
         case .onMac: return String(localized: "On your Mac")
         }

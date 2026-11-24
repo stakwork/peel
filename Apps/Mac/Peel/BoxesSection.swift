@@ -37,7 +37,7 @@ struct BoxesSection: View {
     var body: some View {
         let boxes = model.boxes
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection(String(localized: "Boxes")) {
+            SettingsSection(String(localized: "Stadeum servers")) {
                 if let offer = boxes.linking {
                     Fact(offer.host) {
                         Text("Linking Peel…").muted()
@@ -49,7 +49,7 @@ struct BoxesSection: View {
                     BoxRow(box: box)
                 }
                 if boxes.links.isEmpty, boxes.linking == nil {
-                    Fact(String(localized: "Boxes")) {
+                    Fact(String(localized: "Stadeum servers")) {
                         Text(BoxWords.howToLink).muted().fixedSize(horizontal: false, vertical: true)
                     } trailing: {
                         EmptyView()
@@ -85,7 +85,7 @@ private struct BoxRow: View {
                         .disabled(opening)
                 }
                 InlineConfirm(trigger: String(localized: "Forget"), prompt: String(localized: "Forget \(box.host)?"),
-                              explanation: String(localized: "Peel stops opening it as \(box.person). The box keeps the link until you remove it in Connect there."),
+                              explanation: String(localized: "Peel stops opening it as \(box.person). The server keeps the link until you remove it in Connect there."),
                               confirm: String(localized: "Forget"), alignment: .trailing, confirming: $forgetting) {
                     model.boxes.forget(box)
                 }

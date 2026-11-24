@@ -96,7 +96,7 @@ struct AccountView: View {
             ForgetAccountControl(
                 trigger: String(localized: "Forget this account on this Mac…"),
                 explanation: model.brain?.moved != nil
-                    ? String(localized: "Removes the account and its messages from this Mac. Your assistant still runs on your home server: turn off Always on first, or wipe that box, before you sign in with your twelve words anywhere.")
+                    ? String(localized: "Removes the account and its messages from this Mac. Your assistant still runs on your home server: turn off Always on first, or wipe that server, before you sign in with your twelve words anywhere.")
                     : String(localized: "Removes the account and its messages from this Mac. You need your twelve words to sign back in."),
                 section: true
             )
@@ -150,7 +150,7 @@ extension AccountPage {
         case .assistant: ["agent", "provider", "API key", "model", "own account", "always allowed", "may post as you",
                           "revoke", "old assistant chats"]
         case .brain: ["Peel Home", "brain", "home server", "this Mac", "move", "turn off", "restore", "sync"]
-        case .connections: ["services", "MCP server", "Stadeum", "workspaces", "pair"]
+        case .connections: ["services", "MCP server", "Hive", "workspaces", "pair", "Stadeum", "servers"]
         case .dictation: ["key", "speech", "history", "microphone", "input monitoring", "accessibility", "voice"]
         case .notifications: ["message text", "alerts"]
         case .security: ["PIN", "lock", "twelve words", "recovery", "website data", "forget account", "sign out"]

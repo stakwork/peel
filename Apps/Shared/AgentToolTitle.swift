@@ -48,8 +48,8 @@ enum AgentToolTitle {
         "job_get": String(localized: "Checked on a task", table: "Shared"),
         "job_read": String(localized: "Read a task's file", table: "Shared"),
         // Hive workspaces, paired as peers.
-        "strut_list_peers": String(localized: "Looked at your Stadeum workspaces", table: "Shared"),
-        "strut_run_workflow": String(localized: "Asked a Stadeum workspace", table: "Shared"),
+        "strut_list_peers": String(localized: "Looked at your Hive workspaces", table: "Shared"),
+        "strut_run_workflow": String(localized: "Asked a Hive workspace", table: "Shared"),
     ]
 
     /// strut's orchestrator's tools, as the bridge names them (`sphinx/unseen`

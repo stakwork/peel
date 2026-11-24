@@ -78,7 +78,7 @@ extension AppModel {
             return nil
         case .org(let id):
             guard let peer = stadeum.live.first(where: { $0.id == id }) else {
-                throw PeelError(String(localized: "Connect Stadeum to add Jamie from \(choices.name(of: source)).", table: "Shared"))
+                throw PeelError(String(localized: "Connect Hive to add Jamie from \(choices.name(of: source)).", table: "Shared"))
             }
             try await stadeum.setJamie(peer, for: tribe)
             return stadeum.jamieLinks?.jamie.pubkey

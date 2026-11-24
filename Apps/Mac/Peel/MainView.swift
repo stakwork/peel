@@ -44,6 +44,8 @@ struct MainView: View {
             if model.openHiveAppLink(url) { return .handled }
             // A tribe link opens in Peel: its chat, or the Join form; never the system's.
             if model.openTribeLink(url.absoluteString) { return .handled }
+            // A public app's link opens in Peel's web pane, as an external peel:// link does.
+            if PublicAppLink(peelLink: url) != nil, model.openPeelLink(url) { return .handled }
             model.web.linkAction(url)
             return .handled
         })

@@ -111,3 +111,16 @@ Then, with Peel installed, tap Open in Peel on a fresh invite (needs strut's joi
 is filled in; with an account already, the app opens signed in. Also check: "Don't Allow Paste" leaves the invite step empty
 and the field accepts a pasted join link; an empty clipboard shows no prompt; a `peel://open` link to the same page asks
 before signing in.
+
+### Journal: `peel://open` links in a chat message
+
+A `peel://open?url=<address>` link in a message (bare or `[text](…)`) is now tappable and opens the public app inside Peel,
+never the system browser (`MessageMarkup.publicAppLinks`, kept only when `PublicAppLink(peelLink:)` accepts it, which is as
+strict as before; a bare one reads "Open <app> on <host>", `linkLabel`). Taps go through the same `OpenURLAction` chains as
+tribe links (iPhone `MainTabs` → `router.open(peelLink:)`, queued while locked; Mac `MainView`, `AgentViews` →
+`openPeelLink`). Still `invited: false`: the worker sees Peel's sign-in sheet. A named tribe link is now a named link too; a named link's "(host)" comes from `MessageMarkup.destination(of:)` (the app's host, the tribes server, else the address's host), so it never reads "(open)". Nothing fetches a message link over the network; `firstLink` callers only copy it.
+Not run: no Swift toolchain in the pod.
+
+The link for the Stakwork Support welcome DM: `[Open Tasks](peel://open?url=https%3A%2F%2Fstrut.stadeum.stakwork.ai%2F%3Fapp%3Dstrut%2Fworker)`
+(`strut/worker` passes `AgentArtifact.Handle.isAppName`, tested). Opened this way the worker sees Peel's sign-in sheet, not a
+silent sign-in: only invite-opened pages are granted (`WalletHost.grantInvitePage`), a product decision left open on purpose.

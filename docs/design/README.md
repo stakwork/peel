@@ -355,7 +355,7 @@ needs 4.5:1, icons 3:1):
   `#FFBC58` is about 1.5:1 on the light chip fills and payment rows; the
   amber is over 3:1 on every light fill it sits on and 4.5:1 on white.
 
-Colour is state, never decoration (Tom's `tom-ui` rules): blue marks unread,
+Colour is state, never decoration: blue marks unread,
 selected and actionable; red only for destructive or blocking moments.
 
 ### Colour (direction D)

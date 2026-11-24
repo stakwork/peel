@@ -1793,8 +1793,8 @@ server until one is named, so local tests cannot reach `memes.sphinx.chat`.
   engine operation, never logic inside a view; message conventions live in the
   engine.
 - UI follows `docs/design/README.md` (Slack-style layout, Sphinx colours and
-  the system font) and Tom's `tom-ui` and `taste` skills: colour is state, not
-  decoration; no red for ordinary failure; restraint in motion.
+  the system font): colour is state, not decoration; no red for ordinary
+  failure; restraint in motion.
 - **Reuse before you write.** Before adding a view, helper, label, shortcut or
   panel, search for the shared piece that already does it (`Controls.swift`,
   FormKit, `PeelButton`, `IconButton`, `Panel`, `SectionHeader`, `Card`, `Callout`, `Badge`, `Chip`, `ListRow`, `FactList`, `EmptyState`, `MenuPresenter`, `PictureField`, `.menuAnchor`,

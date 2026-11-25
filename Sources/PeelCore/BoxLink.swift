@@ -227,9 +227,10 @@ public struct BoxClient: Sendable {
         self.box = box
     }
 
-    /// The box's host, which a challenge must name.
+    /// The box's host, which a challenge must name; also how linking's own
+    /// words name it, where the person decides which address to trust.
     var host: String { Seller.host(of: box) ?? "the Stadeum server" }
-    /// The box as its words to the person name it (`BoxLink.title(of:)`).
+    /// The box as its words to the person name it once linked (`BoxLink.title(of:)`).
     var title: String { BoxLink.title(of: box) }
 
     /// What a link or a renewal answers: the member and their token.
@@ -252,9 +253,9 @@ public struct BoxClient: Sendable {
             body["name"] = name
         }
         if let address = signed.address { body["address"] = address }
-        let (status, data) = try await request("POST", "people/link", body)
+        let (status, data) = try await request("POST", "people/link", body, naming: host)
         guard status == 200 else { throw failure(status, data, linking: true) }
-        let answer = try Self.answer(data, now: now, host: title)
+        let answer = try Self.answer(data, now: now, host: host)
         return BoxLink(url: box, actor: answer.actor, name: answer.name, token: answer.token, exp: answer.exp,
                        linkedAt: now, renewedAt: now)
     }
@@ -273,7 +274,7 @@ public struct BoxClient: Sendable {
     public func renew(
         _ link: BoxLink, now: Date = Date(), sign: @Sendable (BoxChallenge) async throws -> VisitorSignature
     ) async throws -> Renewal {
-        let (status, data) = try await request("GET", "people/challenge", nil)
+        let (status, data) = try await request("GET", "people/challenge", nil, naming: title)
         guard status == 200 else { throw failure(status, data, linking: false) }
         guard case .object(let fields)? = JSON.decode(JSONValue.self, from: String(decoding: data, as: UTF8.self)),
               let text = fields["challenge"]?.string, let challenge = BoxChallenge(text) else {
@@ -284,7 +285,7 @@ public struct BoxClient: Sendable {
         }
         let signed = try await sign(challenge)
         let (renewedStatus, renewed) = try await request("POST", "people/token",
-                                                         ["challenge": challenge.text, "key": signed.key, "sig": signed.sig])
+                                                         ["challenge": challenge.text, "key": signed.key, "sig": signed.sig], naming: title)
         if renewedStatus == 403 { return .unlinked }
         guard renewedStatus == 200 else { throw failure(renewedStatus, renewed, linking: false) }
         let answer = try Self.answer(renewed, now: now, host: title)
@@ -308,9 +309,9 @@ public struct BoxClient: Sendable {
         return true
     }
 
-    private func request(_ method: String, _ path: String, _ body: [String: String]?) async throws -> (Int, Data) {
+    private func request(_ method: String, _ path: String, _ body: [String: String]?, naming what: String) async throws -> (Int, Data) {
         try await Web.requestStrut(method, box.appending(path: path), json: try body.map { try JSONEncoder.hive.encode($0) },
-                                   limit: Self.limit, what: title, timeout: 30)
+                                   limit: Self.limit, what: what, timeout: 30)
     }
 
     /// `{ actor, name?, token, exp }`, checked: a person token, an actor to
@@ -334,25 +335,30 @@ public struct BoxClient: Sendable {
     }
 
     /// strut's 429.
-    var busy: PeelError { PeelError(String(localized: "\(title) is busy. Try again in a minute.", table: "Shared")) }
+    var busy: PeelError { busy(title) }
+
+    func busy(_ who: String) -> PeelError {
+        PeelError(String(localized: "\(who) is busy. Try again in a minute.", table: "Shared"))
+    }
 
     /// strut's refusal, in words the person can act on (strut's words
     /// beside them only where they say more).
     func failure(_ status: Int, _ data: Data, linking: Bool) -> PeelError {
         let said = Self.said(data)
+        let who = linking ? host : title
         switch status {
         case 401 where linking:
-            return PeelError(String(localized: "\(title) didn't take the link: it ran out or was already used. Choose Link Peel in Connect there again.", table: "Shared"))
+            return PeelError(String(localized: "\(who) didn't take the link: it ran out or was already used. Choose Link Peel in Connect there again.", table: "Shared"))
         case 401:
-            return PeelError(String(localized: "\(title) didn't take Peel's signature.", table: "Shared"))
+            return PeelError(String(localized: "\(who) didn't take Peel's signature.", table: "Shared"))
         case 409:
-            return PeelError(String(localized: "Your Sphinx account is already linked to someone else on \(title). They remove it in Connect there first.", table: "Shared"))
+            return PeelError(String(localized: "Your Sphinx account is already linked to someone else on \(who). They remove it in Connect there first.", table: "Shared"))
         case 413:
-            return PeelError(String(localized: "\(title) refused the link as too large.", table: "Shared"))
+            return PeelError(String(localized: "\(who) refused the link as too large.", table: "Shared"))
         case 429:
-            return busy
+            return busy(who)
         default:
-            return PeelError("\(title) could not \(linking ? "link Peel" : "renew Peel's link"): \(said ?? "HTTP \(status)").")
+            return PeelError("\(who) could not \(linking ? "link Peel" : "renew Peel's link"): \(said ?? "HTTP \(status)").")
         }
     }
 }

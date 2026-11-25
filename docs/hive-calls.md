@@ -421,6 +421,40 @@ that Jamie in that call only (`BoxesTests.jamiesScreenOpensOnTheBoxInTheCallAsIt
 an impostor and a keyless repost included, and the ticket's box),
 `record` (`aBoxSaysWhetherItRecords`, `aBoxThatCantRecordIsNeverAskedTo`).
 
+## Jamie leaves (in-call picker)
+
+The Jamie card in the Mac call chat shows what the room has, not the
+start preference (`calls.jamiePicks`, the tribe's org): Jamie's source
+(the chat's pick, else the first option) while Jamie is in the call
+(`CallSession.jamieInCall`), No Jamie while it is not. Choosing a Jamie with
+none in the call only sets the preference for the next call; Peel does not
+bring Jamie into a running call. The iPhone's picker is the start-call
+setting only, and is unchanged.
+
+Choosing No Jamie while Jamie is in the call (`CallSession.removeJamie`)
+asks Hive, then asks Jamie itself to leave (`CallChatWire.leave()`,
+`{"type":"leave"}` to its identity on `lk-chat-topic`, best effort). On
+success the picker says No Jamie, the chat notes that Jamie left and
+transcription stopped; on failure the picker keeps showing Jamie and a notice
+says Jamie could not be removed. The chat's start preference is left alone.
+A box's Jamie is not Hive's: no Hive request is made, and the leave message
+is all Peel has (a box that ignores it stays in the room; a box route to
+leave is not built).
+
+**Hive must implement this route (Peel side is built):**
+**`POST /api/strut-devices/calls/jamie/remove`**
+
+- Header: `Authorization: Bearer hivedev_…`, as `/calls`.
+- Body: `{ "workspace"?: "<HivePeer.id>", "room": "<room name>" }`.
+- `200`: Jamie's agent participant is removed from the LiveKit room
+  (`RemoveParticipant`), and transcription and transcript saving stop for
+  that call's record. Other statuses are shown as Hive's error; 401 reads as
+  a revoked device.
+
+Until Hive has it, the picker's No Jamie fails for an org's Jamie and says so.
+Tests: `HiveTests.jamieIsRemovedFromACallWithTheDeviceCredential`,
+`aRemovalHiveRefusesIsSaid`, `CallChatTests.theLeaveRequestSaysLeave`.
+
 ## Found along the way
 
 The Mac app makes an audio call with `link + "&startAudioOnly=true"`

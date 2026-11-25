@@ -151,6 +151,11 @@ final class CallSession {
     /// `tts` attribute a sphinx-voice agent sets. Nil attribute: a person who
     /// happens to be called Jamie.
     private(set) var jamieInCall = false
+    /// You asked Jamie to leave and the request went through: the picker says
+    /// No Jamie before Jamie has gone from the room. Cleared once it has.
+    private(set) var jamieRemoved = false
+    /// Jamie is in the call and was not just taken out of it: what the picker shows.
+    var jamieShown: Bool { jamieInCall && !jamieRemoved }
     /// Jamie says its replies aloud, as its `tts` attribute has it; false
     /// while Jamie is not in the call.
     private(set) var jamieSpeaks = false
@@ -826,6 +831,7 @@ final class CallSession {
             jamieInCall = jamie != nil
             // Jamie left: nothing is coming.
             if jamie == nil { log.stopThinking() }
+            if jamie == nil { jamieRemoved = false }
         }
         let speaks = jamie.map { CallChatWire.jamieSpeaks($0.attributes) } ?? false
         if speaks != jamieSpeaks { jamieSpeaks = speaks }
@@ -1035,6 +1041,36 @@ extension CallSession {
             } catch {
                 deviceNotice = String(localized: "Could not reach Jamie")
             }
+        }
+    }
+
+    /// Takes Jamie out of the call, so it stops transcribing: `remove` asks
+    /// the server side for this room and answers whether it did (Hive, for an
+    /// org's Jamie); Jamie is then asked to leave on the chat topic too. For
+    /// a box's Jamie that message is all there is, so it must get through.
+    /// The picker says No Jamie at once and a notice says so; on failure it
+    /// keeps showing Jamie and says Jamie could not be removed.
+    func removeJamie(via remove: (_ room: String) async throws -> Bool) async {
+        guard !leaving, jamieInCall, let jamie = jamieIdentity else { return }
+        do {
+            let served = try await remove(link.room)
+            guard !leaving else { return }
+            do {
+                try await room.localParticipant.publish(
+                    data: CallChatWire.leave(),
+                    options: DataPublishOptions(destinationIdentities: [jamie], topic: CallChatWire.topic, reliable: true)
+                )
+            } catch {
+                if !served { throw error }
+            }
+            guard !leaving else { return }
+            jamieRemoved = true
+            log.stopThinking()
+            showChatNotice(String(localized: "Jamie left the call and transcription stopped"))
+        } catch {
+            guard !leaving else { return }
+            deviceNotice = String(localized: "Could not remove Jamie")
+            showChatNotice(String(localized: "Jamie could not be removed from the call"))
         }
     }
 

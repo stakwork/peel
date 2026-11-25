@@ -62,6 +62,56 @@ struct BoxCallsTests {
         await #expect(throws: BoxClient.TokenRefused.self) { _ = try await BoxClient(box: box.url).groupCalls(gone) }
     }
 
+    /// Whether the box's Jamie can record on the canvas (stadeum
+    /// plans/call-canvas.md §8): as it says; a voice service from before it
+    /// says nothing and records as it always did.
+    @Test(arguments: [
+        (#"{"group":true,"livekit":"wss://livekit.sphinx.chat","record":true}"#, true),
+        (#"{"group":true,"livekit":"wss://livekit.sphinx.chat","record":false}"#, false),
+        (#"{"group":true,"livekit":"wss://livekit.sphinx.chat"}"#, true),
+    ])
+    func aBoxSaysWhetherItRecords(answer: String, records: Bool) async throws {
+        let (stub, box) = try await Self.box { _ in (200, answer) }
+        defer { stub.stop() }
+        #expect(try await BoxClient(box: box.url).groupCalls(box).records == records)
+    }
+
+    /// Jamie's screen (stadeum plans/call-canvas.md §6.5): its `screen`
+    /// attribute opens live only as an app of a box Peel is linked to, on
+    /// that box's own address and in its UI's folder, naming one of the
+    /// box's own apps, with the view it names; anything else, or nothing,
+    /// keeps the video.
+    @Test(arguments: [
+        ("https://strut.stadeum.stakwork.ai/?app=stadeum%2Fcanvas%2Fcanvas&input=present%3Dcall-1",
+         "https://strut.stadeum.stakwork.ai", "stadeum/canvas/canvas", "present=call-1"),
+        (" https://STRUT.stadeum.stakwork.ai:443/?app=canvas ", "https://strut.stadeum.stakwork.ai", "canvas", nil),
+        ("https://lab.example.com/lab/?app=notes&solo=1", "https://lab.example.com/lab", "notes", nil),
+        ("https://lab.example.com/?app=notes", nil, nil, nil),
+        ("https://strut.other.example/?app=canvas", nil, nil, nil),
+        ("http://strut.stadeum.stakwork.ai/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai:8443/?app=canvas", nil, nil, nil),
+        ("https://ada@strut.stadeum.stakwork.ai/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/files/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?app=%40other%2Fcanvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?app=canvas&public=1&from=https%3A%2F%2Fseller.example", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?app=canvas&app=notes", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?artifact=%2Fnotes.md", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/public/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai//?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai./?app=canvas", nil, nil, nil),
+        ("https://lab.example.com/%6Cab/?app=notes", nil, nil, nil),
+        ("javascript:alert(1)", nil, nil, nil),
+        ("", nil, nil, nil),
+    ] as [(String, String?, String?, String?)])
+    func jamiesScreenOpensOnlyALinkedBoxsOwnApp(screen: String, box: String?, app: String?, input: String?) throws {
+        let boxes = try ["https://strut.stadeum.stakwork.ai", "https://lab.example.com/lab"].map { try #require(Seller.base($0)) }
+        let attributes = ["tts": "off", "screen": screen]
+        let opened = CallChatWire.jamieScreen(attributes).flatMap { BoxApp($0, on: boxes) }
+        #expect(opened?.box.absoluteString == box)
+        #expect(opened.map { $0.link.app } == app.map { .app($0) })
+        #expect(opened?.link.input == input)
+    }
+
     /// Asking Jamie in posts the call's room and key, as the person, and
     /// `record` only when asked; done once the box says its Jamie is in,
     /// encrypted. A voice service from before group calls takes the body
@@ -75,7 +125,8 @@ struct BoxCallsTests {
         }
         defer { stub.stop() }
         let link = try CallLink.new(server: Self.callServer, audioOnly: true, encrypted: true)
-        try await BoxClient(box: box.url).startGroupCall(box, link: link, record: true)
+        // Jamie's identity in the call: whose screen may be the box's app.
+        #expect(try await BoxClient(box: box.url).startGroupCall(box, link: link, record: true) == "jamie_ab12")
         let asked = try #require(stub.requests.first)
         #expect(asked.contains("Authorization: Bearer \(box.token)"))
         let body = try #require(Self.body(asked))
@@ -124,6 +175,8 @@ struct BoxCallsTests {
             let asked = HTTPStub.jsonBody(of: request)?["room"] ?? ""
             if asked == "sphinx.call.elsewhere" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(room)","token":"t","identity":"\#(Self.identity)"}"#) }
             if asked == "sphinx.call.someone" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"sphinx.call.someone","token":"t","identity":"alice-1"}"#) }
+            if asked == "sphinx.call.agent.1" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(asked)","token":"t","identity":"\#(Self.identity)","agent":"jamie_ab12"}"#) }
+            if asked == "sphinx.call.agent.2" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(asked)","token":"t","identity":"\#(Self.identity)","agent":"\#(Self.identity)"}"#) }
             guard asked == room else { return (404, #"{"error":"Jamie from this box is not in that call"}"#) }
             return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(room)","token":"eyJ.t.s","identity":"\#(Self.identity)"}"#)
         }
@@ -131,6 +184,10 @@ struct BoxCallsTests {
         let client = BoxClient(box: box.url)
         let ticket = try #require(try await client.callTicket(box, room: room, name: "Ada"))
         #expect(ticket.identity == Self.identity && ticket.token == "eyJ.t.s" && ticket.url == "wss://livekit.sphinx.chat")
+        // Jamie's identity there only when the box says it, and never the person's own.
+        #expect(ticket.agent == nil)
+        #expect(try await client.callTicket(box, room: "sphinx.call.agent.1", name: "Ada")?.agent == "jamie_ab12")
+        #expect(try await client.callTicket(box, room: "sphinx.call.agent.2", name: "Ada")?.agent == nil)
         #expect(HTTPStub.jsonBody(of: try #require(stub.requests.first)) == ["room": room, "name": "Ada"])
         // The box counts UTF-16 units: a long name is cut to 128 of them, never refused.
         _ = try await client.callTicket(box, room: room, name: String(repeating: "😀", count: 70))

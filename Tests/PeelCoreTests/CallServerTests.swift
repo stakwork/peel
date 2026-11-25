@@ -476,8 +476,8 @@ struct CallTicketFromBoxTests {
         let asked = OSAllocatedUnfairLock(initialState: [String]())
         let answer = Self.boxTicket(port: stub.port)
 
-        let ticket = try await engine.callTicket(for: try encrypted(stub.port), in: nil, box: { room, name in
-            asked.withLock { $0.append("\(room)|\(name)") }
+        let ticket = try await engine.callTicket(for: try encrypted(stub.port), in: nil, box: { link, name in
+            asked.withLock { $0.append("\(link.room)|\(name)") }
             return answer
         })
 

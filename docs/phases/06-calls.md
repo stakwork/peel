@@ -60,6 +60,11 @@ decided (Tom, 2026-10-08; see "Decided" below).
   in its link; the person joins with the box's own ticket, and may have
   the call recorded on the canvas. See `../hive-calls.md`, "From a box",
   and the journal below.
+- Built (Jamie's screen, live, 2026-11-24): on a box's call, Jamie's
+  screen tile shows the box's app itself, live, while it is large, for a
+  person linked to the box; the iPhone's people row sits above the focused
+  tile; "Record on the canvas" only where the box can record. See
+  `../hive-calls.md`, "Jamie's screen, live", and the journal below.
 - Open: the production check of PR 2 (Tom, through the app once PR 4 ships;
   see the PR 2 journal), PR 8 (the record); one mic-allowed run of the test room (PR 3
   journal); and moving LiveKit to latest once the core's UniFFI is upgraded.
@@ -1953,3 +1958,56 @@ joins on the box's ticket, and "Record on the canvas" is sent and its
   are asked at once and only one is in the room).
 - Next: captions on group calls; the menus checked in the apps against a
   box with the voice PRs deployed.
+
+## Jamie's screen, live (2026-11-24)
+
+Plan: stadeum `plans/call-canvas.md` work item 12 (§6.5, §8); the design
+as built is `../hive-calls.md`, "Jamie's screen, live". Done when: Jamie's
+screen tile, large, shows the app its `screen` attribute names when that
+is a linked box's, with clicks and taps to the page and a button back; the
+iPhone's row of people above the focused tile; "Record on the canvas" only
+with the box's `record`; tests in PeelCore for the link and the match.
+
+- PeelCore: `CallChatWire.jamieScreen`, `BoxApp`, `BoxCalls.record` and
+  `records`.
+- PeelUI: `Boxes.screen` (only from the box's own Jamie, by the identity
+  the box gave, in a call by room and key that box is known to be in,
+  `inCall`: asked in, or the ticket's), `records(on:)` and `startCall`
+  sending `record` only where the box can; `callTicket(for:)` and
+  `Engine.BoxTicketSource` take the call; `OrgPageRequest.showing`;
+  `AppModel.offersRecording(in:)` (`CallJamie.isBox`, its only use gone,
+  removed).
+- Apps: `Tile.app` on both sessions; the Mac's `CallTileView` and
+  `BoxPageView`, the web pane's box new-window rule moved to
+  `StrutPage.newWindow(for:from:box:open:)` for both; the iPhone's
+  `IOSCallTile`, `IOSCallStage` (the row above), `OrgPageInPlace` and
+  `OrgPageBody` (the sheet's page, shared).
+- Tests: `BoxCallsTests.aBoxSaysWhetherItRecords`,
+  `jamiesScreenOpensOnlyALinkedBoxsOwnApp`;
+  `BoxesTests.aBoxThatCantRecordIsNeverAskedTo`,
+  `jamiesScreenOpensOnTheBoxInTheCallAsItsMember`, and the ticket test's
+  box in the call.
+- Decided: only the box's own Jamie opens it. Anyone on a call can take
+  Jamie's name and attributes; without this they could open any of the
+  person's boxes' apps, at a view of their choosing, as the person,
+  without a click (the independent review's first finding; the first
+  version checked the box but not the participant, and kept the box per
+  room, so a keyless repost of the room counted too). The box says who
+  its Jamie is in `POST /voice/calls`'s `agent`; voice's
+  `POST /voice/calls/ticket` does not yet, so a joiner sees the video
+  until it adds `agent` there (asked of the voice work, item 11).
+- Decided: the app shows only in the large tile. Small, it would take a
+  click that should focus it, and a page in every grid cell would load for
+  nothing; going back and focusing again opens it again, following.
+- Review (independent agent), also fixed: the iPhone's page in a call
+  could take the camera and microphone with no prompt (the sheet grants
+  them to strut's page) and play sound unasked, now neither; Escape on
+  the Mac went to the page whenever it showed, now only while it has the
+  keyboard; a load that failed after it started left a blank tile, now
+  the video. Not applied: a change to `screen` reloads the page (the real
+  Jamie sets it once per share, and only it can now); two boxes' Jamies
+  in one call open only the one this device knows of.
+- Not checked live: voice sets no `screen` yet, and the call test room
+  opens a visible window and asks for the microphone (Tom's to run). To
+  try it there: a participant named Jamie with attributes `tts=off` and
+  `screen=<a linked box's app link>`, publishing a screen share.

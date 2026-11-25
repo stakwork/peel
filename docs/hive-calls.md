@@ -283,7 +283,12 @@ box's strut as the person, with the token it keeps for the box
   as `box:<address>`, as a tribe's Jamie row names it; `CallJamie`).
 - **Record on the canvas.** Beside a box pick, off unless chosen, per
   chat and for this run of Peel: everything said then reaches the box's
-  model (call-canvas.md §7). Sent as `record: true`.
+  model (call-canvas.md §7). Sent as `record: true`. Offered only while
+  the box's `GET /voice/calls` does not answer `record: false`, its voice
+  service having no package that says what to record onto (call-canvas.md
+  §8); a voice service from before says nothing and is offered it as
+  before (`BoxCalls.records`, `AppModel.offersRecording`). Chosen earlier
+  on a box that now can't, the call brings Jamie without (`Boxes.startCall`).
 - **Starting** (`CallStore.start` with `.box`). The engine makes the room
   and a fresh key (`CallLink.newKey`: 32 random bytes as base64) and checks
   it could post the call (`Engine.newCall`); the box is asked in,
@@ -354,6 +359,67 @@ into an encrypted call, by someone holding the LiveKit admin key every box
 shares, cannot be told apart and is shown; and Jamie's artifacts in the
 call chat, read only from a sender known to be Jamie, are not shown on a
 box's call.
+
+### Jamie's screen, live (2026-11-24)
+
+stadeum `plans/call-canvas.md` §6.5 and §8, work item 12. A box's Jamie
+shares the canvas as a screen-share video, which nobody can scroll. For a
+person linked to the box, the tile shows the app itself:
+
+- **Where.** Jamie's `screen` attribute, set by voice while its screen
+  track runs: strut's deep link on the box,
+  `https://strut.<host>/?app=<name>&input=<query>`
+  (`CallChatWire.jamieScreen`; an empty one, or anything but http or https,
+  is none). Read only from Jamie's screen tile (`Tile.app`).
+- **When it opens.** Only from the screen of the box's own Jamie, in a
+  call this device knows that box's Jamie is in (`Boxes.inCall`, by room
+  and key: the same room with another key, or none, is another call). The
+  box is the one Peel asked in or the one that gave the person's ticket.
+  Its Jamie's LiveKit identity is what the box answered: `agent` to
+  `POST /voice/calls`, and `agent` beside a ticket, which voice does not
+  send yet (until it does, a person who joined sees the video). The
+  link's address is that box's own (scheme, host and port), in its UI's
+  folder, and names one of the box's own apps, never `@<peer>/…` or
+  another server's public app (`BoxApp`, through `StrutAppLink`). Peel builds the
+  page itself from the app and its view (`OrgPageRequest.showing`, with
+  `&solo=1`), never loading the attribute as given, and opens it as the
+  box's member, the token checked first and renewed once if refused
+  (`Boxes.screen`), as a box's page opens anywhere: a store that keeps
+  nothing, the token as the first request's bearer and in the page's
+  storage, never in an address; nowhere but that strut's UI; a link out or
+  to another of its apps only on the person's own click or tap. Anything
+  else, or a page that does not load, keeps the video.
+- **The tile.** The app shows only while Jamie's screen is the large tile
+  (focused, as a screen is when it starts, `refocus`): clicks and taps go
+  to the page, and a button at its top right goes back (on the Mac,
+  Escape too, but while the page has the keyboard Escape is the page's). Small, in the grid, the strip or the row, it is the video
+  and a click focuses it. Going back and focusing again opens the app
+  again, at the view the attribute names, so it follows again.
+  The Mac's layout is as before (`CallStage`); on the iPhone, everyone
+  else sits in a row above the focused tile (`IOSCallStage`).
+  - Mac: `BoxPageView` (`StrutPage.swift`), the web pane's rules for a
+    box's page, which share `StrutPage.newWindow(for:from:box:open:)`.
+  - iPhone: `OrgPageInPlace` (`OrgPageSheet.swift`), the sheet's page
+    and prompts (the app wallet's sheets, location) with no sheet.
+- **Who can set it.** Attributes pass outside the call's encryption, and
+  anyone on the call can join under Jamie's name with a `tts` attribute.
+  Hence the box's own Jamie alone, by the identity the box gave: the call
+  server names each joiner `<name>__<4 random>`, so no one else takes it.
+  A person who joined through the call server (no box answered in time)
+  sees the video.
+- **In the tile, a page is no more than a page.** No camera or microphone
+  (the call holds them) and no sound before a click or tap, on both. On
+  the Mac no download; on the iPhone the sheet's prompts (the app wallet,
+  location, a download to share) as anywhere else.
+
+Not checked live: voice does not set `screen` yet (work item 11), and the
+call test room needs Tom at the Mac. Tested: the link read and matched
+(`BoxCallsTests.jamiesScreenOpensOnlyALinkedBoxsOwnApp`), Jamie's identity
+from both answers (`askingJamieInPostsTheRoomAndTheKey`,
+`thePersonsTicketIsTheBoxsOrNone`), the page opened as the member from
+that Jamie in that call only (`BoxesTests.jamiesScreenOpensOnTheBoxInTheCallAsItsMember`,
+an impostor and a keyless repost included, and the ticket's box),
+`record` (`aBoxSaysWhetherItRecords`, `aBoxThatCantRecordIsNeverAskedTo`).
 
 ## Found along the way
 

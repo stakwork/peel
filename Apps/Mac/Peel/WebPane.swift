@@ -552,14 +552,7 @@ extension WebPane: WKNavigationDelegate, WKUIDelegate {
             return nil
         }
         if let box {
-            // A link to another of the box's apps opens it here, as its member; one out goes out.
-            guard let url = action.request.url, (webView as? InputWebView)?.personActed == true else { return nil }
-            if !box.serves(url) {
-                follow(url)
-            } else if action.sourceFrame.isMainFrame, let link = box.appLink(url, from: webView.url),
-                      let there = box.request(for: link) {
-                webView.load(there)
-            }
+            StrutPage.newWindow(for: action, from: webView, box: box, open: linkAction)
             return nil
         }
         guard let url = action.request.url, WebPage.address(url) != nil else { return nil }

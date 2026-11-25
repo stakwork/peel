@@ -18,11 +18,20 @@ public struct BoxCalls: Sendable, Equatable {
     /// The LiveKit server the box joins, as LiveKit reads it (`wss://`, or
     /// `ws://`); nil when the box named none Peel can read.
     public var livekit: URL?
+    /// Whether its Jamie can record a call on the canvas (stadeum
+    /// plans/call-canvas.md §8): false on a box with no package that says
+    /// what to record onto; nil from a voice service from before it, which
+    /// records as it always did.
+    public var record: Bool?
 
-    public init(group: Bool, livekit: URL?) {
+    public init(group: Bool, livekit: URL?, record: Bool? = nil) {
         self.group = group
         self.livekit = livekit
+        self.record = record
     }
+
+    /// Whether a call may ask it to record on the canvas: unless it says it can't.
+    public var records: Bool { record != false }
 
     /// Nothing to offer: a box from before group calls, or no voice service.
     public static let noGroupCalls = BoxCalls(group: false, livekit: nil)
@@ -37,6 +46,30 @@ public struct BoxCalls: Sendable, Equatable {
     }
 }
 
+/// An app on a box Peel is linked to, as a link names it: Jamie's screen
+/// in a call (`CallChatWire.jamieScreen`, stadeum plans/call-canvas.md
+/// §6.5), which the call shows live, as the person, in place of its video.
+public struct BoxApp: Sendable, Equatable {
+    /// The box, as its link keeps it (`BoxLink.url`).
+    public let box: URL
+    /// The app, one of the box's own, and the view it opens at.
+    public let link: StrutAppLink
+
+    /// The app `url` names on one of `boxes` (each a `BoxLink.url`): strut's
+    /// UI at that box's own address and in its folder (`/`, or a swarm's
+    /// `/lab/`), naming one of the box's own apps (`StrutAppLink`, as a page
+    /// on the box reads one). Nil for any other address (another host or
+    /// port, another scheme, a path below the UI, an app of another server),
+    /// which keeps its video.
+    public init?(_ url: URL, on boxes: [URL]) {
+        guard let base = Seller.base(url.absoluteString), let box = boxes.first(where: { $0 == base }) else { return nil }
+        let path = box.path(percentEncoded: true)
+        guard let link = StrutAppLink(url, folder: path.hasSuffix("/") ? path : path + "/", from: .org) else { return nil }
+        self.box = box
+        self.link = link
+    }
+}
+
 /// A ticket a box gave this device's person into a call its Jamie is in
 /// (`POST /voice/calls/ticket`): the LiveKit server, a token under an
 /// identity the box records against the person (`box_<32 hex>`), so a turn
@@ -47,11 +80,15 @@ public struct BoxCallTicket: Sendable, CustomStringConvertible, CustomReflectabl
     public let url: String
     public let token: String
     public let identity: String
+    /// The box's Jamie in that call, its LiveKit identity, when the box says
+    /// (`agent`): whose screen may be the box's app (`Boxes.screen`).
+    public let agent: String?
 
-    public init(url: String, token: String, identity: String) {
+    public init(url: String, token: String, identity: String, agent: String? = nil) {
         self.url = url
         self.token = token
         self.identity = identity
+        self.agent = agent
     }
 
     public var description: String { "BoxCallTicket(\(url), identity \(identity), token not shown)" }
@@ -68,11 +105,11 @@ extension BoxClient {
         let (status, data) = try await asPerson("GET", "voice/calls", person, nil, timeout: 15)
         if [403, 404, 405, 503].contains(status) { return .noGroupCalls }
         guard status == 200 else { throw PeelError("\(title) could not say whether Jamie can join calls: \(Self.said(data) ?? "HTTP \(status)").") }
-        struct Answer: Decodable { let group: Bool?; let livekit: String? }
+        struct Answer: Decodable { let group: Bool?; let livekit: String?; let record: Bool? }
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data) else {
             throw PeelError(String(localized: "\(title)'s answer about calls could not be read.", table: "Shared"))
         }
-        return BoxCalls(group: answer.group == true, livekit: answer.livekit.flatMap(TalkTicket.mediaURL))
+        return BoxCalls(group: answer.group == true, livekit: answer.livekit.flatMap(TalkTicket.mediaURL), record: answer.record)
     }
 
     /// Asks the box's Jamie into `link`'s call as `person`, its starter:
@@ -81,8 +118,9 @@ extension BoxClient {
     /// (call-canvas.md §4). Answers once Jamie is in the room, keyed with
     /// the call's key; a refusal throws in words the person can act on. A
     /// link with no key is never asked about: a box's Jamie joins only an
-    /// encrypted call.
-    public func startGroupCall(_ person: BoxLink, link: CallLink, record: Bool) async throws {
+    /// encrypted call. Answers Jamie's LiveKit identity in it (`agent`).
+    @discardableResult
+    public func startGroupCall(_ person: BoxLink, link: CallLink, record: Bool) async throws -> String {
         guard let key = link.encryptionKey else {
             throw PeelError(String(localized: "Jamie from a Stadeum server joins only an encrypted call.", table: "Shared"))
         }
@@ -101,10 +139,12 @@ extension BoxClient {
         guard answer.encrypted == true, answer.room == nil || answer.room == link.room else {
             throw PeelError(String(localized: "Jamie on \(title) can't join group calls yet: its voice service needs an update.", table: "Shared"))
         }
+        return agent
     }
 
     /// The person's own ticket into `room`, where the box's Jamie is, under
-    /// `name`: `POST /voice/calls/ticket { room, name }`. Nil when the box's
+    /// `name`: `POST /voice/calls/ticket { room, name }`, with Jamie's own
+    /// identity there when the box says it (`agent`). Nil when the box's
     /// Jamie is not in that room (404).
     public func callTicket(_ person: BoxLink, room: String, name: String) async throws -> BoxCallTicket? {
         // The box counts a name's UTF-16 units, at most 128.
@@ -114,13 +154,15 @@ extension BoxClient {
         let (status, data) = try await asPerson("POST", "voice/calls/ticket", person, body, timeout: 15)
         if status == 404 { return nil }
         guard status == 200 else { throw PeelError("\(title) gave no call ticket: \(Self.said(data) ?? "HTTP \(status)").") }
-        struct Answer: Decodable { let url: String; let room: String; let token: String; let identity: String }
+        struct Answer: Decodable { let url: String; let room: String; let token: String; let identity: String; let agent: String? }
         // `box_` and 32 hex, as the box mints one: never another participant's identity.
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data), answer.room == room,
               answer.identity.range(of: #"^box_[0-9a-f]{32}$"#, options: .regularExpression) != nil else {
             throw PeelError(String(localized: "\(title)'s call ticket could not be read.", table: "Shared"))
         }
-        return BoxCallTicket(url: answer.url, token: answer.token, identity: answer.identity)
+        // An agent Peel can't read names no one: the screen keeps its video.
+        let agent = answer.agent.flatMap { CallServer.isIdentity($0) && $0 != answer.identity ? $0 : nil }
+        return BoxCallTicket(url: answer.url, token: answer.token, identity: answer.identity, agent: agent)
     }
 
     /// The box's refusal to bring Jamie into a call, in words.

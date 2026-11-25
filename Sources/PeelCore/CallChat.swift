@@ -151,6 +151,19 @@ public enum CallChatWire {
         attributes["recording"] == "true"
     }
 
+    /// The app Jamie shows on its screen share, as its `screen` attribute
+    /// names it (stadeum plans/call-canvas.md §6.5): strut's deep link on
+    /// the box, `https://strut.<host>/?app=<name>&input=<query>`. Nil while
+    /// it shows none (empty), and for anything but an http or https address.
+    /// Attributes pass outside the call's encryption: only a link, never
+    /// trusted further than `BoxApp` takes it.
+    public static func jamieScreen(_ attributes: [String: String]) -> URL? {
+        guard let text = attributes["screen"]?.trimmingCharacters(in: .whitespaces), !text.isEmpty, text.utf8.count <= 4_096,
+              let url = URL(string: text), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http"
+        else { return nil }
+        return url
+    }
+
     /// Turns Jamie's voice on or off for the whole call:
     /// `{"type":"tts-toggle","enabled":…}`, which sphinx-voice answers by
     /// setting its `tts` attribute. `decode` never reads it as a message.

@@ -181,7 +181,7 @@ struct ConversationScreen: View {
                 Text("No Jamie").tag("")
             }
             .pickerStyle(.inline)
-            if model.callJamie(in: chat)?.isBox == true {
+            if model.offersRecording(in: chat) {
                 Toggle("Record on the canvas", isOn: Binding(
                     get: { model.calls.recordsOnCanvas.contains(chat) },
                     set: { model.calls.setRecordsOnCanvas($0, in: chat) }

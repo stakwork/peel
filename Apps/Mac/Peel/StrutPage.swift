@@ -1,6 +1,7 @@
 import AppKit
 import PeelAgent
 import PeelCore
+import PeelUI
 import SwiftUI
 import WebKit
 
@@ -99,6 +100,22 @@ struct StrutPage: Equatable, CustomStringConvertible, CustomDebugStringConvertib
         }
     }
 
+    /// `target=_blank` and `window.open` on a linked box's page
+    /// (`OrgPageRequest`), never a window, and only on the person's own
+    /// click: a link to another of the box's apps, from strut's own page,
+    /// opens in `webView` as its member; one anywhere else goes out to
+    /// `open`; anything else of the box's strut nowhere.
+    @MainActor static func newWindow(
+        for action: WKNavigationAction, from webView: WKWebView, box: OrgPageRequest, open: OpenURLAction
+    ) {
+        guard let url = action.request.url, personActed(in: webView) else { return }
+        if !box.serves(url) {
+            WebPane.follow(url, with: open)
+        } else if action.sourceFrame.isMainFrame, let link = box.appLink(url, from: webView.url), let there = box.request(for: link) {
+            webView.load(there)
+        }
+    }
+
     /// The app this page shows, as its address names it; nil for a file.
     var shownApp: AgentArtifact.Handle? { server.appLink(url, from: nil)?.app }
 
@@ -143,5 +160,131 @@ class InputWebView: WKWebView {
     override func keyDown(with event: NSEvent) {
         lastInput = .now
         super.keyDown(with: event)
+    }
+}
+
+/// A linked box's page in place, as its member (`OrgPageRequest`): Jamie's
+/// screen in a call (`Boxes.screen`). A box's page in the web pane keeps
+/// to the same rules (`WebPane.open(box:)`): a store that keeps nothing,
+/// the token handed over as the first request's bearer and, before the
+/// page's script runs, in its storage; nowhere but that strut's UI, a link
+/// out or to another of its apps only on the person's own click; no
+/// download, camera or microphone. A page that does not load is told to
+/// `failed`, and the call shows the video again; whether it has the
+/// keyboard, to `keys` (Escape is the page's then).
+struct BoxPageView: NSViewRepresentable {
+    let page: OrgPageRequest
+    let failed: () -> Void
+    let keys: (Bool) -> Void
+    @Environment(\.openURL) private var openURL
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(page: page, open: openURL, failed: failed)
+    }
+
+    func makeNSView(context: Context) -> KeyedWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: page.handOver, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        WebPane.limit(configuration)
+        let view = KeyedWebView(frame: .zero, configuration: configuration)
+        view.keys = keys
+        view.navigationDelegate = context.coordinator
+        view.uiDelegate = context.coordinator
+        // A force click's preview would load a link outside these rules.
+        view.allowsLinkPreview = false
+        view.load(page.request)
+        return view
+    }
+
+    func updateNSView(_ view: KeyedWebView, context: Context) {}
+
+    static func dismantleNSView(_ view: KeyedWebView, coordinator: Coordinator) {
+        view.keys = nil
+        view.navigationDelegate = nil
+        view.uiDelegate = nil
+        view.stopLoading()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+        private let page: OrgPageRequest
+        private let open: OpenURLAction
+        private let failed: () -> Void
+        private var crashes = CrashReload()
+
+        init(page: OrgPageRequest, open: OpenURLAction, failed: @escaping () -> Void) {
+            self.page = page
+            self.open = open
+            self.failed = failed
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
+            StrutPage.policy(for: action, in: webView, serves: page.serves, open: open, downloads: false)
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+            if response.isForMainFrame, let status = (response.response as? HTTPURLResponse)?.statusCode,
+               OrgPageRules.failure(status: status) != nil {
+                failed()
+                return .cancel
+            }
+            return StrutPage.policy(for: response, downloads: false)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            failed(error)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            failed(error)
+        }
+
+        private func failed(_ error: Error) {
+            let error = error as NSError
+            // A load cancelled here, or refused above.
+            if error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled { return }
+            if error.domain == "WebKitErrorDomain" && error.code == 102 { return }
+            failed()
+        }
+
+        func webView(
+            _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+            for action: WKNavigationAction, windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            StrutPage.newWindow(for: action, from: webView, box: page, open: open)
+            return nil
+        }
+
+        /// Loaded again once, with its token, at the view it was on; a page
+        /// that ends again within a minute leaves the video.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            if crashes.again() { webView.load(page.request(at: webView.url) ?? page.request) } else { failed() }
+        }
+
+        func webView(
+            _ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+            initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType
+        ) async -> WKPermissionDecision {
+            .deny
+        }
+    }
+}
+
+/// A box's page in place (`BoxPageView`) that says when it has the keyboard.
+final class KeyedWebView: InputWebView {
+    var keys: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { keys?(true) }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { keys?(false) }
+        return resigned
     }
 }

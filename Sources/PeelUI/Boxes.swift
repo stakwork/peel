@@ -49,6 +49,11 @@ public final class Boxes {
     public private(set) var calls: [URL: BoxCalls] = [:]
     @ObservationIgnored private var callsReadAt: [URL: Date] = [:]
     @ObservationIgnored private var callsReading: [URL: Task<Void, Never>] = [:]
+    /// The box whose Jamie is in each call, as this device knows it: the
+    /// box it asked in (`startCall`), or the one that gave the person's
+    /// ticket (`callTicket`); and Jamie's LiveKit identity there, when the
+    /// box said it. Only that participant's screen may be that box's app.
+    @ObservationIgnored private var inCall: [CallKey: (box: URL, jamie: String?)] = [:]
     /// The renewal under way for each box (`renewOnce`).
     @ObservationIgnored private var renewals: [URL: Task<BoxLink?, any Error>] = [:]
     /// Signs a box's challenge with the open account's key
@@ -97,6 +102,7 @@ public final class Boxes {
         links = []
         renewals = [:]
         forgetPlaces(of: nil)
+        inCall = [:]
         linking = nil
         problem = nil
         notice = nil
@@ -371,7 +377,8 @@ public final class Boxes {
     }
 
     /// Asks `box`'s Jamie into `link`'s call (`BoxClient.startGroupCall`),
-    /// as this person, its starter; with `record`, recording on the canvas.
+    /// as this person, its starter; with `record`, recording on the canvas
+    /// unless the box says it can't (`BoxCalls.records`).
     /// The box is asked again first whether it can join a call on
     /// `callServer` (`BoxCalls.joins`), unless it said so in the last
     /// minute. Throws why not, in words; nothing is posted then.
@@ -387,30 +394,62 @@ public final class Boxes {
                 ? String(localized: "Jamie from \(box.title) joins calls on another call server.", table: "Shared")
                 : String(localized: "Jamie from \(box.title) can't join calls yet.", table: "Shared"))
         }
-        try await asMember(box) { try await BoxClient(box: $0.url).startGroupCall($0, link: link, record: record) }
+        let record = record && calls[box.url]?.records != false
+        let generation = generation
+        let jamie = try await asMember(box) { try await BoxClient(box: $0.url).startGroupCall($0, link: link, record: record) }
+        if generation == self.generation { inCall[CallKey(link)] = (box.url, jamie) }
     }
 
-    /// The person's own ticket into an encrypted call in `room`, under
-    /// `name`, from the box whose Jamie is in it (`BoxClient.callTicket`):
+    /// Whether `box`'s Jamie may be asked to record on the canvas, as it
+    /// last said (`BoxCalls.records`); true until it says.
+    public func records(on box: BoxLink) -> Bool {
+        calls[box.url]?.records != false
+    }
+
+    // MARK: - Jamie's screen
+
+    /// The screen `participant` (their LiveKit identity) shares in `link`'s
+    /// call as the live app (stadeum plans/call-canvas.md §6.5): the app its
+    /// `screen` link names (`CallChatWire.jamieScreen`, `BoxApp`), when they
+    /// are the Jamie of the box this device knows is in that call
+    /// (`inCall`), as the box's member, the token checked first
+    /// (`home(of:)`). Nil for any other address, box or participant (anyone
+    /// on a call can take Jamie's name and attributes), a call whose box did
+    /// not say who its Jamie is, a box that does not take the token, or one
+    /// closed meanwhile: the call keeps the video then.
+    public func screen(_ url: URL, in link: CallLink, from participant: String) async -> OrgPageRequest? {
+        guard let app = BoxApp(url, on: links.map(\.url)), let known = inCall[CallKey(link)],
+              known.box == app.box, known.jamie == participant,
+              let box = links.first(where: { $0.url == app.box }) else { return nil }
+        let generation = generation
+        guard let home = try? await home(of: box), generation == self.generation else { return nil }
+        return home.showing(app.link)
+    }
+
+    /// The person's own ticket into `link`'s encrypted call, under `name`,
+    /// from the box whose Jamie is in it (`BoxClient.callTicket`; the box is
+    /// told the room alone, never the key):
     /// each box that may be in a call on `callServer` is asked at once (one
     /// not read yet, or that joins calls there: no other box is told the
     /// room), and the first ticket is taken. Nil when none is in it, or none
     /// answers in `wait`: the join goes through the call server then, without
     /// waiting on a slow box. A box's failure is noted, never said: the call
     /// is joined all the same.
-    public func callTicket(room: String, name: String, callServer: String?, wait: Duration = .seconds(8)) async -> BoxCallTicket? {
+    public func callTicket(for link: CallLink, name: String, callServer: String?, wait: Duration = .seconds(8)) async -> BoxCallTicket? {
+        let room = link.room
         let asked = links.filter { calls[$0.url].map { $0.joins(callServer: callServer) } ?? true }
         guard !asked.isEmpty else { return nil }
         let generation = generation
         let race = TicketRace(boxes: asked.count)
         // A join given up ends the race at once.
-        let ticket = await withTaskCancellationHandler {
+        let answer = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 race.waiting = continuation
                 for box in asked {
                     Task {
                         do {
-                            race.answer(try await asMember(box) { try await BoxClient(box: $0.url).callTicket($0, room: room, name: name) })
+                            let ticket = try await asMember(box) { try await BoxClient(box: $0.url).callTicket($0, room: room, name: name) }
+                            race.answer(ticket.map { ($0, box.url) })
                         } catch {
                             Diagnostics.note(error: error)
                             race.answer(nil)
@@ -425,7 +464,9 @@ public final class Boxes {
         } onCancel: {
             Task { @MainActor in race.end() }
         }
-        return generation == self.generation ? ticket : nil
+        guard generation == self.generation, let (ticket, box) = answer else { return nil }
+        inCall[CallKey(link)] = (box, ticket.agent)
+        return ticket
     }
 
     // MARK: - Renewing
@@ -543,11 +584,25 @@ public enum BoxWords {
     public static var howToLink: String { String(localized: "To link Peel to a Stadeum server, choose Link Peel in Connect in its Jamie app.", table: "Shared") }
 }
 
+/// A call as `Boxes.inCall` keeps it: its room and key, since the same
+/// room with another key, or none, is another call (`CallStore.join`).
+private struct CallKey: Hashable {
+    let room: String
+    let key: String?
+
+    init(_ link: CallLink) {
+        room = link.room
+        key = link.encryptionKey
+    }
+}
+
 /// The boxes asked for a ticket at once (`Boxes.callTicket`): the first
 /// ticket ends it, as does the last box saying it has none, or the wait.
 @MainActor
 private final class TicketRace {
-    var waiting: CheckedContinuation<BoxCallTicket?, Never>?
+    /// The ticket, and the box that gave it.
+    typealias Answer = (ticket: BoxCallTicket, box: URL)
+    var waiting: CheckedContinuation<Answer?, Never>?
     /// The wait, stopped once the race ends.
     var timer: Task<Void, Never>?
     private var unanswered: Int
@@ -556,12 +611,12 @@ private final class TicketRace {
         unanswered = boxes
     }
 
-    func answer(_ ticket: BoxCallTicket?) {
+    func answer(_ ticket: Answer?) {
         unanswered -= 1
         if ticket != nil || unanswered == 0 { end(ticket) }
     }
 
-    func end(_ ticket: BoxCallTicket? = nil) {
+    func end(_ ticket: Answer? = nil) {
         waiting?.resume(returning: ticket)
         waiting = nil
         timer?.cancel()

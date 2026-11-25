@@ -753,6 +753,14 @@ public struct OrgPageRequest: Identifiable, Equatable, Sendable, CustomStringCon
         return request(to: there)
     }
 
+    /// `link`'s app alone on this org's strut, at the view it names, as a
+    /// page of its own loaded as this one is: Jamie's screen in a call
+    /// (`Boxes.screen`).
+    public func showing(_ link: StrutAppLink) -> OrgPageRequest? {
+        guard case .app(let app) = link.app, let there = StrutUI.page(on: url, "app", app, input: link.input) else { return nil }
+        return OrgPageRequest(url: there, token: token, peer: peer, workspace: workspace)
+    }
+
     private func request(to target: URL) -> URLRequest {
         var request = URLRequest(url: target)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

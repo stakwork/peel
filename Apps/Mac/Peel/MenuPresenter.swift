@@ -24,6 +24,8 @@ final class MenuPresenter {
         var minWidth: CGFloat = 0
         /// Inside a submenu: the menu it came from, its item and that item's title.
         var back: (entries: [MenuEntry], index: Int, title: String)?
+        /// Draws the entries again after a `keepOpen` item ran, so checks move.
+        var rebuild: (@MainActor () -> [MenuEntry])?
     }
 
     private(set) var open: Open?
@@ -93,9 +95,10 @@ final class MenuPresenter {
     /// nothing in it. `edge: .trailing` lines its right edge up with the
     /// button's, for a button at the end of a row.
     func show(_ entries: [MenuEntry], at anchor: MenuAnchor, source: AnyHashable? = nil,
-              minWidth: CGFloat = 0, highlightChecked: Bool = false, edge: PopoverEdge = .leading) {
+              minWidth: CGFloat = 0, highlightChecked: Bool = false, edge: PopoverEdge = .leading,
+              rebuild: (@MainActor () -> [MenuEntry])? = nil) {
         show(entries, at: anchor.screenRect, in: anchor.window, following: anchor, source: source, minWidth: minWidth,
-             highlightChecked: highlightChecked, edge: edge)
+             highlightChecked: highlightChecked, edge: edge, rebuild: rebuild)
     }
 
     /// Opens a menu at a point on the screen (a right-click) from `window`
@@ -106,11 +109,11 @@ final class MenuPresenter {
 
     private func show(_ entries: [MenuEntry], at rect: CGRect, in window: NSWindowRef = nil, following: MenuAnchor? = nil,
                       source: AnyHashable?, minWidth: CGFloat = 0, highlightChecked: Bool = false,
-                      edge: PopoverEdge = .leading) {
+                      edge: PopoverEdge = .leading, rebuild: (@MainActor () -> [MenuEntry])? = nil) {
         guard entries.contains(where: { $0.item != nil }) else { return }
         let checked = highlightChecked ? entries.firstIndex { $0.item?.checked == true } : nil
         hideCard()
-        open = Open(entries: entries, highlighted: checked, minWidth: minWidth)
+        open = Open(entries: entries, highlighted: checked, minWidth: minWidth, rebuild: rebuild)
         isOpen = true
         self.source = source
         #if os(macOS)
@@ -200,6 +203,15 @@ final class MenuPresenter {
         if item.confirm != nil, open.confirming != index {
             self.open?.confirming = index
             self.open?.highlighted = index
+            return
+        }
+        if item.keepOpen {
+            _ = item.action()
+            // Redraw with the new choice checked; the menu stays where it is.
+            if let rebuild = open.rebuild, self.open?.back == nil {
+                let fresh = rebuild()
+                if fresh.count == self.open?.entries.count { self.open?.entries = fresh }
+            }
             return
         }
         dismiss()

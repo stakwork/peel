@@ -53,6 +53,10 @@ struct MenuItem {
     /// Entries that take the menu's place when this item is chosen, with a
     /// way back (a submenu, opened in place).
     var submenu: [MenuEntry]?
+    /// Choosing it runs the action but leaves the menu open (redrawn from the
+    /// menu's `rebuild`, if it has one), for an option set before another
+    /// choice, such as who Jamie joins from before starting the call.
+    var keepOpen = false
     /// Returns whether it did its job; only `done` cares.
     var action: @MainActor () -> Bool
 }
@@ -66,10 +70,10 @@ enum MenuEntry {
 
     static func button(
         _ title: String, subtitle: String? = nil, systemImage: String? = nil, shortcut: MenuShortcut? = nil,
-        detail: String? = nil, checked: Bool = false, action: @escaping @MainActor () -> Void
+        detail: String? = nil, checked: Bool = false, keepOpen: Bool = false, action: @escaping @MainActor () -> Void
     ) -> MenuEntry {
         .item(MenuItem(title: title, subtitle: subtitle, systemImage: systemImage, shortcut: shortcut, checked: checked,
-                       detail: detail) {
+                       detail: detail, keepOpen: keepOpen) {
             action()
             return true
         })

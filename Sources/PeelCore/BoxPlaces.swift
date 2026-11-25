@@ -48,7 +48,7 @@ extension BoxClient {
         guard status == 200 else { throw placesFailure(status, data) }
         guard case .object(let answer)? = JSON.decode(JSONValue.self, from: String(decoding: data, as: UTF8.self)),
               case .array(let hosts)? = answer["hosts"], case .array(let places)? = answer["places"] else {
-            throw PeelError(String(localized: "\(host)'s answer about Jamie could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "\(title)'s answer about Jamie could not be read.", table: "Shared"))
         }
         let jamie = hosts.lazy.compactMap { host -> String? in
             guard case .object(let host) = host, host["host"]?.string == BoxPlaces.host else { return nil }
@@ -82,7 +82,7 @@ extension BoxClient {
               let jamie = BoxPlaces.key(of: answer["account"]?.string),
               case .object(let place)? = answer["place"], place["host"]?.string == BoxPlaces.host,
               place["key"]?.string?.lowercased() == tribe.lowercased() else {
-            throw PeelError(String(localized: "\(host)'s answer about Jamie could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "\(title)'s answer about Jamie could not be read.", table: "Shared"))
         }
         return jamie
     }
@@ -100,7 +100,7 @@ extension BoxClient {
     func asPerson(_ method: String, _ path: String, _ person: BoxLink, _ body: Data?,
                   timeout: TimeInterval = 30) async throws -> (Int, Data) {
         let (status, data) = try await Web.requestStrut(method, box.appending(path: path), json: body, bearer: person.token,
-                                                        limit: Self.limit, what: host, timeout: timeout)
+                                                        limit: Self.limit, what: title, timeout: timeout)
         if status == 401 { throw TokenRefused() }
         return (status, data)
     }
@@ -111,13 +111,13 @@ extension BoxClient {
         let said = Self.said(data)
         switch status {
         case 409 where said?.hasPrefix("place_linked:") == true:
-            return PeelError(String(localized: "Someone else on \(host) already added Jamie to this tribe.", table: "Shared"))
+            return PeelError(String(localized: "Someone else on \(title) already added Jamie to this tribe.", table: "Shared"))
         case 404 where said?.hasPrefix("no_host:") == true:
-            return PeelError(String(localized: "\(host) isn't ready for tribes yet.", table: "Shared"))
+            return PeelError(String(localized: "\(title) isn't ready for tribes yet.", table: "Shared"))
         case 429:
             return busy
         default:
-            return PeelError("\(host) said: \(said ?? "HTTP \(status)").")
+            return PeelError("\(title) said: \(said ?? "HTTP \(status)").")
         }
     }
 }
@@ -289,16 +289,18 @@ public struct JamieChoices: Sendable {
         switch source {
         case .noJamie: Self.noJamie
         case .org(let id): orgs?.live.first { $0.id == id }?.name ?? "@" + id
-        case .box(let url): box(url).map(name(of:)) ?? url
+        case .box(let url): box(url).map(name(of:)) ?? URL(string: url).map(BoxLink.title(of:)) ?? url
         }
     }
 
-    /// A box as the row names it: its host, and its path when another box
-    /// linked here is on the same host.
+    /// A box as the row names it: its name (`BoxLink.title`); its host when
+    /// another box linked here has the same name, and its path too when
+    /// that one is on the same host.
     public func name(of box: BoxLink) -> String {
-        let shared = boxes.contains { $0.url != box.url && $0.host == box.host }
+        let others = boxes.filter { $0.url != box.url }
+        guard others.contains(where: { $0.title == box.title }) else { return box.title }
         let path = box.url.path
-        return shared && !path.isEmpty && path != "/" ? box.host + path : box.host
+        return others.contains { $0.host == box.host } && !path.isEmpty && path != "/" ? box.host + path : box.host
     }
 
     /// The Sphinx key of the Jamie `source` brings: Hive's one account for

@@ -37,7 +37,7 @@ struct BoxesSection: View {
     var body: some View {
         let boxes = model.boxes
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection(String(localized: "Boxes")) {
+            SettingsSection(String(localized: "Stadeum servers")) {
                 if let offer = boxes.linking {
                     Fact(offer.host) {
                         Text("Linking Peel…").muted()
@@ -49,7 +49,7 @@ struct BoxesSection: View {
                     BoxRow(box: box)
                 }
                 if boxes.links.isEmpty, boxes.linking == nil {
-                    Fact(String(localized: "Boxes")) {
+                    Fact(String(localized: "Stadeum servers")) {
                         Text(BoxWords.howToLink).muted().fixedSize(horizontal: false, vertical: true)
                     } trailing: {
                         EmptyView()
@@ -67,7 +67,8 @@ struct BoxesSection: View {
     }
 }
 
-/// One linked box: who Peel is there, Open and Forget.
+/// One linked box: its name, who Peel is there and, under it, its whole
+/// address (the one place a person reads it); Open and Forget.
 private struct BoxRow: View {
     @Environment(AppModel.self) private var model
     let box: BoxLink
@@ -75,8 +76,12 @@ private struct BoxRow: View {
     @State private var forgetting = false
 
     var body: some View {
-        Fact(box.host) {
-            Text("As \(box.person)").muted()
+        Fact(box.title) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("As \(box.person)")
+                Text(verbatim: box.host)
+            }
+            .muted()
         } trailing: {
             HStack(spacing: Theme.Space.sm) {
                 if !forgetting {
@@ -84,8 +89,8 @@ private struct BoxRow: View {
                         .buttonStyle(.peel(.outline))
                         .disabled(opening)
                 }
-                InlineConfirm(trigger: String(localized: "Forget"), prompt: String(localized: "Forget \(box.host)?"),
-                              explanation: String(localized: "Peel stops opening it as \(box.person). The box keeps the link until you remove it in Connect there."),
+                InlineConfirm(trigger: String(localized: "Forget"), prompt: String(localized: "Forget \(box.title)?"),
+                              explanation: String(localized: "Peel stops opening it as \(box.person). The server keeps the link until you remove it in Connect there."),
                               confirm: String(localized: "Forget"), alignment: .trailing, confirming: $forgetting) {
                     model.boxes.forget(box)
                 }

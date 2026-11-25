@@ -1491,8 +1491,8 @@ API. Builds on P1's strut pin (person tokens, `personalOrchestratorSystem`,
 proposals), P3's Connections screen, and runner #389 (proposal cards) and
 #390 (rooms and the wake).
 
-- **Pairing.** Account › Connections › Stadeum workspaces: Connect
-  Stadeum asks Hive for a code (`POST /api/strut-devices/pair`), shows it
+- **Pairing.** Account › Connections › Hive workspaces: "Connect
+  Hive" asks Hive for a code (`POST /api/strut-devices/pair`), shows it
   and a QR of Hive's own pairing page (one on another site is refused),
   and polls every `interval` until the person approves there. The
   `hivedev_` credential and the org records go in `Profile.hive` (the

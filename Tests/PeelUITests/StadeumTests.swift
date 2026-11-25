@@ -287,9 +287,9 @@ struct StadeumTests {
     /// or not, Peel was not back in time to collect it), or gone sooner.
     @Test(arguments: [
         // Polled after its one second: run out.
-        (1, false, "The code ran out before pairing finished. Connect again, then approve it in Stadeum and come back to Peel within 1 minute."),
+        (1, false, "The code ran out before pairing finished. Connect again, then approve it in Hive and come back to Peel within 1 minute."),
         // Polled at once, back in front, with ten minutes left: gone sooner.
-        (600, true, "Stadeum no longer has this code, so pairing didn't finish. Connect again."),
+        (600, true, "Hive no longer has this code, so pairing didn't finish. Connect again."),
     ])
     func aCodeHiveNoLongerHasIsSaidForWhatItIs(expiresIn: Int, front: Bool, said: String) async throws {
         let hive = try await hive(interval: 1, expiresIn: expiresIn) { (400, #"{"error":"expired_token"}"#) }

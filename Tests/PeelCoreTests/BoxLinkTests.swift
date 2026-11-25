@@ -151,6 +151,26 @@ struct BoxLinkTests {
         }
     }
 
+    /// A server reads by its short name: its address's first label, past
+    /// strut's own `strut.`, whatever its case, port or mount path; an IP
+    /// address or a one-label host whole. Its whole address stays `host`.
+    @Test(arguments: [
+        ("https://strut.stadeum.stakwork.ai", "stadeum"),
+        ("https://strut.stadeum1.sphinx.chat/", "stadeum1"),
+        ("https://STRUT.Stadeum2.sphinx.chat:8443/lab", "stadeum2"),
+        ("https://lab.example.com/jamie", "lab"),
+        ("https://strut", "strut"),
+        ("http://localhost:3000", "localhost"),
+        ("http://127.0.0.1:3000", "127.0.0.1"),
+        ("http://[::1]:3000", "::1"),
+    ])
+    func aServerReadsByItsShortName(address: String, title: String) throws {
+        let box = BoxFixture.box(address)
+        #expect(box.title == title)
+        #expect(BoxClient(box: box.url).title == title)
+        #expect(box.host == Seller.host(of: box.url))
+    }
+
     /// Due a day after the last renewal, or within a day of the token's end.
     @Test func aBoxIsDueDailyAndBeforeItsTokenEnds() {
         #expect(!BoxFixture.box("https://a.example.com").due(at: Self.now.addingTimeInterval(3600)))

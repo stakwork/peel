@@ -201,9 +201,9 @@ public struct CallLink: Sendable, Equatable, CustomStringConvertible, CustomRefl
         guard let call = CallLink(link: link, server: server) else {
             let host = URLComponents(string: link)?.host?.lowercased()
             guard let host, host != TribeLink.baseURL(server)?.host?.lowercased() else {
-                throw PeelError(String(localized: "Stadeum's call link is not one Peel can join.", table: "Shared"))
+                throw PeelError(String(localized: "Hive's call link is not one Peel can join.", table: "Shared"))
             }
-            throw PeelError("Stadeum's call is on \(TextLine.clean(host, max: 100)), not on this account's call server (\(server)).")
+            throw PeelError("Hive's call is on \(TextLine.clean(host, max: 100)), not on this account's call server (\(server)).")
         }
         return CallLink(
             server: call.server, base: call.base, room: call.room, audioOnly: audioOnly,

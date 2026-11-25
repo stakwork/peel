@@ -335,7 +335,7 @@ public struct DeviceActions: Sendable {
         guard let prompt = asked.prompt, prompt.count <= SphinxTools.maxMessage, ToolIntent.isShowable(prompt), !asked.more else {
             return .failed("This request to \(asked.name) holds more than its card can show, so it was not sent.")
         }
-        var details = ["To \(asked.name)'s assistant (@\(asked.peer)) in Stadeum, as you"]
+        var details = ["To \(asked.name)'s assistant (@\(asked.peer)) in Hive, as you"]
         let assistant = asked.workflow == "orchestrator"
         if !assistant { details.append("Runs its workflow \u{201C}\(TextLine.clean(asked.workflow, max: ChatData.maxName))\u{201D}") }
         let card = ToolIntent(action: "Send this to \(asked.name)?", content: prompt, details: details,

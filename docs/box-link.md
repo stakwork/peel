@@ -80,7 +80,7 @@ Connect ends the token at once.
 
 **Mac**: `openPeelLink` takes `peel://strut/link`; the question is a card
 over the main window (`BoxLinkConfirm`, like the call-device question),
-shown once unlocked; Account › Connections › Boxes (`BoxesSection`) lists
+shown once unlocked; Account › Connections › Stadeum servers (`BoxesSection`) lists
 each box as its member with Open and Forget (an in-place confirm). Open
 shows the box in the web pane (`WebPane.open(box:)`): a web view of its own
 on a store that keeps nothing, the token as the first request's bearer and
@@ -93,7 +93,7 @@ is forgotten or let go.
 
 **iPhone**: `router.open(peelLink:)` takes it (the system camera scanning
 the QR opens the same link) and goes to You; an alert asks the question
-once unlocked (Link or Cancel, nothing else shuts it); You › Boxes
+once unlocked (Link or Cancel, nothing else shuts it); You › Stadeum servers
 (`BoxesSection`) lists each box, a tap opens it in `OrgPageSheet` as an
 org's page opens, a swipe or long press forgets it. The sheet closes when
 its box goes.

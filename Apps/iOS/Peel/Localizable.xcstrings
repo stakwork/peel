@@ -1033,18 +1033,18 @@
         }
       }
     },
-    "Approve this iPhone in Stadeum. Check the code matches:" : {
+    "Approve this iPhone in Hive. Check the code matches:" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Approve this iPhone in Stadeum. Check the code matches:"
+            "value" : "Approve this iPhone in Hive. Check the code matches:"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aprueba este iPhone en Stadeum. Verifica que el código coincida:"
+            "value" : "Aprueba este iPhone en Hive. Verifica que el código coincida:"
           }
         }
       }
@@ -1081,18 +1081,18 @@
         }
       }
     },
-    "Apps your Stadeum workspaces pin show here." : {
+    "Apps your Hive workspaces pin show here." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apps your Stadeum workspaces pin show here."
+            "value" : "Apps your Hive workspaces pin show here."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las apps que fijen tus espacios de trabajo de Stadeum se muestran aquí."
+            "value" : "Las apps que fijen tus espacios de trabajo de Hive se muestran aquí."
           }
         }
       }
@@ -1193,18 +1193,18 @@
         }
       }
     },
-    "Asking Stadeum…" : {
+    "Asking Hive…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Asking Stadeum…"
+            "value" : "Asking Hive…"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Consultando a Stadeum…"
+            "value" : "Consultando a Hive…"
           }
         }
       }
@@ -1573,22 +1573,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Boosts, %@, muestra quién los dio"
-          }
-        }
-      }
-    },
-    "Boxes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Boxes"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cajas"
           }
         }
       }
@@ -2137,66 +2121,66 @@
         }
       }
     },
-    "Connect Stadeum" : {
+    "Connect Hive" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum"
+            "value" : "Connect Hive"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conectar Stadeum"
+            "value" : "Conectar Hive"
           }
         }
       }
     },
-    "Connect Stadeum in You to open" : {
+    "Connect Hive in You to open" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum in You to open"
+            "value" : "Connect Hive in You to open"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum en Tú para abrir"
+            "value" : "Conecta Hive en Tú para abrir"
           }
         }
       }
     },
-    "Connect Stadeum to let one of your orgs answer @jamie here." : {
+    "Connect Hive to let one of your workspaces answer @jamie here." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum to let one of your orgs answer @jamie here."
+            "value" : "Connect Hive to let one of your workspaces answer @jamie here."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum para que una de tus organizaciones responda a @jamie aquí."
+            "value" : "Conecta Hive para que uno de tus espacios de trabajo responda a @jamie aquí."
           }
         }
       }
     },
-    "Connect Stadeum under You to open the apps your workspaces pin." : {
+    "Connect Hive under You to open the apps your workspaces pin." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum under You to open the apps your workspaces pin."
+            "value" : "Connect Hive under You to open the apps your workspaces pin."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum en Tú para abrir las apps que fijan tus espacios de trabajo."
+            "value" : "Conecta Hive en Tú para abrir las apps que fijan tus espacios de trabajo."
           }
         }
       }
@@ -3785,6 +3769,38 @@
         }
       }
     },
+    "Hive" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive"
+          }
+        }
+      }
+    },
+    "Hive no longer knows this iPhone. Connect it again to open your workspaces' work here." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive no longer knows this iPhone. Connect it again to open your workspaces' work here."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive ya no reconoce este iPhone. Conéctalo de nuevo para abrir aquí el trabajo de tus espacios."
+          }
+        }
+      }
+    },
     "Hold to record, release to send" : {
       "localizations" : {
         "en" : {
@@ -4873,6 +4889,22 @@
         }
       }
     },
+    "No Hive workspaces yet" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Hive workspaces yet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay espacios de trabajo de Hive"
+          }
+        }
+      }
+    },
     "No Jamie" : {
       "localizations" : {
         "en" : {
@@ -4901,22 +4933,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No se encontró ningún código QR en esa foto."
-          }
-        }
-      }
-    },
-    "No Stadeum here yet" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Stadeum here yet"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aún no hay Stadeum aquí"
           }
         }
       }
@@ -5529,6 +5545,22 @@
         }
       }
     },
+    "Open Hive" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Hive"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir Hive"
+          }
+        }
+      }
+    },
     "Open Peel" : {
       "localizations" : {
         "en" : {
@@ -5573,22 +5605,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abrir Ajustes"
-          }
-        }
-      }
-    },
-    "Open Stadeum" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open Stadeum"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abrir Stadeum"
           }
         }
       }
@@ -8273,34 +8289,18 @@
         }
       }
     },
-    "Stadeum" : {
+    "Stadeum servers" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stadeum"
+            "value" : "Stadeum servers"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stadeum"
-          }
-        }
-      }
-    },
-    "Stadeum no longer knows this iPhone. Connect it again to open your workspaces' work here." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum no longer knows this iPhone. Connect it again to open your workspaces' work here."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum ya no reconoce este iPhone. Conéctalo de nuevo para abrir aquí el trabajo de tus espacios."
+            "value" : "Servidores Stadeum"
           }
         }
       }
@@ -9969,18 +9969,18 @@
         }
       }
     },
-    "Your account is back, but not its Stadeum connection. Connect Stadeum again." : {
+    "Your account is back, but not its Hive connection. Connect Hive again." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your account is back, but not its Stadeum connection. Connect Stadeum again."
+            "value" : "Your account is back, but not its Hive connection. Connect Hive again."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu cuenta volvió, pero no su conexión con Stadeum. Conecta Stadeum de nuevo."
+            "value" : "Tu cuenta volvió, pero no su conexión con Hive. Conecta Hive de nuevo."
           }
         }
       }

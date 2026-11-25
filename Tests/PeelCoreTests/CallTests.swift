@@ -237,12 +237,12 @@ struct HiveCallLinkTests {
         #expect {
             try CallLink.hive("https://call.livekit.io/rooms/\(hiveRoom)", server: server, audioOnly: false)
         } throws: { error in
-            "\(error)" == "Stadeum's call is on call.livekit.io, not on this account's call server (chat.sphinx.chat)."
+            "\(error)" == "Hive's call is on call.livekit.io, not on this account's call server (chat.sphinx.chat)."
         }
         #expect {
             try CallLink.hive(base + "not-a-room", server: server, audioOnly: false)
         } throws: { error in
-            "\(error)" == "Stadeum's call link is not one Peel can join."
+            "\(error)" == "Hive's call link is not one Peel can join."
         }
     }
 }

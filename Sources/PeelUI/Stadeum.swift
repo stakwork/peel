@@ -66,7 +66,7 @@ public final class Stadeum {
     /// tribe that tells Jamie who is speaking runs their `@jamie` as them.
     public var identified: Bool { link?.identified == true }
     /// What the Stadeum rows say once it is.
-    public static let identifiedLine = String(localized: "Stadeum knows your Sphinx account: in a tribe where Jamie knows who is speaking, your @jamie runs as you.", table: "Shared")
+    public static let identifiedLine = String(localized: "Hive knows your Sphinx account: in a tribe where Jamie knows who is speaking, your @jamie runs as you.", table: "Shared")
     /// This account's proof of its Sphinx key, signed by its engine
     /// (`AppModel`); nil while it has none open. A test's stand-in.
     @ObservationIgnored public var sphinxProof: (@MainActor () async throws -> SphinxProof?)?
@@ -118,7 +118,7 @@ public final class Stadeum {
         do {
             link = try HiveLink.read(from: profile.hive)
         } catch {
-            problem = PeelError.noted(error, couldNot: String(localized: "read your Stadeum connection", table: "Shared"))
+            problem = PeelError.noted(error, couldNot: String(localized: "read your Hive connection", table: "Shared"))
         }
         let restored = restoredBeforeOpen
         restoredBeforeOpen = false
@@ -196,13 +196,13 @@ public final class Stadeum {
                 case .pending:
                     return
                 case .denied:
-                    settle(String(localized: "It was turned down in Stadeum.", table: "Shared"))
+                    settle(String(localized: "It was turned down in Hive.", table: "Shared"))
                 case .expired:
                     // Approved or not, Peel collects it only once it is back in front.
                     let minutes = Formatting.count(max(1, (pairing.expiresIn + 59) / 60), .minute)
                     settle(Date() >= deadline
-                        ? String(localized: "The code ran out before pairing finished. Connect again, then approve it in Stadeum and come back to Peel within \(minutes).", table: "Shared")
-                        : String(localized: "Stadeum no longer has this code, so pairing didn't finish. Connect again.", table: "Shared"))
+                        ? String(localized: "The code ran out before pairing finished. Connect again, then approve it in Hive and come back to Peel within \(minutes).", table: "Shared")
+                        : String(localized: "Hive no longer has this code, so pairing didn't finish. Connect again.", table: "Shared"))
                 case .paired(let link):
                     // Cancelled, or the account closed, while Stadeum answered: nothing kept.
                     guard !Task.isCancelled, generation == self.generation else { return }
@@ -218,7 +218,7 @@ public final class Stadeum {
                 }
             } catch is CancellationError {
             } catch {
-                settle(PeelError.noted(error, couldNot: String(localized: "connect Stadeum", table: "Shared")))
+                settle(PeelError.noted(error, couldNot: String(localized: "connect Hive", table: "Shared")))
             }
         }
         /// Ends this pairing with `problem`, unless it was cancelled: a newer one may be under way.
@@ -247,7 +247,7 @@ public final class Stadeum {
         var failed: (any Error)?
         do { try profile.hive.delete() } catch { failed = error }
         do { try host?.stadeumDisconnected(actor: actor) } catch { failed = failed ?? error }
-        if let failed { problem = PeelError.noted(failed, couldNot: String(localized: "forget the Stadeum connection", table: "Shared")) }
+        if let failed { problem = PeelError.noted(failed, couldNot: String(localized: "forget the Hive connection", table: "Shared")) }
     }
 
     /// Peel came back to the front: a pairing under way polls Hive now (the
@@ -322,7 +322,7 @@ public final class Stadeum {
         } catch {
             // Tried again within the hour; the tokens last a week.
             guard generation == self.generation, self.link?.credential == link.credential else { return }
-            problem = PeelError.noted(error, couldNot: String(localized: "renew your Stadeum workspaces", table: "Shared"))
+            problem = PeelError.noted(error, couldNot: String(localized: "renew your Hive workspaces", table: "Shared"))
         }
     }
 
@@ -410,7 +410,7 @@ public final class Stadeum {
     /// for this device's person (`HiveClient.startCall`, docs/hive-calls.md).
     public func callLink(on peer: HivePeer) async throws -> String {
         guard let link, !revoked, live.contains(where: { $0.id == peer.id }) else {
-            throw PeelError(String(localized: "Connect Stadeum to call with Jamie from \(peer.name).", table: "Shared"))
+            throw PeelError(String(localized: "Connect Hive to call with Jamie from \(peer.name).", table: "Shared"))
         }
         return try await HiveClient(hive: link.hive).startCall(link, workspace: peer.id)
     }
@@ -420,7 +420,7 @@ public final class Stadeum {
     /// Hive checks they may use the call's workspace. Throws when not
     /// connected, and for anything Hive does not answer with a ticket.
     public func callTicket(room: String, participantName: String, metadata: String?) async throws -> HiveCallTicket {
-        guard let link, !revoked else { throw PeelError(String(localized: "Stadeum is not connected.", table: "Shared")) }
+        guard let link, !revoked else { throw PeelError(String(localized: "Hive is not connected.", table: "Shared")) }
         return try await HiveClient(hive: link.hive).callTicket(
             link, room: room, participantName: participantName, metadata: metadata
         )
@@ -512,12 +512,12 @@ public final class Stadeum {
     /// (`AppModel.setJamie`).
     @discardableResult
     public func setJamie(_ peer: HivePeer?, for tribe: Tribe) async throws -> String? {
-        guard let link, !revoked else { throw PeelError(String(localized: "Connect Stadeum to add Jamie.", table: "Shared")) }
+        guard let link, !revoked else { throw PeelError(String(localized: "Connect Hive to add Jamie.", table: "Shared")) }
         let generation = generation
         let client = HiveClient(hive: link.hive)
         let key = tribe.pubkey.lowercased()
         if let peer {
-            guard live.contains(where: { $0.id == peer.id }) else { throw PeelError(String(localized: "Connect Stadeum to add Jamie from \(peer.name).", table: "Shared")) }
+            guard live.contains(where: { $0.id == peer.id }) else { throw PeelError(String(localized: "Connect Hive to add Jamie from \(peer.name).", table: "Shared")) }
             guard let host = tribe.host else { throw PeelError(String(localized: "This tribe's server isn't known here, so Jamie can't join it.", table: "Shared")) }
             let (jamie, linked) = try await client.linkTribe(link, workspace: peer.id, tribe: tribe.pubkey, host: host, name: tribe.name)
             guard generation == self.generation else { return nil }

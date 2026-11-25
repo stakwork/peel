@@ -652,7 +652,7 @@ is a short plan. Update the status and the journal when you finish something.
   `AppModel+Connections` and `ConnectionsSection` (Account › Connections:
   Add MCP server, Test, Remove, the Assistant and Jobs switches, which
   restart Peel's strut with the new grants; below them
-  `StadeumSection`, the Stadeum workspaces paired as peers, each with
+  `StadeumSection`, the Hive workspaces paired as peers, each with
   Talk to Jamie, which opens `TalkWindow`; then `BoxesSection`, the strut
   boxes linked, Open and Forget, and `BoxLinkConfirm`, a box's question
   over the main window; a box opens in the web pane, `WebPane.open(box:)`),
@@ -912,10 +912,10 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListRow`, `PhoneCard`), `PhonePlatform` (`Platform.phone()`:
   `UIApplication` presence and badge, `Clipboard`; files, playback and the
   web pane do nothing and are never offered; the web pane and calls throw
-  their words), `Stadeum` (`StadeumSection`, You's Stadeum over
+  their words), `Stadeum` (`StadeumSection`, You › Hive over
   `AppModel.stadeum`: connect, the workspaces, Connect again, Disconnect;
   `readWorkspaceApps`, each org's pinned apps on its own strut; `BoxesSection`,
-  You › Boxes: each box linked, opened in `OrgPageSheet`, forgotten; the
+  You › Stadeum servers: each box linked, opened in `OrgPageSheet`, forgotten; the
   question is `MainTabs`' alert), `AppsScreen`
   (Chats' Apps row: Talk to Jamie on each workspace, its screen a
   full-screen cover; then the workspaces' pinned apps, A–Z, opened in

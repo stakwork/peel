@@ -317,11 +317,11 @@ public final class TribeJamiePicker {
             let boxes = choices.options(for: tribe.pubkey).contains { JamieSource(id: $0.id).isBox }
             switch (choices.orgs != nil, boxes) {
             case (true, true):
-                return String(localized: "Pick one of your orgs or boxes: Jamie joins #\(tribe.displayName) and answers @jamie there from it, using your access to it.", table: "Shared")
+                return String(localized: "Pick one of your Hive workspaces or Stadeum servers: Jamie joins #\(tribe.displayName) and answers @jamie there from it, using your access to it.", table: "Shared")
             case (false, true):
-                return String(localized: "Pick one of your boxes: Jamie joins #\(tribe.displayName) and answers @jamie there from that box, using your access to it.", table: "Shared")
+                return String(localized: "Pick one of your Stadeum servers: Jamie joins #\(tribe.displayName) and answers @jamie there from that server, using your access to it.", table: "Shared")
             default:
-                return String(localized: "Pick one of your orgs: Jamie joins #\(tribe.displayName) and answers @jamie there from that org, using your access to it.", table: "Shared")
+                return String(localized: "Pick one of your Hive workspaces: Jamie joins #\(tribe.displayName) and answers @jamie there from that workspace, using your access to it.", table: "Shared")
             }
         }
         let org = choices.name(of: pick)

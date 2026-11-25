@@ -362,7 +362,7 @@ public final class BundledBridge: CustomReflectable {
     public func usePeers(actor: String, tokens: [String: String]) async throws {
         guard let server, let admin else { throw PeelError(String(localized: "Peel's bridge is not running.", table: "Shared")) }
         try await Self.admin(server.base, "peers", ["actor": actor, "tokens": tokens], token: admin.token, method: "PUT",
-                             refused: "your Stadeum workspaces")
+                             refused: "your Hive workspaces")
     }
 
     /// Gives the running agent's account a new nickname at once (`PUT /alias`,

@@ -333,9 +333,9 @@ private struct TribeJamie: View {
             case .connected, .off where choices.offersBoxes(in: tribe.pubkey):
                 EmptyView()
             case .off, .needsPairing:
-                note(String(localized: "Connect Stadeum to let one of your orgs answer @jamie here."))
+                note(String(localized: "Connect Hive to let one of your workspaces answer @jamie here."))
                 Button { stadeum.connect(as: UIDevice.current.name) } label: {
-                    Text(stadeum.status == .off ? String(localized: "Connect Stadeum") : String(localized: "Connect again")).frame(maxWidth: .infinity)
+                    Text(stadeum.status == .off ? String(localized: "Connect Hive") : String(localized: "Connect again")).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.peel(.outline, size: .touch))
                 if let problem = stadeum.problem { ProblemText(problem) }
@@ -397,7 +397,7 @@ private struct TribeJamie: View {
             Button { Task { await model.readJamies() } } label: { Text("Try again").frame(maxWidth: .infinity) }
                 .buttonStyle(.peel(.outline, size: .touch))
         } else {
-            note(model.jamieAskingBox.map { String(localized: "Asking \($0)…") } ?? String(localized: "Asking Stadeum…"))
+            note(model.jamieAskingBox.map { String(localized: "Asking \($0)…") } ?? String(localized: "Asking Hive…"))
         }
     }
 

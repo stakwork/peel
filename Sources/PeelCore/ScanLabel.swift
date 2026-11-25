@@ -25,7 +25,7 @@ public struct ScanLabel: Sendable, Equatable {
                 return
             }
             if BoxLinkOffer(peelLink: url) != nil {
-                self.init(kind: .peel, text: String(localized: "Link a box", table: "Shared"))
+                self.init(kind: .peel, text: String(localized: "Link a Stadeum server", table: "Shared"))
                 return
             }
         }

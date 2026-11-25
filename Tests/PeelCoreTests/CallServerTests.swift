@@ -385,7 +385,7 @@ struct CallTicketFromHiveTests {
         }
 
         let ticket = try await engine.callTicket(for: link, in: nil) { _, _, _ in
-            guard let answer else { throw PeelError("Stadeum could not give a call ticket: No Hive call in that room.") }
+            guard let answer else { throw PeelError("Hive could not give a call ticket: No Hive call in that room.") }
             return answer
         }
 
@@ -423,7 +423,7 @@ struct CallTicketFromHiveTests {
         let join = Task {
             try await engine.callTicket(for: link, in: nil) { _, _, _ in
                 try await Task.sleep(for: .seconds(30))
-                throw PeelError("Stadeum could not give a call ticket.")
+                throw PeelError("Hive could not give a call ticket.")
             }
         }
         try await Task.sleep(for: .milliseconds(50))

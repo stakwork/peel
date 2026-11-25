@@ -80,7 +80,7 @@ public final class CallStore {
     /// A call with Jamie in it for a Stadeum workspace: the link Hive made
     /// (`Stadeum.callLink`). Throws when there is none to be had.
     @ObservationIgnored var hiveCall: (_ peer: HivePeer) async throws -> String = { _ in
-        throw PeelError(String(localized: "Connect Stadeum to call with Jamie.", table: "Shared"))
+        throw PeelError(String(localized: "Connect Hive to call with Jamie.", table: "Shared"))
     }
     /// Where a join asks Hive for its ticket to a call Hive made, so this
     /// device's person speaks as themselves there (`Stadeum.callTicket`,
@@ -91,7 +91,7 @@ public final class CallStore {
     /// key, recording on the canvas or not (`Boxes.startCall`). Throws why
     /// it would not come.
     @ObservationIgnored var boxCall: (_ box: BoxLink, _ link: CallLink, _ record: Bool) async throws -> Void = { box, _, _ in
-        throw PeelError(String(localized: "Peel is no longer linked to \(box.host).", table: "Shared"))
+        throw PeelError(String(localized: "Peel is no longer linked to \(box.title).", table: "Shared"))
     }
     /// Where a join of an encrypted call asks the boxes this device is
     /// linked to for the person's own ticket (`Boxes.callTicket`), so what

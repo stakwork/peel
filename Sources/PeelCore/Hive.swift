@@ -275,11 +275,11 @@ public struct HiveClient: Sendable {
         let pairing = try JSONDecoder.hive.decode(Pairing.self, from: data)
         // Only Hive's own page is ever shown or opened.
         for page in [pairing.verificationUri, pairing.verificationUriComplete] where !isHive(page) {
-            throw PeelError(String(localized: "Stadeum gave a pairing page on another site (\(page.host ?? "none")); nothing was opened.", table: "Shared"))
+            throw PeelError(String(localized: "Hive gave a pairing page on another site (\(page.host ?? "none")); nothing was opened.", table: "Shared"))
         }
         guard (1...600).contains(pairing.interval), (1...3600).contains(pairing.expiresIn),
               !pairing.userCode.isEmpty, pairing.userCode.count <= 32 else {
-            throw PeelError(String(localized: "Stadeum's pairing code could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "Hive's pairing code could not be read.", table: "Shared"))
         }
         return pairing
     }
@@ -301,7 +301,7 @@ public struct HiveClient: Sendable {
             throw status == 429 || status >= 500 ? Unanswered(failure: failure) : failure
         }
         let paired = try JSONDecoder.hive.decode(Paired.self, from: data)
-        guard paired.credential.hasPrefix("hivedev_") else { throw PeelError("Stadeum's device credential could not be read.") }
+        guard paired.credential.hasPrefix("hivedev_") else { throw PeelError("Hive's device credential could not be read.") }
         let (peers, refused) = reachable(paired.peers)
         return .paired(HiveLink(hive: hive, credential: paired.credential, deviceID: paired.device.id,
                                 deviceName: paired.device.name ?? name, actor: try Self.actor(paired.actor),
@@ -350,7 +350,7 @@ public struct HiveClient: Sendable {
     public func renew(_ link: HiveLink, now: Date = Date()) async throws -> HiveLink? {
         let (status, data) = try await request("GET", "api/strut-devices/peers", nil, bearer: link.credential)
         if status == 401 { return nil }
-        guard status == 200 else { throw Self.failure(status, data, couldNot: String(localized: "renew the Stadeum workspaces", table: "Shared")) }
+        guard status == 200 else { throw Self.failure(status, data, couldNot: String(localized: "renew the Hive workspaces", table: "Shared")) }
         let renewed = try JSONDecoder.hive.decode(Renewed.self, from: data)
         var link = link
         link.actor = try Self.actor(renewed.actor)
@@ -385,7 +385,7 @@ public struct HiveClient: Sendable {
         switch status {
         case 200: return .linked
         case 401, 404: return .notYet
-        case 409: return .refused(Self.said(data)?.nilIfEmpty ?? String(localized: "This Sphinx account is linked to another Stadeum user.", table: "Shared"))
+        case 409: return .refused(Self.said(data)?.nilIfEmpty ?? String(localized: "This Sphinx account is linked to another Hive user.", table: "Shared"))
         default: throw Self.failure(status, data, couldNot: String(localized: "link your Sphinx account", table: "Shared"))
         }
     }
@@ -399,12 +399,12 @@ public struct HiveClient: Sendable {
         let answer = try? JSONDecoder.hive.decode([String: String].self, from: data)
         switch status {
         case 200:
-            guard let url = answer?["url"] else { throw PeelError(String(localized: "Stadeum's call link could not be read.", table: "Shared")) }
+            guard let url = answer?["url"] else { throw PeelError(String(localized: "Hive's call link could not be read.", table: "Shared")) }
             return url
         // A revoked device, and a Hive from before the route alike: its
         // middleware turns away the device credential on any path it does not know.
         case 401:
-            throw PeelError(String(localized: "Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again.", table: "Shared"))
+            throw PeelError(String(localized: "Hive didn't accept this device for a call. If it was disconnected in Hive, connect it again.", table: "Shared"))
         default:
             throw Self.failure(status, data, couldNot: String(localized: "start a call with Jamie", table: "Shared"))
         }
@@ -425,7 +425,7 @@ public struct HiveClient: Sendable {
         let (status, data) = try await request("POST", "api/strut-devices/calls/ticket", body, bearer: link.credential, timeout: 5)
         guard status == 200 else { throw Self.failure(status, data, couldNot: String(localized: "give a call ticket", table: "Shared")) }
         guard let ticket = try? JSONDecoder.hive.decode(HiveCallTicket.self, from: data) else {
-            throw PeelError(String(localized: "Stadeum's call ticket could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "Hive's call ticket could not be read.", table: "Shared"))
         }
         return ticket
     }
@@ -439,7 +439,7 @@ public struct HiveClient: Sendable {
         guard status == 200 else { throw Self.tribeFailure(status, data, couldNot: String(localized: "read which tribes have Jamie", table: "Shared")) }
         guard let answer = try? JSONDecoder.hive.decode(JamieAnswer.self, from: data), let jamie = answer.jamie.checked,
               let tribes = answer.tribes else {
-            throw PeelError(String(localized: "Stadeum's answer about Jamie could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "Hive's answer about Jamie could not be read.", table: "Shared"))
         }
         // A link Peel could not use (not a tribe's key, a workspace id strut would not take) is left out.
         return JamieLinks(jamie: jamie, tribes: tribes.compactMap(\.checked))
@@ -468,7 +468,7 @@ public struct HiveClient: Sendable {
         guard status == 200 else { throw Self.tribeFailure(status, data, couldNot: String(localized: "add Jamie", table: "Shared")) }
         guard let answer = try? JSONDecoder.hive.decode(JamieAnswer.self, from: data),
               let jamie = answer.jamie.checked, let linked = answer.tribe?.checked, linked.pubkey == tribe.lowercased() else {
-            throw PeelError(String(localized: "Stadeum's answer about Jamie could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "Hive's answer about Jamie could not be read.", table: "Shared"))
         }
         return (jamie, linked)
     }
@@ -495,9 +495,9 @@ public struct HiveClient: Sendable {
         switch status {
         // A revoked device, and a Hive from before the routes alike (its
         // middleware turns the device credential away on a path it does not know).
-        case 401: PeelError(String(localized: "Stadeum didn't accept this device for Jamie. If it was disconnected in Stadeum, connect it again.", table: "Shared"))
+        case 401: PeelError(String(localized: "Hive didn't accept this device for Jamie. If it was disconnected in Hive, connect it again.", table: "Shared"))
         case 409: PeelError(String(localized: "Someone else already linked this tribe to an org.", table: "Shared"))
-        case 503: PeelError(String(localized: "Jamie isn't switched on in Stadeum yet.", table: "Shared"))
+        case 503: PeelError(String(localized: "Jamie isn't switched on in Hive yet.", table: "Shared"))
         default: failure(status, data, couldNot: what)
         }
     }
@@ -538,7 +538,7 @@ public struct HiveClient: Sendable {
     static func actor(_ actor: String) throws -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
         guard (1...120).contains(actor.count), actor.unicodeScalars.allSatisfy({ $0.isASCII && allowed.contains($0) }) else {
-            throw PeelError(String(localized: "Stadeum named this account in a way Peel cannot use (\(TextLine.clean(actor, max: 40))).", table: "Shared"))
+            throw PeelError(String(localized: "Hive named this account in a way Peel cannot use (\(TextLine.clean(actor, max: 40))).", table: "Shared"))
         }
         return actor
     }
@@ -579,11 +579,11 @@ public struct HiveClient: Sendable {
         _ method: String, _ path: String, json: Data?, bearer: String?, timeout: TimeInterval = 30
     ) async throws -> (Int, Data) {
         try await Web.requestStrut(method, hive.appending(path: path), json: json,
-                                   bearer: bearer, limit: Self.limit, what: "Stadeum", timeout: timeout)
+                                   bearer: bearer, limit: Self.limit, what: "Hive", timeout: timeout)
     }
 
     private static func failure(_ status: Int, _ data: Data, couldNot what: String) -> PeelError {
-        PeelError("Stadeum could not \(what): \(said(data) ?? "HTTP \(status)").")
+        PeelError("Hive could not \(what): \(said(data) ?? "HTTP \(status)").")
     }
 
     /// Hive's own words in an answer (`{ "error": … }`), cleaned for showing.

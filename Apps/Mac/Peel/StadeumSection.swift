@@ -16,24 +16,24 @@ struct StadeumSection: View {
     var body: some View {
         let hive = model.stadeum
         VStack(alignment: .leading, spacing: 6) {
-            SettingsSection(String(localized: "Stadeum workspaces")) {
+            SettingsSection(String(localized: "Hive workspaces")) {
                 switch hive.status {
                 case .off:
-                    Fact("Stadeum") {
+                    Fact("Hive") {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(model.brain?.moved != nil
-                                 ? String(localized: "Your assistant runs on your home server. Turn off Always on to connect Stadeum.")
+                                 ? String(localized: "Your assistant runs on your home server. Turn off Always on to connect Hive.")
                                  : String(localized: "Let your assistant ask your team's workspaces and run their workflows."))
                                 .muted()
                             if hive.reconnectHint {
-                                Text("Your account is back, but not its Stadeum connection. Connect Stadeum again.")
+                                Text("Your account is back, but not its Hive connection. Connect Hive again.")
                                     .foregroundStyle(Theme.attention)
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
                         if model.brain == .thisMac {
-                            Button("Connect Stadeum") { model.connectHive() }
+                            Button("Connect Hive") { model.connectHive() }
                                 .buttonStyle(.peel(.outline))
                         }
                     }
@@ -46,8 +46,8 @@ struct StadeumSection: View {
                     }
                 case .connected, .needsPairing:
                     if hive.status == .needsPairing {
-                        Fact("Stadeum") {
-                            Text("Stadeum no longer knows this Mac, so your assistant has stopped asking these workspaces. Pair again to use them.")
+                        Fact("Hive") {
+                            Text("Hive no longer knows this Mac, so your assistant has stopped asking these workspaces. Pair again to use them.")
                                 .font(Theme.font(12))
                                 .foregroundStyle(Theme.attention)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -71,7 +71,7 @@ struct StadeumSection: View {
                     Fact(String(localized: "This Mac")) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(hive.status == .needsPairing ? String(localized: "Unpair to forget these workspaces.")
-                                 : hive.link?.peers.isEmpty == true ? String(localized: "Paired, but Stadeum gave no workspaces for this account.")
+                                 : hive.link?.peers.isEmpty == true ? String(localized: "Paired, but Hive gave no workspaces for this account.")
                                  : String(localized: "Your assistant knows these workspaces from its next new conversation."))
                             if hive.identified, hive.status == .connected {
                                 Text(Stadeum.identifiedLine)
@@ -81,7 +81,7 @@ struct StadeumSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                     } trailing: {
                         InlineConfirm(trigger: String(localized: "Unpair"), prompt: String(localized: "Unpair this Mac?"),
-                                      explanation: String(localized: "Your assistant can no longer ask your workspaces. Revoke this Mac in Stadeum's settings too."),
+                                      explanation: String(localized: "Your assistant can no longer ask your workspaces. Revoke this Mac in Hive's settings too."),
                                       confirm: String(localized: "Unpair"), alignment: .trailing, confirming: $unpairing) {
                             model.disconnectHive()
                         }
@@ -113,13 +113,13 @@ struct StadeumPairingCode: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Approve this Mac in Stadeum. Check the code matches:").muted()
+            Text("Approve this Mac in Hive. Check the code matches:").muted()
             Text(pairing.userCode)
                 .font(Theme.font(20, .semibold))
                 .monospaced()
                 .textSelection(.enabled)
-            QRCodeTile(text: pairing.verificationUriComplete.absoluteString, label: String(localized: "QR code of Stadeum's pairing page"))
-            Link("Open in Stadeum", destination: pairing.verificationUriComplete)
+            QRCodeTile(text: pairing.verificationUriComplete.absoluteString, label: String(localized: "QR code of Hive's pairing page"))
+            Link("Open in Hive", destination: pairing.verificationUriComplete)
                 .font(Theme.font(12))
         }
     }

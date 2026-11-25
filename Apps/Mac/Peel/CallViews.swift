@@ -463,13 +463,15 @@ struct JamiePickCard: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.secondaryText)
+                // Never wraps or shrinks: the picker beside it truncates instead.
                 Text("Jamie")
                     .font(Theme.font(13, .semibold))
+                    .lineLimit(1)
+                    .fixedSize()
                 Spacer(minLength: 0)
                 PeelDropdown(selection: model.callJamie(in: call.chat)?.id ?? "", options: options) { id in
                     model.calls.pickJamie(JamieSource(id: id), in: call.chat)
                 }
-                .fixedSize()
             }
             .padding(.horizontal, 14)
             .padding(.vertical, Theme.Space.sm)

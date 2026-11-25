@@ -105,8 +105,8 @@ struct AppsScreen: View {
                     UnreadNote(names: unread)
                 } else if apps.isEmpty, !homes.isEmpty, !stadeum.readingApps {
                     // Under the Talk rows rather than over the screen.
-                    Text(stadeum.live.isEmpty ? String(localized: "Connect Stadeum under You to open the apps your workspaces pin.")
-                         : unread.isEmpty ? String(localized: "Apps your Stadeum workspaces pin show here.")
+                    Text(stadeum.live.isEmpty ? String(localized: "Connect Hive under You to open the apps your workspaces pin.")
+                         : unread.isEmpty ? String(localized: "Apps your Hive workspaces pin show here.")
                          : String(localized: "\(unread.joined(separator: ", ")) did not answer. Pull to try again."))
                         .phoneFont(.secondary)
                         .foregroundStyle(Theme.tertiaryText)
@@ -146,9 +146,9 @@ struct AppsScreen: View {
             } else if apps.isEmpty, opened.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
-                        Label { Text("No Stadeum here yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
+                        Label { Text("No Hive workspaces yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
-                        Text("Connect Stadeum under You to open the apps your workspaces pin.")
+                        Text("Connect Hive under You to open the apps your workspaces pin.")
                     }
                 } else if stadeum.readingApps {
                     ProgressView()
@@ -162,7 +162,7 @@ struct AppsScreen: View {
                     ContentUnavailableView {
                         Label { Text("No apps yet") } icon: { WorkspaceAppIcon(nil, size: 44) }
                     } description: {
-                        Text("Apps your Stadeum workspaces pin show here.")
+                        Text("Apps your Hive workspaces pin show here.")
                     }
                 }
             }

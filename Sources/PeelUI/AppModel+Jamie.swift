@@ -24,11 +24,11 @@ extension AppModel {
         return boxes.links.lazy.compactMap { box in self.boxes.places[box.url] == nil ? self.boxes.placesProblems[box.url] : nil }.first
     }
 
-    /// The box a tribe's Jamie row is still asking, by its host, once
+    /// The box a tribe's Jamie row is still asking, by its name, once
     /// Stadeum has said; nil while Stadeum is being asked.
     public var jamieAskingBox: String? {
         guard stadeum.jamieOrgs.map({ $0.links != nil }) ?? true else { return nil }
-        return boxes.links.first { boxes.places[$0.url] == nil && boxes.placesProblems[$0.url] == nil }?.host
+        return boxes.links.first { boxes.places[$0.url] == nil && boxes.placesProblems[$0.url] == nil }?.title
     }
 
     /// Reads again what every source says of Jamie: Hive while Stadeum is
@@ -78,7 +78,7 @@ extension AppModel {
             return nil
         case .org(let id):
             guard let peer = stadeum.live.first(where: { $0.id == id }) else {
-                throw PeelError(String(localized: "Connect Stadeum to add Jamie from \(choices.name(of: source)).", table: "Shared"))
+                throw PeelError(String(localized: "Connect Hive to add Jamie from \(choices.name(of: source)).", table: "Shared"))
             }
             try await stadeum.setJamie(peer, for: tribe)
             return stadeum.jamieLinks?.jamie.pubkey

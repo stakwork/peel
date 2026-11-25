@@ -33,6 +33,22 @@
         }
       }
     },
+    "%@ no longer takes this device's token; Hive renews it, or connect again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no longer takes this device's token; Hive renews it, or connect again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ya no acepta el token de este dispositivo; Hive lo renueva, o conéctate de nuevo."
+          }
+        }
+      }
+    },
     "%@'s answer about Jamie could not be read." : {
       "localizations" : {
         "en" : {
@@ -621,22 +637,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ ya no tiene esta propuesta."
-          }
-        }
-      }
-    },
-    "%@ no longer takes this device's token; Stadeum renews it, or connect again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ no longer takes this device's token; Stadeum renews it, or connect again."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ya no acepta el token de este dispositivo; Stadeum lo renueva, o conéctate de nuevo."
           }
         }
       }
@@ -2257,18 +2257,18 @@
         }
       }
     },
-    "Asked a Stadeum workspace" : {
+    "Asked a Hive workspace" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Asked a Stadeum workspace"
+            "value" : "Asked a Hive workspace"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preguntó a un espacio de trabajo de Stadeum"
+            "value" : "Preguntó a un espacio de trabajo de Hive"
           }
         }
       }
@@ -2833,66 +2833,66 @@
         }
       }
     },
-    "Connect Stadeum to add Jamie from %@." : {
+    "Connect Hive to add Jamie from %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum to add Jamie from %@."
+            "value" : "Connect Hive to add Jamie from %@."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum para agregar a Jamie desde %@."
+            "value" : "Conecta Hive para agregar a Jamie desde %@."
           }
         }
       }
     },
-    "Connect Stadeum to add Jamie." : {
+    "Connect Hive to add Jamie." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum to add Jamie."
+            "value" : "Connect Hive to add Jamie."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum para agregar a Jamie."
+            "value" : "Conecta Hive para agregar a Jamie."
           }
         }
       }
     },
-    "Connect Stadeum to call with Jamie from %@." : {
+    "Connect Hive to call with Jamie from %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum to call with Jamie from %@."
+            "value" : "Connect Hive to call with Jamie from %@."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum para llamar con Jamie desde %@."
+            "value" : "Conecta Hive para llamar con Jamie desde %@."
           }
         }
       }
     },
-    "Connect Stadeum to call with Jamie." : {
+    "Connect Hive to call with Jamie." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect Stadeum to call with Jamie."
+            "value" : "Connect Hive to call with Jamie."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conecta Stadeum para llamar con Jamie."
+            "value" : "Conecta Hive para llamar con Jamie."
           }
         }
       }
@@ -3777,6 +3777,198 @@
         }
       }
     },
+    "Hive didn't accept this device for Jamie. If it was disconnected in Hive, connect it again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive didn't accept this device for Jamie. If it was disconnected in Hive, connect it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive no aceptó este dispositivo para Jamie. Si se desconectó en Hive, conéctalo de nuevo."
+          }
+        }
+      }
+    },
+    "Hive didn't accept this device for a call. If it was disconnected in Hive, connect it again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive didn't accept this device for a call. If it was disconnected in Hive, connect it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive no aceptó este dispositivo para una llamada. Si se desconectó en Hive, conéctalo de nuevo."
+          }
+        }
+      }
+    },
+    "Hive gave a pairing page on another site (%@); nothing was opened." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive gave a pairing page on another site (%@); nothing was opened."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive dio una página de emparejamiento en otro sitio (%@); no se abrió nada."
+          }
+        }
+      }
+    },
+    "Hive is not connected." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive is not connected."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive no está conectado."
+          }
+        }
+      }
+    },
+    "Hive knows your Sphinx account: in a tribe where Jamie knows who is speaking, your @jamie runs as you." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive knows your Sphinx account: in a tribe where Jamie knows who is speaking, your @jamie runs as you."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive conoce tu cuenta de Sphinx: en una tribu donde Jamie sabe quién habla, tu @jamie se ejecuta como tú."
+          }
+        }
+      }
+    },
+    "Hive named this account in a way Peel cannot use (%@)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive named this account in a way Peel cannot use (%@)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive nombró esta cuenta de una forma que Peel no puede usar (%@)."
+          }
+        }
+      }
+    },
+    "Hive no longer has this code, so pairing didn't finish. Connect again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive no longer has this code, so pairing didn't finish. Connect again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive ya no tiene este código, así que la vinculación no terminó. Conéctate de nuevo."
+          }
+        }
+      }
+    },
+    "Hive's answer about Jamie could not be read." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive's answer about Jamie could not be read."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer la respuesta de Hive sobre Jamie."
+          }
+        }
+      }
+    },
+    "Hive's call link could not be read." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive's call link could not be read."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer el enlace de llamada de Hive."
+          }
+        }
+      }
+    },
+    "Hive's call link is not one Peel can join." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive's call link is not one Peel can join."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El enlace de llamada de Hive no es uno al que Peel pueda unirse."
+          }
+        }
+      }
+    },
+    "Hive's call ticket could not be read." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive's call ticket could not be read."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer el ticket de llamada de Hive."
+          }
+        }
+      }
+    },
+    "Hive's pairing code could not be read." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hive's pairing code could not be read."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer el código de emparejamiento de Hive."
+          }
+        }
+      }
+    },
     "I can't stop the agent from here. Use your Mac." : {
       "localizations" : {
         "en" : {
@@ -3953,18 +4145,18 @@
         }
       }
     },
-    "It was turned down in Stadeum." : {
+    "It was turned down in Hive." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "It was turned down in Stadeum."
+            "value" : "It was turned down in Hive."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se rechazó en Stadeum."
+            "value" : "Se rechazó en Hive."
           }
         }
       }
@@ -4017,6 +4209,22 @@
         }
       }
     },
+    "Jamie from a Stadeum server joins only an encrypted call." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jamie from a Stadeum server joins only an encrypted call."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jamie desde un servidor Stadeum solo se une a una llamada cifrada."
+          }
+        }
+      }
+    },
     "Jamie is getting ready…" : {
       "localizations" : {
         "en" : {
@@ -4065,18 +4273,18 @@
         }
       }
     },
-    "Jamie isn't switched on in Stadeum yet." : {
+    "Jamie isn't switched on in Hive yet." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jamie isn't switched on in Stadeum yet."
+            "value" : "Jamie isn't switched on in Hive yet."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jamie aún no está activado en Stadeum."
+            "value" : "Jamie aún no está activado en Hive."
           }
         }
       }
@@ -4173,6 +4381,198 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unirse cuesta %1$@ · %2$@ por mensaje"
+          }
+        }
+      }
+    },
+    "Link a Stadeum server" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link a Stadeum server"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vincular un servidor Stadeum"
+          }
+        }
+      }
+    },
+    "Looked at your Hive workspaces" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Looked at your Hive workspaces"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Miró tus espacios de trabajo de Hive"
+          }
+        }
+      }
+    },
+    "Peel couldn't read the Stadeum servers it keeps, so it won't change them now. Quit and reopen Peel, then link again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel couldn't read the Stadeum servers it keeps, so it won't change them now. Quit and reopen Peel, then link again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel no pudo leer los servidores Stadeum que guarda, así que no los cambiará ahora. Cierra y vuelve a abrir Peel, y vincula de nuevo."
+          }
+        }
+      }
+    },
+    "Peel links only to a Stadeum server at an https address, not %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel links only to a Stadeum server at an https address, not %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peel solo se vincula a un servidor Stadeum en una dirección https, no a %@."
+          }
+        }
+      }
+    },
+    "Pick one of your Hive workspaces or Stadeum servers: Jamie joins #%@ and answers @jamie there from it, using your access to it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick one of your Hive workspaces or Stadeum servers: Jamie joins #%@ and answers @jamie there from it, using your access to it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige uno de tus espacios de trabajo de Hive o servidores Stadeum: Jamie se une a #%@ y responde a @jamie allí desde él, usando tu acceso a él."
+          }
+        }
+      }
+    },
+    "Pick one of your Hive workspaces: Jamie joins #%@ and answers @jamie there from that workspace, using your access to it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick one of your Hive workspaces: Jamie joins #%@ and answers @jamie there from that workspace, using your access to it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige uno de tus espacios de trabajo de Hive: Jamie se une a #%@ y responde a @jamie allí desde ese espacio, usando tu acceso a él."
+          }
+        }
+      }
+    },
+    "Pick one of your Stadeum servers: Jamie joins #%@ and answers @jamie there from that server, using your access to it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick one of your Stadeum servers: Jamie joins #%@ and answers @jamie there from that server, using your access to it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige uno de tus servidores Stadeum: Jamie se une a #%@ y responde a @jamie allí desde ese servidor, usando tu acceso a él."
+          }
+        }
+      }
+    },
+    "The code ran out before pairing finished. Connect again, then approve it in Hive and come back to Peel within %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The code ran out before pairing finished. Connect again, then approve it in Hive and come back to Peel within %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El código caducó antes de terminar la vinculación. Conéctate de nuevo, apruébalo en Hive y vuelve a Peel en %@."
+          }
+        }
+      }
+    },
+    "This Sphinx account is linked to another Hive user." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This Sphinx account is linked to another Hive user."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta cuenta de Sphinx está vinculada a otro usuario de Hive."
+          }
+        }
+      }
+    },
+    "To link Peel to a Stadeum server, choose Link Peel in Connect in its Jamie app." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To link Peel to a Stadeum server, choose Link Peel in Connect in its Jamie app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para vincular Peel a un servidor Stadeum, elige Vincular Peel en Conectar, en su app de Jamie."
+          }
+        }
+      }
+    },
+    "connect Hive" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "connect Hive"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "conectar Hive"
+          }
+        }
+      }
+    },
+    "forget the Hive connection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "forget the Hive connection"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "olvidar la conexión con Hive"
           }
         }
       }
@@ -4353,22 +4753,6 @@
         }
       }
     },
-    "Link a box" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Link a box"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vincular una caja"
-          }
-        }
-      }
-    },
     "List its own payments" : {
       "localizations" : {
         "en" : {
@@ -4477,22 +4861,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Consultar sus propios pagos"
-          }
-        }
-      }
-    },
-    "Looked at your Stadeum workspaces" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Looked at your Stadeum workspaces"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Miró tus espacios de trabajo de Stadeum"
           }
         }
       }
@@ -5633,22 +6001,6 @@
         }
       }
     },
-    "Peel couldn't read the boxes it keeps, so it won't change them now. Quit and reopen Peel, then link again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Peel couldn't read the boxes it keeps, so it won't change them now. Quit and reopen Peel, then link again."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Peel no pudo leer las cajas que guarda, así que no las cambiará ahora. Cierra y vuelve a abrir Peel, y vincula de nuevo."
-          }
-        }
-      }
-    },
     "Peel couldn't tell where your assistant runs. Choose Use this Mac in Account › Always on." : {
       "localizations" : {
         "en" : {
@@ -5757,22 +6109,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Peel está esperando tu aprobación. Apruébala en tu Mac."
-          }
-        }
-      }
-    },
-    "Peel links only to a box at an https address, not %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Peel links only to a box at an https address, not %@."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Peel solo se vincula a una caja en una dirección https, no a %@."
           }
         }
       }
@@ -5981,54 +6317,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Foto"
-          }
-        }
-      }
-    },
-    "Pick one of your boxes: Jamie joins #%@ and answers @jamie there from that box, using your access to it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pick one of your boxes: Jamie joins #%@ and answers @jamie there from that box, using your access to it."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige una de tus cajas: Jamie se une a #%@ y responde a @jamie allí desde esa caja, usando tu acceso a ella."
-          }
-        }
-      }
-    },
-    "Pick one of your orgs or boxes: Jamie joins #%@ and answers @jamie there from it, using your access to it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pick one of your orgs or boxes: Jamie joins #%@ and answers @jamie there from it, using your access to it."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige una de tus organizaciones o cajas: Jamie se une a #%@ y responde a @jamie allí desde ella, usando tu acceso a ella."
-          }
-        }
-      }
-    },
-    "Pick one of your orgs: Jamie joins #%@ and answers @jamie there from that org, using your access to it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pick one of your orgs: Jamie joins #%@ and answers @jamie there from that org, using your access to it."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige una de tus organizaciones: Jamie se une a #%@ y responde a @jamie allí desde esa organización, usando tu acceso a ella."
           }
         }
       }
@@ -6717,6 +7005,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quitar de Peel"
+          }
+        }
+      }
+    },
+    "read your Hive connection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "read your Hive connection"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "leer tu conexión con Hive"
+          }
+        }
+      }
+    },
+    "read your linked Stadeum servers" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "read your linked Stadeum servers"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "leer tus servidores Stadeum vinculados"
           }
         }
       }
@@ -7521,198 +7841,6 @@
         }
       }
     },
-    "Stadeum didn't accept this device for Jamie. If it was disconnected in Stadeum, connect it again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum didn't accept this device for Jamie. If it was disconnected in Stadeum, connect it again."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum no aceptó este dispositivo para Jamie. Si se desconectó en Stadeum, conéctalo de nuevo."
-          }
-        }
-      }
-    },
-    "Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum didn't accept this device for a call. If it was disconnected in Stadeum, connect it again."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum no aceptó este dispositivo para una llamada. Si se desconectó en Stadeum, conéctalo de nuevo."
-          }
-        }
-      }
-    },
-    "Stadeum gave a pairing page on another site (%@); nothing was opened." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum gave a pairing page on another site (%@); nothing was opened."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum dio una página de emparejamiento en otro sitio (%@); no se abrió nada."
-          }
-        }
-      }
-    },
-    "Stadeum is not connected." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum is not connected."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum no está conectado."
-          }
-        }
-      }
-    },
-    "Stadeum knows your Sphinx account: in a tribe where Jamie knows who is speaking, your @jamie runs as you." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum knows your Sphinx account: in a tribe where Jamie knows who is speaking, your @jamie runs as you."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum conoce tu cuenta de Sphinx: en una tribu donde Jamie sabe quién habla, tu @jamie se ejecuta como tú."
-          }
-        }
-      }
-    },
-    "Stadeum named this account in a way Peel cannot use (%@)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum named this account in a way Peel cannot use (%@)."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum nombró esta cuenta de una forma que Peel no puede usar (%@)."
-          }
-        }
-      }
-    },
-    "Stadeum no longer has this code, so pairing didn't finish. Connect again." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum no longer has this code, so pairing didn't finish. Connect again."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum ya no tiene este código, así que la vinculación no terminó. Conéctate de nuevo."
-          }
-        }
-      }
-    },
-    "Stadeum's answer about Jamie could not be read." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum's answer about Jamie could not be read."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo leer la respuesta de Stadeum sobre Jamie."
-          }
-        }
-      }
-    },
-    "Stadeum's call link could not be read." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum's call link could not be read."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo leer el enlace de llamada de Stadeum."
-          }
-        }
-      }
-    },
-    "Stadeum's call link is not one Peel can join." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum's call link is not one Peel can join."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El enlace de llamada de Stadeum no es uno al que Peel pueda unirse."
-          }
-        }
-      }
-    },
-    "Stadeum's call ticket could not be read." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum's call ticket could not be read."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo leer el ticket de llamada de Stadeum."
-          }
-        }
-      }
-    },
-    "Stadeum's pairing code could not be read." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stadeum's pairing code could not be read."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo leer el código de emparejamiento de Stadeum."
-          }
-        }
-      }
-    },
     "Standard voice" : {
       "localizations" : {
         "en" : {
@@ -8081,22 +8209,6 @@
         }
       }
     },
-    "The code ran out before pairing finished. Connect again, then approve it in Stadeum and come back to Peel within %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The code ran out before pairing finished. Connect again, then approve it in Stadeum and come back to Peel within %@."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El código caducó antes de terminar la vinculación. Conéctate de nuevo, apruébalo en Stadeum y vuelve a Peel en %@."
-          }
-        }
-      }
-    },
     "The microphone is not available." : {
       "localizations" : {
         "en" : {
@@ -8417,22 +8529,6 @@
         }
       }
     },
-    "This Sphinx account is linked to another Stadeum user." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This Sphinx account is linked to another Stadeum user."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esta cuenta de Sphinx está vinculada a otro usuario de Stadeum."
-          }
-        }
-      }
-    },
     "This attachment cannot be bought." : {
       "localizations" : {
         "en" : {
@@ -8749,22 +8845,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Para %@, que no es un contacto"
-          }
-        }
-      }
-    },
-    "To link Peel to a box, choose Link Peel in Connect in its Jamie app." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "To link Peel to a box, choose Link Peel in Connect in its Jamie app."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Para vincular Peel a una caja, elige Vincular Peel en Conectar, en su app de Jamie."
           }
         }
       }
@@ -10321,22 +10401,6 @@
         }
       }
     },
-    "connect Stadeum" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "connect Stadeum"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "conectar Stadeum"
-          }
-        }
-      }
-    },
     "contact info must look like pubkey_lsp_scid" : {
       "localizations" : {
         "en" : {
@@ -10557,22 +10621,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "olvidar %@"
-          }
-        }
-      }
-    },
-    "forget the Stadeum connection" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "forget the Stadeum connection"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "olvidar la conexión con Stadeum"
           }
         }
       }
@@ -11409,38 +11457,6 @@
         }
       }
     },
-    "read your Stadeum connection" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "read your Stadeum connection"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "leer tu conexión con Stadeum"
-          }
-        }
-      }
-    },
-    "read your linked boxes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "read your linked boxes"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "leer tus cajas vinculadas"
-          }
-        }
-      }
-    },
     "received" : {
       "localizations" : {
         "en" : {
@@ -11521,34 +11537,34 @@
         }
       }
     },
-    "renew the Stadeum workspaces" : {
+    "renew the Hive workspaces" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "renew the Stadeum workspaces"
+            "value" : "renew the Hive workspaces"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "renovar los espacios de Stadeum"
+            "value" : "renovar los espacios de Hive"
           }
         }
       }
     },
-    "renew your Stadeum workspaces" : {
+    "renew your Hive workspaces" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "renew your Stadeum workspaces"
+            "value" : "renew your Hive workspaces"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "renovar tus espacios de trabajo de Stadeum"
+            "value" : "renovar tus espacios de trabajo de Hive"
           }
         }
       }

@@ -124,7 +124,7 @@ extension AppModel {
         do {
             try await bridge.usePeers(actor: link.actor, tokens: Dictionary(stadeum.live.map { ($0.id, $0.token) }) { _, last in last })
         } catch {
-            stadeum.problem = PeelError.noted(error, couldNot: String(localized: "give the agent's bridge your Stadeum workspaces"))
+            stadeum.problem = PeelError.noted(error, couldNot: String(localized: "give the agent's bridge your Hive workspaces"))
         }
     }
 
@@ -135,7 +135,7 @@ extension AppModel {
         do {
             try await AutomationsClient(server: server).syncPeers(stadeum.live)
         } catch {
-            stadeum.problem = PeelError.noted(error, couldNot: String(localized: "give the agent your Stadeum workspaces"))
+            stadeum.problem = PeelError.noted(error, couldNot: String(localized: "give the agent your Hive workspaces"))
         }
         // Not waited for: a slow workspace never holds up the bridge.
         refreshApps()

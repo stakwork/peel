@@ -67,10 +67,10 @@ extension BoxClient {
     public func groupCalls(_ person: BoxLink) async throws -> BoxCalls {
         let (status, data) = try await asPerson("GET", "voice/calls", person, nil, timeout: 15)
         if [403, 404, 405, 503].contains(status) { return .noGroupCalls }
-        guard status == 200 else { throw PeelError("\(host) could not say whether Jamie can join calls: \(Self.said(data) ?? "HTTP \(status)").") }
+        guard status == 200 else { throw PeelError("\(title) could not say whether Jamie can join calls: \(Self.said(data) ?? "HTTP \(status)").") }
         struct Answer: Decodable { let group: Bool?; let livekit: String? }
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data) else {
-            throw PeelError(String(localized: "\(host)'s answer about calls could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "\(title)'s answer about calls could not be read.", table: "Shared"))
         }
         return BoxCalls(group: answer.group == true, livekit: answer.livekit.flatMap(TalkTicket.mediaURL))
     }
@@ -84,7 +84,7 @@ extension BoxClient {
     /// encrypted call.
     public func startGroupCall(_ person: BoxLink, link: CallLink, record: Bool) async throws {
         guard let key = link.encryptionKey else {
-            throw PeelError(String(localized: "Jamie from a box joins only an encrypted call.", table: "Shared"))
+            throw PeelError(String(localized: "Jamie from a Stadeum server joins only an encrypted call.", table: "Shared"))
         }
         struct Body: Encodable { let mode = "group"; let room: String; let key: String; let record: Bool? }
         let body = try JSONEncoder.hive.encode(Body(room: link.room, key: key, record: record ? true : nil))
@@ -94,12 +94,12 @@ extension BoxClient {
         struct Answer: Decodable { let agent: String?; let encrypted: Bool?; let room: String? }
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data),
               let agent = answer.agent, CallServer.isIdentity(agent) else {
-            throw PeelError(String(localized: "\(host)'s answer about the call could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "\(title)'s answer about the call could not be read.", table: "Shared"))
         }
         // A voice service from before group calls takes the body for a call
         // of the person's own, in a room of its own: that Jamie is in no call here.
         guard answer.encrypted == true, answer.room == nil || answer.room == link.room else {
-            throw PeelError(String(localized: "Jamie on \(host) can't join group calls yet: its voice service needs an update.", table: "Shared"))
+            throw PeelError(String(localized: "Jamie on \(title) can't join group calls yet: its voice service needs an update.", table: "Shared"))
         }
     }
 
@@ -113,12 +113,12 @@ extension BoxClient {
         let body = try JSONEncoder.hive.encode(["room": room, "name": name])
         let (status, data) = try await asPerson("POST", "voice/calls/ticket", person, body, timeout: 15)
         if status == 404 { return nil }
-        guard status == 200 else { throw PeelError("\(host) gave no call ticket: \(Self.said(data) ?? "HTTP \(status)").") }
+        guard status == 200 else { throw PeelError("\(title) gave no call ticket: \(Self.said(data) ?? "HTTP \(status)").") }
         struct Answer: Decodable { let url: String; let room: String; let token: String; let identity: String }
         // `box_` and 32 hex, as the box mints one: never another participant's identity.
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data), answer.room == room,
               answer.identity.range(of: #"^box_[0-9a-f]{32}$"#, options: .regularExpression) != nil else {
-            throw PeelError(String(localized: "\(host)'s call ticket could not be read.", table: "Shared"))
+            throw PeelError(String(localized: "\(title)'s call ticket could not be read.", table: "Shared"))
         }
         return BoxCallTicket(url: answer.url, token: answer.token, identity: answer.identity)
     }
@@ -128,15 +128,15 @@ extension BoxClient {
         let said = Self.said(data)
         switch status {
         case 409:
-            return PeelError(String(localized: "Jamie from \(host) is already in this call.", table: "Shared"))
+            return PeelError(String(localized: "Jamie from \(title) is already in this call.", table: "Shared"))
         case 503:
-            return PeelError(String(localized: "Jamie from \(host) can't join a call right now: \(said ?? "it isn't ready").", table: "Shared"))
+            return PeelError(String(localized: "Jamie from \(title) can't join a call right now: \(said ?? "it isn't ready").", table: "Shared"))
         case 403:
-            return PeelError(String(localized: "\(host) takes calls only from a person's sign-in.", table: "Shared"))
+            return PeelError(String(localized: "\(title) takes calls only from a person's sign-in.", table: "Shared"))
         case 429:
             return busy
         default:
-            return PeelError("\(host) could not bring Jamie into the call: \(said ?? "HTTP \(status)").")
+            return PeelError("\(title) could not bring Jamie into the call: \(said ?? "HTTP \(status)").")
         }
     }
 }

@@ -240,7 +240,8 @@ is a short plan. Update the status and the journal when you finish something.
     `BoxClient.groupCalls`, `startGroupCall` (`POST /voice/calls { mode:
     "group", room, key, record? }`, refusals in words) and `callTicket`
     (`POST /voice/calls/ticket`, the person's own, `BoxCallTicket`, never
-    described with its token; 404 is none), as the person; `BoxApp`, the
+    described with its token; 404 is none; its Jamie's identity, `agent`,
+    when the box says), as the person; `BoxApp`, the
     app Jamie's screen names on a linked box (call-canvas.md §6.5: that
     box's own address and UI folder, one of its own apps) (tested)
   - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
@@ -564,8 +565,9 @@ is a short plan. Update the status and the journal when you finish something.
   `removeJamie`); a box's Jamie in calls (`calls`, `readCalls`,
   `startCall`, `records(on:)`, and `callTicket`, every box asked at once for the person's
   own ticket, the first taken, at most 8 s); Jamie's screen as the box's
-  app, live, as its member, only on the box known to be in that room
-  (`screen`, `inCall`; an `OrgPageRequest` from `OrgPageRequest.showing`); `BoxWords`, the question for both apps);
+  app, live, as its member, only from that box's own Jamie in a call it is
+  known to be in (`screen`, `inCall` by room and key; an `OrgPageRequest`
+  from `OrgPageRequest.showing`); `BoxWords`, the question for both apps);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
   the iPhone), Connect (Hive's device flow; `cameToFront`, from
@@ -940,7 +942,8 @@ is a short plan. Update the status and the journal when you finish something.
   frames, a link out only from strut's own page on the person's own tap, `TouchWebView`, and a
   link to another app as that app's page in place; strut's
   specs/DESKTOP.md, "A device with no strut of its own"; `OrgPageInPlace`, the same page
-  with no sheet around it: Jamie's screen in a call), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
+  with no sheet around it and no camera, microphone or unasked sound: Jamie's
+  screen in a call), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`

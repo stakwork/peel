@@ -371,12 +371,16 @@ person linked to the box, the tile shows the app itself:
   `https://strut.<host>/?app=<name>&input=<query>`
   (`CallChatWire.jamieScreen`; an empty one, or anything but http or https,
   is none). Read only from Jamie's screen tile (`Tile.app`).
-- **When it opens.** Only as an app of the box whose Jamie this device
-  knows is in the call: the box it asked in, or the one that gave the
-  person's ticket (`Boxes.inCall`, by room). The link's address is that
-  box's own (scheme, host and port), in its UI's folder, and names one of
-  the box's own apps, never `@<peer>/…` or another server's public app
-  (`BoxApp`, through `StrutAppLink`). Peel builds the
+- **When it opens.** Only from the screen of the box's own Jamie, in a
+  call this device knows that box's Jamie is in (`Boxes.inCall`, by room
+  and key: the same room with another key, or none, is another call). The
+  box is the one Peel asked in or the one that gave the person's ticket.
+  Its Jamie's LiveKit identity is what the box answered: `agent` to
+  `POST /voice/calls`, and `agent` beside a ticket, which voice does not
+  send yet (until it does, a person who joined sees the video). The
+  link's address is that box's own (scheme, host and port), in its UI's
+  folder, and names one of the box's own apps, never `@<peer>/…` or
+  another server's public app (`BoxApp`, through `StrutAppLink`). Peel builds the
   page itself from the app and its view (`OrgPageRequest.showing`, with
   `&solo=1`), never loading the attribute as given, and opens it as the
   box's member, the token checked first and renewed once if refused
@@ -387,8 +391,8 @@ person linked to the box, the tile shows the app itself:
   else, or a page that does not load, keeps the video.
 - **The tile.** The app shows only while Jamie's screen is the large tile
   (focused, as a screen is when it starts, `refocus`): clicks and taps go
-  to the page, and a button at its top right goes back (Escape is the
-  page's then, on the Mac). Small, in the grid, the strip or the row, it is the video
+  to the page, and a button at its top right goes back (on the Mac,
+  Escape too, but while the page has the keyboard Escape is the page's). Small, in the grid, the strip or the row, it is the video
   and a click focuses it. Going back and focusing again opens the app
   again, at the view the attribute names, so it follows again.
   The Mac's layout is as before (`CallStage`); on the iPhone, everyone
@@ -399,17 +403,22 @@ person linked to the box, the tile shows the app itself:
     and prompts (the app wallet's sheets, location) with no sheet.
 - **Who can set it.** Attributes pass outside the call's encryption, and
   anyone on the call can join under Jamie's name with a `tts` attribute.
-  Hence the box in the call alone: such a participant could at most make
-  the tile open one of that box's apps, at a view of its choosing, as the
-  person, which any link to that app could do, with nothing sent back.
-  No other box, address or server's app opens. A person who joined
-  through the call server (no box answered in time) sees the video.
+  Hence the box's own Jamie alone, by the identity the box gave: the call
+  server names each joiner `<name>__<4 random>`, so no one else takes it.
+  A person who joined through the call server (no box answered in time)
+  sees the video.
+- **In the tile, a page is no more than a page.** No camera or microphone
+  (the call holds them) and no sound before a click or tap, on both. On
+  the Mac no download; on the iPhone the sheet's prompts (the app wallet,
+  location, a download to share) as anywhere else.
 
 Not checked live: voice does not set `screen` yet (work item 11), and the
 call test room needs Tom at the Mac. Tested: the link read and matched
-(`BoxCallsTests.jamiesScreenOpensOnlyALinkedBoxsOwnApp`), the page opened
-as the member on the box in the call only
-(`BoxesTests.jamiesScreenOpensOnTheBoxInTheCallAsItsMember`, and the ticket's box),
+(`BoxCallsTests.jamiesScreenOpensOnlyALinkedBoxsOwnApp`), Jamie's identity
+from both answers (`askingJamieInPostsTheRoomAndTheKey`,
+`thePersonsTicketIsTheBoxsOrNone`), the page opened as the member from
+that Jamie in that call only (`BoxesTests.jamiesScreenOpensOnTheBoxInTheCallAsItsMember`,
+an impostor and a keyless repost included, and the ticket's box),
 `record` (`aBoxSaysWhetherItRecords`, `aBoxThatCantRecordIsNeverAskedTo`).
 
 ## Found along the way

@@ -71,9 +71,9 @@ extension Engine {
     ) async throws -> HiveCallTicket
 
     /// Where a device linked to boxes asks for its ticket into an encrypted
-    /// call (`Boxes.callTicket`): the room and the name. Nil when none of
+    /// call (`Boxes.callTicket`): the call and the name. Nil when none of
     /// the boxes has its Jamie in that room.
-    public typealias BoxTicketSource = @Sendable (_ room: String, _ participantName: String) async throws -> BoxCallTicket?
+    public typealias BoxTicketSource = @Sendable (_ link: CallLink, _ participantName: String) async throws -> BoxCallTicket?
 
     /// A ticket to join a call: the LiveKit server and a token, asked of
     /// this account's call server under the name `chat` knows this account
@@ -114,7 +114,7 @@ extension Engine {
         }
         if ticket == nil, let box, link.encryptionKey != nil {
             do {
-                let answer = try await box(link.room, name)
+                let answer = try await box(link, name)
                 try Task.checkCancellation()
                 if let answer { ticket = try await server.ticket(fromBox: answer, room: link.room, participantName: name) }
             } catch {

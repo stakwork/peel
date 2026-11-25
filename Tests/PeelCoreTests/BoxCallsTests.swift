@@ -96,6 +96,10 @@ struct BoxCallsTests {
         ("https://strut.stadeum.stakwork.ai/?app=canvas&public=1&from=https%3A%2F%2Fseller.example", nil, nil, nil),
         ("https://strut.stadeum.stakwork.ai/?app=canvas&app=notes", nil, nil, nil),
         ("https://strut.stadeum.stakwork.ai/?artifact=%2Fnotes.md", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/public/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai//?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai./?app=canvas", nil, nil, nil),
+        ("https://lab.example.com/%6Cab/?app=notes", nil, nil, nil),
         ("javascript:alert(1)", nil, nil, nil),
         ("", nil, nil, nil),
     ] as [(String, String?, String?, String?)])
@@ -121,7 +125,8 @@ struct BoxCallsTests {
         }
         defer { stub.stop() }
         let link = try CallLink.new(server: Self.callServer, audioOnly: true, encrypted: true)
-        try await BoxClient(box: box.url).startGroupCall(box, link: link, record: true)
+        // Jamie's identity in the call: whose screen may be the box's app.
+        #expect(try await BoxClient(box: box.url).startGroupCall(box, link: link, record: true) == "jamie_ab12")
         let asked = try #require(stub.requests.first)
         #expect(asked.contains("Authorization: Bearer \(box.token)"))
         let body = try #require(Self.body(asked))
@@ -170,6 +175,8 @@ struct BoxCallsTests {
             let asked = HTTPStub.jsonBody(of: request)?["room"] ?? ""
             if asked == "sphinx.call.elsewhere" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(room)","token":"t","identity":"\#(Self.identity)"}"#) }
             if asked == "sphinx.call.someone" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"sphinx.call.someone","token":"t","identity":"alice-1"}"#) }
+            if asked == "sphinx.call.agent.1" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(asked)","token":"t","identity":"\#(Self.identity)","agent":"jamie_ab12"}"#) }
+            if asked == "sphinx.call.agent.2" { return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(asked)","token":"t","identity":"\#(Self.identity)","agent":"\#(Self.identity)"}"#) }
             guard asked == room else { return (404, #"{"error":"Jamie from this box is not in that call"}"#) }
             return (200, #"{"url":"wss://livekit.sphinx.chat","room":"\#(room)","token":"eyJ.t.s","identity":"\#(Self.identity)"}"#)
         }
@@ -177,6 +184,10 @@ struct BoxCallsTests {
         let client = BoxClient(box: box.url)
         let ticket = try #require(try await client.callTicket(box, room: room, name: "Ada"))
         #expect(ticket.identity == Self.identity && ticket.token == "eyJ.t.s" && ticket.url == "wss://livekit.sphinx.chat")
+        // Jamie's identity there only when the box says it, and never the person's own.
+        #expect(ticket.agent == nil)
+        #expect(try await client.callTicket(box, room: "sphinx.call.agent.1", name: "Ada")?.agent == "jamie_ab12")
+        #expect(try await client.callTicket(box, room: "sphinx.call.agent.2", name: "Ada")?.agent == nil)
         #expect(HTTPStub.jsonBody(of: try #require(stub.requests.first)) == ["room": room, "name": "Ada"])
         // The box counts UTF-16 units: a long name is cut to 128 of them, never refused.
         _ = try await client.callTicket(box, room: room, name: String(repeating: "😀", count: 70))

@@ -75,8 +75,9 @@ private struct CallRoomView: View {
     @State private var notice = RecordingNotice()
     @State private var toast: String?
     @State private var bar = CallFloatingBar()
-    /// The large tile is a box's app (`CallTileView.live`): Escape is the page's then.
-    @State private var showsApp = false
+    /// A box's app in the large tile has the keyboard (`CallTileView.live`):
+    /// Escape is the page's then.
+    @State private var pageHasKeys = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -105,11 +106,11 @@ private struct CallRoomView: View {
         .onChange(of: call.state) { bar.update() }
         // The floating bar must not outlive the call.
         .onDisappear { bar.detach() }
-        // Escape goes back to the grid, but over a box's app, whose page has
-        // it. A button rather than `onExitCommand`, which needs a focused
-        // view the call window usually lacks.
-        .hiddenShortcut(.cancelAction, enabled: call.focus != nil && !showsApp, action: call.showGrid)
-        .onPreferenceChange(ShowsApp.self) { showsApp = $0 }
+        // Escape goes back to the grid, but to a box's app while its page
+        // has the keyboard. A button rather than `onExitCommand`, which
+        // needs a focused view the call window usually lacks.
+        .hiddenShortcut(.cancelAction, enabled: call.focus != nil && !pageHasKeys, action: call.showGrid)
+        .onPreferenceChange(PageHasKeys.self) { pageHasKeys = $0 }
     }
 
     private func keepOnTopChanged() {
@@ -169,8 +170,8 @@ private struct CallRoomView: View {
     }
 }
 
-/// Whether the large tile shows a box's app, whose page has Escape then.
-private struct ShowsApp: PreferenceKey {
+/// Whether a box's app in the large tile has the keyboard, and Escape with it.
+private struct PageHasKeys: PreferenceKey {
     static let defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
@@ -213,7 +214,7 @@ private struct CallStage: View {
         if let main = Self.main(of: call, layout: layout) {
             let others = call.tiles.filter { $0.id != main.id }
             HStack(spacing: CallGrid.gap) {
-                CallTileView(tile: main, avatarSize: 96, focused: call.focus == main.id, room: call.link.room) { call.toggleFocus(main.id) }
+                CallTileView(tile: main, avatarSize: 96, focused: call.focus == main.id, call: call.link) { call.toggleFocus(main.id) }
                 if !others.isEmpty, !stripHidden { strip(others) }
             }
             .padding(Theme.Space.lg)
@@ -304,12 +305,14 @@ private struct CallTileView: View {
     let tile: CallSession.Tile
     let avatarSize: CGFloat
     let focused: Bool
-    /// The call's room, for the large tile: Jamie's screen there may be its box's app.
-    var room: String? = nil
+    /// The call, for the large tile: Jamie's screen there may be its box's app.
+    var call: CallLink? = nil
     let click: () -> Void
     /// The box's page for Jamie's screen while it is large (`Boxes.screen`),
     /// and the link it was opened for; nil keeps the video.
     @State private var page: (app: URL, request: OrgPageRequest)?
+    /// That page has the keyboard.
+    @State private var pageHasKeys = false
 
     var body: some View {
         Group {
@@ -322,8 +325,9 @@ private struct CallTileView: View {
         }
         .task(id: focused ? tile.app : nil) {
             page = nil
-            guard focused, let room, let app = tile.app else { return }
-            let opened = await model.boxes.screen(app, in: room)
+            pageHasKeys = false
+            guard focused, let call, let app = tile.app else { return }
+            let opened = await model.boxes.screen(app, in: call, from: tile.person.identity)
             if !Task.isCancelled { page = opened.map { (app, $0) } }
         }
     }
@@ -338,7 +342,7 @@ private struct CallTileView: View {
     /// The box's app in the video's place.
     private func live(_ page: OrgPageRequest) -> some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-        return BoxPageView(page: page) { self.page = nil }
+        return BoxPageView(page: page, failed: { self.page = nil; pageHasKeys = false }, keys: { pageHasKeys = $0 })
             .id(page.id)
             .clipShape(shape)
             .overlay { shape.strokeBorder(Theme.divider, lineWidth: 1) }
@@ -349,7 +353,7 @@ private struct CallTileView: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(Text(verbatim: name))
-            .preference(key: ShowsApp.self, value: true)
+            .preference(key: PageHasKeys.self, value: pageHasKeys)
     }
 
     private var video: some View {

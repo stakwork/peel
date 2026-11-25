@@ -383,7 +383,7 @@ private struct IOSCallTile: View {
         .task(id: focused ? tile.app : nil) {
             page = nil
             guard focused, let app = tile.app else { return }
-            let opened = await model.boxes.screen(app, in: call.link.room)
+            let opened = await model.boxes.screen(app, in: call.link, from: tile.person.identity)
             if !Task.isCancelled { page = opened.map { (app, $0) } }
         }
     }

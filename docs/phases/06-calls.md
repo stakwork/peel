@@ -1970,9 +1970,11 @@ with the box's `record`; tests in PeelCore for the link and the match.
 
 - PeelCore: `CallChatWire.jamieScreen`, `BoxApp`, `BoxCalls.record` and
   `records`.
-- PeelUI: `Boxes.screen` (only on the box known to be in that room,
+- PeelUI: `Boxes.screen` (only from the box's own Jamie, by the identity
+  the box gave, in a call by room and key that box is known to be in,
   `inCall`: asked in, or the ticket's), `records(on:)` and `startCall`
-  sending `record` only where the box can; `OrgPageRequest.showing`;
+  sending `record` only where the box can; `callTicket(for:)` and
+  `Engine.BoxTicketSource` take the call; `OrgPageRequest.showing`;
   `AppModel.offersRecording(in:)` (`CallJamie.isBox`, its only use gone,
   removed).
 - Apps: `Tile.app` on both sessions; the Mac's `CallTileView` and
@@ -1985,13 +1987,26 @@ with the box's `record`; tests in PeelCore for the link and the match.
   `BoxesTests.aBoxThatCantRecordIsNeverAskedTo`,
   `jamiesScreenOpensOnTheBoxInTheCallAsItsMember`, and the ticket test's
   box in the call.
-- Decided: only the box known to be in the call opens. Anyone on a call
-  can take Jamie's name and attributes; with any linked box allowed, they
-  could open an app of a box that has nothing to do with the call, as the
-  person, without a click.
+- Decided: only the box's own Jamie opens it. Anyone on a call can take
+  Jamie's name and attributes; without this they could open any of the
+  person's boxes' apps, at a view of their choosing, as the person,
+  without a click (the independent review's first finding; the first
+  version checked the box but not the participant, and kept the box per
+  room, so a keyless repost of the room counted too). The box says who
+  its Jamie is in `POST /voice/calls`'s `agent`; voice's
+  `POST /voice/calls/ticket` does not yet, so a joiner sees the video
+  until it adds `agent` there (asked of the voice work, item 11).
 - Decided: the app shows only in the large tile. Small, it would take a
   click that should focus it, and a page in every grid cell would load for
   nothing; going back and focusing again opens it again, following.
+- Review (independent agent), also fixed: the iPhone's page in a call
+  could take the camera and microphone with no prompt (the sheet grants
+  them to strut's page) and play sound unasked, now neither; Escape on
+  the Mac went to the page whenever it showed, now only while it has the
+  keyboard; a load that failed after it started left a blank tile, now
+  the video. Not applied: a change to `screen` reloads the page (the real
+  Jamie sets it once per share, and only it can now); two boxes' Jamies
+  in one call open only the one this device knows of.
 - Not checked live: voice sets no `screen` yet, and the call test room
   opens a visible window and asks for the microphone (Tom's to run). To
   try it there: a participant named Jamie with attributes `tts=off` and

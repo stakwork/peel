@@ -173,10 +173,12 @@ private struct OrgPageBody<Page: PhonePage>: View {
     let wallet: PhoneWalletSheets
     let location: PageLocationPrompts
     let visible: Bool
+    /// The camera, the microphone and sound before a tap (`OrgWebView.media`).
+    var media = true
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        OrgWebView(page: page, controller: controller, model: model, wallet: wallet, location: location, visible: visible)
+        OrgWebView(page: page, controller: controller, model: model, wallet: wallet, location: location, visible: visible, media: media)
             .overlay(alignment: .top) {
                 if controller.isLoading {
                     ProgressView(value: controller.progress)
@@ -214,8 +216,9 @@ private struct OrgPageBody<Page: PhonePage>: View {
 
 /// An org's page in place, with none of a sheet's chrome: Jamie's screen
 /// in a call (`Boxes.screen`, stadeum plans/call-canvas.md §6.5), under the
-/// rules a sheet keeps. A page that does not open is told to `failed`, and
-/// the call shows the video again.
+/// rules a sheet keeps, but no camera or microphone, which the call holds,
+/// and no sound before a tap. A page that does not open is told to
+/// `failed`, and the call shows the video again.
 struct OrgPageInPlace<Page: PhonePage>: View {
     let page: Page
     let failed: () -> Void
@@ -225,7 +228,7 @@ struct OrgPageInPlace<Page: PhonePage>: View {
     @State private var visible = false
 
     var body: some View {
-        OrgPageBody(page: page, controller: controller, wallet: wallet, location: location, visible: visible)
+        OrgPageBody(page: page, controller: controller, wallet: wallet, location: location, visible: visible, media: false)
             .onAppear { visible = true }
             .onDisappear { visible = false }
             .onChange(of: controller.problem != nil) { _, failing in if failing { failed() } }
@@ -425,9 +428,12 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
     let location: PageLocationPrompts
     /// Whether the sheet is on screen (a page asks only then).
     let visible: Bool
+    /// The camera and microphone for strut's own page, and sound without a
+    /// tap; none in a call, which holds them.
+    let media: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(page: page, controller: controller, model: model, location: location)
+        Coordinator(page: page, controller: controller, model: model, location: location, media: media)
     }
 
     func makeUIView(context: Context) -> TouchWebView {
@@ -436,7 +442,7 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
         // A page's own `<video playsinline>` (strut's camera sheet's
         // viewfinder) plays in place, not in the system's full-screen player.
         configuration.allowsInlineMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.mediaTypesRequiringUserActionForPlayback = media ? [] : .audio
         if let script = page.script {
             configuration.userContentController.addUserScript(
                 WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -493,12 +499,14 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
         private let authorizer = PageLocationAuthorizer()
         /// The sheet is on screen.
         var visible = false
+        private let media: Bool
 
-        init(page: Page, controller: OrgPageController<Page>, model: AppModel, location: PageLocationPrompts) {
+        init(page: Page, controller: OrgPageController<Page>, model: AppModel, location: PageLocationPrompts, media: Bool) {
             self.page = page
             self.controller = controller
             self.model = model
             self.location = location
+            self.media = media
         }
 
         /// The sheet is going: downloads stop and their folders go.
@@ -636,12 +644,13 @@ private struct OrgWebView<Page: PhonePage>: UIViewRepresentable {
 
         /// The camera or microphone (strut's camera sheet): for the main
         /// frame at the origin Peel loaded, the system's own permission
-        /// alone, with no second prompt from WebKit; never for a frame.
+        /// alone, with no second prompt from WebKit; never for a frame, nor
+        /// in a call.
         func webView(
             _ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
             initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType
         ) async -> WKPermissionDecision {
-            StrutWallet.mayAnswer(frame, origin: page.url) ? .grant : .deny
+            media && StrutWallet.mayAnswer(frame, origin: page.url) ? .grant : .deny
         }
 
         /// The page asks for the person's location (public from iOS 27; on iOS 26

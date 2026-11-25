@@ -170,23 +170,26 @@ class InputWebView: WKWebView {
 /// page's script runs, in its storage; nowhere but that strut's UI, a link
 /// out or to another of its apps only on the person's own click; no
 /// download, camera or microphone. A page that does not load is told to
-/// `failed`, and the call shows the video again.
+/// `failed`, and the call shows the video again; whether it has the
+/// keyboard, to `keys` (Escape is the page's then).
 struct BoxPageView: NSViewRepresentable {
     let page: OrgPageRequest
     let failed: () -> Void
+    let keys: (Bool) -> Void
     @Environment(\.openURL) private var openURL
 
     func makeCoordinator() -> Coordinator {
         Coordinator(page: page, open: openURL, failed: failed)
     }
 
-    func makeNSView(context: Context) -> InputWebView {
+    func makeNSView(context: Context) -> KeyedWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.addUserScript(
             WKUserScript(source: page.handOver, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         WebPane.limit(configuration)
-        let view = InputWebView(frame: .zero, configuration: configuration)
+        let view = KeyedWebView(frame: .zero, configuration: configuration)
+        view.keys = keys
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         // A force click's preview would load a link outside these rules.
@@ -195,9 +198,10 @@ struct BoxPageView: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: InputWebView, context: Context) {}
+    func updateNSView(_ view: KeyedWebView, context: Context) {}
 
-    static func dismantleNSView(_ view: InputWebView, coordinator: Coordinator) {
+    static func dismantleNSView(_ view: KeyedWebView, coordinator: Coordinator) {
+        view.keys = nil
         view.navigationDelegate = nil
         view.uiDelegate = nil
         view.stopLoading()
@@ -230,6 +234,14 @@ struct BoxPageView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            failed(error)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            failed(error)
+        }
+
+        private func failed(_ error: Error) {
             let error = error as NSError
             // A load cancelled here, or refused above.
             if error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled { return }
@@ -257,5 +269,22 @@ struct BoxPageView: NSViewRepresentable {
         ) async -> WKPermissionDecision {
             .deny
         }
+    }
+}
+
+/// A box's page in place (`BoxPageView`) that says when it has the keyboard.
+final class KeyedWebView: InputWebView {
+    var keys: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { keys?(true) }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { keys?(false) }
+        return resigned
     }
 }

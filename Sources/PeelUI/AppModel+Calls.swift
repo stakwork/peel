@@ -30,6 +30,13 @@ extension AppModel {
         ).map(CallJamie.org)
     }
 
+    /// Whether a call in `chat` may record on the canvas: its Jamie is a
+    /// box's, and the box does not say it can't (`BoxCalls.records`).
+    public func offersRecording(in chat: String) -> Bool {
+        guard case .box(let box) = callJamie(in: chat) else { return false }
+        return boxes.records(on: box)
+    }
+
     /// What a chat's call menu offers to bring Jamie from: each Stadeum
     /// org in use, then each box Peel is linked to whose Jamie can join a
     /// call on this account's call server (`BoxCalls.joins`), and the one

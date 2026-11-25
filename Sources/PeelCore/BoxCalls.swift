@@ -18,11 +18,20 @@ public struct BoxCalls: Sendable, Equatable {
     /// The LiveKit server the box joins, as LiveKit reads it (`wss://`, or
     /// `ws://`); nil when the box named none Peel can read.
     public var livekit: URL?
+    /// Whether its Jamie can record a call on the canvas (stadeum
+    /// plans/call-canvas.md §8): false on a box with no package that says
+    /// what to record onto; nil from a voice service from before it, which
+    /// records as it always did.
+    public var record: Bool?
 
-    public init(group: Bool, livekit: URL?) {
+    public init(group: Bool, livekit: URL?, record: Bool? = nil) {
         self.group = group
         self.livekit = livekit
+        self.record = record
     }
+
+    /// Whether a call may ask it to record on the canvas: unless it says it can't.
+    public var records: Bool { record != false }
 
     /// Nothing to offer: a box from before group calls, or no voice service.
     public static let noGroupCalls = BoxCalls(group: false, livekit: nil)
@@ -34,6 +43,30 @@ public struct BoxCalls: Sendable, Equatable {
     public func joins(callServer: String?) -> Bool {
         guard group, let livekit, let callServer, let base = TribeLink.baseURL(callServer) else { return false }
         return (try? CallServer.mediaURL(livekit.absoluteString, callServer: base)) != nil
+    }
+}
+
+/// An app on a box Peel is linked to, as a link names it: Jamie's screen
+/// in a call (`CallChatWire.jamieScreen`, stadeum plans/call-canvas.md
+/// §6.5), which the call shows live, as the person, in place of its video.
+public struct BoxApp: Sendable, Equatable {
+    /// The box, as its link keeps it (`BoxLink.url`).
+    public let box: URL
+    /// The app, one of the box's own, and the view it opens at.
+    public let link: StrutAppLink
+
+    /// The app `url` names on one of `boxes` (each a `BoxLink.url`): strut's
+    /// UI at that box's own address and in its folder (`/`, or a swarm's
+    /// `/lab/`), naming one of the box's own apps (`StrutAppLink`, as a page
+    /// on the box reads one). Nil for any other address (another host or
+    /// port, another scheme, a path below the UI, an app of another server),
+    /// which keeps its video.
+    public init?(_ url: URL, on boxes: [URL]) {
+        guard let base = Seller.base(url.absoluteString), let box = boxes.first(where: { $0 == base }) else { return nil }
+        let path = box.path(percentEncoded: true)
+        guard let link = StrutAppLink(url, folder: path.hasSuffix("/") ? path : path + "/", from: .org) else { return nil }
+        self.box = box
+        self.link = link
     }
 }
 
@@ -68,11 +101,11 @@ extension BoxClient {
         let (status, data) = try await asPerson("GET", "voice/calls", person, nil, timeout: 15)
         if [403, 404, 405, 503].contains(status) { return .noGroupCalls }
         guard status == 200 else { throw PeelError("\(title) could not say whether Jamie can join calls: \(Self.said(data) ?? "HTTP \(status)").") }
-        struct Answer: Decodable { let group: Bool?; let livekit: String? }
+        struct Answer: Decodable { let group: Bool?; let livekit: String?; let record: Bool? }
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data) else {
             throw PeelError(String(localized: "\(title)'s answer about calls could not be read.", table: "Shared"))
         }
-        return BoxCalls(group: answer.group == true, livekit: answer.livekit.flatMap(TalkTicket.mediaURL))
+        return BoxCalls(group: answer.group == true, livekit: answer.livekit.flatMap(TalkTicket.mediaURL), record: answer.record)
     }
 
     /// Asks the box's Jamie into `link`'s call as `person`, its starter:

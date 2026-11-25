@@ -62,6 +62,52 @@ struct BoxCallsTests {
         await #expect(throws: BoxClient.TokenRefused.self) { _ = try await BoxClient(box: box.url).groupCalls(gone) }
     }
 
+    /// Whether the box's Jamie can record on the canvas (stadeum
+    /// plans/call-canvas.md §8): as it says; a voice service from before it
+    /// says nothing and records as it always did.
+    @Test(arguments: [
+        (#"{"group":true,"livekit":"wss://livekit.sphinx.chat","record":true}"#, true),
+        (#"{"group":true,"livekit":"wss://livekit.sphinx.chat","record":false}"#, false),
+        (#"{"group":true,"livekit":"wss://livekit.sphinx.chat"}"#, true),
+    ])
+    func aBoxSaysWhetherItRecords(answer: String, records: Bool) async throws {
+        let (stub, box) = try await Self.box { _ in (200, answer) }
+        defer { stub.stop() }
+        #expect(try await BoxClient(box: box.url).groupCalls(box).records == records)
+    }
+
+    /// Jamie's screen (stadeum plans/call-canvas.md §6.5): its `screen`
+    /// attribute opens live only as an app of a box Peel is linked to, on
+    /// that box's own address and in its UI's folder, naming one of the
+    /// box's own apps, with the view it names; anything else, or nothing,
+    /// keeps the video.
+    @Test(arguments: [
+        ("https://strut.stadeum.stakwork.ai/?app=stadeum%2Fcanvas%2Fcanvas&input=present%3Dcall-1",
+         "https://strut.stadeum.stakwork.ai", "stadeum/canvas/canvas", "present=call-1"),
+        (" https://STRUT.stadeum.stakwork.ai:443/?app=canvas ", "https://strut.stadeum.stakwork.ai", "canvas", nil),
+        ("https://lab.example.com/lab/?app=notes&solo=1", "https://lab.example.com/lab", "notes", nil),
+        ("https://lab.example.com/?app=notes", nil, nil, nil),
+        ("https://strut.other.example/?app=canvas", nil, nil, nil),
+        ("http://strut.stadeum.stakwork.ai/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai:8443/?app=canvas", nil, nil, nil),
+        ("https://ada@strut.stadeum.stakwork.ai/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/files/?app=canvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?app=%40other%2Fcanvas", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?app=canvas&public=1&from=https%3A%2F%2Fseller.example", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?app=canvas&app=notes", nil, nil, nil),
+        ("https://strut.stadeum.stakwork.ai/?artifact=%2Fnotes.md", nil, nil, nil),
+        ("javascript:alert(1)", nil, nil, nil),
+        ("", nil, nil, nil),
+    ] as [(String, String?, String?, String?)])
+    func jamiesScreenOpensOnlyALinkedBoxsOwnApp(screen: String, box: String?, app: String?, input: String?) throws {
+        let boxes = try ["https://strut.stadeum.stakwork.ai", "https://lab.example.com/lab"].map { try #require(Seller.base($0)) }
+        let attributes = ["tts": "off", "screen": screen]
+        let opened = CallChatWire.jamieScreen(attributes).flatMap { BoxApp($0, on: boxes) }
+        #expect(opened?.box.absoluteString == box)
+        #expect(opened.map { $0.link.app } == app.map { .app($0) })
+        #expect(opened?.link.input == input)
+    }
+
     /// Asking Jamie in posts the call's room and key, as the person, and
     /// `record` only when asked; done once the box says its Jamie is in,
     /// encrypted. A voice service from before group calls takes the body

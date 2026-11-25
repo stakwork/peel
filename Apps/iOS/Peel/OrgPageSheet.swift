@@ -95,7 +95,6 @@ struct OrgPageSheet<Page: PhonePage>: View {
     /// Pushed inside Apps: how ‹ leaves the page. Nil for full screen.
     var leave: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
-    @Environment(AppModel.self) private var model
     @State private var controller = OrgPageController<Page>()
     /// The app wallet's sheets over this page (`OrgWalletBridge`).
     @State private var wallet = PhoneWalletSheets()
@@ -131,39 +130,7 @@ struct OrgPageSheet<Page: PhonePage>: View {
     }
 
     private var content: some View {
-            OrgWebView(page: page, controller: controller, model: model, wallet: wallet, location: location, visible: visible)
-                .overlay(alignment: .top) {
-                    if controller.isLoading {
-                        ProgressView(value: controller.progress)
-                            .progressViewStyle(.linear)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .overlay {
-                    if let problem = controller.problem {
-                        ContentUnavailableView {
-                            Label("Couldn't open it", systemImage: "exclamationmark.triangle")
-                        } description: {
-                            Text(problem)
-                        } actions: {
-                            Button("Try again") { controller.retry(page) }
-                        }
-                        .background(Theme.background)
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if let toast = wallet.toast {
-                        Text(toast)
-                            .phoneFont(.secondary)
-                            .padding(.horizontal, Theme.Space.lg)
-                            .padding(.vertical, Theme.Space.sm)
-                            .glassEffect(.regular, in: .capsule)
-                            .padding(.bottom, Theme.Space.xl)
-                            .transition(.opacity)
-                    }
-                }
-                .animation(CopyFeedback.exit, value: wallet.toast)
-                .background { Color(uiColor: controller.pageBackground ?? .systemBackground).ignoresSafeArea() }
+            OrgPageBody(page: page, controller: controller, wallet: wallet, location: location, visible: visible)
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 // The bar reads on the page's own background: a dark page (strut's, with no theme) gets a light title.
@@ -194,6 +161,75 @@ struct OrgPageSheet<Page: PhonePage>: View {
                         }
                     }
                 }
+    }
+}
+
+/// The page itself, pushed, full screen or in place: the web view, its
+/// progress, why it did not open with Try again, and the app wallet's toast,
+/// on the page's own background.
+private struct OrgPageBody<Page: PhonePage>: View {
+    let page: Page
+    let controller: OrgPageController<Page>
+    let wallet: PhoneWalletSheets
+    let location: PageLocationPrompts
+    let visible: Bool
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        OrgWebView(page: page, controller: controller, model: model, wallet: wallet, location: location, visible: visible)
+            .overlay(alignment: .top) {
+                if controller.isLoading {
+                    ProgressView(value: controller.progress)
+                        .progressViewStyle(.linear)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay {
+                if let problem = controller.problem {
+                    ContentUnavailableView {
+                        Label("Couldn't open it", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(problem)
+                    } actions: {
+                        Button("Try again") { controller.retry(page) }
+                    }
+                    .background(Theme.background)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let toast = wallet.toast {
+                    Text(toast)
+                        .phoneFont(.secondary)
+                        .padding(.horizontal, Theme.Space.lg)
+                        .padding(.vertical, Theme.Space.sm)
+                        .glassEffect(.regular, in: .capsule)
+                        .padding(.bottom, Theme.Space.xl)
+                        .transition(.opacity)
+                }
+            }
+            .animation(CopyFeedback.exit, value: wallet.toast)
+            .background { Color(uiColor: controller.pageBackground ?? .systemBackground).ignoresSafeArea() }
+    }
+}
+
+/// An org's page in place, with none of a sheet's chrome: Jamie's screen
+/// in a call (`Boxes.screen`, stadeum plans/call-canvas.md §6.5), under the
+/// rules a sheet keeps. A page that does not open is told to `failed`, and
+/// the call shows the video again.
+struct OrgPageInPlace<Page: PhonePage>: View {
+    let page: Page
+    let failed: () -> Void
+    @State private var controller = OrgPageController<Page>()
+    @State private var wallet = PhoneWalletSheets()
+    @State private var location = PageLocationPrompts()
+    @State private var visible = false
+
+    var body: some View {
+        OrgPageBody(page: page, controller: controller, wallet: wallet, location: location, visible: visible)
+            .onAppear { visible = true }
+            .onDisappear { visible = false }
+            .onChange(of: controller.problem != nil) { _, failing in if failing { failed() } }
+            .modifier(OrgPagePrompts(controller: controller, wallet: wallet, location: location))
     }
 }
 

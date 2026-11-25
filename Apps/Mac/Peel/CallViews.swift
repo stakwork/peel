@@ -281,7 +281,7 @@ struct CallHeaderButton: View {
             + [.button("No Jamie", checked: jamie == nil) { model.calls.pickJamie(.noJamie, in: chat) }]
         // A box's Jamie may keep what is said on its canvas.
         let records = model.calls.recordsOnCanvas.contains(chat)
-        let canvas: [MenuEntry] = jamie?.isBox == true
+        let canvas: [MenuEntry] = model.offersRecording(in: chat)
             ? [.button("Record on the canvas", checked: records) { model.calls.setRecordsOnCanvas(!records, in: chat) }]
             : []
         presenter?.show(

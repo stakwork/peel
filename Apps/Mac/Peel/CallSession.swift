@@ -46,11 +46,15 @@ final class CallSession {
         var video: VideoTrack?
         /// Jamie, the call's voice agent (`CallChatWire.isJamie`), not its screen.
         var isJamie = false
+        /// On Jamie's screen: the app it shows (`CallChatWire.jamieScreen`),
+        /// live in its place when it is a linked box's (`Boxes.screen`).
+        var app: URL?
         var id: ID { ID(identity: person.identity, isScreen: isScreen) }
 
         static func == (a: Tile, b: Tile) -> Bool {
             a.person == b.person && a.isYou == b.isYou && a.isScreen == b.isScreen && a.speaking == b.speaking
                 && a.muted == b.muted && a.paused == b.paused && a.video === b.video && a.isJamie == b.isJamie
+                && a.app == b.app
         }
     }
 
@@ -897,7 +901,8 @@ final class CallSession {
             ? !CallChatWire.jamieSpeaks(participant.attributes) : !participant.isMicrophoneEnabled()
         return Tile(
             person: person, isYou: isYou, isScreen: screen, speaking: !screen && participant.isSpeaking,
-            muted: !screen && quiet, paused: paused, video: video, isJamie: !screen && jamie
+            muted: !screen && quiet, paused: paused, video: video, isJamie: !screen && jamie,
+            app: screen && jamie ? CallChatWire.jamieScreen(participant.attributes) : nil
         )
     }
 

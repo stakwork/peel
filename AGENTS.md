@@ -235,11 +235,14 @@ is a short plan. Update the status and the journal when you finish something.
   - `BoxCalls.swift` — a box's own Jamie in a group call
     (docs/hive-calls.md, "From a box"; stadeum plans/group-calls.md §5,
     §7): `BoxCalls` (`GET /voice/calls`: ready, its LiveKit, and `joins`,
-    whether a call on this account's call server may bring it),
+    whether a call on this account's call server may bring it; `records`,
+    unless it says `record: false`, call-canvas.md §8),
     `BoxClient.groupCalls`, `startGroupCall` (`POST /voice/calls { mode:
     "group", room, key, record? }`, refusals in words) and `callTicket`
     (`POST /voice/calls/ticket`, the person's own, `BoxCallTicket`, never
-    described with its token; 404 is none), as the person (tested)
+    described with its token; 404 is none), as the person; `BoxApp`, the
+    app Jamie's screen names on a linked box (call-canvas.md §6.5: that
+    box's own address and UI folder, one of its own apps) (tested)
   - `CreditPurchase.swift` — `CreditPurchase`, credit bought on a strut
     server for a visitor's page (strut's specs/WALLET.md §1.2) and its
     `problems` (a port of strut's `creditPurchaseProblems`, held to its
@@ -299,7 +302,8 @@ is a short plan. Update the status and the journal when you finish something.
   - `CallChat.swift` — the call's chat without LiveKit: `CallChatMessage`,
     `CallChatWire` (the `lk-chat-topic` JSON: messages, Jamie's status rows,
     `mentionsJamie`; who Jamie is, `isJamie`, and its voice, `jamieSpeaks`
-    and the `voice(on:)` toggle) and `CallChatLog` (rows capped at 500,
+    and the `voice(on:)` toggle; what it records, `jamieRecords`, and the
+    app its screen shows, `jamieScreen`) and `CallChatLog` (rows capped at 500,
     deduped, Jamie thinking); tested in `CallChatTests`
   - `CallServer.swift` — the call server: `CallTicket` (`GET
     /api/connection-details`, the media server allowlist, the token's claims;
@@ -558,9 +562,10 @@ is a short plan. Update the status and the journal when you finish something.
   renewed once (`asMember`, every call as the member); a box's places,
   the tribes its own Jamie answers in (`places`, `readPlaces`, `addJamie`,
   `removeJamie`); a box's Jamie in calls (`calls`, `readCalls`,
-  `startCall`, and `callTicket`, every box asked at once for the person's
-  own ticket, the first taken, at most 8 s); `BoxWords`, the question for
-  both apps);
+  `startCall`, `records(on:)`, and `callTicket`, every box asked at once for the person's
+  own ticket, the first taken, at most 8 s); Jamie's screen as the box's
+  app, live, as its member, only on the box known to be in that room
+  (`screen`, `inCall`; an `OrgPageRequest` from `OrgPageRequest.showing`); `BoxWords`, the question for both apps);
   `Stadeum` (`AppModel.stadeum`, the Mac's and the iPhone's one Stadeum
   pairing: open with the account (renewed at once on the Mac, when due on
   the iPhone), Connect (Hive's device flow; `cameToFront`, from
@@ -691,7 +696,9 @@ is a short plan. Update the status and the journal when you finish something.
   blob frames, a link out only on the person's own click, which
   `InputWebView` knows of, and a link to another app to `AppModel.open`;
   "Built: a deliverable opens beside the chat", `docs/apps-browser.md`
-  "Built: deep links");
+  "Built: deep links"; a linked box's page keeps the same rules, its
+  `newWindow(for:from:box:open:)` shared by the web pane and `BoxPageView`,
+  a box's page in place: Jamie's screen in the call window);
   `StrutWalletBridge` (the app wallet's `strutWallet` handler on an app's
   page of Peel's strut, its main frame at that strut's origin only, the app
   named by the web view's own address, or a stranger's public app it hosts
@@ -778,7 +785,7 @@ is a short plan. Update the status and the journal when you finish something.
   section, and presence
   watching, the in-place switch confirm, the sidebar's on-a-call bar),
   `CallSession` (the call you are on: the LiveKit room, microphone, camera
-  and devices, and the chat over the data channel), `CallChatView` (the chat panel beside the stage), `CallWindow` (the grid, the focus layout with its strip,
+  and devices, and the chat over the data channel), `CallChatView` (the chat panel beside the stage), `CallWindow` (the grid, the focus layout with its strip, Jamie's screen as the box's app live while large,
   keep on top, the recording indicator and the control bar) and `CallScreenShare` (the system picker,
   the capture into a LiveKit buffer track, Peel's windows left out of display
   shares);
@@ -893,7 +900,8 @@ is a short plan. Update the status and the journal when you finish something.
   full-screen cover), `IOSCallSession` (I6: the call you are on over
   LiveKit, the audio session, microphone and camera; the phone's
   `LiveKitCalls` in `PhonePlatform`) and `IOSCallViews` (the call screen with its tiles and
-  controls, the on-a-call bar, the leave-and-join question, `PendingCall`),
+  controls, everyone else in a row above a focused tile, Jamie's screen as the box's app
+  live while focused, the on-a-call bar, the leave-and-join question, `PendingCall`),
   `MainTabs` (the tab shell: Chats, Payments with its "+350" badge, You
   with your photo as its icon, and the system's search tab; Search),
   `PhoneRouter` (`PhoneTab`, `ChatsRoute`, `PaymentsRoute`, `YouRoute`:
@@ -931,7 +939,8 @@ is a short plan. Update the status and the journal when you finish something.
   runs, never in an address; only that strut's UI folder, its `srcdoc` and blob
   frames, a link out only from strut's own page on the person's own tap, `TouchWebView`, and a
   link to another app as that app's page in place; strut's
-  specs/DESKTOP.md, "A device with no strut of its own"), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
+  specs/DESKTOP.md, "A device with no strut of its own"; `OrgPageInPlace`, the same page
+  with no sheet around it: Jamie's screen in a call), `PhoneControls` (`StepPage`, `PinBoxes`, `NumberedWords`,
   `WordEntry`, `WordCheckBoxes`, the button styles),
   `LockScreen` (with `ForgetAccount`), `PinPad` (the keypad, `PinDots`,
   `PinPrompt`: every PIN asked for after onboarding), `PaymentsTab`
@@ -1257,7 +1266,8 @@ is a short plan. Update the status and the journal when you finish something.
   orgs and boxes: pick, options, plan, suggestion), `BoxCallsTests` (a
   box's group calls as the person on a stand-in: offered only when ready
   on the call server's LiveKit, Jamie asked in with the room and key, its
-  refusals, the person's ticket),
+  refusals, the person's ticket, whether it records, and Jamie's screen
+  matched to a linked box's own app),
   `ProposalTests` (strut's record and card read, each status, a record
   without a card, the words cleaned, the store, a workspace's strut asked
   with the person's token, a tribe post's proposals and outcomes);
@@ -1283,7 +1293,9 @@ is a short plan. Update the status and the journal when you finish something.
   `ChatListControllerTests` (the list controller's 25 cases on a fake
   engine and store), `BoxesTests` (a box linked only on the yes, renewed,
   let go when unlinked, a refused token renewed once before it opens, its
-  places read and changed as the member),
+  places read and changed as the member, its Jamie in calls, recording
+  only where it can, and Jamie's screen opened as the member on the box in
+  the call only),
   `ChatSearchTests` (Return before a search's
   matches waits for the first of them), `ProposalWatchTests` (what the
   watch keeps, reads again and decides, on a stand-in strut; a proposal on

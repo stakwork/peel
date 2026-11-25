@@ -581,8 +581,4 @@ public enum CallJamie: Equatable, Identifiable, Sendable {
     }
 
     public var id: String { source.id }
-
-    public var isBox: Bool {
-        if case .box = self { true } else { false }
-    }
 }

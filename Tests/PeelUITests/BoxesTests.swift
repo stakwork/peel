@@ -244,6 +244,9 @@ struct BoxesTests {
         let started = clock.now
         let mine = await boxes.callTicket(room: room, name: "Ada", callServer: callServer)
         #expect(mine?.identity == "box_0123456789abcdef0123456789abcdef")
+        // The box that gave it is the one whose app may be Jamie's screen there.
+        #expect(await boxes.screen(try #require(URL(string: "http://127.0.0.1:\(inCall.port)/?app=canvas")), in: room) != nil)
+        #expect(await boxes.screen(try #require(URL(string: "http://127.0.0.1:\(slow.port)/?app=canvas")), in: room) == nil)
         #expect(await boxes.callTicket(room: "sphinx.call.other", name: "Ada", callServer: callServer, wait: .milliseconds(300)) == nil)
         #expect(clock.now - started < .seconds(2))
         // A box still loading, or on another call server's LiveKit, has no Jamie in this call: it is not told the room.
@@ -251,6 +254,74 @@ struct BoxesTests {
         let elsewhere = inCall.requests.count
         #expect(await boxes.callTicket(room: room, name: "Ada", callServer: "calls.example.com") == nil)
         #expect(inCall.requests.count == elsewhere)
+    }
+
+    /// A box that says it can't record on the canvas (stadeum
+    /// plans/call-canvas.md §8) is not offered it, and a call asked to
+    /// record there brings its Jamie without; one from before says nothing
+    /// and is asked as before.
+    @Test func aBoxThatCantRecordIsNeverAskedTo() async throws {
+        let callServer = "127.0.0.1:7880"
+        let voice = { (record: String) -> @Sendable (String) -> (Int, String) in
+            { request in
+                request.hasPrefix("GET ")
+                    ? (200, #"{"group":true,"livekit":"ws://127.0.0.1:7880"\#(record)}"#)
+                    : (200, #"{"agent":"jamie-1","encrypted":true}"#)
+            }
+        }
+        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }
+        let cant = try await Self.strut(token: renewed, voice: voice(#","record":false"#))
+        let older = try await Self.strut(token: renewed, voice: voice(""))
+        defer { [cant, older].forEach { $0.stop() } }
+        let profile = try profile()
+        try BoxLink.write([cant, older].map { BoxFixture.box("http://127.0.0.1:\($0.port)", renewedAt: Date(),
+                                                              exp: Date().addingTimeInterval(7 * 86_400)) }, to: profile.boxes)
+        let boxes = boxes(on: profile, signed: OSAllocatedUnfairLock(initialState: 0))
+        defer { boxes.close() }
+        await boxes.readCalls()
+        #expect(!boxes.records(on: boxes.links[0]) && boxes.records(on: boxes.links[1]))
+
+        for (stub, (box, records)) in zip([cant, older], zip(boxes.links, [false, true])) {
+            try await boxes.startCall(on: box, link: try CallLink.new(server: callServer, audioOnly: true, encrypted: true),
+                                      record: true, callServer: callServer)
+            let asked = try #require(stub.requests.last { $0.hasPrefix("POST /voice/calls ") })
+            #expect(asked.contains(#""record":true"#) == records)
+        }
+    }
+
+    /// Jamie's screen (stadeum plans/call-canvas.md §6.5) opens as the
+    /// app it names on the linked box whose Jamie is in that call, as the
+    /// box's member: strut's UI showing that app alone at that view, the
+    /// token as its bearer once the box takes it, never in the address. In
+    /// any other call (anyone can take Jamie's name there), or on any other
+    /// address, it opens nothing and asks no box.
+    @Test func jamiesScreenOpensOnTheBoxInTheCallAsItsMember() async throws {
+        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }
+        let voice: @Sendable (String) -> (Int, String) = { request in
+            request.hasPrefix("GET ") ? (200, #"{"group":true,"livekit":"ws://127.0.0.1:7880"}"#) : (200, #"{"agent":"jamie-1","encrypted":true}"#)
+        }
+        let stub = try await Self.strut(token: renewed, voice: voice)
+        defer { stub.stop() }
+        let profile = try profile()
+        let kept = BoxFixture.box("http://127.0.0.1:\(stub.port)", renewedAt: Date(), exp: Date().addingTimeInterval(7 * 86_400))
+        try BoxLink.write([kept], to: profile.boxes)
+        let boxes = boxes(on: profile, signed: OSAllocatedUnfairLock(initialState: 0))
+        defer { boxes.close() }
+        let screen = try #require(URL(string: "http://127.0.0.1:\(stub.port)/?app=stadeum%2Fcanvas%2Fcanvas&input=present%3Dcall-1"))
+        let link = try CallLink.new(server: "127.0.0.1:7880", audioOnly: true, encrypted: true)
+        #expect(await boxes.screen(screen, in: link.room) == nil)
+
+        try await boxes.startCall(on: boxes.links[0], link: link, record: false, callServer: "127.0.0.1:7880")
+        let page = try #require(await boxes.screen(screen, in: link.room))
+        #expect(page.url.absoluteString == "http://127.0.0.1:\(stub.port)/?app=stadeum%2Fcanvas%2Fcanvas&input=present%3Dcall-1&solo=1")
+        #expect(page.request.value(forHTTPHeaderField: "Authorization") == "Bearer \(kept.token)")
+        #expect(!page.url.absoluteString.contains(kept.token) && boxes.shows(page))
+        #expect(stub.requests.contains { $0.hasPrefix("GET /apps ") && $0.contains("Bearer \(kept.token)") })
+
+        let asked = stub.requests.count
+        #expect(await boxes.screen(screen, in: "sphinx.call.someone") == nil)
+        #expect(await boxes.screen(try #require(URL(string: "https://strut.other.example/?app=canvas")), in: link.room) == nil)
+        #expect(stub.requests.count == asked)
     }
 
     /// A stand-in strut: a renewal's challenge for 127.0.0.1, `token`'s

@@ -314,8 +314,8 @@ private struct IOSCallStage: View {
         GeometryReader { geometry in
             if let focus = call.focus, let main = call.tiles.first(where: { $0.id == focus }) {
                 let others = call.tiles.filter { $0.id != focus }
+                // Everyone else in a row above it (stadeum plans/call-canvas.md §6.5).
                 VStack(spacing: Self.gap) {
-                    IOSCallTile(call: call, tile: main, avatarSize: 96) { call.toggleFocus(main.id) }
                     if !others.isEmpty {
                         ScrollView(.horizontal) {
                             LazyHStack(spacing: Self.gap) {
@@ -327,6 +327,7 @@ private struct IOSCallStage: View {
                         }
                         .frame(height: 120)
                     }
+                    IOSCallTile(call: call, tile: main, avatarSize: 96, focused: true) { call.toggleFocus(main.id) }
                 }
                 .padding(Theme.Space.md)
             } else {
@@ -356,14 +357,51 @@ private struct IOSCallStage: View {
 
 /// A person or a shared screen. A tap focuses it, or, on the focused tile,
 /// goes back to the grid. A long press on Jamie's turns its voice on or off.
+/// Jamie's screen, focused, is the app it shows when that is a linked box's
+/// (stadeum plans/call-canvas.md §6.5): taps go to the page, and a button
+/// goes back.
 private struct IOSCallTile: View {
     @Environment(AppModel.self) private var model
     let call: IOSCallSession
     let tile: IOSCallSession.Tile
     let avatarSize: CGFloat
+    var focused = false
     let tap: () -> Void
+    /// The box's page for Jamie's screen while it is large (`Boxes.screen`),
+    /// and the link it was opened for; nil keeps the video.
+    @State private var page: (app: URL, request: OrgPageRequest)?
 
     var body: some View {
+        Group {
+            // Only for the link it was opened for: the large tile may be another's by now.
+            if focused, let page, page.app == tile.app, model.boxes.shows(page.request) {
+                live(page.request)
+            } else {
+                tileBody
+            }
+        }
+        .task(id: focused ? tile.app : nil) {
+            page = nil
+            guard focused, let app = tile.app else { return }
+            let opened = await model.boxes.screen(app, in: call.link.room)
+            if !Task.isCancelled { page = opened.map { (app, $0) } }
+        }
+    }
+
+    /// The box's app in the video's place.
+    private func live(_ page: OrgPageRequest) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+        return OrgPageInPlace(page: page) { self.page = nil }
+            .id(page.id)
+            .clipShape(shape)
+            .overlay { shape.strokeBorder(Theme.divider, lineWidth: 1) }
+            .overlay(alignment: .topTrailing) {
+                GlassButton("arrow.down.right.and.arrow.up.left", label: String(localized: "Show everyone"), action: tap)
+                    .padding(Theme.Space.sm)
+            }
+    }
+
+    @ViewBuilder private var tileBody: some View {
         if tile.isJamie {
             let speaks = call.jamieSpeaks
             content

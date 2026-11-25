@@ -30,6 +30,8 @@ enum Theme {
     static let selectionText = Color(light: 0x1E3D99, dark: 0xFFFFFF)
     static let accent = Color(light: 0x618AFF, dark: 0x618AFF)
     static let button = Color(light: 0x3F68E0, dark: 0x618AFF)
+    /// The call's purple: an active screen share in the call bar.
+    static let callShare = Color(light: 0x7B5CE6, dark: 0x8B6CF0)
     static let buttonText = Color(light: 0xFFFFFF, dark: 0x0E1620)
     /// PrimaryRed: only for actions that destroy something.
     static let destructive = Color(light: 0xED7474, dark: 0xED7474)

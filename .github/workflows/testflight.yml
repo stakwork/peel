@@ -139,7 +139,7 @@ jobs:
           path: |
             .build/stage/strut
             .build/stage/strut.node
-          key: strut-${{ hashFiles('Vendor/strut.lock') }}
+          key: strut-${{ hashFiles('Vendor/strut.lock', 'scripts/stage-strut.sh') }}
       - if: matrix.platform == 'mac' && steps.strut-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:

@@ -1,2 +1,2 @@
-# stakwork/sphinx master at the merge of #443 (runner PUT /alias: renames the bridge live, optionally announcing "Nickname set to <name>" to the owner), after #437.
-311d3b2c80a94d318720a65749df345a7e10ee49
+# stakwork/sphinx master at the merge of #446 (sphinx-daemon joins a place by Peel's tribe link), after #444 and #443. The runner's own code is as at #443: both change only wasm/daemon.
+add0469629e72c74cee01eda3e89d3efe6989621

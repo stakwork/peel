@@ -35,8 +35,8 @@ WORK=; NODE_TMP=; STRUT_SRC=
 trap 'rm -rf "$WORK" "$NODE_TMP" "$STRUT_SRC" "$OUT.lock"' EXIT
 trap 'exit 1' INT TERM HUP
 
-NODE_VERSION=v22.23.4
-NODE_SHA256=c9e1dbc748b33ed2d14f42445191ecaf14c56259c7a9a26d0042c49ec2b66428
+NODE_VERSION=v24.22.1
+NODE_SHA256=89c682593d76cd44233fa53b1563264e7de9cbb189cad169135c5b4fadfbc0a7
 NODE_TAR="$OUT.node/node-$NODE_VERSION-darwin-arm64.tar.gz"
 mkdir -p "$(dirname "$NODE_TAR")"
 if ! echo "$NODE_SHA256  $NODE_TAR" | shasum -a 256 -c - > /dev/null 2>&1; then
@@ -51,7 +51,7 @@ git -C "$STRUT_CHECKOUT" archive "$COMMIT" | tar -x -C "$STRUT_SRC"
 # Node fresh from the checked download each run: the one that ships.
 tar -xzf "$NODE_TAR" -C "$NODE_TMP"
 NODE_DIR="$NODE_TMP/node-$NODE_VERSION-darwin-arm64"
-# Under that Node, which strut requires (22 or newer): the checkout's
+# Under that Node, the one strut requires (its .nvmrc; 24.22.1 since strut e1fefd7, a CVE fix): the checkout's
 # dependencies from its lockfile, dictation's fixer from fixer/'s own
 # (node-llama-cpp, never one of strut's since strut#312; its install
 # scripts off, the prebuilt Metal binaries are packages of their own),

@@ -1,2 +1,2 @@
-# stakwork/strut main at the merge of #707 (384557c): after #702, adds #704 (a payout still out after a day is cancelled), #703 (a public app served alone at a host its domains list) and #707 (strut's own page, shown to a named person, reads the graph as that person; the UI takes `&actor=` beside `?key=`), so the Knowledge app in Peel sees the private Concept tree and memory.
-384557c8554f5fd879b1847824a8effa22785f54
+# stakwork/strut main at the merge of #931 (ea159f3), 2026-11-26: after #707, 200 merged PRs, among them #737 (Peel links to a box), #881 (voice call routes), #907 (strut's own app label) and #908 (the workers' Tasks app names).
+ea159f30cb6f3d6fd648efadb43ed37b598bd1a2

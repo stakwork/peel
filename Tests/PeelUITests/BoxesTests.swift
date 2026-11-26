@@ -40,7 +40,7 @@ struct BoxesTests {
     /// No signs nothing and asks nothing; yes signs once, posts the link
     /// with the account's name, and keeps the box the answer names.
     @Test func aBoxIsLinkedOnlyOnTheYes() async throws {
-        let stub = try await HTTPStub(reply: { _, _ in BoxFixture.answer() })
+        let stub = try await HTTPStub(reply: { _, _ in BoxFixture.answer(exp: BoxFixture.later) })
         defer { stub.stop() }
         let profile = try profile()
         let signed = OSAllocatedUnfairLock(initialState: 0)
@@ -71,7 +71,7 @@ struct BoxesTests {
     /// What the account kept that cannot be read is never written over: a
     /// link is refused rather than kept in place of every box there.
     @Test func boxesThatCannotBeReadAreNeverWrittenOver() async throws {
-        let stub = try await HTTPStub(reply: { _, _ in BoxFixture.answer() })
+        let stub = try await HTTPStub(reply: { _, _ in BoxFixture.answer(exp: BoxFixture.later) })
         defer { stub.stop() }
         let profile = try profile()
         try profile.boxes.write(Data("not what Peel keeps".utf8))
@@ -99,13 +99,13 @@ struct BoxesTests {
     /// token; one whose member removed the link there (`403 not_linked`) is
     /// let go and said, and gone from what is kept.
     @Test func aDueBoxIsRenewedAndAnUnlinkedOneLetGo() async throws {
-        let renews = try await Self.strut(token: { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) })
+        let renews = try await Self.strut(token: { _ in (200, BoxFixture.answer(token: "strut-person.renewed", exp: BoxFixture.later)) })
         let unlinked = try await Self.strut(token: { _ in (403, #"{"error":"not_linked: sphinx:02ab is not linked"}"#) })
         defer { renews.stop(); unlinked.stop() }
         let profile = try profile()
         let dayAgo = Date().addingTimeInterval(-90_000)
-        try BoxLink.write([BoxFixture.box("http://127.0.0.1:\(renews.port)", renewedAt: dayAgo),
-                           BoxFixture.box("http://127.0.0.1:\(unlinked.port)", renewedAt: dayAgo)], to: profile.boxes)
+        try BoxLink.write([BoxFixture.box("http://127.0.0.1:\(renews.port)", renewedAt: dayAgo, exp: dayAgo.addingTimeInterval(7 * 86_400)),
+                           BoxFixture.box("http://127.0.0.1:\(unlinked.port)", renewedAt: dayAgo, exp: dayAgo.addingTimeInterval(7 * 86_400))], to: profile.boxes)
         let boxes = boxes(on: profile, signed: OSAllocatedUnfairLock(initialState: 0))
         defer { boxes.close() }
         await until { boxes.links.count == 1 && boxes.links.first?.token == "strut-person.renewed" }
@@ -120,14 +120,14 @@ struct BoxesTests {
     @Test func aRefusedTokenIsRenewedOnceBeforeTheBoxOpens() async throws {
         let linked = OSAllocatedUnfairLock(initialState: true)
         let stub = try await Self.strut(token: { _ in
-            linked.withLock { $0 } ? (200, BoxFixture.answer(token: "strut-person.renewed")) : (403, #"{"error":"not_linked: gone"}"#)
+            linked.withLock { $0 } ? (200, BoxFixture.answer(token: "strut-person.renewed", exp: BoxFixture.later)) : (403, #"{"error":"not_linked: gone"}"#)
         }, apps: { request in
             request.contains("Bearer strut-person.renewed") ? (200, #"{"apps":[]}"#) : (401, #"{"error":"no longer linked"}"#)
         })
         defer { stub.stop() }
         let profile = try profile()
         let base = "http://127.0.0.1:\(stub.port)/lab"
-        try BoxLink.write([BoxFixture.box(base, renewedAt: Date())], to: profile.boxes)
+        try BoxLink.write([BoxFixture.box(base, renewedAt: Date(), exp: Date().addingTimeInterval(7 * 86_400))], to: profile.boxes)
         let boxes = boxes(on: profile, signed: OSAllocatedUnfairLock(initialState: 0))
         defer { boxes.close() }
         let page = try await boxes.home(of: try #require(boxes.links.first))
@@ -136,7 +136,7 @@ struct BoxesTests {
         #expect(boxes.shows(page) && boxes.links.first?.token == "strut-person.renewed")
 
         linked.withLock { $0 = false }
-        try BoxLink.write([BoxFixture.box(base, renewedAt: Date())], to: profile.boxes)
+        try BoxLink.write([BoxFixture.box(base, renewedAt: Date(), exp: Date().addingTimeInterval(7 * 86_400))], to: profile.boxes)
         boxes.open(profile)
         #expect(await boxes.page(of: try #require(boxes.links.first)) == nil)
         #expect(boxes.links.isEmpty && boxes.notice?.contains("removed Peel's link") == true)
@@ -154,7 +154,7 @@ struct BoxesTests {
         let theirs = String(repeating: "cd", count: 33)
         let held = OSAllocatedUnfairLock<Set<String>>(initialState: [theirs])
         let failing = OSAllocatedUnfairLock(initialState: false)
-        let stub = try await Self.strut(token: { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }, places: { request in
+        let stub = try await Self.strut(token: { _ in (200, BoxFixture.answer(token: "strut-person.renewed", exp: BoxFixture.later)) }, places: { request in
             guard request.contains("Bearer strut-person.renewed") else { return (401, #"{"error":"unauthorized"}"#) }
             if failing.withLock({ $0 }) { return (500, #"{"error":"the box is restarting"}"#) }
             if request.hasPrefix("POST ") {
@@ -218,7 +218,7 @@ struct BoxesTests {
                 return (200, #"{"agent":"jamie-1","encrypted":true}"#)
             }
         }
-        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }
+        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed", exp: BoxFixture.later)) }
         let inCall = try await Self.strut(token: renewed, voice: voice(true, true, false))
         let slow = try await Self.strut(token: renewed, voice: voice(true, false, true))
         let loading = try await Self.strut(token: renewed, voice: voice(false, false, false))
@@ -271,7 +271,7 @@ struct BoxesTests {
                     : (200, #"{"agent":"jamie-1","encrypted":true}"#)
             }
         }
-        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }
+        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed", exp: BoxFixture.later)) }
         let cant = try await Self.strut(token: renewed, voice: voice(#","record":false"#))
         let older = try await Self.strut(token: renewed, voice: voice(""))
         defer { [cant, older].forEach { $0.stop() } }
@@ -299,7 +299,7 @@ struct BoxesTests {
     /// other call (the same room with another key, or none, included), or
     /// on any other address, it opens nothing and asks no box.
     @Test func jamiesScreenOpensOnTheBoxInTheCallAsItsMember() async throws {
-        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed")) }
+        let renewed: @Sendable (String) -> (Int, String) = { _ in (200, BoxFixture.answer(token: "strut-person.renewed", exp: BoxFixture.later)) }
         let voice: @Sendable (String) -> (Int, String) = { request in
             request.hasPrefix("GET ") ? (200, #"{"group":true,"livekit":"ws://127.0.0.1:7880"}"#) : (200, #"{"agent":"jamie-1","encrypted":true}"#)
         }

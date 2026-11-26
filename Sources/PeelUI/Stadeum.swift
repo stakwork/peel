@@ -426,6 +426,14 @@ public final class Stadeum {
         )
     }
 
+    /// Takes Jamie out of the call in `room` (`HiveClient.removeJamie`,
+    /// docs/hive-calls.md "Jamie leaves"). Throws when not connected, and
+    /// for anything Hive does not answer with a 200.
+    public func removeJamie(room: String) async throws {
+        guard let link, !revoked else { throw PeelError(String(localized: "Hive is not connected.", table: "Shared")) }
+        try await HiveClient(hive: link.hive).removeJamie(link, room: room)
+    }
+
     // MARK: - Jamie in tribes
 
     /// Every tribe the person linked to an org, and Jamie's account, as

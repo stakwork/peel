@@ -105,6 +105,14 @@ struct CallChatWireTests {
         #expect(CallChatWire.decode(data) == nil)
     }
 
+    /// The leave request is `{"type":"leave"}` and shows no row.
+    @Test func theLeaveRequestSaysLeave() throws {
+        let data = CallChatWire.leave()
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object.count == 1 && object["type"] as? String == "leave")
+        #expect(CallChatWire.decode(data) == nil)
+    }
+
     @Test(arguments: [
         ("Jamie", ["tts": "off"], true, false),
         (" jamie ", ["tts": "on"], true, true),

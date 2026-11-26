@@ -256,13 +256,20 @@ private struct CallFloatingBarView: View {
     /// Share the entire screen, or stop sharing.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
-            IconButton(call.sharePaused ? "play.fill" : "pause.fill", help: call.sharePaused ? String(localized: "Resume sharing") : String(localized: "Pause sharing"), variant: .outline, lit: call.sharePaused) {
-                call.toggleScreenSharePause()
+            // One purple capsule: pause sits inside the share control, so
+            // the two read as a single "you are sharing" control.
+            HStack(spacing: 2) {
+                IconButton("rectangle.inset.filled.and.person.filled", help: String(localized: "Stop sharing"), variant: .outline, tint: Theme.callShare) {
+                    call.stopScreenShare()
+                }
+                IconButton(call.sharePaused ? "play.fill" : "pause.fill", help: call.sharePaused ? String(localized: "Resume sharing") : String(localized: "Pause sharing"), variant: .outline, tint: Theme.callShare) {
+                    call.toggleScreenSharePause()
+                }
+                .accessibilityLabel(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
             }
-            .accessibilityLabel(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
-            IconButton("rectangle.inset.filled.and.person.filled", help: String(localized: "Stop sharing"), variant: .outline, lit: true) {
-                call.stopScreenShare()
-            }
+            .padding(2)
+            .background(Theme.callShare.opacity(0.25), in: RoundedRectangle(cornerRadius: Theme.Radius.control + 2, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control + 2, style: .continuous).strokeBorder(Theme.callShare, lineWidth: 1.5))
         } else {
             IconButton("rectangle.inset.filled.and.person.filled", help: String(localized: "Share your entire screen"), variant: .outline) {
                 call.startScreenShare(.display)

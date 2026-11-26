@@ -23,7 +23,7 @@ struct AppsView: View {
             } trailing: {
                 // The person's own and the workspaces' now, not at the sidebar's next read.
                 IconButton("arrow.clockwise", help: String(localized: "Refresh"), working: model.stadeum.readingApps) {
-                    model.refreshApps()
+                    model.refreshApps(force: true)
                 }
                 .disabled(model.stadeum.readingApps)
             }

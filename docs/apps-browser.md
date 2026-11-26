@@ -154,7 +154,9 @@ own authoring UI. Your chat with Peel is the way in:
   which strut's single-app view already serves.
 - One read for both (`refreshApps`), with no workspaces too; opening Apps
   reads again, so an app just built shows. A home server still lists
-  none.
+  none. The list is published as each workspace answers (a slow one never holds up
+  the rest), and a read asked again with the same key (strut and workspaces) joins the one
+  under way; Refresh forces a new one. Workspaces are asked `apps?pinned=1`.
 - "Yours" is a source like `@workspace`: in the choice (first), on a
   card's foot, in the header and beside a pinned row, by the same rule
   (only when the apps come from several). Pins, search, icon, version and

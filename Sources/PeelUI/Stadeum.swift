@@ -88,6 +88,8 @@ public final class Stadeum {
     @ObservationIgnored private var pairing: Task<Void, Never>?
     @ObservationIgnored private var renewing: Task<Void, Never>?
     @ObservationIgnored private var appsReading: Task<Void, Never>?
+    /// The `key` the read under way was started with (`readApps`), nil for none.
+    @ObservationIgnored private var appsReadingKey: String?
     /// Telling Stadeum the Sphinx account (`identify`), and for which pairing (its credential).
     @ObservationIgnored private var identifying: (task: Task<Void, Never>, credential: String)?
     /// The pairings (by credential) whose Sphinx account was asked about as
@@ -391,6 +393,7 @@ public final class Stadeum {
         pairing = nil
         renewing = nil
         appsReading = nil
+        appsReadingKey = nil
         identifying = nil
         nap = nil
         pollSoon = false
@@ -621,40 +624,50 @@ public final class Stadeum {
     /// replaces one under way, unless it would read less; what is not read,
     /// or cannot be, keeps what it last listed. `still` says, when the
     /// reads answer, whether what they read from is still in use (the Mac:
-    /// the same strut). The read, for a caller that waits for it (a pull to
-    /// refresh); nil when one under way reads more.
+    /// the same strut). The list is published as each answer arrives, so a
+    /// slow workspace never holds up the others; `readingApps` and
+    /// `unreadApps` settle at the end. With a non-nil `key`, a read under
+    /// way that reads the workspaces and was started with the same key is
+    /// the read asked for: it is returned, not cut short and started again.
+    /// The read, for a caller that waits for it (a pull to refresh); nil
+    /// when one under way reads more.
     @discardableResult
     public func readApps(
         own: (@Sendable () async throws -> [WorkspaceApp])?,
         workspaces: Bool = true,
+        key: String? = nil,
         pinned: @escaping @Sendable (HivePeer) async throws -> [WorkspaceApp],
         still: @escaping @MainActor () -> Bool = { true }
     ) -> Task<Void, Never>? {
         // A read under way reads the workspaces too: not cut short for less.
         guard workspaces || appsReading == nil else { return nil }
+        // The same read, already under way (it reads the workspaces: only such a read has a key).
+        if workspaces, let key, let running = appsReading, appsReadingKey == key { return running }
         let peers = live
         appsReading?.cancel()
         let reading = workspaces ? peers : []
         readingApps = true
+        appsReadingKey = workspaces ? key : nil
         appsReading = Task {
             // Done, unless a newer read took its place.
             defer {
                 if !Task.isCancelled {
                     appsReading = nil
+                    appsReadingKey = nil
                     readingApps = false
                 }
             }
-            // By peer, the person's own under nil.
-            let read = await withTaskGroup(of: (String?, [WorkspaceApp]?).self) { group in
+            // By peer, the person's own under nil; published as each answers.
+            var read: [String?: [WorkspaceApp]] = [:]
+            await withTaskGroup(of: (String?, [WorkspaceApp]?).self) { group in
                 if let own { group.addTask { (nil, try? await own()) } }
                 for peer in reading {
                     group.addTask { (peer.id, try? await pinned(peer)) }
                 }
-                var read: [String?: [WorkspaceApp]] = [:]
                 for await (peer, apps) in group {
                     if let apps { read[peer] = apps }
+                    await publishApps(read, own: own != nil, peers: peers, still: still)
                 }
-                return read
             }
             // A newer read, or the source or the workspaces changed meanwhile: theirs, not this.
             guard !Task.isCancelled, still(), live.map(\.id) == peers.map(\.id) else { return }
@@ -662,17 +675,26 @@ public final class Stadeum {
                 let unread = reading.map(\.id).filter { read[$0] == nil }
                 if unreadApps != unread { unreadApps = unread }
             }
-            let sources: [String?] = (own == nil ? [] : [nil]) + peers.map(\.id)
-            let listed = WorkspaceApp.byTitle(sources.flatMap { peer in read[peer] ?? apps.filter { $0.peer == peer } })
-            if apps != listed { apps = listed }
         }
         return appsReading
+    }
+
+    /// The list as far as `read` goes: a source read uses its new apps, one
+    /// not yet read keeps what it last listed. Nothing if a newer read, or
+    /// the source or the workspaces, changed meanwhile.
+    private func publishApps(_ read: [String?: [WorkspaceApp]], own: Bool, peers: [HivePeer],
+                             still: @MainActor () -> Bool) {
+        guard !Task.isCancelled, still(), live.map(\.id) == peers.map(\.id) else { return }
+        let sources: [String?] = (own ? [nil] : []) + peers.map(\.id)
+        let listed = WorkspaceApp.byTitle(sources.flatMap { peer in read[peer] ?? apps.filter { $0.peer == peer } })
+        if apps != listed { apps = listed }
     }
 
     /// Stops a read of the apps under way: what it read is not kept.
     public func stopReadingApps() {
         appsReading?.cancel()
         appsReading = nil
+        appsReadingKey = nil
         readingApps = false
     }
 }

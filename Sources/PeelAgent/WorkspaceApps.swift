@@ -17,7 +17,7 @@ extension AutomationsClient {
     /// read through Peel's strut.
     public func pinnedApps(of peer: String) async throws -> [WorkspaceApp] {
         let id = try Self.peerID(peer)
-        let answer = try await call("GET", "peers/\(id)/apps", what: "the workspace's apps")
+        let answer = try await call("GET", "peers/\(id)/apps?pinned=1", what: "the workspace's apps")
         return try WorkspaceApp.listing(Data(answer.jsonString.utf8), peer: id)
     }
 

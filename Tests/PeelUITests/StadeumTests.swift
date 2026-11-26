@@ -541,6 +541,52 @@ struct StadeumTests {
         stadeum.close()
     }
 
+    @Test func aFastWorkspacesAppsShowBeforeASlowOneAnswers() async throws {
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme"), Self.peer("globex", "Globex")])
+            .write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile)
+        let release = Mutex(false)
+        let reading = stadeum.readApps(own: nil, pinned: { peer in
+            if peer.id == "globex" {
+                while !release.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+            }
+            return [WorkspaceApp(peer: peer.id, name: "app", title: "App", about: nil)]
+        })
+        var waited = 0
+        while stadeum.apps.isEmpty, waited < 500 { try await Task.sleep(for: .milliseconds(10)); waited += 1 }
+        #expect(stadeum.apps.map(\.id) == ["@acme/app"] && stadeum.readingApps)
+        release.withLock { $0 = true }
+        await reading?.value
+        #expect(stadeum.apps.map(\.id) == ["@acme/app", "@globex/app"] && !stadeum.readingApps)
+        stadeum.close()
+    }
+
+    @Test func aReadAskedAgainWithTheSameKeyJoinsTheOneUnderWay() async throws {
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile)
+        let release = Mutex(false)
+        let fetches = Mutex(0)
+        let pinned: @Sendable (HivePeer) async throws -> [WorkspaceApp] = { peer in
+            fetches.withLock { $0 += 1 }
+            while !release.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+            return [WorkspaceApp(peer: peer.id, name: "app", title: "App", about: nil)]
+        }
+        let first = stadeum.readApps(own: nil, key: "k", pinned: pinned)
+        let second = stadeum.readApps(own: nil, key: "k", pinned: pinned)
+        #expect(first == second)
+        // No key, or another: a new read, which replaces the one under way.
+        let forced = stadeum.readApps(own: nil, key: nil, pinned: pinned)
+        #expect(forced != first)
+        release.withLock { $0 = true }
+        await forced?.value
+        #expect(stadeum.apps.map(\.id) == ["@acme/app"] && !stadeum.readingApps)
+        stadeum.close()
+    }
+
     @Test(arguments: [
         ("https://acme.sphinx.chat/lab/?app=x&solo=1", "https://acme.sphinx.chat", "/lab/"),
         ("https://ACME.sphinx.chat:443/lab/?app=x&solo=1", "https://acme.sphinx.chat", "/lab/"),

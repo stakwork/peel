@@ -412,6 +412,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
 				PRODUCT_NAME = Peel;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -450,6 +451,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
 				PRODUCT_NAME = Peel;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -524,6 +526,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				PEEL_STRUT_ENTITLEMENTS = "strut-node.entitlements";
 				PRODUCT_NAME = Peel;
@@ -560,6 +563,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				PEEL_BRIDGE_ENTITLEMENTS = bridge.sandbox.entitlements;
 				PEEL_STRUT_ENTITLEMENTS = "strut-node.sandbox.entitlements";
@@ -588,6 +592,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PEEL_BUNDLE_ID).NotificationService";
 				PRODUCT_NAME = PeelNotificationService;
 				SDKROOT = iphoneos;
@@ -616,6 +621,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PEEL_BUNDLE_ID).NotificationService";
 				PRODUCT_NAME = PeelNotificationService;
 				SDKROOT = iphoneos;

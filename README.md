@@ -108,9 +108,16 @@ in en and es) or `Formatting.count`. Keys with several placeholders use
 positional specifiers in the values (`%1$@ … %2$@`). Never localize what is
 compared, stored or sent.
 
-**Building does not add the key.** `SWIFT_EMIT_LOC_STRINGS` is `NO`, so Xcode
-does not extract keys: add the key and its `es` value to the catalog by hand
-(the key is the literal with each `\(x)` as `%@` / `%lld`). Then run
+**Building does not add the key.** `SWIFT_EMIT_LOC_STRINGS` and
+`LOCALIZATION_EXPORT_SUPPORTED` are `NO` on the app targets, so Xcode does not
+extract keys (without the second it still adds SwiftUI literals and Info.plist
+keys, untranslated; Product > Export Localizations is off with it). Every key
+is `"extractionState" : "manual"`, or Xcode marks it stale after a build, as it
+finds none of them.
+Add the key and its `es` value to the catalog by hand (the key is the literal
+with each `\(x)` as `%@` / `%lld`), then run
+`python3 scripts/check-localization.py --fix`, which marks it manual and writes
+the catalog as Xcode does. Then run
 `python3 scripts/check-localization.py`: it checks every catalog (valid JSON,
 an `es` value for every key, matching placeholders, plural forms, no key with
 leading or trailing space) and scans the Swift sources for localized literals

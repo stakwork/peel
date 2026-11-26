@@ -27,10 +27,9 @@ enum BoxFixture {
         return BoxChallenge.prefix + claimsPart + ".Xk2bYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo"
     }
 
-    /// What strut answers a link or a renewal with. Its token ends a week from the real
-    /// clock, which the tests that use it run on: a fixed date went stale.
+    /// What strut answers a link or a renewal with.
     static func answer(actor: String = "ada-3f9a", name: String? = "Ada Lovelace", token: String = "strut-person.eyJ.abc",
-                       exp: Int64 = Int64(Date().timeIntervalSince1970 * 1000) + 7 * 86_400_000) -> String {
+                       exp: Int64 = nowMs + 7 * 86_400_000) -> String {
         #"{"actor":"\#(actor)",\#(name.map { #""name":"\#($0)","# } ?? "")"token":"\#(token)","exp":\#(exp)}"#
     }
 

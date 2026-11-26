@@ -104,8 +104,8 @@ struct BoxesTests {
         defer { renews.stop(); unlinked.stop() }
         let profile = try profile()
         let dayAgo = Date().addingTimeInterval(-90_000)
-        try BoxLink.write([BoxFixture.box("http://127.0.0.1:\(renews.port)", renewedAt: dayAgo),
-                           BoxFixture.box("http://127.0.0.1:\(unlinked.port)", renewedAt: dayAgo)], to: profile.boxes)
+        try BoxLink.write([BoxFixture.box("http://127.0.0.1:\(renews.port)", renewedAt: dayAgo, exp: dayAgo.addingTimeInterval(7 * 86_400)),
+                           BoxFixture.box("http://127.0.0.1:\(unlinked.port)", renewedAt: dayAgo, exp: dayAgo.addingTimeInterval(7 * 86_400))], to: profile.boxes)
         let boxes = boxes(on: profile, signed: OSAllocatedUnfairLock(initialState: 0))
         defer { boxes.close() }
         await until { boxes.links.count == 1 && boxes.links.first?.token == "strut-person.renewed" }
@@ -127,7 +127,7 @@ struct BoxesTests {
         defer { stub.stop() }
         let profile = try profile()
         let base = "http://127.0.0.1:\(stub.port)/lab"
-        try BoxLink.write([BoxFixture.box(base, renewedAt: Date())], to: profile.boxes)
+        try BoxLink.write([BoxFixture.box(base, renewedAt: Date(), exp: Date().addingTimeInterval(7 * 86_400))], to: profile.boxes)
         let boxes = boxes(on: profile, signed: OSAllocatedUnfairLock(initialState: 0))
         defer { boxes.close() }
         let page = try await boxes.home(of: try #require(boxes.links.first))
@@ -136,7 +136,7 @@ struct BoxesTests {
         #expect(boxes.shows(page) && boxes.links.first?.token == "strut-person.renewed")
 
         linked.withLock { $0 = false }
-        try BoxLink.write([BoxFixture.box(base, renewedAt: Date())], to: profile.boxes)
+        try BoxLink.write([BoxFixture.box(base, renewedAt: Date(), exp: Date().addingTimeInterval(7 * 86_400))], to: profile.boxes)
         boxes.open(profile)
         #expect(await boxes.page(of: try #require(boxes.links.first)) == nil)
         #expect(boxes.links.isEmpty && boxes.notice?.contains("removed Peel's link") == true)

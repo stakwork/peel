@@ -410,6 +410,22 @@ public struct HiveClient: Sendable {
         }
     }
 
+    /// Takes Jamie out of the call in `room` (`POST
+    /// /api/strut-devices/calls/jamie/remove`, docs/hive-calls.md "Jamie
+    /// leaves"): Hive removes its agent from the room and stops the call's
+    /// transcription. Throws for anything but a 200.
+    public func removeJamie(_ link: HiveLink, room: String) async throws {
+        let (status, data) = try await request("POST", "api/strut-devices/calls/jamie/remove", ["room": room], bearer: link.credential)
+        switch status {
+        case 200: return
+        // A revoked device, and a Hive from before the route alike.
+        case 401:
+            throw PeelError(String(localized: "Hive didn't accept this device to remove Jamie. If it was disconnected in Hive, connect it again.", table: "Shared"))
+        default:
+            throw Self.failure(status, data, couldNot: String(localized: "remove Jamie from the call", table: "Shared"))
+        }
+    }
+
     /// A ticket to join a call Hive made, as the person `link` pairs (hive
     /// `docs/plans/call-speaker-identity.md`, docs/hive-calls.md "Who is
     /// speaking"): the call server's token, under an identity Hive records

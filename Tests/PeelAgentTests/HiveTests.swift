@@ -251,6 +251,40 @@ struct HiveTests {
         }
     }
 
+    /// Jamie taken out of a call: asked with the device credential and the room.
+    @Test func jamieIsRemovedFromACallWithTheDeviceCredential() async throws {
+        let hive = try await HTTPStub { _, request in
+            guard path(request) == "/api/strut-devices/calls/jamie/remove", request.contains("Authorization: Bearer hivedev_abc") else {
+                return (404, "{}")
+            }
+            return (200, #"{"ok":true}"#)
+        }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        try await HiveClient(hive: link.hive).removeJamie(link, room: "sphinx.call.-a-.1")
+        #expect(hive.requests.count == 1 && hive.requests[0].hasPrefix("POST "))
+        #expect(body(hive.requests[0]) == #"{"room":"sphinx.call.-a-.1"}"#)
+    }
+
+    /// What Hive answers instead of a 200, in words. A Hive from before the
+    /// route answers its middleware's 401, as for a revoked device.
+    @Test(arguments: [
+        (404, #"{"error":"No Hive call in that room"}"#, "Hive could not remove Jamie from the call: No Hive call in that room."),
+        (403, #"{"error":"Access denied"}"#, "Hive could not remove Jamie from the call: Access denied."),
+        (401, #"{"error":"Unauthorized"}"#,
+         "Hive didn't accept this device to remove Jamie. If it was disconnected in Hive, connect it again."),
+    ])
+    func aRemovalHiveRefusesIsSaid(status: Int, answer: String, said: String) async throws {
+        let hive = try await HTTPStub { _, _ in (status, answer) }
+        defer { hive.stop() }
+        let link = try Self.link(hive: URL(string: "http://127.0.0.1:\(hive.port)")!)
+        await #expect {
+            try await HiveClient(hive: link.hive).removeJamie(link, room: "sphinx.call.-a-.1")
+        } throws: { error in
+            "\(error)" == said
+        }
+    }
+
     // MARK: Jamie in tribes (docs/hive-tribes.md)
 
     static let tribeKey = String(repeating: "ab", count: 33)

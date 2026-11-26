@@ -30,6 +30,16 @@ extension AppModel {
         ).map(CallJamie.org)
     }
 
+    /// Asks the server side to take Jamie out of the call in `room`, in
+    /// `chat`. Answers whether Hive did (an org's Jamie); a box's Jamie is
+    /// not Hive's to remove, so there is nothing to ask and the caller
+    /// asks Jamie itself (`CallChatWire.leave`). Throws when Hive refuses.
+    public func removeJamie(room: String, in chat: String) async throws -> Bool {
+        if case .box = callJamie(in: chat) { return false }
+        try await stadeum.removeJamie(room: room)
+        return true
+    }
+
     /// Whether a call in `chat` may record on the canvas: its Jamie is a
     /// box's, and the box does not say it can't (`BoxCalls.records`).
     public func offersRecording(in chat: String) -> Bool {

@@ -2,8 +2,8 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// New account (invite, name, PIN, the twelve words) or restore (the words,
-/// PIN, progress; the name and photo come back from the account's own sent
+/// New account (invite, name, PIN; the twelve words are backed up later,
+/// from You's "Back up account") or restore (the words, PIN, progress; the name and photo come back from the account's own sent
 /// messages, or, when none comes back, a name step after the progress
 /// screen), as the Mac's `OnboardingView` asks them, each step
 /// pushed so Back is the system's. See docs/design/README.md, "Profile and
@@ -13,7 +13,7 @@ struct Onboarding: View {
     @Environment(PhoneRouter.self) private var router
 
     enum Path { case newAccount, restore }
-    enum Step: Hashable { case invite, enterWords, name, pin, confirmPin, showWords, checkWords, restoring, restoreName }
+    enum Step: Hashable { case invite, enterWords, name, pin, confirmPin, restoring, restoreName }
 
     @State private var path = Path.newAccount
     @State private var steps: [Step] = []
@@ -23,8 +23,6 @@ struct Onboarding: View {
     @State private var name = ""
     @State private var pin = ""
     @State private var confirmation = ""
-    @State private var shownWords: [String] = []
-    @State private var check = WordCheck()
     @State private var working = false
     @State private var problem: String?
     /// What the next step change shows, rather than clearing `problem`.
@@ -37,7 +35,7 @@ struct Onboarding: View {
                     page(step)
                         .navigationBarTitleDisplayMode(.inline)
                         // Once the account exists there is no way back before it.
-                        .navigationBarBackButtonHidden([.showWords, .restoring, .restoreName].contains(step))
+                        .navigationBarBackButtonHidden([.restoring, .restoreName].contains(step))
                 }
         }
         // A worker's invite that came by a tapped link or the clipboard
@@ -194,33 +192,6 @@ struct Onboarding: View {
                 .primaryAction()
                 .disabled(confirmation.count != PIN.length || working)
             }
-        case .showWords:
-            StepPage(title: String(localized: "Write down your twelve words"),
-                     detail: String(localized: "Anyone with these words controls your account."),
-                     progress: progress(step), problem: problem) {
-                NumberedWords(places: Array(shownWords.indices)) { index in
-                    Text(shownWords[index])
-                        .font(Theme.font(16))
-                        .privacySensitive()
-                    Spacer(minLength: 0)
-                }
-                if model.myContactInfo == nil {
-                    // Signed up, the server's answer not yet in (as on the Mac).
-                    ProblemText(String(localized: "Not confirmed yet. If it stays this way, ask for a new invite."))
-                }
-            } actions: {
-                Button { go(.checkWords) } label: { ActionLabel(String(localized: "I've written them down")) }
-                    .primaryAction()
-            }
-        case .checkWords:
-            StepPage(title: String(localized: "Check what you wrote"), detail: String(localized: "Type these three words from your paper."),
-                     progress: progress(step), problem: problem) {
-                WordCheckBoxes(check: $check) { Task { await checkWords() } }
-            } actions: {
-                Button { Task { await checkWords() } } label: { ActionLabel(String(localized: "Open Peel"), working: working) }
-                    .primaryAction()
-                    .disabled(!check.isFilled || working)
-            }
         case .restoring:
             RestoreProgress(onOpen: openAfterRestore)
         case .restoreName:
@@ -251,13 +222,13 @@ struct Onboarding: View {
     // MARK: Actions
 
     /// The numbered steps of the current path; confirming the PIN counts as
-    /// the PIN step, checking the words as the words step.
+    /// the PIN step.
     private var numbered: [Step] {
-        path == .newAccount ? [.invite, .name, .pin, .showWords] : [.enterWords, .pin]
+        path == .newAccount ? [.invite, .name, .pin] : [.enterWords, .pin]
     }
 
     private func progress(_ step: Step) -> (step: Int, of: Int)? {
-        let counted = step == .confirmPin ? .pin : step == .checkWords ? .showWords : step
+        let counted = step == .confirmPin ? .pin : step
         return numbered.firstIndex(of: counted).map { ($0 + 1, numbered.count) }
     }
 
@@ -293,8 +264,9 @@ struct Onboarding: View {
         do {
             switch path {
             case .newAccount:
-                shownWords = try await model.createAccount(invite: invite, name: name.trimmed, pin: pin)
-                go(.showWords)
+                // Straight in: You asks for the backup until it is checked.
+                _ = try await model.createAccount(invite: invite, name: name.trimmed, pin: pin)
+                model.enterApp()
             case .restore:
                 try await model.restoreAccount(words: words, pin: pin)
                 words = Array(repeating: "", count: 12)
@@ -327,22 +299,6 @@ struct Onboarding: View {
             model.enterApp()
         } catch {
             problem = PeelError.problem(error, couldNot: String(localized: "save your name"))
-        }
-    }
-
-    /// Records the words as written down and opens Peel, or says which
-    /// places differ.
-    private func checkWords() async {
-        guard !working, check.isFilled else { return }
-        working = true
-        defer { working = false }
-        do {
-            try await model.confirmWords(check.byPosition, of: shownWords)
-            shownWords = []
-            check = WordCheck()
-            model.enterApp()
-        } catch {
-            problem = PeelError.problem(error)
         }
     }
 }

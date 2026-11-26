@@ -67,10 +67,10 @@ All by Tom, 2026-10-14.
 10. **Payments**: large title, the balance, Receive (left, outline) and
     Send (right, filled), the history by day. Received amounts are green.
 11. **You** has your 30 pt photo as its tab icon, with an accent ring when
-    selected. The screen: photo, name and balance; Agent (Peel, the brain's
-    status, the model); Account (twelve words, Change PIN, boost amount,
-    server); then Forget this account, the only red, with no "Danger"
-    header.
+    selected. The screen: you in one card (photo, name, balance, the code
+    button); the backup card until the words are checked; Security, Agent,
+    Apps, Payments, Media and Help; then Forget this account, the only red,
+    with no "Danger" header.
 12. **Lock**: the PIN keypad, Face ID, and "Forgot your PIN?".
 13. **Not connected**: an orange bolt in the title capsule and "Reconnecting
     in N s" under the title. The bolt opens a panel beside it with the
@@ -124,10 +124,11 @@ Payments  (NavigationStack, large title)
 └─ a row   → payment detail (to design)
 
 You  (NavigationStack)
-├─ Agent: Peel → agent details (to design)
-├─ Twelve words → push
+├─ Code button → Your contact info (sheet)
+├─ Back up account / Recovery words → push
 ├─ Change PIN → push
-├─ Boost amount, Server → push or inline picker (to design)
+├─ Agent: Peel → agent details (to design)
+├─ Connected apps, Site location, Boost amount → push
 └─ Forget this account → confirm in place
 
 Search → results across chats (to design)
@@ -290,13 +291,26 @@ with Dynamic Type.
 
 - **Tab icon.** Your photo at 30 pt; when selected, a 2 pt accent ring
   outside a 2 pt background gap.
-- **Top.** Your photo at 64 pt (centred; the board's 84 pt is drift, 64 is
-  the Mac's largest photo), your name (22 bold), the balance in
-  sats under it.
-- **Agent** group: Peel (its avatar, and the brain's status on the right:
-  green "Home Mac awake" or grey "Mac asleep"), then Model.
-- **Account** group: Twelve words, Change PIN (both push), Boost amount
-  and Server (value on the right).
+- **Top.** One card: your photo at 56 pt, your name (20 semibold, one
+  line, tap to change it), the balance under it (never cut short), and the
+  code button, which opens Your contact info: the QR code, Copy contact
+  info and Share. (The You page design board, "A, refined", 2026-11-26.)
+- **Groups, in order.** Security (Back up account or Recovery words, Change
+  PIN, Face ID, Ask for the PIN); Agent (Peel, Voice); Apps (Connected
+  apps, Site location, then Hive and Stadeum servers, whose pairing states
+  stay inline); Payments (Boost amount, Confirm payments); Media (Auto
+  download media, Compress large videos); Help (Diagnostics, Server).
+- **Not backed up.** Signup goes straight in after the PIN; the twelve words
+  are backed up later. Until three of them are typed back from paper
+  (`wordsConfirmed`, kept in the account's own storage on this device),
+  an amber card under the top card says what is at stake and opens Back up
+  account; the row says "Not backed up" and the tab has an accent "!"
+  badge. Back up account explains the words, then shows them and checks
+  three. Passing goes back to You, which says "Words checked. Keep your
+  paper somewhere safe." once, for a few seconds; the card, status and
+  badge are gone and the row becomes Recovery words (a reminder and Show
+  words). Nothing claims "backed up": the person holds the words. There is
+  no Dismiss.
 - **Forget this account** in its own group, in `destructive` red, with no
   header. Confirmed in place, never a system alert.
 - Groups are `quote` cells with `divider` hairlines, radius 12; group
@@ -482,5 +496,5 @@ Not on the board yet. Each needs drawing before it is built:
   details are built: screen 11).
 - **Calls**: incoming, in call, the on-a-call bar.
 - **The agent's details page.**
-- **Onboarding**: restore from the twelve words, create, set a PIN.
+- **Onboarding**: restore from the twelve words, create (invite, name, PIN), set a PIN.
 - **Light appearance.** The app is dark only for now, as on the Mac.

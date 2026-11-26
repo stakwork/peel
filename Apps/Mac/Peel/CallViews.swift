@@ -456,12 +456,17 @@ struct OnCallBar: View {
 
 /// A card shown at the top of the call chat to let the person choose who
 /// calls in this chat bring Jamie from: a Stadeum workspace or a box
-/// (`AppModel.callJamies`). Defaults to the tribe's setting; overridable per
-/// chat.
+/// (`AppModel.callJamies`). Shows what the room has: Jamie's source while
+/// Jamie is in the call, No Jamie otherwise; No Jamie takes Jamie out.
 struct JamiePickCard: View {
     @Environment(AppModel.self) private var model
     let call: CallSession
     let jamies: [CallJamie]
+
+    private var selection: String {
+        guard call.jamieShown else { return "" }
+        return model.callJamie(in: call.chat)?.id ?? jamies.first?.id ?? ""
+    }
 
     var body: some View {
         let options: [(value: String, label: String)] = [("", String(localized: "No Jamie"))]
@@ -477,8 +482,15 @@ struct JamiePickCard: View {
                     .lineLimit(1)
                     .fixedSize()
                 Spacer(minLength: 0)
-                PeelDropdown(selection: model.callJamie(in: call.chat)?.id ?? "", options: options) { id in
-                    model.calls.pickJamie(JamieSource(id: id), in: call.chat)
+                // What the room has, not the start preference: Jamie's source
+                // while Jamie is in the call, else No Jamie.
+                PeelDropdown(selection: selection, options: options) { id in
+                    if id.isEmpty, call.jamieInCall {
+                        Task { await call.removeJamie { room in try await model.removeJamie(room: room, in: call.chat) } }
+                    } else if !call.jamieInCall {
+                        // Not in the call: only what the next call brings.
+                        model.calls.pickJamie(JamieSource(id: id), in: call.chat)
+                    }
                 }
             }
             .padding(.horizontal, 14)

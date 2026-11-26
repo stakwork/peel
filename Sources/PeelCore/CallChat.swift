@@ -174,6 +174,16 @@ public enum CallChatWire {
         }
         return (try? JSONEncoder().encode(Toggle(type: "tts-toggle", enabled: on))) ?? Data()
     }
+
+    /// Asks Jamie to leave the call: `{"type":"leave"}`, sent to its identity
+    /// only. Best effort: a box's Jamie may not listen. `decode` never reads
+    /// it as a message.
+    public static func leave() -> Data {
+        struct Leave: Encodable {
+            let type: String
+        }
+        return (try? JSONEncoder().encode(Leave(type: "leave"))) ?? Data()
+    }
 }
 
 /// A call's chat as a value: the rows in order, what Jamie is doing, and the

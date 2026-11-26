@@ -40,7 +40,7 @@ struct YouTab: View {
                 BoxesSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
-                        LabeledContent("Twelve words", value: model.wordsConfirmed ? "" : String(localized: "Not checked yet"))
+                        LabeledContent("Back up account", value: model.wordsConfirmed ? "" : String(localized: "Not checked yet"))
                     }
                     if model.profile?.requiresPIN == true {
                         NavigationLink("Change PIN", value: YouRoute.changePIN)
@@ -627,7 +627,7 @@ private struct WordsScreen: View {
                     if !Task.isCancelled { hide() }
                 }
             } else {
-                StepPage(title: String(localized: "Twelve words"),
+                StepPage(title: String(localized: "Back up account"),
                          detail: model.wordsConfirmed ? String(localized: "Checked against your paper.") : String(localized: "Not checked against your paper yet."),
                          problem: problem) {
                     EmptyView()

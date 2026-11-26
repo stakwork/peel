@@ -111,7 +111,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .build/stage/bridge
-          key: bridge-${{ hashFiles('Vendor/runner.lock', 'Vendor/runner.Cargo.lock') }}
+          key: bridge-rust1.99.1-${{ hashFiles('Vendor/runner.lock', 'Vendor/runner.Cargo.lock') }}
       - if: matrix.platform == 'mac' && steps.bridge-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
@@ -121,11 +121,18 @@ jobs:
           path: .build/src/sphinx
           persist-credentials: false
       - if: matrix.platform == 'mac' && steps.bridge-cache.outputs.cache-hit != 'true'
+        # Rust pinned (also in the cache key above): newer compilers change the
+        # never-type fallback and lightning 0.0.121, which the runner pulls in,
+        # stops compiling (E0277, `!: Readable`). 1.99.1 is what stages it locally.
+        env:
+          RUSTUP_TOOLCHAIN: 1.99.1
         run: |
-          if ! command -v cargo > /dev/null; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          if ! command -v rustup > /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
             export PATH="$HOME/.cargo/bin:$PATH"
           fi
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          rustc --version
           scripts/stage-bridge.sh .build/src/sphinx
       - if: matrix.platform == 'mac' && steps.bridge-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4

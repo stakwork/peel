@@ -489,23 +489,29 @@ private struct CallControls: View {
     }
 
     /// Share starts on the entire screen, its chevron offers a window or an
-    /// app; while you share it is one filled button that stops it.
+    /// app; while you share, Stop sharing and Pause sit in one purple box,
+    /// as in the floating bar, so pausing reads as part of the share.
     @ViewBuilder private var share: some View {
         if call.sharing != nil {
-            Button { call.toggleScreenSharePause() } label: {
-                pill(call.sharePaused ? "play.fill" : "pause.fill", call.sharePaused ? String(localized: "Resume") : String(localized: "Pause"), weight: .medium,
-                     text: Theme.text, fill: Theme.hover)
+            HStack(spacing: 2) {
+                Button { call.stopScreenShare() } label: {
+                    pill("rectangle.inset.filled.and.person.filled", String(localized: "Stop sharing"), weight: .medium,
+                         text: Theme.buttonText, fill: Theme.callShare)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .help("Stop sharing (⌘⇧S)")
+                Button { call.toggleScreenSharePause() } label: {
+                    pill(call.sharePaused ? "play.fill" : "pause.fill", call.sharePaused ? String(localized: "Resume") : String(localized: "Pause"), weight: .medium,
+                         text: Theme.buttonText, fill: Theme.callShare)
+                }
+                .buttonStyle(.plain)
+                .help(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
+                .accessibilityLabel(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
             }
-            .buttonStyle(.plain)
-            .help(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
-            .accessibilityLabel(call.sharePaused ? Text("Resume sharing") : Text("Pause sharing"))
-            Button { call.stopScreenShare() } label: {
-                pill("rectangle.inset.filled.and.person.filled", String(localized: "Stop sharing"), weight: .medium,
-                     text: Theme.buttonText, fill: Theme.accent)
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("s", modifiers: [.command, .shift])
-            .help("Stop sharing (⌘⇧S)")
+            .padding(2)
+            .background(Theme.callShare.opacity(0.25), in: RoundedRectangle(cornerRadius: Theme.Radius.card + 2, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card + 2, style: .continuous).strokeBorder(Theme.callShare, lineWidth: 1.5))
         } else {
             shareSegment
         }

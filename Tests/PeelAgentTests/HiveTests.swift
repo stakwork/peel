@@ -581,14 +581,14 @@ struct HiveTests {
     }
 
     /// A workspace's apps come through Peel's own strut's read-through,
-    /// with its key: only those pinned as tabs, under names strut gives,
+    /// with its key: only those pinned as tabs (asked with `pinned=1`), under names strut gives,
     /// with their icon, version, held release and warnings when strut gives
     /// them as text (and a count), none otherwise. One opens as strut's UI showing that page
     /// alone, with the key, the app and `solo` encoded so strut's UI reads
     /// them back exactly; a home server opens none.
     @Test func aWorkspacesPinnedAppsAreListedAndOpenAloneOnPeelsOwnStrut() async throws {
         let strut = try await HTTPStub { _, request in
-            guard path(request) == "/peers/acme/apps", request.contains("Authorization: Bearer k+1") else { return (404, "{}") }
+            guard path(request) == "/peers/acme/apps?pinned=1", request.contains("Authorization: Bearer k+1") else { return (404, "{}") }
             return (200, #"""
                 {"apps":[{"name":"hive/board","title":"Board\n","pinned":true,"description":"The team's board",
                           "icon":"flask-conical","activeVersion":"v14","live":"r3","warnings":2},

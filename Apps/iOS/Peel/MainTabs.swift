@@ -46,6 +46,8 @@ struct MainTabs: View {
                     YouTabIcon(selected: router.tab == .you)
                 }
             }
+            // Until the twelve words are checked (You's Back up now).
+            .badge(model.wordsConfirmed ? nil : Text(verbatim: "!"))
         }
         // A link or a deliverable from a chat: full screen over it, ✕ to close (Apps pushes its own).
         .fullScreenCover(item: $router.orgPage) { page in

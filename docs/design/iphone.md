@@ -68,7 +68,7 @@ All by Tom, 2026-10-14.
     Send (right, filled), the history by day. Received amounts are green.
 11. **You** has your 30 pt photo as its tab icon, with an accent ring when
     selected. The screen: photo, name and balance; Agent (Peel, the brain's
-    status, the model); Account (twelve words, Change PIN, boost amount,
+    status, the model); Account (Back up account, Change PIN, boost amount,
     server); then Forget this account, the only red, with no "Danger"
     header.
 12. **Lock**: the PIN keypad, Face ID, and "Forgot your PIN?".
@@ -125,7 +125,7 @@ Payments  (NavigationStack, large title)
 
 You  (NavigationStack)
 ├─ Agent: Peel → agent details (to design)
-├─ Twelve words → push
+├─ Back up account → push
 ├─ Change PIN → push
 ├─ Boost amount, Server → push or inline picker (to design)
 └─ Forget this account → confirm in place
@@ -295,8 +295,14 @@ with Dynamic Type.
   sats under it.
 - **Agent** group: Peel (its avatar, and the brain's status on the right:
   green "Home Mac awake" or grey "Mac asleep"), then Model.
-- **Account** group: Twelve words, Change PIN (both push), Boost amount
+- **Account** group: Back up account, Change PIN (both push), Boost amount
   and Server (value on the right).
+- **Not backed up.** Signup goes straight in after the PIN; the twelve words
+  are backed up later. Until three of them are typed back from paper
+  (`wordsConfirmed`), You opens with a notice (what is at stake, Back up
+  now), Back up account says "Not backed up" and the tab has an accent "!"
+  badge. Back up account explains the words, then shows them and checks
+  three; passing removes all three. There is no Dismiss.
 - **Forget this account** in its own group, in `destructive` red, with no
   header. Confirmed in place, never a system alert.
 - Groups are `quote` cells with `divider` hairlines, radius 12; group
@@ -482,5 +488,5 @@ Not on the board yet. Each needs drawing before it is built:
   details are built: screen 11).
 - **Calls**: incoming, in call, the on-a-call bar.
 - **The agent's details page.**
-- **Onboarding**: restore from the twelve words, create, set a PIN.
+- **Onboarding**: restore from the twelve words, create (invite, name, PIN), set a PIN.
 - **Light appearance.** The app is dark only for now, as on the Mac.

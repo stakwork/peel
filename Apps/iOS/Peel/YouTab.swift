@@ -19,6 +19,10 @@ struct YouTab: View {
         @Bindable var router = router
         NavigationStack(path: $router.you) {
             List {
+                if !model.wordsConfirmed {
+                    Section { BackupNotice() }
+                        .phoneRows()
+                }
                 Section { Identity { editingName = true } }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -40,7 +44,7 @@ struct YouTab: View {
                 BoxesSection()
                 Section {
                     NavigationLink(value: YouRoute.words) {
-                        LabeledContent("Back up account", value: model.wordsConfirmed ? "" : String(localized: "Not checked yet"))
+                        LabeledContent("Back up account", value: model.wordsConfirmed ? "" : String(localized: "Not backed up"))
                     }
                     if model.profile?.requiresPIN == true {
                         NavigationLink("Change PIN", value: YouRoute.changePIN)
@@ -563,16 +567,42 @@ private struct ChangePIN: View {
     }
 }
 
-/// The twelve words after Face ID or the PIN, hidden again after half a
-/// minute or when Peel leaves the screen (covered in the app switcher's
-/// snapshot); or, while they are not checked, three of them typed back
-/// from paper.
+/// At the top of You until the twelve words are checked against paper
+/// (`AppModel.wordsConfirmed`): what is at stake, and Back up now. There is
+/// no Dismiss; passing the check is what removes it, and the tab's badge.
+private struct BackupNotice: View {
+    @Environment(PhoneRouter.self) private var router
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text("Your account isn't backed up. If you lose this iPhone, you lose the account and its sats.")
+                    .phoneFont(.row)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.attention)
+            }
+            Button("Back up now") { router.you.append(.words) }
+                .buttonStyle(.borderless)
+                .phoneFont(.row)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// Back up account. Not backed up: what the twelve words are and how to
+/// keep them, then Back up now: the PIN, the words (masked until Reveal,
+/// hidden again after 90 s or when Peel leaves the screen, covered in the
+/// app switcher's snapshot), and three of them typed back from paper, which
+/// marks the account backed up. Backed up: Show words alone.
 private struct WordsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
 
     private static let shownFor: TimeInterval = 90
 
+    /// Back up now: the words shown lead to the check.
+    @State private var backingUp = false
+    /// The three words typed back, after "I've written them down".
     @State private var checking = false
     @State private var asking = false
     @State private var pin = ""
@@ -602,6 +632,9 @@ private struct WordsScreen: View {
                     Button { Task { await confirm() } } label: { ActionLabel(String(localized: "Check"), working: working) }
                         .primaryAction()
                         .disabled(!check.isFilled || working)
+                    Button { showWordsAgain() } label: { ActionLabel(String(localized: "Show words again")) }
+                        .secondaryAction()
+                        .disabled(working)
                 }
             } else if !words.isEmpty {
                 StepPage(title: String(localized: "Your twelve words"), detail: String(localized: "Anyone with these words controls your account. Keep them on paper.")) {
@@ -619,24 +652,35 @@ private struct WordsScreen: View {
                             .foregroundStyle(Theme.secondaryText)
                     }
                 } actions: {
-                    Button { visible.toggle() } label: { ActionLabel(visible ? String(localized: "Mask") : String(localized: "Reveal")) }.primaryAction()
-                    Button { hide() } label: { ActionLabel(String(localized: "Hide")) }.secondaryAction()
+                    if backingUp {
+                        Button { startCheck() } label: { ActionLabel(String(localized: "I've written them down")) }.primaryAction()
+                        Button { visible.toggle() } label: { ActionLabel(visible ? String(localized: "Mask") : String(localized: "Reveal")) }.secondaryAction()
+                    } else {
+                        Button { visible.toggle() } label: { ActionLabel(visible ? String(localized: "Mask") : String(localized: "Reveal")) }.primaryAction()
+                        Button { hide() } label: { ActionLabel(String(localized: "Hide")) }.secondaryAction()
+                    }
                 }
                 .task(id: hideAt) {
                     try? await Task.sleep(for: .seconds(Self.shownFor))
                     if !Task.isCancelled { hide() }
                 }
-            } else {
+            } else if model.wordsConfirmed {
                 StepPage(title: String(localized: "Back up account"),
-                         detail: model.wordsConfirmed ? String(localized: "Checked against your paper.") : String(localized: "Not checked against your paper yet."),
+                         detail: String(localized: "Backed up. Your words were checked against your paper."),
                          problem: problem) {
                     EmptyView()
                 } actions: {
-                    if !model.wordsConfirmed {
-                        Button { Task { await start(checking: true) } } label: { ActionLabel(String(localized: "Check words")) }.primaryAction()
-                    }
-                    Button { Task { await start(checking: false) } } label: { ActionLabel(String(localized: "Show words")) }
+                    Button { Task { await start(backingUp: false) } } label: { ActionLabel(String(localized: "Show words")) }
                         .secondaryAction()
+                }
+            } else {
+                StepPage(title: String(localized: "Back up account"),
+                         detail: String(localized: "Your twelve words are your account. Write them down so you can get it back if you lose this iPhone."),
+                         problem: problem) {
+                    BackupSteps()
+                } actions: {
+                    Button { Task { await start(backingUp: true) } } label: { ActionLabel(String(localized: "Back up now")) }
+                        .primaryAction()
                 }
             }
         }
@@ -647,8 +691,9 @@ private struct WordsScreen: View {
         }
     }
 
-    private func start(checking: Bool) async {
-        self.checking = checking
+    private func start(backingUp: Bool) async {
+        self.backingUp = backingUp
+        checking = false
         check = WordCheck()
         problem = nil
         guard model.profile?.requiresPIN == true else { return await reveal() }
@@ -681,6 +726,21 @@ private struct WordsScreen: View {
         hideAt = .now.addingTimeInterval(Self.shownFor)
     }
 
+    /// From the shown words to typing three back; the words stay in memory
+    /// to check against, out of sight.
+    private func startCheck() {
+        check = WordCheck()
+        problem = nil
+        visible = false
+        checking = true
+    }
+
+    private func showWordsAgain() {
+        checking = false
+        problem = nil
+        hideAt = .now.addingTimeInterval(Self.shownFor)
+    }
+
     private func confirm() async {
         guard !working, check.isFilled else { return }
         working = true
@@ -699,10 +759,39 @@ private struct WordsScreen: View {
         generation += 1
         problem = nil
         words = []
+        backingUp = false
         checking = false
         check = WordCheck()
         pin = ""
         asking = false
         visible = false
+    }
+}
+
+/// What the twelve words are and how to keep them, before Back up now.
+private struct BackupSteps: View {
+    private let steps = [
+        String(localized: "Anyone with your words controls your account and its sats. Never share them."),
+        String(localized: "No one can reset them, not even Peel. Lose this iPhone and the words, and the account is gone."),
+        String(localized: "Write them on paper, in order. Not in a screenshot, a note or the cloud."),
+        String(localized: "Then type three of them back to check your copy."),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
+            ForEach(steps.indices, id: \.self) { index in
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
+                    Text(verbatim: "\(index + 1)")
+                        .font(Theme.font(16, .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(minWidth: 16, alignment: .leading)
+                    Text(steps[index])
+                        .font(Theme.font(16))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
     }
 }

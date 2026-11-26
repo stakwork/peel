@@ -1225,6 +1225,22 @@
         }
       }
     },
+    "Asks for your PIN first." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asks for your PIN first."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Primero te pide tu PIN."
+          }
+        }
+      }
+    },
     "Attach" : {
       "localizations" : {
         "en" : {
@@ -1369,18 +1385,18 @@
         }
       }
     },
-    "Backed up. Your words were checked against your paper." : {
+    "Back up your account" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Backed up. Your words were checked against your paper."
+            "value" : "Back up your account"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Respaldada. Tus palabras se verificaron con tu papel."
+            "value" : "Respalda tu cuenta"
           }
         }
       }
@@ -2085,6 +2101,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Contraído"
+          }
+        }
+      }
+    },
+    "Compress large videos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compress large videos"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprimir videos grandes"
           }
         }
       }
@@ -3721,6 +3753,22 @@
         }
       }
     },
+    "Help" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayuda"
+          }
+        }
+      }
+    },
     "Hide" : {
       "localizations" : {
         "en" : {
@@ -3845,6 +3893,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ya las anoté"
+          }
+        }
+      }
+    },
+    "If you lose this iPhone, you lose the account and its sats." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you lose this iPhone, you lose the account and its sats."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si pierdes este iPhone, pierdes la cuenta y sus sats."
           }
         }
       }
@@ -4201,6 +4265,22 @@
         }
       }
     },
+    "Keep the paper somewhere safe and offline. Not in a screenshot, a note or the cloud." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep the paper somewhere safe and offline. Not in a screenshot, a note or the cloud."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guarda el papel en un lugar seguro y sin conexión. No en una captura de pantalla, una nota ni la nube."
+          }
+        }
+      }
+    },
     "Last try failed (%@). Nothing was sent." : {
       "localizations" : {
         "en" : {
@@ -4517,6 +4597,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ocultar"
+          }
+        }
+      }
+    },
+    "Media" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Media"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multimedia"
           }
         }
       }
@@ -5029,6 +5125,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aún no hay menciones"
+          }
+        }
+      }
+    },
+    "No one can reset them, not even Peel." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No one can reset them, not even Peel."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nadie puede restablecerlas, ni siquiera Peel."
           }
         }
       }
@@ -6297,6 +6409,22 @@
         }
       }
     },
+    "People scan this, or open the link you send them, to add you." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "People scan this, or open the link you send them, to add you."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te agregan escaneando esto o abriendo el enlace que les envíes."
+          }
+        }
+      }
+    },
     "Phone location settings" : {
       "localizations" : {
         "en" : {
@@ -6885,6 +7013,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grabar un mensaje de voz"
+          }
+        }
+      }
+    },
+    "Recovery words" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recovery words"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palabras de recuperación"
           }
         }
       }
@@ -7593,6 +7737,22 @@
         }
       }
     },
+    "Security" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Security"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguridad"
+          }
+        }
+      }
+    },
     "Seen here" : {
       "localizations" : {
         "en" : {
@@ -7929,6 +8089,22 @@
         }
       }
     },
+    "Share…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir…"
+          }
+        }
+      }
+    },
     "Show all %lld chats" : {
       "localizations" : {
         "en" : {
@@ -8109,6 +8285,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostrar menos tribus"
+          }
+        }
+      }
+    },
+    "Show my contact code" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show my contact code"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar mi código de contacto"
           }
         }
       }
@@ -9793,6 +9985,22 @@
         }
       }
     },
+    "Words checked. Keep your paper somewhere safe." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Words checked. Keep your paper somewhere safe."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palabras verificadas. Guarda tu papel en un lugar seguro."
+          }
+        }
+      }
+    },
     "Write them on paper, in order. Not in a screenshot, a note or the cloud." : {
       "localizations" : {
         "en" : {
@@ -10001,22 +10209,6 @@
         }
       }
     },
-    "Your account isn't backed up. If you lose this iPhone, you lose the account and its sats." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Your account isn't backed up. If you lose this iPhone, you lose the account and its sats."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tu cuenta no está respaldada. Si pierdes este iPhone, pierdes la cuenta y sus sats."
-          }
-        }
-      }
-    },
     "Your contact info" : {
       "localizations" : {
         "en" : {
@@ -10141,6 +10333,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tus doce palabras son tu cuenta. Anótalas para poder recuperarla si pierdes este iPhone."
+          }
+        }
+      }
+    },
+    "Your twelve words are your account. Your paper copy is the only way back to it on a new phone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your twelve words are your account. Your paper copy is the only way back to it on a new phone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus doce palabras son tu cuenta. Tu copia en papel es la única forma de recuperarla en un teléfono nuevo."
           }
         }
       }

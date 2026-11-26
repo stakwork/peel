@@ -2,15 +2,20 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// You (docs/design/iphone.md, screen 7): your photo, name and balance; the
-/// agent and Voice (one row; its settings are a screen of their own,
-/// `VoiceScreen`); Stadeum (`StadeumSection`); the account's words, PIN, Face ID, boost amount and server; then
-/// Forget, the only red. Every change is an `AppModel` operation, as on the
-/// Mac's `AccountView`.
+/// You (docs/design/iphone.md, screen 7): you in one card (photo, name,
+/// balance, the code button for `ContactSheet`); until the words are checked,
+/// `BackupCard`; then Security, Agent, Apps (with Hive and Stadeum servers,
+/// whose pairing states stay inline), Payments, Media and Help; then Forget,
+/// the only red. Every change is an `AppModel` operation, as on the Mac's
+/// `AccountView`.
 struct YouTab: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
     @State private var editingName = false
+    @State private var showingCode = false
+    /// Set when the three-word check passes: You shows `WordsCheckedNote`
+    /// once, for a few seconds, and never again.
+    @State private var justChecked = false
     @AppStorage(VoiceModeSetting.key) private var voiceModeOn = VoiceModeSetting.defaultValue
     /// What this phone unlocks with, if anything: a system query, made once.
     @State private var biometryName: String?
@@ -19,18 +24,46 @@ struct YouTab: View {
         @Bindable var router = router
         NavigationStack(path: $router.you) {
             List {
-                if !model.wordsConfirmed {
-                    Section { BackupNotice() }
-                        .phoneRows()
+                if justChecked {
+                    Section { WordsCheckedNote() }
+                        .phoneRows(.grouped)
+                        .environment(\.surface, .raised)
+                        .task {
+                            try? await Task.sleep(for: .seconds(4))
+                            withAnimation(.easeOut(duration: 0.2)) { justChecked = false }
+                        }
                 }
-                Section { Identity { editingName = true } }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                Section { ContactInfoCard() }
-                    .listRowBackground(Color.clear)
-                    // Edge to edge of the row, as the grouped sections below.
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
+                Section {
+                    IdentityCard(editName: { editingName = true }, showCode: { showingCode = true })
+                }
+                .phoneRows(.grouped)
+                .environment(\.surface, .raised)
+                if !model.wordsConfirmed {
+                    Section { BackupCard() }
+                        .listRowBackground(Theme.attention.opacity(0.12))
+                }
+                Section {
+                    NavigationLink(value: YouRoute.words) {
+                        if model.wordsConfirmed {
+                            Text("Recovery words")
+                        } else {
+                            LabeledContent {
+                                Text("Not backed up").foregroundStyle(Theme.attention)
+                            } label: {
+                                Text("Back up account")
+                            }
+                        }
+                    }
+                    if model.profile?.requiresPIN == true {
+                        NavigationLink("Change PIN", value: YouRoute.changePIN)
+                        if let biometryName { BiometricsRow(name: biometryName) }
+                        PINTimeoutRow()
+                    }
+                } header: {
+                    PhoneSectionHeader(String(localized: "Security"))
+                }
+                .phoneRows(.grouped)
+                .environment(\.surface, .raised)
                 Section {
                     AgentRow()
                     NavigationLink(value: YouRoute.voice) {
@@ -40,29 +73,41 @@ struct YouTab: View {
                     PhoneSectionHeader(String(localized: "Agent"))
                 }
                 .phoneRows(.grouped)
-                StadeumSection()
-                BoxesSection()
+                // Apps: what apps opened in Peel may do, then where they come
+                // from (Hive, Stadeum servers), each with its own states.
                 Section {
-                    NavigationLink(value: YouRoute.words) {
-                        LabeledContent("Back up account", value: model.wordsConfirmed ? "" : String(localized: "Not backed up"))
-                    }
-                    if model.profile?.requiresPIN == true {
-                        NavigationLink("Change PIN", value: YouRoute.changePIN)
-                        if let biometryName { BiometricsRow(name: biometryName) }
-                        PINTimeoutRow()
-                    }
-                    NavigationLink(value: YouRoute.boostAmount) {
-                        LabeledContent("Boost amount", value: Sats.format(msat: model.boostAmountMsat))
-                    }
-                    PaymentConfirmationRow()
                     NavigationLink(value: YouRoute.connectedApps) {
                         LabeledContent("Connected apps", value: model.walletConnections.isEmpty ? String(localized: "None") : "\(model.walletConnections.count)")
                     }
                     NavigationLink(value: YouRoute.siteLocation) {
                         LabeledContent("Site location", value: model.siteLocations.isEmpty ? String(localized: "None") : "\(model.siteLocations.count)")
                     }
+                } header: {
+                    PhoneSectionHeader(String(localized: "Apps"))
+                }
+                .phoneRows(.grouped)
+                .environment(\.surface, .raised)
+                StadeumSection()
+                BoxesSection()
+                Section {
+                    NavigationLink(value: YouRoute.boostAmount) {
+                        LabeledContent("Boost amount", value: Sats.format(msat: model.boostAmountMsat))
+                    }
+                    PaymentConfirmationRow()
+                } header: {
+                    PhoneSectionHeader(String(localized: "Payments"))
+                }
+                .phoneRows(.grouped)
+                .environment(\.surface, .raised)
+                Section {
                     AutoDownloadMediaRow()
                     CompressVideosRow()
+                } header: {
+                    PhoneSectionHeader(String(localized: "Media"))
+                }
+                .phoneRows(.grouped)
+                .environment(\.surface, .raised)
+                Section {
                     NavigationLink("Diagnostics", value: YouRoute.diagnostics)
                     LabeledContent("Server") {
                         VStack(alignment: .trailing, spacing: 2) {
@@ -74,7 +119,7 @@ struct YouTab: View {
                     }
                     .accessibilityElement(children: .combine)
                 } header: {
-                    PhoneSectionHeader(String(localized: "Account"))
+                    PhoneSectionHeader(String(localized: "Help"))
                 }
                 .phoneRows(.grouped)
                 .environment(\.surface, .raised)
@@ -105,10 +150,18 @@ struct YouTab: View {
             .navigationTitle("You")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $editingName) { NameEditor() }
+            .sheet(isPresented: $showingCode) { SheetStack { ContactSheet() } }
+            // Leaving You (another tab) ends the one-time note.
+            .onDisappear { justChecked = false }
             .navigationDestination(for: YouRoute.self) { route in
                 switch route {
                 case .voice: VoiceScreen()
-                case .words: WordsScreen()
+                case .words:
+                    WordsScreen {
+                        // Back on You, which says so once.
+                        router.you.removeAll()
+                        justChecked = true
+                    }
                 case .changePIN: ChangePIN()
                 case .boostAmount: BoostAmountScreen()
                 case .connectedApps: ConnectedAppsScreen()
@@ -162,80 +215,107 @@ private struct VoiceScreen: View {
     }
 }
 
-/// Your photo at 64 pt, centred, your name (tap to change it), and the
-/// balance under it.
-private struct Identity: View {
+/// You at the top of the page, in one card: your photo, your name (tap to
+/// change it) on one line, the balance under it (never cut short), and the
+/// code button that opens `ContactSheet`.
+private struct IdentityCard: View {
     @Environment(AppModel.self) private var model
     let editName: () -> Void
+    let showCode: () -> Void
 
     var body: some View {
-        VStack(spacing: Theme.Space.sm) {
-            Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 64, hue: model.myHue)
+        HStack(spacing: Theme.Space.md) {
+            Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 56, hue: model.myHue)
                 .accessibilityHidden(true)
-            Button(action: editName) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Button(action: editName) {
                     Text(model.me.name)
-                        .phoneFont(.title)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                    Image(systemName: "pencil")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.tertiaryText)
-                        .accessibilityHidden(true)
+                        .phoneFont(PhoneFont(size: 20, weight: .semibold, style: .title3))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .foregroundStyle(Theme.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(minHeight: Theme.touchTarget)
-                .foregroundStyle(Theme.text)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Your name, \(model.me.name)")
+                .accessibilityHint("Changes your name")
+                Text(model.balanceText ?? "–")
+                    .phoneFont(PhoneFont(size: 15, style: .subheadline))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.quietText(on: .raised))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(model.balanceText.map { String(localized: "Balance, \($0)") } ?? String(localized: "Balance, not known yet"))
+            }
+            Button(action: showCode) {
+                Image(systemName: "qrcode")
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: Theme.touchTarget, height: Theme.touchTarget)
+                    .background(Theme.background, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Your name, \(model.me.name)")
-            .accessibilityHint("Changes your name")
-            Text(model.balanceText ?? "–")
-                .phoneFont(PhoneFont(size: 16, style: .body))
-                .monospacedDigit()
-                .foregroundStyle(Theme.tertiaryText)
-                .accessibilityLabel(model.balanceText.map { String(localized: "Balance, \($0)") } ?? String(localized: "Balance, not known yet"))
+            .foregroundStyle(Theme.link)
+            .accessibilityLabel("Show my contact code")
         }
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Space.sm)
     }
 }
 
 /// The QR code and contact info someone needs to add this account: the full
 /// `<pubkey>_<lsp>_<scid>` (`AppModel.myContactInfo`), never the bare public
-/// key, which Peel's own Add contact refuses. As the Mac's `ContactInfoSection`.
-private struct ContactInfoCard: View {
+/// key, which Peel's own Add contact refuses. As the Mac's
+/// `ContactInfoSection`, with Copy and Share; from `IdentityCard`.
+private struct ContactSheet: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.dismiss) private var dismiss
+    @State private var copiedAt: Date?
 
     var body: some View {
-        // Side by side, or stacked at accessibility sizes rather than clipped.
-        let layout = typeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.lg))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Space.lg))
-        PhoneCard {
-            layout {
-                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info", size: 104)
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text("Your contact info")
-                        .phoneFont(.row)
-                        .fontWeight(.bold)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    if let info = model.myContactInfo {
-                        CopyButton("Copy contact info", text: info)
-                            .buttonStyle(.peel(.outline, size: .touch))
-                            .font(.callout)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .id(info)
-                    } else {
-                        Text("Not ready yet")
-                            .phoneFont(.secondary)
-                            .foregroundStyle(Theme.quietText(on: .raised))
-                    }
-                }
-                if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
+        ScrollView {
+            VStack(spacing: Theme.Space.md) {
+                Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: 64, hue: model.myHue)
+                    .accessibilityHidden(true)
+                Text(model.me.name)
+                    .phoneFont(.title)
+                    .multilineTextAlignment(.center)
+                QRCodeTile(text: model.myContactInfo, label: "QR code of your contact info", size: 220)
+                    .padding(.top, Theme.Space.sm)
+                Text("People scan this, or open the link you send them, to add you.")
+                    .phoneFont(.row)
+                    .foregroundStyle(Theme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(Theme.Space.lg)
+            .padding(20)
+            .frame(maxWidth: .infinity)
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 10) {
+                if let info = model.myContactInfo {
+                    Button {
+                        guard Clipboard.copy(info) else { return }
+                        copiedAt = .now
+                        CopyFeedback.announce()
+                    } label: {
+                        CopyLabel("Copy contact info", copiedAt: copiedAt)
+                            .frame(maxWidth: .infinity)
+                            .environment(\.filledButton, true)
+                    }
+                    .primaryAction()
+                    ShareLink(item: info) { ActionLabel(String(localized: "Share…")) }
+                        .secondaryAction()
+                } else {
+                    Text("Not ready yet")
+                        .phoneFont(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, Theme.Space.sm)
+        }
+        .navigationTitle("Your contact info")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
         }
     }
 }
@@ -375,7 +455,7 @@ private struct CompressVideosRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Toggle("Compress videos for upload", isOn: $compress)
+            Toggle("Compress large videos", isOn: $compress)
                 .tint(Theme.accent)
             Text("Automatically compress videos larger than 100 MB before uploading.")
                 .phoneFont(.secondary)
@@ -567,36 +647,57 @@ private struct ChangePIN: View {
     }
 }
 
-/// At the top of You until the twelve words are checked against paper
-/// (`AppModel.wordsConfirmed`): what is at stake, and Back up now. There is
-/// no Dismiss; passing the check is what removes it, and the tab's badge.
-private struct BackupNotice: View {
-    @Environment(PhoneRouter.self) private var router
-
+/// Under `IdentityCard` until the twelve words are checked against paper
+/// (`AppModel.wordsConfirmed`): what is at stake, the whole row opening Back
+/// up account. There is no Dismiss; passing the check is what removes it,
+/// and the tab's badge.
+private struct BackupCard: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label {
-                Text("Your account isn't backed up. If you lose this iPhone, you lose the account and its sats.")
-                    .phoneFont(.row)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.attention)
+        NavigationLink(value: YouRoute.words) {
+            HStack(alignment: .center, spacing: Theme.Space.md) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(Theme.attention)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Back up your account")
+                        .phoneFont(PhoneFont(size: 17, weight: .semibold, style: .body))
+                    Text("If you lose this iPhone, you lose the account and its sats.")
+                        .phoneFont(PhoneFont(size: 15, style: .subheadline))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            Button("Back up now") { router.you.append(.words) }
-                .buttonStyle(.borderless)
-                .phoneFont(.row)
+            .padding(.vertical, 6)
         }
-        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }
 
-/// Back up account. Not backed up: what the twelve words are and how to
-/// keep them, then Back up now: the PIN, the words (masked until Reveal,
-/// hidden again after 90 s or when Peel leaves the screen, covered in the
-/// app switcher's snapshot), and three of them typed back from paper, which
-/// marks the account backed up. Backed up: Show words alone.
+/// Once, at the top of You right after the three-word check passes; gone
+/// after a few seconds or when You is left. Says what the person did, not
+/// that Peel holds anything: the words are theirs to keep.
+private struct WordsCheckedNote: View {
+    var body: some View {
+        Label {
+            Text("Words checked. Keep your paper somewhere safe.")
+        } icon: {
+            Image(systemName: "checkmark").foregroundStyle(Theme.confirmed)
+        }
+        .accessibilityAddTraits(.isStaticText)
+    }
+}
+
+/// Back up account. Not checked: what the twelve words are and how to keep
+/// them, then Back up now: the PIN, the words (masked until Reveal, hidden
+/// again after 90 s or when Peel leaves the screen, covered in the app
+/// switcher's snapshot), and three of them typed back from paper, which
+/// records them as checked and calls `onChecked` (back to You). Checked:
+/// Recovery words, a reminder and Show words.
 private struct WordsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    let onChecked: () -> Void
 
     private static let shownFor: TimeInterval = 90
 
@@ -665,22 +766,24 @@ private struct WordsScreen: View {
                     if !Task.isCancelled { hide() }
                 }
             } else if model.wordsConfirmed {
-                StepPage(title: String(localized: "Back up account"),
-                         detail: String(localized: "Backed up. Your words were checked against your paper."),
+                StepPage(title: String(localized: "Recovery words"),
+                         detail: String(localized: "Your twelve words are your account. Your paper copy is the only way back to it on a new phone."),
                          problem: problem) {
-                    EmptyView()
+                    BackupSteps(steps: BackupSteps.reminders)
                 } actions: {
                     Button { Task { await start(backingUp: false) } } label: { ActionLabel(String(localized: "Show words")) }
                         .secondaryAction()
+                    if model.profile?.requiresPIN == true { PinFirstNote() }
                 }
             } else {
                 StepPage(title: String(localized: "Back up account"),
                          detail: String(localized: "Your twelve words are your account. Write them down so you can get it back if you lose this iPhone."),
                          problem: problem) {
-                    BackupSteps()
+                    BackupSteps(steps: BackupSteps.tutorial)
                 } actions: {
                     Button { Task { await start(backingUp: true) } } label: { ActionLabel(String(localized: "Back up now")) }
                         .primaryAction()
+                    if model.profile?.requiresPIN == true { PinFirstNote() }
                 }
             }
         }
@@ -749,6 +852,7 @@ private struct WordsScreen: View {
         do {
             try await model.confirmWords(check.byPosition, of: words)
             hide()
+            onChecked()
         } catch {
             guard generation == started else { return }
             problem = PeelError.problem(error)
@@ -768,13 +872,21 @@ private struct WordsScreen: View {
     }
 }
 
-/// What the twelve words are and how to keep them, before Back up now.
+/// What the twelve words are and how to keep them: the tutorial before Back
+/// up now, or, once checked, the reminders on Recovery words.
 private struct BackupSteps: View {
-    private let steps = [
+    let steps: [String]
+
+    static let tutorial = [
         String(localized: "Anyone with your words controls your account and its sats. Never share them."),
         String(localized: "No one can reset them, not even Peel. Lose this iPhone and the words, and the account is gone."),
         String(localized: "Write them on paper, in order. Not in a screenshot, a note or the cloud."),
         String(localized: "Then type three of them back to check your copy."),
+    ]
+    static let reminders = [
+        String(localized: "Anyone with your words controls your account and its sats. Never share them."),
+        String(localized: "No one can reset them, not even Peel."),
+        String(localized: "Keep the paper somewhere safe and offline. Not in a screenshot, a note or the cloud."),
     ]
 
     var body: some View {
@@ -793,5 +905,15 @@ private struct BackupSteps: View {
                 .accessibilityElement(children: .combine)
             }
         }
+    }
+}
+
+/// Under the button that asks for it, so the PIN prompt is no surprise.
+private struct PinFirstNote: View {
+    var body: some View {
+        Text("Asks for your PIN first.")
+            .phoneFont(.secondary)
+            .foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity)
     }
 }

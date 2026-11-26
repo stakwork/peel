@@ -43,6 +43,9 @@ struct IconButton<Label: View>: View {
     /// What it opened is open (its menu, its panel, the search): drawn as
     /// under the pointer.
     var lit = false
+    /// Solid fill when set (white icon): a state that must read at a glance,
+    /// as the call bar's active screen share.
+    var tint: Color?
     /// Its action is running: the spinner takes the icon's place.
     var working = false
     let action: () -> Void
@@ -52,7 +55,7 @@ struct IconButton<Label: View>: View {
         Button(action: action) {
             label().buttonProgress(working)
         }
-        .buttonStyle(Style(variant: variant, side: size.side, lit: lit))
+        .buttonStyle(Style(variant: variant, side: size.side, lit: lit, tint: tint))
         .help(LocalizedStringKey(help))
         .accessibilityLabel(LocalizedStringKey(help))
     }
@@ -61,6 +64,7 @@ struct IconButton<Label: View>: View {
         let variant: Variant
         let side: CGFloat
         let lit: Bool
+        let tint: Color?
 
         func makeBody(configuration: Configuration) -> some View {
             Chrome(configuration: configuration, style: self)
@@ -79,11 +83,11 @@ struct IconButton<Label: View>: View {
             let on = isEnabled && (style.lit || hovering || configuration.isPressed)
             configuration.label
                 .font(.system(size: 13))
-                .foregroundStyle(on ? Theme.text : Theme.secondaryText)
+                .foregroundStyle(style.tint != nil ? Theme.buttonText : on ? Theme.text : Theme.secondaryText)
                 .frame(width: style.side, height: style.side)
-                .background(on ? Theme.hover : style.variant == .outline ? Theme.fieldFill : .clear, in: shape)
+                .background(style.tint ?? (on ? Theme.hover : style.variant == .outline ? Theme.fieldFill : .clear), in: shape)
                 .overlay {
-                    if style.variant == .outline { shape.strokeBorder(Theme.inputBorder) }
+                    if style.variant == .outline && style.tint == nil { shape.strokeBorder(Theme.inputBorder) }
                 }
                 .opacity(isEnabled ? 1 : 0.5)
                 .contentShape(shape)
@@ -96,10 +100,10 @@ struct IconButton<Label: View>: View {
 
 extension IconButton where Label == Image {
     init(
-        _ systemImage: String, help: String, variant: Variant = .ghost, size: Size = .md, lit: Bool = false,
+        _ systemImage: String, help: String, variant: Variant = .ghost, size: Size = .md, lit: Bool = false, tint: Color? = nil,
         working: Bool = false, action: @escaping () -> Void
     ) {
-        self.init(help: help, variant: variant, size: size, lit: lit, working: working, action: action) {
+        self.init(help: help, variant: variant, size: size, lit: lit, tint: tint, working: working, action: action) {
             Image(systemName: systemImage)
         }
     }

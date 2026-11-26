@@ -9249,18 +9249,18 @@
         }
       }
     },
-    "Twelve words" : {
+    "Back up account" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Twelve words"
+            "value" : "Back up account"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Doce palabras"
+            "value" : "Respaldar cuenta"
           }
         }
       }

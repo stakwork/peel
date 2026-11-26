@@ -57,6 +57,9 @@ public enum Setting: String, Sendable {
     /// Which sidebar sections are open and shown in full
     /// (`ChatSections.Layout`, as JSON).
     case sidebarLayout
+    /// The minimal records of the apps pinned under the Apps row
+    /// (`PinnedAppRecord`, as JSON): shown at launch before a workspace answers.
+    case pinnedAppRecords
     /// The invite a new account signed up with (`Engine.Invite`, as JSON):
     /// every register names its code until the server confirms one, and
     /// once online the inviter is added (`Engine.addInviterIfPending`); ""

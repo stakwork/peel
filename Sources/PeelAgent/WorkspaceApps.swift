@@ -17,7 +17,10 @@ extension AutomationsClient {
     /// read through Peel's strut.
     public func pinnedApps(of peer: String) async throws -> [WorkspaceApp] {
         let id = try Self.peerID(peer)
-        let answer = try await call("GET", "peers/\(id)/apps", what: "the workspace's apps")
+        let (status, data) = try await request("GET", "peers/\(id)/apps?pinned=1", nil, what: "the workspace's apps")
+        // The status travels with the failure: 401, 403 and 404 mean access is lost (`AppsReadFailure`).
+        guard (200..<300).contains(status) else { throw AppsReadFailure(status: status) }
+        let answer = try Self.read(status, data)
         return try WorkspaceApp.listing(Data(answer.jsonString.utf8), peer: id)
     }
 

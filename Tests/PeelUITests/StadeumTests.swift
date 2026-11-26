@@ -541,6 +541,89 @@ struct StadeumTests {
         stadeum.close()
     }
 
+    @Test func theOwnAppsListFirstAndKeptRecordsShowAtOnceUntilTheWorkspaceAnswers() async throws {
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme"), Self.peer("globex", "Globex")])
+            .write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile)
+        var kept: [PinnedAppRecord] = []
+        stadeum.pinnedIDs = { ["@acme/board", "@globex/wiki", "@gone/old"] }
+        stadeum.saveRecords = { kept = $0 }
+        stadeum.seed(records: [PinnedAppRecord(WorkspaceApp(peer: "acme", name: "board", title: "Old name", about: nil)),
+                               PinnedAppRecord(WorkspaceApp(peer: "globex", name: "wiki", title: "Wiki", about: nil)),
+                               PinnedAppRecord(WorkspaceApp(peer: "gone", name: "old", title: "Old", about: nil))])
+        // Only workspaces in use are seeded, and marked as not yet read.
+        #expect(stadeum.apps.map(\.id) == ["@acme/board", "@globex/wiki"] && stadeum.apps.allSatisfy(\.refreshing))
+        await stadeum.readApps(own: { [WorkspaceApp(peer: nil, name: "zed", title: "Zed", about: nil)] }, pinned: { peer in
+            if peer.id == "globex" { throw AppsReadFailure(status: 403) }
+            return [WorkspaceApp(peer: "acme", name: "board", title: "Board", about: nil)]
+        })?.value
+        // Own first; the renamed app is as read; the refused workspace's app is gone, with its record.
+        #expect(stadeum.apps.map(\.id) == ["zed", "@acme/board"] && stadeum.apps.allSatisfy { !$0.refreshing })
+        #expect(stadeum.apps.last?.title == "Board")
+        #expect(kept.map(\.id) == ["@acme/board"] && kept.first?.title == "Board")
+        // A workspace that merely timed out keeps its kept app, still refreshing.
+        stadeum.seed(records: [PinnedAppRecord(WorkspaceApp(peer: "globex", name: "wiki", title: "Wiki", about: nil))])
+        stadeum.pinnedIDs = { ["@acme/board", "@globex/wiki"] }
+        await stadeum.readApps(own: nil, pinned: { peer in
+            if peer.id == "globex" { throw PeelError("timed out") }
+            return [WorkspaceApp(peer: "acme", name: "board", title: "Board", about: nil)]
+        })?.value
+        #expect(stadeum.apps.map(\.id) == ["@acme/board", "@globex/wiki"] && stadeum.apps.last?.refreshing == true)
+        #expect(kept.map(\.id) == ["@acme/board", "@globex/wiki"])
+        // Disconnecting lets the records go.
+        stadeum.disconnect()
+        #expect(kept.isEmpty && stadeum.pinnedRecords.isEmpty && stadeum.apps.isEmpty)
+        stadeum.close()
+    }
+
+    @Test func aFastWorkspacesAppsShowBeforeASlowOneAnswers() async throws {
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme"), Self.peer("globex", "Globex")])
+            .write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile)
+        let release = Mutex(false)
+        let reading = stadeum.readApps(own: nil, pinned: { peer in
+            if peer.id == "globex" {
+                while !release.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+            }
+            return [WorkspaceApp(peer: peer.id, name: "app", title: "App", about: nil)]
+        })
+        var waited = 0
+        while stadeum.apps.isEmpty, waited < 500 { try await Task.sleep(for: .milliseconds(10)); waited += 1 }
+        #expect(stadeum.apps.map(\.id) == ["@acme/app"] && stadeum.readingApps)
+        release.withLock { $0 = true }
+        await reading?.value
+        #expect(stadeum.apps.map(\.id) == ["@acme/app", "@globex/app"] && !stadeum.readingApps)
+        stadeum.close()
+    }
+
+    @Test func aReadAskedAgainWithTheSameKeyJoinsTheOneUnderWay() async throws {
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme")]).write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile)
+        let release = Mutex(false)
+        let fetches = Mutex(0)
+        let pinned: @Sendable (HivePeer) async throws -> [WorkspaceApp] = { peer in
+            fetches.withLock { $0 += 1 }
+            while !release.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+            return [WorkspaceApp(peer: peer.id, name: "app", title: "App", about: nil)]
+        }
+        let first = stadeum.readApps(own: nil, key: "k", pinned: pinned)
+        let second = stadeum.readApps(own: nil, key: "k", pinned: pinned)
+        #expect(first == second)
+        // No key, or another: a new read, which replaces the one under way.
+        let forced = stadeum.readApps(own: nil, key: nil, pinned: pinned)
+        #expect(forced != first)
+        release.withLock { $0 = true }
+        await forced?.value
+        #expect(stadeum.apps.map(\.id) == ["@acme/app"] && !stadeum.readingApps)
+        stadeum.close()
+    }
+
     @Test(arguments: [
         ("https://acme.sphinx.chat/lab/?app=x&solo=1", "https://acme.sphinx.chat", "/lab/"),
         ("https://ACME.sphinx.chat:443/lab/?app=x&solo=1", "https://acme.sphinx.chat", "/lab/"),

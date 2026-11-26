@@ -118,11 +118,11 @@ struct OrgPageTests {
 
 /// A workspace's apps as the iPhone reads them: on the workspace's own
 /// strut, its `/lab` included, with the person's token as the bearer; only
-/// those pinned as tabs, under names strut gives.
+/// those pinned as tabs (asked with `pinned=1`), under names strut gives.
 struct WorkspaceAppTests {
     @Test func aWorkspacesPinnedAppsAreReadOnItsOwnStrut() async throws {
         let strut = try await HTTPStub { _, request in
-            guard request.hasPrefix("GET /lab/apps "), request.contains("Authorization: Bearer jwt-acme") else { return (404, "{}") }
+            guard request.hasPrefix("GET /lab/apps?pinned=1 "), request.contains("Authorization: Bearer jwt-acme") else { return (404, "{}") }
             return (200, #"{"apps":[{"name":"hive/board","title":"Board","pinned":true,"activeVersion":"v3"},{"name":"scratch","title":"Scratch"}]}"#)
         }
         defer { strut.stop() }
@@ -136,7 +136,7 @@ struct WorkspaceAppTests {
         let strut = try await HTTPStub { _, _ in (401, #"{"error":"Unauthorized"}"#) }
         defer { strut.stop() }
         let peer = HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)/lab", token: "old", label: "Acme")
-        await #expect(throws: PeelError.self) { try await WorkspaceApp.pinned(on: peer) }
+        await #expect(throws: AppsReadFailure(status: 401)) { try await WorkspaceApp.pinned(on: peer) }
     }
 }
 

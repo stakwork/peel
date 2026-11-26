@@ -1723,6 +1723,10 @@ public final class AppModel {
     private func resetAccountState() {
         accountTasks.forEach { $0.cancel() }
         accountTasks = []
+        // The pinned apps' records are the account's: kept with it, not with the next one.
+        stadeum.saveRecords = nil
+        stadeum.pinnedIDs = { [] }
+        stadeum.seed(records: [])
         closeWallet()
         boxes.close()
         boxes.sign = nil
@@ -1835,6 +1839,13 @@ public final class AppModel {
         autoDownloadsMedia = settings.autoDownloadsMedia ?? true
         savedLayout = Self.layout(settings)
         sidebarLayout = savedLayout
+        // The pinned apps' kept records show at once, before any workspace answers (`Stadeum.seed`).
+        stadeum.pinnedIDs = { [weak self] in self?.sidebarLayout.pinnedApps ?? [] }
+        stadeum.saveRecords = { [weak self] records in
+            guard let engine = self?.engine else { return }
+            Task { try? await engine.setPinnedAppRecords(records) }
+        }
+        stadeum.seed(records: (try? await engine.pinnedAppRecords()) ?? [])
         activeLease.isForeground = platform.presence.isFrontmost
         connection = settings.connection
         updateActiveLease()

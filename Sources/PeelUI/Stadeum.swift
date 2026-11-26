@@ -55,8 +55,18 @@ public final class Stadeum {
     /// Stadeum answered 401 (`HiveLink.revokedAt`, kept): the orgs stay
     /// listed until paired again, but their tokens are no longer used (`live`).
     public var revoked: Bool { link?.revokedAt != nil }
-    /// The apps listed, A–Z (`readApps`).
+    /// The apps listed: the person's own first, then the workspaces', each A–Z
+    /// (`readApps`). Right after launch, a pinned workspace app may be one
+    /// seeded from its kept record (`WorkspaceApp.refreshing`) until its
+    /// workspace answers.
     public var apps: [WorkspaceApp] = []
+    /// What is kept of the pinned workspace apps (`PinnedAppRecord`; minimal,
+    /// in the account's encrypted settings): the same as the settings hold.
+    public private(set) var pinnedRecords: [PinnedAppRecord] = []
+    /// The ids of the apps the person pinned (`AppModel`: the sidebar layout's).
+    @ObservationIgnored public var pinnedIDs: @MainActor () -> [String] = { [] }
+    /// Keeps `records` in the account's settings (`AppModel`); nil with none open.
+    @ObservationIgnored public var saveRecords: (@MainActor ([PinnedAppRecord]) -> Void)?
     /// What the device's host does beyond keeping the pairing; none on the iPhone.
     @ObservationIgnored public weak var host: (any StadeumHost)?
 
@@ -88,6 +98,8 @@ public final class Stadeum {
     @ObservationIgnored private var pairing: Task<Void, Never>?
     @ObservationIgnored private var renewing: Task<Void, Never>?
     @ObservationIgnored private var appsReading: Task<Void, Never>?
+    /// The `key` the read under way was started with (`readApps`), nil for none.
+    @ObservationIgnored private var appsReadingKey: String?
     /// Telling Stadeum the Sphinx account (`identify`), and for which pairing (its credential).
     @ObservationIgnored private var identifying: (task: Task<Void, Never>, credential: String)?
     /// The pairings (by credential) whose Sphinx account was asked about as
@@ -129,6 +141,7 @@ public final class Stadeum {
         status = revoked ? .needsPairing : .connected
         keepRenewed(now: renewNow)
         dropIfAnotherAccounts()
+        seedApps()
         guard !revoked else { return }
         // Off the launch's path: a pairing made before Peel told Stadeum its Sphinx account is identified now.
         // One with no account recorded is asked too, so `identify` records it.
@@ -243,6 +256,7 @@ public final class Stadeum {
         guard let profile else { return }
         let actor = link?.actor
         reset()
+        forgetPinnedRecords()
         reconnectHint = false
         var failed: (any Error)?
         do { try profile.hive.delete() } catch { failed = error }
@@ -309,6 +323,9 @@ public final class Stadeum {
                 revokedLink.revokedAt = Date()
                 if let profile { try? revokedLink.write(to: profile.hive) }
                 self.link = revokedLink
+                // No longer in use: what was kept of its apps goes too.
+                forgetPinnedRecords()
+                apps = apps.filter { $0.peer == nil }
                 // A pairing under way (Connect again) keeps its code on the screen.
                 if case .pairing = status {} else { status = .needsPairing }
                 host?.stadeumRevoked()
@@ -391,11 +408,14 @@ public final class Stadeum {
         pairing = nil
         renewing = nil
         appsReading = nil
+        appsReadingKey = nil
         identifying = nil
         nap = nil
         pollSoon = false
         readingApps = false
         unreadApps = []
+        // The workspaces' apps go with the pairing; the person's own stay (`close`).
+        apps = apps.filter { $0.peer == nil }
         status = .off
         link = nil
         problem = nil
@@ -621,58 +641,144 @@ public final class Stadeum {
     /// replaces one under way, unless it would read less; what is not read,
     /// or cannot be, keeps what it last listed. `still` says, when the
     /// reads answer, whether what they read from is still in use (the Mac:
-    /// the same strut). The read, for a caller that waits for it (a pull to
-    /// refresh); nil when one under way reads more.
+    /// the same strut). The list is published as each answer arrives, so a
+    /// slow workspace never holds up the others; `readingApps` and
+    /// `unreadApps` settle at the end. With a non-nil `key`, a read under
+    /// way that reads the workspaces and was started with the same key is
+    /// the read asked for: it is returned, not cut short and started again.
+    /// The read, for a caller that waits for it (a pull to refresh); nil
+    /// when one under way reads more.
     @discardableResult
     public func readApps(
         own: (@Sendable () async throws -> [WorkspaceApp])?,
         workspaces: Bool = true,
+        key: String? = nil,
         pinned: @escaping @Sendable (HivePeer) async throws -> [WorkspaceApp],
         still: @escaping @MainActor () -> Bool = { true }
     ) -> Task<Void, Never>? {
         // A read under way reads the workspaces too: not cut short for less.
         guard workspaces || appsReading == nil else { return nil }
+        // The same read, already under way (it reads the workspaces: only such a read has a key).
+        if workspaces, let key, let running = appsReading, appsReadingKey == key { return running }
         let peers = live
         appsReading?.cancel()
         let reading = workspaces ? peers : []
         readingApps = true
+        appsReadingKey = workspaces ? key : nil
         appsReading = Task {
             // Done, unless a newer read took its place.
             defer {
                 if !Task.isCancelled {
                     appsReading = nil
+                    appsReadingKey = nil
                     readingApps = false
                 }
             }
-            // By peer, the person's own under nil.
-            let read = await withTaskGroup(of: (String?, [WorkspaceApp]?).self) { group in
-                if let own { group.addTask { (nil, try? await own()) } }
+            // By peer, the person's own under nil; published as each answers (the person's own,
+            // on Peel's strut, never waits for a workspace). A failure says whether access was lost.
+            var read: [String?: Result<[WorkspaceApp], AppsReadFailure>] = [:]
+            await withTaskGroup(of: (String?, Result<[WorkspaceApp], AppsReadFailure>).self) { group in
+                if let own { group.addTask { (nil, await appsOutcome { try await own() }) } }
                 for peer in reading {
-                    group.addTask { (peer.id, try? await pinned(peer)) }
+                    group.addTask { (peer.id, await appsOutcome { try await pinned(peer) }) }
                 }
-                var read: [String?: [WorkspaceApp]] = [:]
-                for await (peer, apps) in group {
-                    if let apps { read[peer] = apps }
+                for await (peer, outcome) in group {
+                    read[peer] = outcome
+                    await publishApps(read, own: own != nil, peers: peers, still: still)
                 }
-                return read
             }
             // A newer read, or the source or the workspaces changed meanwhile: theirs, not this.
             guard !Task.isCancelled, still(), live.map(\.id) == peers.map(\.id) else { return }
             if workspaces {
-                let unread = reading.map(\.id).filter { read[$0] == nil }
+                let unread = reading.map(\.id).filter { peer in
+                    if case .success? = read[peer] { return false }
+                    return true
+                }
                 if unreadApps != unread { unreadApps = unread }
+                keepPinned(read: read, peers: peers)
             }
-            let sources: [String?] = (own == nil ? [] : [nil]) + peers.map(\.id)
-            let listed = WorkspaceApp.byTitle(sources.flatMap { peer in read[peer] ?? apps.filter { $0.peer == peer } })
-            if apps != listed { apps = listed }
         }
         return appsReading
     }
 
-    /// Stops a read of the apps under way: what it read is not kept.
+    /// The list as far as `read` goes: a source read uses its new apps, one
+    /// not yet read, or that did not answer, keeps what it last listed (a
+    /// kept record, still `refreshing`, included); a workspace that refused
+    /// (401, 403, 404: access lost) lists none. The person's own come first.
+    /// Nothing if a newer read, or the source or the workspaces, changed meanwhile.
+    private func publishApps(_ read: [String?: Result<[WorkspaceApp], AppsReadFailure>], own: Bool, peers: [HivePeer],
+                             still: @MainActor () -> Bool) {
+        guard !Task.isCancelled, still(), live.map(\.id) == peers.map(\.id) else { return }
+        let sources: [String?] = (own ? [nil] : []) + peers.map(\.id)
+        var kept: [WorkspaceApp] = []
+        for peer in sources {
+            switch read[peer] {
+            case .success(let fresh)?:
+                kept += fresh
+            case .failure(let failure)? where peer != nil && failure.lostAccess:
+                break
+            default:
+                kept += apps.filter { $0.peer == peer }
+            }
+        }
+        let listed = WorkspaceApp.ownFirst(kept)
+        if apps != listed { apps = listed }
+    }
+
+    // MARK: - Pinned apps' records
+
+    /// Takes the records read from the account's settings and shows them,
+    /// at once, as the pinned apps of the workspaces in use (`open` does too,
+    /// when the pairing is read after them). Starts no read.
+    public func seed(records: [PinnedAppRecord]) {
+        pinnedRecords = records
+        seedApps()
+    }
+
+    /// Lists the records of workspaces in use whose apps are not listed yet.
+    private func seedApps() {
+        let peers = Set(live.map(\.id))
+        let seeded = pinnedRecords.compactMap { record -> WorkspaceApp? in
+            guard let peer = record.peer, peers.contains(peer), !apps.contains(where: { $0.peer == peer }) else { return nil }
+            return record.app
+        }
+        if !seeded.isEmpty { apps = WorkspaceApp.ownFirst(apps + seeded) }
+    }
+
+    /// After reads of the workspaces: the records follow what they answered
+    /// (`PinnedAppRecord.reconcile`), kept when they changed.
+    private func keepPinned(read: [String?: Result<[WorkspaceApp], AppsReadFailure>], peers: [HivePeer]) {
+        var workspaces: [String: Result<[WorkspaceApp], AppsReadFailure>] = [:]
+        for (peer, outcome) in read { if let peer { workspaces[peer] = outcome } }
+        let records = PinnedAppRecord.reconcile(old: pinnedRecords, read: workspaces, pinnedIDs: pinnedIDs(),
+                                                live: Set(peers.map(\.id)))
+        save(records)
+    }
+
+    /// A pin or unpin (`AppModel.setPinned`): the records follow the pins.
+    public func pinsChanged() {
+        save(PinnedAppRecord.following(pins: pinnedIDs(), old: pinnedRecords, apps: apps))
+    }
+
+    /// The records gone, here and from the account's settings: Stadeum disconnected, or a workspace revoked.
+    public func forgetPinnedRecords() {
+        guard !pinnedRecords.isEmpty else { return }
+        pinnedRecords = []
+        saveRecords?([])
+    }
+
+    private func save(_ records: [PinnedAppRecord]) {
+        guard records != pinnedRecords else { return }
+        pinnedRecords = records
+        saveRecords?(records)
+    }
+
+    /// Stops a read of the apps under way: what it read is not kept (only the pinned
+    /// apps' minimal records are, once a read finishes: `keepPinned`).
     public func stopReadingApps() {
         appsReading?.cancel()
         appsReading = nil
+        appsReadingKey = nil
         readingApps = false
     }
 }
@@ -825,4 +931,9 @@ extension WorkspaceApp {
     public static func filter(_ apps: [WorkspaceApp], query: String, source: String?) -> [WorkspaceApp] {
         apps.filter { (source == nil || $0.source == source) && $0.matches(query) }
     }
+}
+
+/// What a read of apps came to: the apps, or why not (`AppsReadFailure`).
+private func appsOutcome(_ read: @Sendable () async throws -> [WorkspaceApp]) async -> Result<[WorkspaceApp], AppsReadFailure> {
+    do { return .success(try await read()) } catch { return .failure(AppsReadFailure(error)) }
 }

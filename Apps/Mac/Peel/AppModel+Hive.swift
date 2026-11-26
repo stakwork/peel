@@ -148,7 +148,11 @@ extension AppModel {
     /// While Peel's strut is away (starting again) the list stays as it was,
     /// and a list that cannot be read keeps what it last listed. Without `workspaces`, only the person's own are read
     /// (Apps opening: one just built shows), the workspaces' kept as they are.
-    func refreshApps(workspaces: Bool = true) {
+    ///
+    /// Asked again for the same strut and workspaces while a read of them is
+    /// under way, it joins that read (the sidebar, `syncHive` and Apps opening
+    /// all ask at launch); `force`, the Refresh button's, starts a new one.
+    func refreshApps(workspaces: Bool = true, force: Bool = false) {
         // A read under way reads the person's own too: not cut short for less.
         guard workspaces || !stadeum.readingApps else { return }
         // Peel Home moved: its strut is not this Mac's to read.
@@ -160,7 +164,8 @@ extension AppModel {
         // Strut away (starting again): what is read stays as it is.
         guard let server = memoryServer else { return }
         let client = AutomationsClient(server: server)
-        stadeum.readApps(own: { try await client.ownApps() }, workspaces: workspaces,
+        let key = force ? nil : server.base.absoluteString + "|" + stadeum.live.map(\.id).sorted().joined(separator: ",")
+        stadeum.readApps(own: { try await client.ownApps() }, workspaces: workspaces, key: key,
                          pinned: { try await client.pinnedApps(of: $0.id) },
                          still: { [weak self] in self?.memoryServer == server })
     }

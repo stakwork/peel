@@ -266,7 +266,10 @@ struct CallHeaderButton: View {
     /// Its menu is open: the button that opened it is lit.
     private var menuOpen: Bool { presenter?.isOpen(from: menuSource) == true }
 
-    private func showMenu(header: Bool) {
+    /// The menu's entries. Choosing a Jamie or the canvas option keeps the menu
+    /// open (it redraws with the new choice checked), so the options can be
+    /// set and the call started without opening the menu again.
+    private func menuEntries(header: Bool) -> [MenuEntry] {
         let jamie = model.callJamie(in: chat)
         let with = jamie.map { String(localized: "With Jamie from \(model.name(of: $0))") }
         let items: [MenuEntry] = [
@@ -276,16 +279,21 @@ struct CallHeaderButton: View {
         let jamies = model.callJamies(in: chat)
         let picks: [MenuEntry] = jamies.isEmpty ? [] : [.header("Jamie")]
             + jamies.map { choice in
-                .button(model.name(of: choice), checked: choice == jamie) { model.calls.pickJamie(choice.source, in: chat) }
+                .button(model.name(of: choice), checked: choice == jamie, keepOpen: true) { model.calls.pickJamie(choice.source, in: chat) }
             }
-            + [.button("No Jamie", checked: jamie == nil) { model.calls.pickJamie(.noJamie, in: chat) }]
+            + [.button("No Jamie", checked: jamie == nil, keepOpen: true) { model.calls.pickJamie(.noJamie, in: chat) }]
         // A box's Jamie may keep what is said on its canvas.
         let records = model.calls.recordsOnCanvas.contains(chat)
         let canvas: [MenuEntry] = model.offersRecording(in: chat)
-            ? [.button("Record on the canvas", checked: records) { model.calls.setRecordsOnCanvas(!records, in: chat) }]
+            ? [.button("Record on the canvas", checked: records, keepOpen: true) { model.calls.setRecordsOnCanvas(!records, in: chat) }]
             : []
+        return .sections((header ? [.header("Start a new call")] : []) + items, picks, canvas)
+    }
+
+    private func showMenu(header: Bool) {
         presenter?.show(
-            .sections((header ? [.header("Start a new call")] : []) + items, picks, canvas), at: header ? chevron : anchor, source: menuSource
+            menuEntries(header: header), at: header ? chevron : anchor, source: menuSource,
+            rebuild: { menuEntries(header: header) }
         )
         // A box that got ready since is in the menu next time.
         Task { await model.readCallBoxes() }

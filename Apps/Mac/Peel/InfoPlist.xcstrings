@@ -2,6 +2,7 @@
   "sourceLanguage" : "en",
   "strings" : {
     "NSLocalNetworkUsageDescription" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {

@@ -2,6 +2,7 @@
   "sourceLanguage" : "en",
   "strings" : {
     "%@ Choose the new PIN again." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -18,6 +19,7 @@
       }
     },
     "%@ Tap to try again." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -34,6 +36,7 @@
       }
     },
     "%@ asks to pay" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -50,6 +53,7 @@
       }
     },
     "%@ can't get your location until you turn it on for Peel in Settings." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -66,6 +70,7 @@
       }
     },
     "%@ did not answer. Pull to try again." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -82,6 +87,7 @@
       }
     },
     "%@ from %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -98,6 +104,7 @@
       }
     },
     "%@ in %@, %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -114,6 +121,7 @@
       }
     },
     "%@ in %@: %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -130,6 +138,7 @@
       }
     },
     "%@ is enabled on your other device" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -146,6 +155,7 @@
       }
     },
     "%@ of %@ digits entered" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -162,6 +172,7 @@
       }
     },
     "%@ of its %@ limit spent" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -178,6 +189,7 @@
       }
     },
     "%@ requested" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -194,6 +206,7 @@
       }
     },
     "%@ sats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -210,6 +223,7 @@
       }
     },
     "%@ sent a payment with no sats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -226,6 +240,7 @@
       }
     },
     "%@ sent you %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -242,6 +257,7 @@
       }
     },
     "%@ spent this period" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -258,6 +274,7 @@
       }
     },
     "%@ waiting for %@ to come online · can't be cancelled" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -274,6 +291,7 @@
       }
     },
     "%@ waiting for people to come online" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -290,6 +308,7 @@
       }
     },
     "%@ waiting for the server…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -306,6 +325,7 @@
       }
     },
     "%@ wants to join" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -322,6 +342,7 @@
       }
     },
     "%@ wants to join · Approved" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -338,6 +359,7 @@
       }
     },
     "%@ wants to join · Declined" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -354,6 +376,7 @@
       }
     },
     "%@ wants your location" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -370,6 +393,7 @@
       }
     },
     "%@ · %@ msat" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -386,6 +410,7 @@
       }
     },
     "%@, agent" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -402,6 +427,7 @@
       }
     },
     "%@, at %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -418,6 +444,7 @@
       }
     },
     "%@, done" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -434,6 +461,7 @@
       }
     },
     "%@, not a contact" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -450,6 +478,7 @@
       }
     },
     "%@, speaking" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -466,6 +495,7 @@
       }
     },
     "%@’s screen" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -482,6 +512,7 @@
       }
     },
     "%lld images" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "variations" : {
@@ -522,6 +553,7 @@
       }
     },
     "%lld new" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -538,6 +570,7 @@
       }
     },
     "%lld on the call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -554,6 +587,7 @@
       }
     },
     "%lld or more characters" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -570,6 +604,7 @@
       }
     },
     "%lld unread" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -586,6 +621,7 @@
       }
     },
     "@%@ isn't connected here" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -602,6 +638,7 @@
       }
     },
     "A site that asks for your location appears here once you decide." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -618,6 +655,7 @@
       }
     },
     "Access" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -634,6 +672,7 @@
       }
     },
     "Account" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -650,6 +689,7 @@
       }
     },
     "Add" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -666,6 +706,7 @@
       }
     },
     "Add Jamie from %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -682,6 +723,7 @@
       }
     },
     "Add contact" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -698,6 +740,7 @@
       }
     },
     "Added on top" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -714,6 +757,7 @@
       }
     },
     "After %lld hours away" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -730,6 +774,7 @@
       }
     },
     "After a day away" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -746,6 +791,7 @@
       }
     },
     "After an hour away" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -762,6 +808,7 @@
       }
     },
     "Agent" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -778,6 +825,7 @@
       }
     },
     "All" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -794,6 +842,7 @@
       }
     },
     "All time zones" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -810,6 +859,7 @@
       }
     },
     "Allow" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -826,6 +876,7 @@
       }
     },
     "Allow once" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -842,6 +893,7 @@
       }
     },
     "Allow the microphone in Settings to record voice messages." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -858,6 +910,7 @@
       }
     },
     "Always" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -874,6 +927,7 @@
       }
     },
     "Amount" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -890,6 +944,7 @@
       }
     },
     "Amount not known" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -906,6 +961,7 @@
       }
     },
     "An app that asks to use your wallet appears here once you connect it." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -922,6 +978,7 @@
       }
     },
     "Another amount" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -938,6 +995,7 @@
       }
     },
     "Another invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -954,6 +1012,7 @@
       }
     },
     "Answers from" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -970,6 +1029,7 @@
       }
     },
     "Anyone with these words controls your account." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -986,6 +1046,7 @@
       }
     },
     "Anyone with these words controls your account. Keep them on paper." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1002,6 +1063,7 @@
       }
     },
     "Anyone with this invite can claim its sats." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1018,6 +1080,7 @@
       }
     },
     "Approve" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1034,6 +1097,7 @@
       }
     },
     "Approve this iPhone in Hive. Check the code matches:" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1050,6 +1114,7 @@
       }
     },
     "Apps" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1066,6 +1131,7 @@
       }
     },
     "Apps you opened" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1082,6 +1148,7 @@
       }
     },
     "Apps your Hive workspaces pin show here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1098,6 +1165,7 @@
       }
     },
     "Ask Peel" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1114,6 +1182,7 @@
       }
     },
     "Ask again" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1130,6 +1199,7 @@
       }
     },
     "Ask for the PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1146,6 +1216,7 @@
       }
     },
     "Ask me" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1162,6 +1233,7 @@
       }
     },
     "Ask me each time" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1178,6 +1250,7 @@
       }
     },
     "Asking %@…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1194,6 +1267,7 @@
       }
     },
     "Asking Hive…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1210,6 +1284,7 @@
       }
     },
     "Asks for %@ when Peel opens, until it asks for your PIN." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1226,6 +1301,7 @@
       }
     },
     "Attach" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1242,6 +1318,7 @@
       }
     },
     "Audio call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1258,6 +1335,7 @@
       }
     },
     "Auto download media" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1274,6 +1352,7 @@
       }
     },
     "Automatic" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1290,6 +1369,7 @@
       }
     },
     "Automations" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1306,6 +1386,7 @@
       }
     },
     "Automations run on your home Mac, and you set them up and follow them there. They come to the phone once it can reach your Mac." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1322,6 +1403,7 @@
       }
     },
     "Back" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1338,6 +1420,7 @@
       }
     },
     "Back to chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1354,6 +1437,7 @@
       }
     },
     "Balance" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1370,6 +1454,7 @@
       }
     },
     "Balance %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1386,6 +1471,7 @@
       }
     },
     "Balance known once connected" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1402,6 +1488,7 @@
       }
     },
     "Balance, %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1418,6 +1505,7 @@
       }
     },
     "Balance, not known yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1434,6 +1522,7 @@
       }
     },
     "Basics" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1450,6 +1539,7 @@
       }
     },
     "Block" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1466,6 +1556,7 @@
       }
     },
     "Boost" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1482,6 +1573,7 @@
       }
     },
     "Boost %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1498,6 +1590,7 @@
       }
     },
     "Boost amount" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1514,6 +1607,7 @@
       }
     },
     "Boost of %@ not settled" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1530,6 +1624,7 @@
       }
     },
     "Boost tips a message this much in one tap." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1546,6 +1641,7 @@
       }
     },
     "Boosts" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1562,6 +1658,7 @@
       }
     },
     "Boosts, %@, shows who boosted" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1578,6 +1675,7 @@
       }
     },
     "Buys %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1594,6 +1692,7 @@
       }
     },
     "Call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1610,6 +1709,7 @@
       }
     },
     "Call ended" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1626,6 +1726,7 @@
       }
     },
     "Calling Jamie…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1642,6 +1743,7 @@
       }
     },
     "Camera" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1658,6 +1760,7 @@
       }
     },
     "Can't play this video" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1674,6 +1777,7 @@
       }
     },
     "Can't read this invoice, so it can't be paid." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1690,6 +1794,7 @@
       }
     },
     "Can't scan here" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1706,6 +1811,7 @@
       }
     },
     "Can't use the camera" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1722,6 +1828,7 @@
       }
     },
     "Can't use the microphone" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1738,6 +1845,7 @@
       }
     },
     "Can't use the microphone or the camera" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1754,6 +1862,7 @@
       }
     },
     "Cancel" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1770,6 +1879,7 @@
       }
     },
     "Cancel invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1786,6 +1896,7 @@
       }
     },
     "Change" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1802,6 +1913,7 @@
       }
     },
     "Change PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1818,6 +1930,7 @@
       }
     },
     "Changes your name" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1834,6 +1947,7 @@
       }
     },
     "Chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1850,6 +1964,7 @@
       }
     },
     "Check" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1866,6 +1981,7 @@
       }
     },
     "Check the amount, then confirm." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1882,6 +1998,7 @@
       }
     },
     "Check what you wrote" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1898,6 +2015,7 @@
       }
     },
     "Check words" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1914,6 +2032,7 @@
       }
     },
     "Checked against your paper." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1930,6 +2049,7 @@
       }
     },
     "Choose" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1946,6 +2066,7 @@
       }
     },
     "Choose a new PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1962,6 +2083,7 @@
       }
     },
     "Choose your photo for this tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1978,6 +2100,7 @@
       }
     },
     "Clear" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1994,6 +2117,7 @@
       }
     },
     "Clear the event record?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2010,6 +2134,7 @@
       }
     },
     "Close" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2026,6 +2151,7 @@
       }
     },
     "Close search" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2042,6 +2168,7 @@
       }
     },
     "Close thread" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2058,6 +2185,7 @@
       }
     },
     "Code %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2074,6 +2202,7 @@
       }
     },
     "Collapsed" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2090,6 +2219,7 @@
       }
     },
     "Confirm payments" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2106,6 +2236,7 @@
       }
     },
     "Connect @%@ first" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2122,6 +2253,7 @@
       }
     },
     "Connect Hive" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2138,6 +2270,7 @@
       }
     },
     "Connect Hive in You to open" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2154,6 +2287,7 @@
       }
     },
     "Connect Hive to let one of your workspaces answer @jamie here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2170,6 +2304,7 @@
       }
     },
     "Connect Hive under You to open the apps your workspaces pin." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2186,6 +2321,7 @@
       }
     },
     "Connect again" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2202,6 +2338,7 @@
       }
     },
     "Connected apps" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2218,6 +2355,7 @@
       }
     },
     "Connected. Peel is fetching what came while it was away; your messages are here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2234,6 +2372,7 @@
       }
     },
     "Connecting" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2250,6 +2389,7 @@
       }
     },
     "Connecting…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2266,6 +2406,7 @@
       }
     },
     "Contact details" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2282,6 +2423,7 @@
       }
     },
     "Contact info, invite or Sphinx link" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2298,6 +2440,7 @@
       }
     },
     "Contact since %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2314,6 +2457,7 @@
       }
     },
     "Continue" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2330,6 +2474,7 @@
       }
     },
     "Conversations" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2346,6 +2491,7 @@
       }
     },
     "Copied" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2362,6 +2508,7 @@
       }
     },
     "Copy" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2378,6 +2525,7 @@
       }
     },
     "Copy contact info" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2394,6 +2542,7 @@
       }
     },
     "Copy invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2410,6 +2559,7 @@
       }
     },
     "Copy key" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2426,6 +2576,7 @@
       }
     },
     "Copy link" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2442,6 +2593,7 @@
       }
     },
     "Copy payment hash" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2458,6 +2610,7 @@
       }
     },
     "Copy tribe link" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2474,6 +2627,7 @@
       }
     },
     "Could not connect to the call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2490,6 +2644,7 @@
       }
     },
     "Could not reach Jamie" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2506,6 +2661,7 @@
       }
     },
     "Could not turn the camera on" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2522,6 +2678,7 @@
       }
     },
     "Could not turn the microphone on" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2538,6 +2695,7 @@
       }
     },
     "Couldn't download yet - tap to retry" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2554,6 +2712,7 @@
       }
     },
     "Couldn't open it" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2570,6 +2729,7 @@
       }
     },
     "Couldn't read %@ just now. Pull to try again." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2586,6 +2746,7 @@
       }
     },
     "Couldn't read the apps" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2602,6 +2763,7 @@
       }
     },
     "Couldn't save it" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2618,6 +2780,7 @@
       }
     },
     "Crash records are kept." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2634,6 +2797,7 @@
       }
     },
     "Create" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2650,6 +2814,7 @@
       }
     },
     "Create a tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2666,6 +2831,7 @@
       }
     },
     "Create account" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2682,6 +2848,7 @@
       }
     },
     "Create invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2698,6 +2865,7 @@
       }
     },
     "Create invoice for %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2714,6 +2882,7 @@
       }
     },
     "Debug" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2730,6 +2899,7 @@
       }
     },
     "Decline" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2746,6 +2916,7 @@
       }
     },
     "Delete" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2762,6 +2933,7 @@
       }
     },
     "Delete #%@ for everyone?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2778,6 +2950,7 @@
       }
     },
     "Delete tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2794,6 +2967,7 @@
       }
     },
     "Delivered" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2810,6 +2984,7 @@
       }
     },
     "Details" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2826,6 +3001,7 @@
       }
     },
     "Diagnostics" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2842,6 +3018,7 @@
       }
     },
     "Direct messages" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2858,6 +3035,7 @@
       }
     },
     "Discard" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2874,6 +3052,7 @@
       }
     },
     "Discard, never sent" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2890,6 +3069,7 @@
       }
     },
     "Discard, never sent?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2906,6 +3086,7 @@
       }
     },
     "Disconnect" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2922,6 +3103,7 @@
       }
     },
     "Disconnected" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2938,6 +3120,7 @@
       }
     },
     "Dismiss" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2954,6 +3137,7 @@
       }
     },
     "Don't allow" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2970,6 +3154,7 @@
       }
     },
     "Done" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2986,6 +3171,7 @@
       }
     },
     "Download image" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3002,6 +3188,7 @@
       }
     },
     "Download video" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3018,6 +3205,7 @@
       }
     },
     "Downloading" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3034,6 +3222,7 @@
       }
     },
     "Downloads the image" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3050,6 +3239,7 @@
       }
     },
     "Each message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3066,6 +3256,7 @@
       }
     },
     "Edit #%@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3082,6 +3273,7 @@
       }
     },
     "Edit tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3098,6 +3290,7 @@
       }
     },
     "Enter an amount in sats." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3114,6 +3307,7 @@
       }
     },
     "Enter an amount." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3130,6 +3324,7 @@
       }
     },
     "Enter the new PIN again" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3146,6 +3341,7 @@
       }
     },
     "Enter your PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3162,6 +3358,7 @@
       }
     },
     "Enter your PIN again" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3178,6 +3375,7 @@
       }
     },
     "Enter your PIN." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3194,6 +3392,7 @@
       }
     },
     "Enter your current PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3210,6 +3409,7 @@
       }
     },
     "Enums and numbers only: no names, messages, amounts or keys. The record stays on this iPhone; Copy and Share are yours to use, nothing is sent automatically." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3226,6 +3426,7 @@
       }
     },
     "Escrow" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3242,6 +3443,7 @@
       }
     },
     "Escrow per message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3258,6 +3460,7 @@
       }
     },
     "Every app on %@ shares this connection and its spending limit." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3274,6 +3477,7 @@
       }
     },
     "Every app on %@ shares this connection." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3290,6 +3494,7 @@
       }
     },
     "Expanded" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3306,6 +3511,7 @@
       }
     },
     "Expired at %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3322,6 +3528,7 @@
       }
     },
     "Expires" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3338,6 +3545,7 @@
       }
     },
     "Expires %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3354,6 +3562,7 @@
       }
     },
     "Expires in %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3370,6 +3579,7 @@
       }
     },
     "Fee" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3386,6 +3596,7 @@
       }
     },
     "Fee added on top" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3402,6 +3613,7 @@
       }
     },
     "Fee added on top, with 1 sat to reach them" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3418,6 +3630,7 @@
       }
     },
     "Fee not known yet." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3434,6 +3647,7 @@
       }
     },
     "File" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3450,6 +3664,7 @@
       }
     },
     "Files" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3466,6 +3681,7 @@
       }
     },
     "Filter by source" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3482,6 +3698,7 @@
       }
     },
     "Flip camera" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3498,6 +3715,7 @@
       }
     },
     "Force test crash" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3514,6 +3732,7 @@
       }
     },
     "Forget" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3530,6 +3749,7 @@
       }
     },
     "Forget account" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3546,6 +3766,7 @@
       }
     },
     "Forget all sites" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3562,6 +3783,7 @@
       }
     },
     "Forget every site's choice?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3578,6 +3800,7 @@
       }
     },
     "Forget this account" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3594,6 +3817,7 @@
       }
     },
     "Forget this account on this iPhone. %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3610,6 +3834,7 @@
       }
     },
     "Forgot your PIN?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3626,6 +3851,7 @@
       }
     },
     "GIF" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3642,6 +3868,7 @@
       }
     },
     "Get the sats back?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3658,6 +3885,7 @@
       }
     },
     "Goes to the message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3674,6 +3902,7 @@
       }
     },
     "Hang up" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3690,6 +3919,7 @@
       }
     },
     "Hear when its own payments land" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3706,6 +3936,7 @@
       }
     },
     "Held, then paid back" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3722,6 +3953,7 @@
       }
     },
     "Hide" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3738,6 +3970,7 @@
       }
     },
     "Hides in %lld s" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3754,6 +3987,7 @@
       }
     },
     "History" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3770,6 +4004,7 @@
       }
     },
     "Hive" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3786,6 +4021,7 @@
       }
     },
     "Hive no longer knows this iPhone. Connect it again to open your workspaces' work here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3802,6 +4038,7 @@
       }
     },
     "Hold to record, release to send" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3818,6 +4055,7 @@
       }
     },
     "How you appear in #%@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3834,6 +4072,7 @@
       }
     },
     "I've written them down" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3850,6 +4089,7 @@
       }
     },
     "Image" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3866,6 +4106,7 @@
       }
     },
     "Image - %@, tap to download" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3882,6 +4123,7 @@
       }
     },
     "Image not available" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3898,6 +4140,7 @@
       }
     },
     "Image, tap to download" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3914,6 +4157,7 @@
       }
     },
     "In a thread" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3930,6 +4174,7 @@
       }
     },
     "Inside it, apps pay without asking you. Change it or take it back in You › Connected apps." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3946,6 +4191,7 @@
       }
     },
     "Invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3962,6 +4208,7 @@
       }
     },
     "Invite someone" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3978,6 +4225,7 @@
       }
     },
     "Invite, %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3994,6 +4242,7 @@
       }
     },
     "Invite, no nickname" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4010,6 +4259,7 @@
       }
     },
     "Invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4026,6 +4276,7 @@
       }
     },
     "Invoice for" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4042,6 +4293,7 @@
       }
     },
     "Invoice for %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4058,6 +4310,7 @@
       }
     },
     "It may" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4074,6 +4327,7 @@
       }
     },
     "Jamie" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4090,6 +4344,7 @@
       }
     },
     "Jamie · %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4106,6 +4361,7 @@
       }
     },
     "Join" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4122,6 +4378,7 @@
       }
     },
     "Join a tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4138,6 +4395,7 @@
       }
     },
     "Join a tribe or add someone below, and they show here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4154,6 +4412,7 @@
       }
     },
     "Join with an invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4170,6 +4429,7 @@
       }
     },
     "Jump to newest" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4186,6 +4446,7 @@
       }
     },
     "Jump to newest, %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4202,6 +4463,7 @@
       }
     },
     "Last try failed (%@). Nothing was sent." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4218,6 +4480,7 @@
       }
     },
     "Leave and join" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4234,6 +4497,7 @@
       }
     },
     "Leave and start" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4250,6 +4514,7 @@
       }
     },
     "Leave the call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4266,6 +4531,7 @@
       }
     },
     "Leave the call in %@ and join?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4282,6 +4548,7 @@
       }
     },
     "Leave the call in %@ and start a new one?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4298,6 +4565,7 @@
       }
     },
     "Link" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4314,6 +4582,7 @@
       }
     },
     "Link copied" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4330,6 +4599,7 @@
       }
     },
     "Linking Peel to %@…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4346,6 +4616,7 @@
       }
     },
     "Loading older payments" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4362,6 +4633,7 @@
       }
     },
     "Loads the video" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4378,6 +4650,7 @@
       }
     },
     "Location" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4394,6 +4667,7 @@
       }
     },
     "Location is off for Peel" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4410,6 +4684,7 @@
       }
     },
     "Look up" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4426,6 +4701,7 @@
       }
     },
     "Lost the connection to the call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4442,6 +4718,7 @@
       }
     },
     "Make a new one" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4458,6 +4735,7 @@
       }
     },
     "Mark all read" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4474,6 +4752,7 @@
       }
     },
     "Mark read" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4490,6 +4769,7 @@
       }
     },
     "Mark unread" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4506,6 +4786,7 @@
       }
     },
     "Mask" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4522,6 +4803,7 @@
       }
     },
     "Members" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4538,6 +4820,7 @@
       }
     },
     "Memo" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4554,6 +4837,7 @@
       }
     },
     "Memo: %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4570,6 +4854,7 @@
       }
     },
     "Mention %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4586,6 +4871,7 @@
       }
     },
     "Mentions" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4602,6 +4888,7 @@
       }
     },
     "Mentions did not load" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4618,6 +4905,7 @@
       }
     },
     "Message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4634,6 +4922,7 @@
       }
     },
     "Message %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4650,6 +4939,7 @@
       }
     },
     "Message: %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4666,6 +4956,7 @@
       }
     },
     "More" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4682,6 +4973,7 @@
       }
     },
     "Mute" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4698,6 +4990,7 @@
       }
     },
     "Muted" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4714,6 +5007,7 @@
       }
     },
     "Name" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4730,6 +5024,7 @@
       }
     },
     "Names, amounts, keys and paths are removed where Peel could find them. Nothing has been sent." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4746,6 +5041,7 @@
       }
     },
     "Never ask for PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4762,6 +5058,7 @@
       }
     },
     "New" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4778,6 +5075,7 @@
       }
     },
     "New conversation" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4794,6 +5092,7 @@
       }
     },
     "New invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4810,6 +5109,7 @@
       }
     },
     "New messages" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4826,6 +5126,7 @@
       }
     },
     "New messages arrive as they're sent, through %@." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4842,6 +5143,7 @@
       }
     },
     "New messages arrive as they're sent." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4858,6 +5160,7 @@
       }
     },
     "Newer match" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4874,6 +5177,7 @@
       }
     },
     "Nickname" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4890,6 +5194,7 @@
       }
     },
     "No Hive workspaces yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4906,6 +5211,7 @@
       }
     },
     "No Jamie" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4922,6 +5228,7 @@
       }
     },
     "No QR code found in that photo." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4938,6 +5245,7 @@
       }
     },
     "No apps yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4954,6 +5262,7 @@
       }
     },
     "No chats yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4970,6 +5279,7 @@
       }
     },
     "No conversations yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4986,6 +5296,7 @@
       }
     },
     "No invite? Ask a friend who uses Peel." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5002,6 +5313,7 @@
       }
     },
     "No limit" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5018,6 +5330,7 @@
       }
     },
     "No mentions yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5034,6 +5347,7 @@
       }
     },
     "No one on the call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5050,6 +5364,7 @@
       }
     },
     "No payments yet." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5066,6 +5381,7 @@
       }
     },
     "No replies yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5082,6 +5398,7 @@
       }
     },
     "No routing fee." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5098,6 +5415,7 @@
       }
     },
     "No threads yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5114,6 +5432,7 @@
       }
     },
     "No transcript" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5130,6 +5449,7 @@
       }
     },
     "None" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5146,6 +5466,7 @@
       }
     },
     "Not checked against your paper yet." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5162,6 +5483,7 @@
       }
     },
     "Not checked yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5178,6 +5500,7 @@
       }
     },
     "Not confirmed yet. If it stays this way, ask for a new invite." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5194,6 +5517,7 @@
       }
     },
     "Not connected" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5210,6 +5534,7 @@
       }
     },
     "Not connected." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5226,6 +5551,7 @@
       }
     },
     "Not given" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5242,6 +5568,7 @@
       }
     },
     "Not now" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5258,6 +5585,7 @@
       }
     },
     "Not ready yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5274,6 +5602,7 @@
       }
     },
     "Not received" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5290,6 +5619,7 @@
       }
     },
     "Not sent" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5306,6 +5636,7 @@
       }
     },
     "Not uploaded" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5322,6 +5653,7 @@
       }
     },
     "Note" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5338,6 +5670,7 @@
       }
     },
     "Nothing was paid." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5354,6 +5687,7 @@
       }
     },
     "Notify me about" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5370,6 +5704,7 @@
       }
     },
     "OK" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5386,6 +5721,7 @@
       }
     },
     "Off: images, videos, voice messages and files wait for a tap." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5402,6 +5738,7 @@
       }
     },
     "Older match" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5418,6 +5755,7 @@
       }
     },
     "On iOS 26, sites are asked by the system's own prompt and are not listed here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5434,6 +5772,7 @@
       }
     },
     "On your Mac" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5450,6 +5789,7 @@
       }
     },
     "On your Mac for now" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5466,6 +5806,7 @@
       }
     },
     "Only people with the link can join." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5482,6 +5823,7 @@
       }
     },
     "Only this site gets it, only while its page is open. Peel doesn't keep or send it." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5498,6 +5840,7 @@
       }
     },
     "Only you see these" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5514,6 +5857,7 @@
       }
     },
     "Open" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5530,6 +5874,7 @@
       }
     },
     "Open #%@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5546,6 +5891,7 @@
       }
     },
     "Open Hive" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5562,6 +5908,7 @@
       }
     },
     "Open Peel" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5578,6 +5925,7 @@
       }
     },
     "Open Peel on a mic and a text box instead of Chats. The grid icon at the top right turns Voice Mode off." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5594,6 +5942,7 @@
       }
     },
     "Open Settings" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5610,6 +5959,7 @@
       }
     },
     "Open app" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5626,6 +5976,7 @@
       }
     },
     "Open chat with %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5642,6 +5993,7 @@
       }
     },
     "Open chat with them" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5658,6 +6010,7 @@
       }
     },
     "Open in %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5674,6 +6027,7 @@
       }
     },
     "Open thread" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5690,6 +6044,7 @@
       }
     },
     "Open what your workspaces' assistants make for you, and their apps, here on this iPhone." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5706,6 +6061,7 @@
       }
     },
     "Opens %@ as %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5722,6 +6078,7 @@
       }
     },
     "Opens a preview" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5738,6 +6095,7 @@
       }
     },
     "Opens it" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5754,6 +6112,7 @@
       }
     },
     "Opens the image full screen" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5770,6 +6129,7 @@
       }
     },
     "Opens the video full screen" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5786,6 +6146,7 @@
       }
     },
     "Optional" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5802,6 +6163,7 @@
       }
     },
     "Or send to a contact" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5818,6 +6180,7 @@
       }
     },
     "Original message not available" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5834,6 +6197,7 @@
       }
     },
     "Over %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5850,6 +6214,7 @@
       }
     },
     "Over the limit" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5866,6 +6231,7 @@
       }
     },
     "Owner" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5882,6 +6248,7 @@
       }
     },
     "PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5898,6 +6265,7 @@
       }
     },
     "Pages open on the Mac for now." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5914,6 +6282,7 @@
       }
     },
     "Paid" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5930,6 +6299,7 @@
       }
     },
     "Paid %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5946,6 +6316,7 @@
       }
     },
     "Paid back after" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5962,6 +6333,7 @@
       }
     },
     "Paid · %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5978,6 +6350,7 @@
       }
     },
     "Paid. Buy it on the Mac for now." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5994,6 +6367,7 @@
       }
     },
     "Partly paid" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6010,6 +6384,7 @@
       }
     },
     "Partly paid. This invoice can't take the rest." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6026,6 +6401,7 @@
       }
     },
     "Past conversations with Jamie on %@ will appear here after a call ends." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6042,6 +6418,7 @@
       }
     },
     "Paste" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6058,6 +6435,7 @@
       }
     },
     "Paste your invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6074,6 +6452,7 @@
       }
     },
     "Pay" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6090,6 +6469,7 @@
       }
     },
     "Pay an invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6106,6 +6486,7 @@
       }
     },
     "Pay it from the Mac for now" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6122,6 +6503,7 @@
       }
     },
     "Paying %@…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6138,6 +6520,7 @@
       }
     },
     "Paying…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6154,6 +6537,7 @@
       }
     },
     "Payment" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6170,6 +6554,7 @@
       }
     },
     "Payment hash" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6186,6 +6571,7 @@
       }
     },
     "Payment not settled" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6202,6 +6588,7 @@
       }
     },
     "Payments" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6218,6 +6605,7 @@
       }
     },
     "Peel" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6234,6 +6622,7 @@
       }
     },
     "Peel asks for your PIN every time it opens." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6250,6 +6639,7 @@
       }
     },
     "Peel can't use the camera. Allow it in Settings, or %@." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6266,6 +6656,7 @@
       }
     },
     "Peel is having trouble loading new messages and is retrying" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6282,6 +6673,7 @@
       }
     },
     "Peel is locked" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6298,6 +6690,7 @@
       }
     },
     "Peel recorded a problem from the last run. The record stays on this iPhone." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6314,6 +6707,7 @@
       }
     },
     "Phone location settings" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6330,6 +6724,7 @@
       }
     },
     "Photo" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6346,6 +6741,7 @@
       }
     },
     "Photos" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6362,6 +6758,7 @@
       }
     },
     "Pin to Chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6378,6 +6775,7 @@
       }
     },
     "Ping" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6394,6 +6792,7 @@
       }
     },
     "Pinned apps" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6410,6 +6809,7 @@
       }
     },
     "Pinned message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6426,6 +6826,7 @@
       }
     },
     "Pinned to Chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6442,6 +6843,7 @@
       }
     },
     "Point the camera at a tribe's QR code." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6458,6 +6860,7 @@
       }
     },
     "Point the camera at an invoice's QR code." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6474,6 +6877,7 @@
       }
     },
     "Point the camera at the invite's QR code." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6490,6 +6894,7 @@
       }
     },
     "Point the camera at their contact QR code." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6506,6 +6911,7 @@
       }
     },
     "Precise location" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6522,6 +6928,7 @@
       }
     },
     "Price per message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6538,6 +6945,7 @@
       }
     },
     "Price to join" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6554,6 +6962,7 @@
       }
     },
     "Pricing" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6570,6 +6979,7 @@
       }
     },
     "Private" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6586,6 +6996,7 @@
       }
     },
     "Private messages, payments, and an assistant that works for you." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6602,6 +7013,7 @@
       }
     },
     "Problem record" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6618,6 +7030,7 @@
       }
     },
     "Public key" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6634,6 +7047,7 @@
       }
     },
     "QR" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6650,6 +7064,7 @@
       }
     },
     "QR code of the invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6666,6 +7081,7 @@
       }
     },
     "QR code of the invite, not ready yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6682,6 +7098,7 @@
       }
     },
     "QR code of the invoice for %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6698,6 +7115,7 @@
       }
     },
     "QR code of the tribe link" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6714,6 +7132,7 @@
       }
     },
     "QR code of their public key" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6730,6 +7149,7 @@
       }
     },
     "QR code of your contact info" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6746,6 +7166,7 @@
       }
     },
     "Reading…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6762,6 +7183,7 @@
       }
     },
     "Reads a QR code in a photo or screenshot" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6778,6 +7200,7 @@
       }
     },
     "Ready" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6794,6 +7217,7 @@
       }
     },
     "Receive" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6810,6 +7234,7 @@
       }
     },
     "Receive sats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6826,6 +7251,7 @@
       }
     },
     "Received" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6842,6 +7268,7 @@
       }
     },
     "Recent" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6858,6 +7285,7 @@
       }
     },
     "Reconnect now" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6874,6 +7302,7 @@
       }
     },
     "Reconnecting…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6890,6 +7319,7 @@
       }
     },
     "Record a voice message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6906,6 +7336,7 @@
       }
     },
     "Refresh" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6922,6 +7353,7 @@
       }
     },
     "Refuse" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6938,6 +7370,7 @@
       }
     },
     "Rejoin" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6954,6 +7387,7 @@
       }
     },
     "Reload" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6970,6 +7404,7 @@
       }
     },
     "Remove" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6986,6 +7421,7 @@
       }
     },
     "Remove %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7002,6 +7438,7 @@
       }
     },
     "Remove %@ and delete your chat?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7018,6 +7455,7 @@
       }
     },
     "Remove contact" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7034,6 +7472,7 @@
       }
     },
     "Remove from Apps" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7050,6 +7489,7 @@
       }
     },
     "Remove from list" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7066,6 +7506,7 @@
       }
     },
     "Remove from tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7082,6 +7523,7 @@
       }
     },
     "Removed, the site asks again next time." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7098,6 +7540,7 @@
       }
     },
     "Removes the account and its messages from this iPhone. You need your twelve words to sign back in." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7114,6 +7557,7 @@
       }
     },
     "Reply" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7130,6 +7574,7 @@
       }
     },
     "Replying to %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7146,6 +7591,7 @@
       }
     },
     "Required" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7162,6 +7608,7 @@
       }
     },
     "Restore" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7178,6 +7625,7 @@
       }
     },
     "Restore with recovery words" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7194,6 +7642,7 @@
       }
     },
     "Restoring your account" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7210,6 +7659,7 @@
       }
     },
     "Restoring your chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7226,6 +7676,7 @@
       }
     },
     "Resume" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7242,6 +7693,7 @@
       }
     },
     "Retry" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7258,6 +7710,7 @@
       }
     },
     "Retry sending" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7274,6 +7727,7 @@
       }
     },
     "Retry upload" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7290,6 +7744,7 @@
       }
     },
     "Return to the call in %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7306,6 +7761,7 @@
       }
     },
     "Return to the call with Jamie" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7322,6 +7778,7 @@
       }
     },
     "Reveal" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7338,6 +7795,7 @@
       }
     },
     "Revert" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7354,6 +7812,7 @@
       }
     },
     "Routing fee" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7370,6 +7829,7 @@
       }
     },
     "Routing fee %@." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7386,6 +7846,7 @@
       }
     },
     "Runs %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7402,6 +7863,7 @@
       }
     },
     "Save" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7418,6 +7880,7 @@
       }
     },
     "Scan" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7434,6 +7897,7 @@
       }
     },
     "Scan a tribe's code" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7450,6 +7914,7 @@
       }
     },
     "Scan an invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7466,6 +7931,7 @@
       }
     },
     "Scan invite QR code" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7482,6 +7948,7 @@
       }
     },
     "Scan their code" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7498,6 +7965,7 @@
       }
     },
     "Scan your invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7514,6 +7982,7 @@
       }
     },
     "Search" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7530,6 +7999,7 @@
       }
     },
     "Search apps" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7546,6 +8016,7 @@
       }
     },
     "Search chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7562,6 +8033,7 @@
       }
     },
     "Search cities or GMT+…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7578,6 +8050,7 @@
       }
     },
     "Search in %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7594,6 +8067,7 @@
       }
     },
     "Search results" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7610,6 +8084,7 @@
       }
     },
     "Seen here" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7626,6 +8101,7 @@
       }
     },
     "Seen in #%@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7642,6 +8118,7 @@
       }
     },
     "Send" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7658,6 +8135,7 @@
       }
     },
     "Send %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7674,6 +8152,7 @@
       }
     },
     "Send sats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7690,6 +8169,7 @@
       }
     },
     "Send to %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7706,6 +8186,7 @@
       }
     },
     "Sending sats to %@ from here is coming. Send from the Mac for now." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7722,6 +8203,7 @@
       }
     },
     "Sends %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7738,6 +8220,7 @@
       }
     },
     "Sent to %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7754,6 +8237,7 @@
       }
     },
     "Separated" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7770,6 +8254,7 @@
       }
     },
     "Server" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7786,6 +8271,7 @@
       }
     },
     "Set a PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7802,6 +8288,7 @@
       }
     },
     "Set up on your Mac" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7818,6 +8305,7 @@
       }
     },
     "Set your name first, in You" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7834,6 +8322,7 @@
       }
     },
     "Settings" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7850,6 +8339,7 @@
       }
     },
     "Share" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7866,6 +8356,7 @@
       }
     },
     "Share %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7882,6 +8373,7 @@
       }
     },
     "Share QR code" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7898,6 +8390,7 @@
       }
     },
     "Share link" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7914,6 +8407,7 @@
       }
     },
     "Share my time zone with %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7930,6 +8424,7 @@
       }
     },
     "Share video" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7946,6 +8441,7 @@
       }
     },
     "Show all %lld chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "variations" : {
@@ -7986,6 +8482,7 @@
       }
     },
     "Show all %lld people" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "variations" : {
@@ -8026,6 +8523,7 @@
       }
     },
     "Show all %lld tribes" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "variations" : {
@@ -8066,6 +8564,7 @@
       }
     },
     "Show fewer" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8082,6 +8581,7 @@
       }
     },
     "Show fewer chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8098,6 +8598,7 @@
       }
     },
     "Show fewer people" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8114,6 +8615,7 @@
       }
     },
     "Show fewer tribes" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8130,6 +8632,7 @@
       }
     },
     "Show record" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8146,6 +8649,7 @@
       }
     },
     "Show words" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8162,6 +8666,7 @@
       }
     },
     "Shows the connection" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8178,6 +8683,7 @@
       }
     },
     "Shows the connection and Reconnect now" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8194,6 +8700,7 @@
       }
     },
     "Shows this large, or everyone" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8210,6 +8717,7 @@
       }
     },
     "Sign in" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8226,6 +8734,7 @@
       }
     },
     "Site location" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8242,6 +8751,7 @@
       }
     },
     "Source" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8258,6 +8768,7 @@
       }
     },
     "Speak replies aloud" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8274,6 +8785,7 @@
       }
     },
     "Spending limit" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8290,6 +8802,7 @@
       }
     },
     "Stadeum servers" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8306,6 +8819,7 @@
       }
     },
     "Starts a voice call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8322,6 +8836,7 @@
       }
     },
     "Status" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8338,6 +8853,7 @@
       }
     },
     "Stay on both devices" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8354,6 +8870,7 @@
       }
     },
     "Step %lld of %lld" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8370,6 +8887,7 @@
       }
     },
     "Stop replying" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8386,6 +8904,7 @@
       }
     },
     "Stop speaking replies" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8402,6 +8921,7 @@
       }
     },
     "Switch to this device" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8418,6 +8938,7 @@
       }
     },
     "Tags" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8434,6 +8955,7 @@
       }
     },
     "Tags: %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8450,6 +8972,7 @@
       }
     },
     "Talk to Jamie" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8466,6 +8989,7 @@
       }
     },
     "Talk to Jamie on %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8482,6 +9006,7 @@
       }
     },
     "Talk to Peel by voice from its chat. Speech is recognised on this iPhone. Say \"Peel send\" to send. Auto-send after silence can cut you off, so it is off by default." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8498,6 +9023,7 @@
       }
     },
     "That code doesn't name anyone." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8514,6 +9040,7 @@
       }
     },
     "That code is empty." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8530,6 +9057,7 @@
       }
     },
     "That code isn't a tribe link." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8546,6 +9074,7 @@
       }
     },
     "That code isn't an invoice." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8562,6 +9091,7 @@
       }
     },
     "That isn't an invoice." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8578,6 +9108,7 @@
       }
     },
     "That photo's code isn't one Peel can use here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8594,6 +9125,7 @@
       }
     },
     "That's over this app's spending limit. Check it, then confirm." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8610,6 +9142,7 @@
       }
     },
     "That's over your confirmation amount. Check it, then confirm." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8626,6 +9159,7 @@
       }
     },
     "The PINs don't match. Set it again." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8642,6 +9176,7 @@
       }
     },
     "The agent reads files on your Mac, so Peel needs to be open there." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8658,6 +9193,7 @@
       }
     },
     "The app says: “%@”" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8674,6 +9210,7 @@
       }
     },
     "The call goes on" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8690,6 +9227,7 @@
       }
     },
     "The download did not finish." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8706,6 +9244,7 @@
       }
     },
     "The image could not be drawn." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8722,6 +9261,7 @@
       }
     },
     "The image could not be opened." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8738,6 +9278,7 @@
       }
     },
     "The link or code someone sent you." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8754,6 +9295,7 @@
       }
     },
     "The sats leave your balance now. Cancel the invite to get them back." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8770,6 +9312,7 @@
       }
     },
     "The server says: “%@”" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8786,6 +9329,7 @@
       }
     },
     "The site can't get your location until you turn it on for Peel in Settings." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8802,6 +9346,7 @@
       }
     },
     "The video: %@." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8818,6 +9363,7 @@
       }
     },
     "Their code" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8834,6 +9380,7 @@
       }
     },
     "There was no room to keep it." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8850,6 +9397,7 @@
       }
     },
     "They appear in Direct messages once they accept." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8866,6 +9414,7 @@
       }
     },
     "They show here as they arrive. This can take a few minutes." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8882,6 +9431,7 @@
       }
     },
     "This device has no camera Peel can scan with, so %@ instead." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8898,6 +9448,7 @@
       }
     },
     "This invoice has expired" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8914,6 +9465,7 @@
       }
     },
     "This invoice pays %@, not %@." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8930,6 +9482,7 @@
       }
     },
     "This message has been deleted" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8946,6 +9499,7 @@
       }
     },
     "This payment has been deleted" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8962,6 +9516,7 @@
       }
     },
     "This payment is gone." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8978,6 +9533,7 @@
       }
     },
     "Those twelve words don't make a valid account. Check each one." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -8994,6 +9550,7 @@
       }
     },
     "Thread" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9010,6 +9567,7 @@
       }
     },
     "Threads" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9026,6 +9584,7 @@
       }
     },
     "Threads you start or reply in show here, with their new replies." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9042,6 +9601,7 @@
       }
     },
     "Time zone" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9058,6 +9618,7 @@
       }
     },
     "To" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9074,6 +9635,7 @@
       }
     },
     "To %@ · %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9090,6 +9652,7 @@
       }
     },
     "To %@, not a contact" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9106,6 +9669,7 @@
       }
     },
     "To join" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9122,6 +9686,7 @@
       }
     },
     "To show your twelve words." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9138,6 +9703,7 @@
       }
     },
     "Tribe details" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9154,6 +9720,7 @@
       }
     },
     "Tribe link" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9170,6 +9737,7 @@
       }
     },
     "Tribes" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9186,6 +9754,7 @@
       }
     },
     "Tribes and people by name." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9202,6 +9771,7 @@
       }
     },
     "Try again" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9218,6 +9788,7 @@
       }
     },
     "Turn camera off" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9234,6 +9805,7 @@
       }
     },
     "Turn camera on" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9250,6 +9822,7 @@
       }
     },
     "Back up account" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9266,6 +9839,7 @@
       }
     },
     "Type them in order, or paste all twelve." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9282,6 +9856,7 @@
       }
     },
     "Type these three words from your paper." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9298,6 +9873,7 @@
       }
     },
     "Unlisted" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9314,6 +9890,7 @@
       }
     },
     "Unlock with %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9330,6 +9907,7 @@
       }
     },
     "Unlock with %@ to continue." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9346,6 +9924,7 @@
       }
     },
     "Unmute" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9362,6 +9941,7 @@
       }
     },
     "Unpin" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9378,6 +9958,7 @@
       }
     },
     "Unpin from Chats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9394,6 +9975,7 @@
       }
     },
     "Unread" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9410,6 +9992,7 @@
       }
     },
     "Uploading" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9426,6 +10009,7 @@
       }
     },
     "Uploading…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9442,6 +10026,7 @@
       }
     },
     "Use mine" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9458,6 +10043,7 @@
       }
     },
     "Uses your account's photo here" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9474,6 +10060,7 @@
       }
     },
     "Video" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9490,6 +10077,7 @@
       }
     },
     "Video call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9506,6 +10094,7 @@
       }
     },
     "Video not available" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9522,6 +10111,7 @@
       }
     },
     "Voice Mode" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9538,6 +10128,7 @@
       }
     },
     "Voice message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9554,6 +10145,7 @@
       }
     },
     "Voice mode" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9570,6 +10162,7 @@
       }
     },
     "Waiting for approval" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9586,6 +10179,7 @@
       }
     },
     "Waiting for payment" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9602,6 +10196,7 @@
       }
     },
     "Waiting to be paid · expires %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9618,6 +10213,7 @@
       }
     },
     "Waiting to download" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9634,6 +10230,7 @@
       }
     },
     "We couldn't find a name in your account's history." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9650,6 +10247,7 @@
       }
     },
     "Welcome to Peel" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9666,6 +10264,7 @@
       }
     },
     "What it is about" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9682,6 +10281,7 @@
       }
     },
     "What it's for (optional)" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9698,6 +10298,7 @@
       }
     },
     "What should people call you?" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9714,6 +10315,7 @@
       }
     },
     "When" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9730,6 +10332,7 @@
       }
     },
     "When Peel opens" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9746,6 +10349,7 @@
       }
     },
     "When someone in a tribe mentions you, it shows here." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9762,6 +10366,7 @@
       }
     },
     "Why" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9778,6 +10383,7 @@
       }
     },
     "Write down your twelve words" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9794,6 +10400,7 @@
       }
     },
     "You" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9810,6 +10417,7 @@
       }
     },
     "You approve who joins." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9826,6 +10434,7 @@
       }
     },
     "You are already on this call on another of your devices." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9842,6 +10451,7 @@
       }
     },
     "You can start now while older messages arrive." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9858,6 +10468,7 @@
       }
     },
     "You can't post in this tribe any more." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9874,6 +10485,7 @@
       }
     },
     "You can't post in this tribe." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9890,6 +10502,7 @@
       }
     },
     "You paid" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9906,6 +10519,7 @@
       }
     },
     "You paid · %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9922,6 +10536,7 @@
       }
     },
     "You sent %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9938,6 +10553,7 @@
       }
     },
     "You sent a payment" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9954,6 +10570,7 @@
       }
     },
     "You're on this call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9970,6 +10587,7 @@
       }
     },
     "Your account is back, but not its Hive connection. Connect Hive again." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9986,6 +10604,7 @@
       }
     },
     "Your contact info" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10002,6 +10621,7 @@
       }
     },
     "Your message" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10018,6 +10638,7 @@
       }
     },
     "Your messages are here; new ones arrive once Peel reconnects." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10034,6 +10655,7 @@
       }
     },
     "Your name" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10050,6 +10672,7 @@
       }
     },
     "Your name, %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10066,6 +10689,7 @@
       }
     },
     "Your screen" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10082,6 +10706,7 @@
       }
     },
     "Your twelve words" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10098,6 +10723,7 @@
       }
     },
     "a photo could not be read" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10114,6 +10740,7 @@
       }
     },
     "attach" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10130,6 +10757,7 @@
       }
     },
     "boosted %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10146,6 +10774,7 @@
       }
     },
     "call in progress, %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10162,6 +10791,7 @@
       }
     },
     "change the PIN" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10178,6 +10808,7 @@
       }
     },
     "chat" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10194,6 +10825,7 @@
       }
     },
     "check the invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10210,6 +10842,7 @@
       }
     },
     "check the payment" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10226,6 +10859,7 @@
       }
     },
     "delete the tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10242,6 +10876,7 @@
       }
     },
     "forget the account" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10258,6 +10893,7 @@
       }
     },
     "hours" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10274,6 +10910,7 @@
       }
     },
     "in %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10290,6 +10927,7 @@
       }
     },
     "latest from %@: %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10306,6 +10944,7 @@
       }
     },
     "lnbc…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10322,6 +10961,7 @@
       }
     },
     "load mentions" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10338,6 +10978,7 @@
       }
     },
     "load the members" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10354,6 +10995,7 @@
       }
     },
     "load the tribe" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10370,6 +11012,7 @@
       }
     },
     "load tribe details" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10386,6 +11029,7 @@
       }
     },
     "mentions only" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10402,6 +11046,7 @@
       }
     },
     "mentions you" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10418,6 +11063,7 @@
       }
     },
     "muted" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10434,6 +11080,7 @@
       }
     },
     "never" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10450,6 +11097,7 @@
       }
     },
     "new" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10466,6 +11114,7 @@
       }
     },
     "not delivered" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10482,6 +11131,7 @@
       }
     },
     "not known yet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10498,6 +11148,7 @@
       }
     },
     "not settled" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10514,6 +11165,7 @@
       }
     },
     "open the file" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10530,6 +11182,7 @@
       }
     },
     "paste the code" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10546,6 +11199,7 @@
       }
     },
     "paste the invite" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10562,6 +11216,7 @@
       }
     },
     "paste the invoice" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10578,6 +11233,7 @@
       }
     },
     "remove the member" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10594,6 +11250,7 @@
       }
     },
     "replying to %@: %@" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10610,6 +11267,7 @@
       }
     },
     "sats" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10626,6 +11284,7 @@
       }
     },
     "save your name" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10642,6 +11301,7 @@
       }
     },
     "sending" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10658,6 +11318,7 @@
       }
     },
     "sphinx.chat/?action=i&d=…" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10674,6 +11335,7 @@
       }
     },
     "the call" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10690,6 +11352,7 @@
       }
     },
     "the photo could not be read" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10706,6 +11369,7 @@
       }
     },
     "them" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10722,6 +11386,7 @@
       }
     },
     "upload the image" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10738,6 +11403,7 @@
       }
     },
     "waiting on you" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10754,6 +11420,7 @@
       }
     },
     "you, owner" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10770,6 +11437,7 @@
       }
     },
     "· failed" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10786,6 +11454,7 @@
       }
     },
     "Interaction mode" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10802,6 +11471,7 @@
       }
     },
     "Show subtitles" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {

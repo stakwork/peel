@@ -4,11 +4,13 @@
   scripts/check-localization.py            validate catalogs + scan sources (exit 1 on a problem)
   scripts/check-localization.py --hunt F.. list string literals in the given files/dirs that look
                                            user-facing but are not in a localized call (triage aid)
+  scripts/check-localization.py --fix      mark every key manual and write the catalogs as Xcode does
 
 Catalog routing (see README "Localization"): Apps/Mac -> Apps/Mac/Peel/Localizable.xcstrings,
 Apps/iOS -> Apps/iOS/Peel/Localizable.xcstrings, Apps/Shared and Sources/** -> table "Shared"
 (Apps/Shared/Shared.xcstrings), read with tableName: "Shared" / table: "Shared".
-SWIFT_EMIT_LOC_STRINGS is NO, so building does not add keys: this script is the check.
+SWIFT_EMIT_LOC_STRINGS and LOCALIZATION_EXPORT_SUPPORTED are NO, so building does not add keys:
+this script is the check. Every key is "manual", or Xcode marks it stale after a build.
 """
 import json, re, sys, os, glob
 
@@ -53,6 +55,24 @@ def norm(key):
 def load(path):
     return json.load(open(os.path.join(ROOT, path), encoding="utf-8"))
 
+def sorted_keys(x):
+    if isinstance(x, dict):
+        return {k: sorted_keys(v) for k, v in sorted(x.items())}
+    return [sorted_keys(v) for v in x] if isinstance(x, list) else x
+
+def fix():
+    """Every key manual, written byte for byte as Xcode writes a catalog (sorted keys inside an
+    entry, " : ", no final newline), so a build in Xcode leaves it alone. The keys keep their order:
+    Xcode sorts them its own way, and a new one at the end moves on its next save."""
+    for path in list(CATALOGS.values()) + INFOPLIST:
+        cat = load(path)
+        for key, entry in cat["strings"].items():
+            entry["extractionState"] = "manual"
+            cat["strings"][key] = sorted_keys(entry)
+        cat = {k: cat[k] for k in sorted(cat)}
+        with open(os.path.join(ROOT, path), "w", encoding="utf-8") as f:
+            f.write(json.dumps(cat, indent=2, ensure_ascii=False, separators=(",", " : ")))
+
 def values(entry):
     """(label, string) for every string unit of a catalog entry, per locale."""
     for loc, l in (entry.get("localizations") or {}).items():
@@ -74,6 +94,8 @@ def validate():
         info = path.endswith("InfoPlist.xcstrings")
         for key, entry in cat["strings"].items():
             where = f"{path}: {key!r}"
+            if entry.get("extractionState") != "manual":
+                errs.append(f"{where}: not manual, so Xcode marks it stale after a build (run --fix)")
             if key != key.strip() or not key:
                 errs.append(f"{where}: key has leading/trailing whitespace")
             if not info and any(p for p, _ in specs(key)):
@@ -375,6 +397,8 @@ def hunt(paths):
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--hunt":
         hunt(sys.argv[2:] or ["Apps", "Sources"]); sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "--fix":
+        fix()
     errs, warns = validate()
     serrs, seen = scan()
     for w in warns: print("warn:", w)

@@ -541,6 +541,23 @@ struct StadeumTests {
         stadeum.close()
     }
 
+    @Test func aWorkspaceThatAnswersIsListedBeforeASlowOneHas() async throws {
+        let profile = try profile()
+        try link(hive: URL(string: "http://127.0.0.1:9")!, peers: [Self.peer("acme", "Acme"), Self.peer("globex", "Globex")])
+            .write(to: profile.hive)
+        let stadeum = Stadeum()
+        stadeum.open(profile)
+        let reading = stadeum.readApps(own: nil, pinned: { peer in
+            if peer.id == "globex" { try await Task.sleep(nanoseconds: 1_500_000_000) }
+            return [WorkspaceApp(peer: peer.id, name: "app", title: "App", about: nil)]
+        })
+        for _ in 0..<100 where stadeum.apps.isEmpty { try await Task.sleep(nanoseconds: 10_000_000) }
+        #expect(stadeum.apps.map(\.id) == ["@acme/app"] && stadeum.readingApps)
+        await reading?.value
+        #expect(Set(stadeum.apps.map(\.id)) == ["@acme/app", "@globex/app"] && !stadeum.readingApps)
+        stadeum.close()
+    }
+
     @Test(arguments: [
         ("https://acme.sphinx.chat/lab/?app=x&solo=1", "https://acme.sphinx.chat", "/lab/"),
         ("https://ACME.sphinx.chat:443/lab/?app=x&solo=1", "https://acme.sphinx.chat", "/lab/"),

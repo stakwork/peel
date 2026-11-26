@@ -644,17 +644,22 @@ public final class Stadeum {
                     readingApps = false
                 }
             }
+            let sources: [String?] = (own == nil ? [] : [nil]) + peers.map(\.id)
             // By peer, the person's own under nil.
-            let read = await withTaskGroup(of: (String?, [WorkspaceApp]?).self) { group in
+            var read: [String?: [WorkspaceApp]] = [:]
+            await withTaskGroup(of: (String?, [WorkspaceApp]?).self) { group in
                 if let own { group.addTask { (nil, try? await own()) } }
                 for peer in reading {
                     group.addTask { (peer.id, try? await pinned(peer)) }
                 }
-                var read: [String?: [WorkspaceApp]] = [:]
-                for await (peer, apps) in group {
-                    if let apps { read[peer] = apps }
+                for await (peer, answered) in group {
+                    guard let answered else { continue }
+                    read[peer] = answered
+                    // Listed as each source answers; one not yet answered keeps what it last listed.
+                    guard !Task.isCancelled, still(), live.map(\.id) == peers.map(\.id) else { continue }
+                    let listed = WorkspaceApp.byTitle(sources.flatMap { peer in read[peer] ?? apps.filter { $0.peer == peer } })
+                    if apps != listed { apps = listed }
                 }
-                return read
             }
             // A newer read, or the source or the workspaces changed meanwhile: theirs, not this.
             guard !Task.isCancelled, still(), live.map(\.id) == peers.map(\.id) else { return }
@@ -662,7 +667,6 @@ public final class Stadeum {
                 let unread = reading.map(\.id).filter { read[$0] == nil }
                 if unreadApps != unread { unreadApps = unread }
             }
-            let sources: [String?] = (own == nil ? [] : [nil]) + peers.map(\.id)
             let listed = WorkspaceApp.byTitle(sources.flatMap { peer in read[peer] ?? apps.filter { $0.peer == peer } })
             if apps != listed { apps = listed }
         }

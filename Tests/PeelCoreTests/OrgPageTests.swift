@@ -136,7 +136,7 @@ struct WorkspaceAppTests {
         let strut = try await HTTPStub { _, _ in (401, #"{"error":"Unauthorized"}"#) }
         defer { strut.stop() }
         let peer = HivePeer(id: "acme", baseUrl: "http://127.0.0.1:\(strut.port)/lab", token: "old", label: "Acme")
-        await #expect(throws: PeelError.self) { try await WorkspaceApp.pinned(on: peer) }
+        await #expect(throws: AppsReadFailure(status: 401)) { try await WorkspaceApp.pinned(on: peer) }
     }
 }
 

@@ -157,6 +157,19 @@ own authoring UI. Your chat with Peel is the way in:
   none. The list is published as each workspace answers (a slow one never holds up
   the rest), and a read asked again with the same key (strut and workspaces) joins the one
   under way; Refresh forces a new one. Workspaces are asked `apps?pinned=1`.
+- **Order:** the person's own apps (Yours, Built-in) are listed first, A–Z,
+  then each workspace's, A–Z (`WorkspaceApp.ownFirst`). Peel's own strut
+  answers into the list as soon as it does, never behind a workspace.
+- **Pinned apps at launch.** The one exception to "the list is not kept": for
+  each pinned workspace app, Peel keeps its id, name, title, icon and version
+  (`PinnedAppRecord`, `Setting.pinnedAppRecords`) in the account's encrypted
+  settings, never a manifest, description, token or the whole list. They show at
+  launch (marked `refreshing`) before any workspace answers, and every read
+  reconciles them (`PinnedAppRecord.reconcile`): a workspace that answers
+  replaces its records (removed, renamed and newer apps follow); one that
+  answers 401/403/404 (access lost) loses them; a timeout or 5xx keeps them.
+  They are wiped by Stadeum's disconnect, a revoked or removed workspace, and
+  forgetting the account. Opening Apps reads no more than before.
 - "Yours" is a source like `@workspace`: in the choice (first), on a
   card's foot, in the header and beside a pinned row, by the same rule
   (only when the apps come from several). Pins, search, icon, version and

@@ -297,6 +297,15 @@ extension Engine {
         try storage.set(String(decoding: try JSONEncoder().encode(layout), as: UTF8.self), for: .sidebarLayout)
     }
 
+    /// The records of the pinned workspace apps, as last read (none until one is saved).
+    public func pinnedAppRecords() throws -> [PinnedAppRecord] {
+        JSON.decode([PinnedAppRecord].self, from: try storage.value(for: .pinnedAppRecords)) ?? []
+    }
+
+    public func setPinnedAppRecords(_ records: [PinnedAppRecord]) throws {
+        try storage.set(String(decoding: try JSONEncoder().encode(records), as: UTF8.self), for: .pinnedAppRecords)
+    }
+
     /// The system automations Peel has turned on once, by workflow
     /// (`Setting.systemAutomationsOn`).
     public func systemAutomationsOn() throws -> Set<String> {

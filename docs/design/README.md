@@ -119,9 +119,21 @@ Deposit's amount and memo, then the invoice; Withdraw's pasted invoice,
 then Pay. A payment picked in the list shows its details beside it; its
 close goes back to the Wallet. ⌃⌘S puts the list away.
 
+**Automations and Segments** (Tom, 2026-11-27; the board's "Automations
+and Segments"): the same shape as Payments. Automations' column lists
+Upcoming, Recurring and Done, then System (no tabs), each row a dot for how
+it stands (red didn't finish, the accent running, grey off), its schedule
+and its next or last run, a system one's switch in the row; its + asks
+Peel for a new one. Beside it the one picked (its prompt, Run now, its
+runs; Delete under •••) or an overview: how many, what didn't finish, what
+runs next. Until the agent and strut are set up the page is that set-up
+alone, with no column. Segments' column is Record, then the recordings
+newest first, each dragged into a chat; beside it Record (New segment,
+the camera, the segment limit) or the recording picked, playing, with a
+chip to drag into a chat. ⌃⌘S puts either column away.
+
 **Pages without the list.**
-Automations, Segments and Account take the whole width beside the rail;
-Apps has its own column. Account has its own categories column
+Account takes the whole width beside the rail; Apps has its own column. Account has its own categories column
 (Profile first, with its search). Profile opens on one card, after the
 iPhone's: your photo, name and key, the QR button (your contact info and
 Copy, in a card from it) and ••• (Choose picture…, Remove); under a line

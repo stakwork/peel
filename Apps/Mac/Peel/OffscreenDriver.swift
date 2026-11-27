@@ -370,10 +370,10 @@ final class OffscreenDriver {
     /// open chat's Send sats panel (its composer's bolt); `account`, the
     /// Account screen (the menu's Account…); `message-menu`, the ••• menu of
     /// the open chat's newest row from someone else; `payments`, the Payments screen;
-    /// `automations`, the Automations page; `automations-setup`, its Set up
-    /// (the Connect panel) while no model is connected; `automations-system`,
-    /// its System tab; `system-open`, `system-switch` and `system-run-now`,
-    /// the first system automation's row, its switch and its Run now; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
+    /// `automations`, the Automations page; `segments`, the Segments page; `automations-setup`, its Set up
+    /// (the Connect panel) while no model is connected; `system-open`,
+    /// `system-switch` and `system-run-now`, the first system automation
+    /// picked in the column, its switch and its Run now; `agent-connect`, the agent chat's Connect panel; `agent-settings`,
     /// its gear (Account at Peel agent); `agent-view`, the first View in its
     /// newest earlier reply; `agent-sent-view`, View on its newest send row;
     /// `device-allow`, Allow once on a card in
@@ -432,6 +432,9 @@ final class OffscreenDriver {
         case "automations":
             // What the rail's Automations sets.
             model.destination = .automations
+        case "segments":
+            // What the rail's Segments sets.
+            model.destination = .segments
         case "apps":
             // What the rail's Apps does: the app last open there, or the store.
             model.openApps()
@@ -491,9 +494,6 @@ final class OffscreenDriver {
         case "automations-setup":
             // The Automations page's Set up, while no model is connected.
             model.agentConnectFrom = .automations
-        case "automations-system":
-            // The Automations page's System tab.
-            model.automationsTab = .system
         case "system-open", "system-switch", "system-run-now":
             guard let automation = model.automations.system.first else { throw Failure(description: "no system automation") }
             switch name {

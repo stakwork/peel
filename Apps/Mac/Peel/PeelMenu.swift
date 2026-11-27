@@ -333,8 +333,8 @@ enum KeyCode {
 }
 
 /// Keys before any view sees them, whichever view has focus: a menu, a
-/// panel, the image viewer, the search field and the sidebar each run
-/// one while they are up.
+/// panel, the image viewer, the search field, the chat list and the
+/// store each run one while they are up.
 ///
 /// Escape goes to the first of these that is open, and to no other:
 ///
@@ -343,7 +343,9 @@ enum KeyCode {
 /// 2. A panel (`MenuPresenter`): it closes.
 /// 3. The image viewer, in the main window: it closes.
 /// 4. The search bar, while its field has the cursor: the search closes.
-/// 5. The sidebar, while it has focus: the arrow keys' highlight clears.
+/// 5. The chat list, while it has focus: the arrow keys' highlight clears;
+///    the store (`AppsView`), while its search or nothing has the
+///    keyboard: its search and highlight clear.
 /// 6. No monitor: the view with the keyboard. The composer closes its
 ///    mention list, else (the agent's) closes the memory beside it, else
 ///    stops its reply, else stops replying, else closes its thread

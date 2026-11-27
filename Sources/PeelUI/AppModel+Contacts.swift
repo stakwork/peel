@@ -33,11 +33,11 @@ extension AppModel {
     /// Removes a contact (`Engine.deleteContact`), then what this window
     /// kept for their chat: a call in it is left, its thread, drafts,
     /// replies, files waiting and notifications go, and the selection moves
-    /// to the next direct message (or the one above, or nothing). With
+    /// to the next chat in the list (or the one above, or nothing). With
     /// `movesSelection` false (the phone, where the next chat would open)
     /// nothing is selected instead.
     public func deleteContact(_ pubkey: String, movesSelection: Bool = true) async throws {
-        let direct = sidebarSections.direct.map(\.chat)
+        let shown = latestChats.map(\.chat)
         try await signedIn().deleteContact(pubkey)
         if calls.call?.chat == pubkey { calls.leave() }
         if openThread?.chat == pubkey { openThread = nil }
@@ -51,8 +51,8 @@ extension AppModel {
         conversationNotices[pubkey] = nil
         notifier.removeDelivered(in: [pubkey])
         if selectedChat == pubkey {
-            let index = movesSelection ? direct.firstIndex(of: pubkey) : nil
-            let next = index.flatMap { direct.indices.contains($0 + 1) ? direct[$0 + 1] : $0 > 0 ? direct[$0 - 1] : nil }
+            let index = movesSelection ? shown.firstIndex(of: pubkey) : nil
+            let next = index.flatMap { shown.indices.contains($0 + 1) ? shown[$0 + 1] : $0 > 0 ? shown[$0 - 1] : nil }
             destination = next.map(Destination.chat)
         }
     }

@@ -141,6 +141,9 @@ struct FormTextField: View {
     var focusRequest = 0
     /// Dots for what is typed (an API key); one line.
     var secure = false
+    /// Told when the field takes or gives up the keyboard: a page whose
+    /// keys act only while its field has them (the store's arrows).
+    var focusChanged: ((Bool) -> Void)?
 
     @FocusState private var focused: Bool
     @State private var hovering = false
@@ -175,6 +178,7 @@ struct FormTextField: View {
         .focusesOnClick($focused)
         .onHover { hovering = $0 }
         .onAppear { if focusOnAppear { focused = true } }
+        .onChange(of: focused) { _, now in focusChanged?(now) }
         .onChange(of: focusRequest) { focused = true }
     }
 }

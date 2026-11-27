@@ -25,9 +25,9 @@ public struct ChatSections: Equatable, Sendable {
         public var combinedView = false
         /// "Show all 32 chats" was clicked in the Recent view.
         public var allRecent = false
-        /// The pages pinned above the iPhone's chats from Chats' More menu,
-        /// by key (threads, mentions), in the order pinned; none until
-        /// pinned (Tom, 2026-11-26).
+        /// The pages pinned, by key, in the order pinned; none until pinned
+        /// (Tom, 2026-11-26): threads and mentions, pinned from each page's
+        /// bar above the chats, on the iPhone and the Mac alike.
         public var pinnedPages: [String] = []
         /// The apps opened last, by key (`WorkspaceApp.id`), newest first:
         /// Apps shows them as Recent (Tom, 2026-11-26).
@@ -180,7 +180,14 @@ public struct ChatSections: Equatable, Sendable {
     /// first (or, going up, the last) when `current` is not unread; nil
     /// when there is no other.
     public func unread(from current: String?, by offset: Int) -> String? {
-        let chats = unread.map(\.chat)
+        Self.step(unread.map(\.chat), from: current, by: offset)
+    }
+
+    /// The chat `offset` from `current` in `chats`, going round; from
+    /// anywhere else the first (or, going back, the last); nil when that
+    /// is `current` or there is none.
+    public static func step(_ chats: [String], from current: String?, by offset: Int) -> String? {
+        guard !chats.isEmpty else { return nil }
         guard let index = current.flatMap(chats.firstIndex(of:)) else { return offset > 0 ? chats.first : chats.last }
         let next = chats[((index + offset) % chats.count + chats.count) % chats.count]
         return next == current ? nil : next

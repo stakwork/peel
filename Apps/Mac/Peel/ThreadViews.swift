@@ -173,6 +173,7 @@ struct ThreadsView: View {
                     Button("Mark all read") { Task { await model.markAllThreadsRead() } }
                         .buttonStyle(.peel(.outline, size: .sm))
                 }
+                PagePinButton(page: .threads)
             }
             if threads.isEmpty {
                 EmptyState(String(localized: "No threads yet."))

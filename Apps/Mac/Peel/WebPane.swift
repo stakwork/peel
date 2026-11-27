@@ -823,7 +823,9 @@ private struct WebToolbar: View {
         }
         .padding(.leading, Theme.Space.sm)
         .padding(.trailing, 10)
-        .frame(height: 60)
+        // The header band's height and colour, level with the page's header beside it.
+        .frame(height: HeaderBand.height)
+        .background(Theme.rail)
         .overlay(alignment: .bottom) {
             ZStack(alignment: .leading) {
                 Theme.divider.frame(height: 1)

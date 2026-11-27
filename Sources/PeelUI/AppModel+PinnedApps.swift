@@ -1,20 +1,22 @@
 import Foundation
 import PeelCore
 
-/// The apps pinned under the Apps row, on the Mac's sidebar and the iPhone's
-/// Chats: one list, kept with the account's sidebar layout
-/// (`ChatSections.Layout.pinnedApps`), none until the person pins one. Each
-/// pinned workspace app's id, name, title, icon and version are also kept in the
-/// account's encrypted settings (`PinnedAppRecord`, wiped with Stadeum's
-/// disconnect and the account), so the row shows at launch before any workspace answers.
+/// The person's favorite apps, starred on the Mac (Tom, 2026-11-27: the
+/// Apps column's Favorites; pins are the rail's, for pages): one list, kept
+/// with the account's sidebar layout as `ChatSections.Layout.pinnedApps`,
+/// so the apps pinned before, the iPhone's and the Mac's sidebar's, come
+/// back as favorites. Each one's id, name, title, icon and version are
+/// also kept in the account's encrypted settings (`PinnedAppRecord`, wiped
+/// with Stadeum's disconnect and the account), so Favorites shows at launch
+/// before any workspace answers.
 extension AppModel {
-    /// Whether the person pinned `app`.
+    /// Whether `app` is one of the person's favorites.
     public func isPinned(_ app: WorkspaceApp) -> Bool {
         sidebarLayout.isPinned(app.id)
     }
 
-    /// Pins `app` under the Apps row, or takes it off, kept with the
-    /// account's sidebar layout. The first pin opens the fold.
+    /// Makes `app` a favorite (last) or takes it out, kept with the
+    /// account's sidebar layout.
     public func setPinned(_ app: WorkspaceApp, _ pinned: Bool) {
         var layout = sidebarLayout
         layout.setPinned(app.id, pinned)
@@ -22,18 +24,22 @@ extension AppModel {
         // Its minimal record is kept (or let go) with the pin: it shows at launch before a workspace answers.
         stadeum.pinsChanged()
     }
+
+    /// The favorites still listed, A–Z by title, as the lists beside them
+    /// are (Tom, 2026-11-27).
+    public var favoriteApps: [WorkspaceApp] {
+        WorkspaceApp.byTitle(sidebarLayout.pinned(stadeum.apps))
+    }
 }
 
-/// The apps opened last (Recent in the iPhone's Apps) and the pages pinned
-/// above the iPhone's chats, kept with the account's sidebar layout. The
-/// iPhone no longer pins apps (Tom, 2026-11-26): Apps and its Recent row are
-/// the way in.
+/// The apps opened last (Recent in Apps' column) and the pages pinned
+/// above the chats, kept with the account's sidebar layout.
 extension AppModel {
-    /// The apps opened last that are still listed, newest first, at most
-    /// `limit`: Recent in Apps.
-    public func recentApps(limit: Int = 5) -> [WorkspaceApp] {
+    /// The apps opened last that are still listed, newest first: Recent in
+    /// Apps' column.
+    public var recentApps: [WorkspaceApp] {
         let listed = Dictionary(stadeum.apps.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return Array(sidebarLayout.recentApps.compactMap { listed[$0] }.prefix(limit))
+        return sidebarLayout.recentApps.compactMap { listed[$0] }
     }
 
     /// The app `name` (of the workspace `peer`, nil for the person's own)
@@ -49,11 +55,21 @@ extension AppModel {
         sidebarLayout.pinnedPages.contains(key)
     }
 
-    /// Pins the page `key` above the chats or takes it off, kept with the
-    /// account's sidebar layout.
+    /// Pins the page `key` or takes it off, kept with the account's sidebar
+    /// layout.
     public func setPagePinned(_ key: String, _ pinned: Bool) {
         var layout = sidebarLayout
         layout.setPagePinned(key, pinned)
         if layout != sidebarLayout { sidebarLayout = layout }
+    }
+}
+
+/// The iPhone's Recent row. The iPhone no longer pins apps (Tom,
+/// 2026-11-26): Apps and its Recent row are the way in.
+extension AppModel {
+    /// The apps opened last that are still listed, newest first, at most
+    /// `limit`: Recent in the iPhone's Apps.
+    public func recentApps(limit: Int = 5) -> [WorkspaceApp] {
+        Array(recentApps.prefix(limit))
     }
 }

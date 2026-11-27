@@ -698,10 +698,10 @@ extension Storage {
         migrator.registerMigration("v40") { db in
             // Backfill synced preferences ('peel.public_app', `Preferences.publicAppKey`)
             // for public apps opened before sync so they upload on the next sync
-            // and survive an account restore.
+            // and survive an account restore. The item is `SyncedPublicApp`'s
+            // `.opened` (url, title, icon), dated when the app was last opened.
             struct Payload: Encodable {
                 var url: String
-                var openedAt: Int64
                 var title: String?
                 var icon: String?
             }
@@ -715,7 +715,7 @@ extension Storage {
                 let openedAt: Int64 = row["openedAt"]
                 let title: String? = row["title"]
                 let icon: String? = row["icon"]
-                let payload = Payload(url: url, openedAt: openedAt, title: title, icon: icon)
+                let payload = Payload(url: url, title: title, icon: icon)
                 let inner = String(decoding: try encoder.encode(payload), as: UTF8.self)
                 let value = String(decoding: try encoder.encode(inner), as: UTF8.self)
                 let identifier = app.isEmpty ? seller : "\(seller) \(app)"

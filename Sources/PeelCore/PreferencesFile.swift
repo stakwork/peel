@@ -232,7 +232,7 @@ extension Storage {
                 guard stored == change.expected else { continue }
                 try row.upsert(db)
                 if row.key == Preferences.publicAppKey {
-                    try Self.applySyncedPublicApp(identifier: row.identifier, value: row.value, in: db)
+                    try Self.applySyncedPublicApp(identifier: row.identifier, value: row.value, date: row.updatedAt, in: db)
                 }
                 if stored?.value != row.value { changed += 1 }
             }

@@ -437,17 +437,18 @@ public struct TimeZoneSharing: Sendable, Equatable {
 /// One opened public app as kept in the encrypted preferences file
 /// (`peel.public_app`, one item per `(seller, app)`): its URL and display
 /// metadata (never credentials or session tokens), or a tombstone when
-/// forgotten so removals sync across devices and restores.
+/// forgotten so removals sync across devices and restores. When it was
+/// last opened stays on each device: the item changes only when the app is
+/// first opened, renamed, re-iconed or removed, so opening it again does
+/// not upload the file. A restore orders apps by their items' dates.
 public enum SyncedPublicApp: Sendable, Equatable {
     public struct Entry: Sendable, Equatable {
         public var url: String
-        public var openedAt: Int64
         public var title: String?
         public var icon: String?
 
-        public init(url: String, openedAt: Int64, title: String? = nil, icon: String? = nil) {
+        public init(url: String, title: String? = nil, icon: String? = nil) {
             self.url = url
-            self.openedAt = openedAt
             self.title = title
             self.icon = icon
         }
@@ -459,7 +460,6 @@ public enum SyncedPublicApp: Sendable, Equatable {
     private struct Payload: Codable {
         var deleted: Bool?
         var url: String?
-        var openedAt: Int64?
         var title: String?
         var icon: String?
     }
@@ -489,10 +489,9 @@ public enum SyncedPublicApp: Sendable, Equatable {
             self = .forgotten
             return
         }
-        guard let url = payload.url, let parsed = URL(string: url), PublicAppLink(parsed) != nil,
-              let openedAt = payload.openedAt else { return nil }
+        guard let url = payload.url, let parsed = URL(string: url), PublicAppLink(parsed) != nil else { return nil }
         self = .opened(Entry(
-            url: url, openedAt: openedAt,
+            url: url,
             title: PublicAppLink.cleanTitle(payload.title),
             icon: PublicAppLink.cleanIcon(payload.icon)
         ))
@@ -508,7 +507,7 @@ public enum SyncedPublicApp: Sendable, Equatable {
                 throw UnwritablePreference(key: Preferences.publicAppKey)
             }
             payload = Payload(
-                url: entry.url, openedAt: entry.openedAt,
+                url: entry.url,
                 title: PublicAppLink.cleanTitle(entry.title),
                 icon: PublicAppLink.cleanIcon(entry.icon)
             )

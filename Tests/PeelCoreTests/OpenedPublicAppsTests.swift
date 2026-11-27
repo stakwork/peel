@@ -148,15 +148,13 @@ struct OpenedPublicAppsTests {
 
     @Test func syncedPublicAppsEncodeAsOfficialFixedPointsAndValidate() throws {
         let opened = SyncedPublicApp.opened(.init(
-            url: "https://acme.example.com/public/?app=strut/tasks",
-            openedAt: 1_700_000_000, title: "  Tasks \n", icon: "list-checks"
+            url: "https://acme.example.com/public/?app=strut/tasks", title: "  Tasks \n", icon: "list-checks"
         ))
         let encoded = try Preference<SyncedPublicApp>.publicApp.write(opened)
         #expect(Preferences.isOfficialFixedPoint(encoded))
         let decoded = Preference<SyncedPublicApp>.publicApp.read(encoded)
         #expect(decoded == .opened(.init(
-            url: "https://acme.example.com/public/?app=strut/tasks",
-            openedAt: 1_700_000_000, title: "Tasks", icon: "list-checks"
+            url: "https://acme.example.com/public/?app=strut/tasks", title: "Tasks", icon: "list-checks"
         )))
 
         let forgotten = try Preference<SyncedPublicApp>.publicApp.write(.forgotten)
@@ -186,36 +184,54 @@ struct OpenedPublicAppsTests {
             "https://acme.example.com/public/?app=strut/tasks#frag",
             "not a url",
         ] {
-            let entry = SyncedPublicApp.opened(.init(url: bad, openedAt: 1))
+            let entry = SyncedPublicApp.opened(.init(url: bad))
             #expect(throws: UnwritablePreference.self) { try Preference<SyncedPublicApp>.publicApp.write(entry) }
-            #expect(Preference<SyncedPublicApp>.publicApp.read(.string(#"{"openedAt":1,"url":"\#(bad)"}"#)) == nil)
+            #expect(Preference<SyncedPublicApp>.publicApp.read(.string(#"{"url":"\#(bad)"}"#)) == nil)
         }
         // Invalid icons are dropped rather than stored.
         let oddIcon = Preference<SyncedPublicApp>.publicApp.read(
-            .string(#"{"icon":"Bad.Icon","openedAt":1,"title":"Tasks","url":"https://acme.example.com/public/?app=strut/tasks"}"#)
+            .string(#"{"icon":"Bad.Icon","title":"Tasks","url":"https://acme.example.com/public/?app=strut/tasks"}"#)
         )
         #expect(oddIcon == .opened(.init(
-            url: "https://acme.example.com/public/?app=strut/tasks", openedAt: 1, title: "Tasks", icon: nil
+            url: "https://acme.example.com/public/?app=strut/tasks", title: "Tasks", icon: nil
         )))
+    }
+
+    /// Opening an app again reorders this device's list and leaves the synced
+    /// item alone, so it uploads nothing; a first opening or a new address
+    /// changes the item.
+    @Test func openingAgainChangesNothingSynced() throws {
+        let tasks = try link("https://acme.example.com/public/?app=strut/tasks")
+        #expect(try storage.rememberPublicApp(tasks, at: 1_700_000_100))
+        let file = PreferencesFile().merged(with: try storage.preferenceRows()).file
+
+        #expect(try !storage.rememberPublicApp(tasks, at: 1_700_000_500))
+        #expect(!file.merged(with: try storage.preferenceRows()).changed)
+        #expect(try storage.openedPublicApps().first?.openedAt == 1_700_000_500)
+
+        let solo = try link("https://acme.example.com/public/?app=strut/tasks&solo=1")
+        #expect(try storage.rememberPublicApp(solo, at: 1_700_000_600))
+        #expect(file.merged(with: try storage.preferenceRows()).changed)
     }
 
     @Test func openedPublicAppsSyncAndRestoreAcrossDevices() throws {
         let tasks = try link("https://acme.example.com/public/?app=strut/tasks")
         let home = try link("https://other.example.com/")
         let t1 = Date(timeIntervalSince1970: 1_700_000_100)
-        try storage.rememberPublicApp(tasks, at: 1_700_000_100, syncedAt: t1)
+        try storage.rememberPublicApp(tasks, at: 1_700_000_100)
         #expect(try storage.setPublicAppTitle(seller: tasks.seller.absoluteString, app: "strut/tasks", title: "Tasks", syncedAt: t1))
         #expect(try !storage.setPublicAppTitle(seller: tasks.seller.absoluteString, app: "strut/tasks", title: "Tasks", syncedAt: t1))
         #expect(try storage.setPublicAppIcon(seller: tasks.seller.absoluteString, app: "strut/tasks", icon: "list-checks", syncedAt: t1))
         #expect(try !storage.setPublicAppIcon(seller: tasks.seller.absoluteString, app: "strut/tasks", icon: "list-checks", syncedAt: t1))
-        try storage.rememberPublicApp(home, at: 1_700_000_200, syncedAt: t1)
+        try storage.rememberPublicApp(home, at: 1_700_000_200)
 
         // Upload from device 1 into an encrypted preferences file.
         let uploaded = PreferencesFile().merged(with: try storage.preferenceRows())
         #expect(uploaded.changed)
         #expect(uploaded.uploads.count == 2)
 
-        // Fresh restored database on device 2 starts empty and gets both apps back.
+        // Fresh restored database on device 2 starts empty and gets both apps
+        // back, each dated by its item, so the last opened is still first.
         let restoredProfile = TempProfile()
         let restored = try restoredProfile.storage()
         #expect(try restored.openedPublicApps().isEmpty)
@@ -227,18 +243,38 @@ struct OpenedPublicAppsTests {
         #expect(apps.count == 2)
         #expect(apps[0].seller == home.seller.absoluteString && apps[0].app == "" && apps[0].openedAt == 1_700_000_200)
         #expect(apps[1].seller == tasks.seller.absoluteString && apps[1].app == "strut/tasks")
-        #expect(apps[1].url == tasks.url.absoluteString && apps[1].openedAt == 1_700_000_100)
+        #expect(apps[1].url == tasks.url.absoluteString && apps[1].openedAt < 1_700_000_200)
         #expect(apps[1].appTitle == "Tasks" && apps[1].title == "Tasks" && apps[1].icon == "list-checks")
+    }
+
+    /// An item from another device (a new title there) updates an app already
+    /// here, which keeps when it was last opened here.
+    @Test func anAppAlreadyHereKeepsItsOwnOrder() throws {
+        let tasks = try link("https://acme.example.com/public/?app=strut/tasks")
+        try storage.rememberPublicApp(tasks, at: 1_700_000_100)
+        var file = PreferencesFile().merged(with: try storage.preferenceRows()).file
+        try storage.rememberPublicApp(tasks, at: 1_700_000_500)
+
+        let device2Profile = TempProfile()
+        let device2 = try device2Profile.storage()
+        _ = try device2.applyPreferences(file.merged(with: try device2.preferenceRows()).apply)
+        try device2.setPublicAppTitle(
+            seller: tasks.seller.absoluteString, app: "strut/tasks", title: "Tasks",
+            syncedAt: Date(timeIntervalSince1970: 1_700_000_300)
+        )
+        file = file.merged(with: try device2.preferenceRows()).file
+
+        _ = try storage.applyPreferences(file.merged(with: try storage.preferenceRows()).apply)
+        let app = try #require(try storage.openedPublicApps().first)
+        #expect(app.appTitle == "Tasks" && app.openedAt == 1_700_000_500)
     }
 
     @Test func forgettingAndReopeningPublicAppsSyncsCleanly() throws {
         let tasks = try link("https://acme.example.com/public/?app=strut/tasks")
         let seller = tasks.seller.absoluteString
-        let t1 = Date(timeIntervalSince1970: 1_700_000_100)
         let t2 = Date(timeIntervalSince1970: 1_700_000_200)
-        let t3 = Date(timeIntervalSince1970: 1_700_000_300)
 
-        try storage.rememberPublicApp(tasks, at: 100, syncedAt: t1)
+        try storage.rememberPublicApp(tasks, at: 1_700_000_100)
         var file = PreferencesFile().merged(with: try storage.preferenceRows()).file
 
         let device2Profile = TempProfile()
@@ -261,20 +297,19 @@ struct OpenedPublicAppsTests {
         #expect(try restored.openedPublicApps().isEmpty)
 
         // Re-opening later on device 2 beats the tombstone and brings it back on device 1.
-        try device2.rememberPublicApp(tasks, at: 300, syncedAt: t3)
+        #expect(try device2.rememberPublicApp(tasks, at: 1_700_000_300))
         let reopenMerge = file.merged(with: try device2.preferenceRows())
         #expect(reopenMerge.changed)
         file = reopenMerge.file
 
         _ = try storage.applyPreferences(file.merged(with: try storage.preferenceRows()).apply)
         let apps = try storage.openedPublicApps()
-        #expect(apps.count == 1 && apps[0].app == "strut/tasks" && apps[0].openedAt == 300)
+        #expect(apps.count == 1 && apps[0].app == "strut/tasks" && apps[0].openedAt == 1_700_000_300)
     }
 
     @Test func disconnectingAnOriginSyncsTheRemoval() throws {
         let tasks = try link("https://acme.example.com/public/?app=strut/tasks")
-        let t1 = Date(timeIntervalSince1970: 1_700_000_100)
-        try storage.rememberPublicApp(tasks, at: 100, syncedAt: t1)
+        try storage.rememberPublicApp(tasks, at: 1_700_000_100)
         try storage.saveWalletConnection(connection("https://acme.example.com", title: "Tasks"))
         var file = PreferencesFile().merged(with: try storage.preferenceRows()).file
 
@@ -296,14 +331,12 @@ struct OpenedPublicAppsTests {
     @Test func offlineOpensOnTwoDevicesMergeWithoutLosingEither() throws {
         let tasks = try link("https://acme.example.com/public/?app=strut/tasks")
         let books = try link("https://acme.example.com/public/?app=books")
-        let t1 = Date(timeIntervalSince1970: 1_700_000_100)
-        let t2 = Date(timeIntervalSince1970: 1_700_000_200)
 
         let device2Profile = TempProfile()
         let device2 = try device2Profile.storage()
 
-        try storage.rememberPublicApp(tasks, at: 100, syncedAt: t1)
-        try device2.rememberPublicApp(books, at: 200, syncedAt: t2)
+        try storage.rememberPublicApp(tasks, at: 1_700_000_100)
+        try device2.rememberPublicApp(books, at: 1_700_000_200)
 
         var file = PreferencesFile().merged(with: try storage.preferenceRows()).file
         let m2 = file.merged(with: try device2.preferenceRows())
@@ -318,7 +351,7 @@ struct OpenedPublicAppsTests {
 
     @Test func mismatchedIdentifierInPreferencesFileIsIgnored() throws {
         let encoded = try Preference<SyncedPublicApp>.publicApp.write(.opened(.init(
-            url: "https://acme.example.com/public/?app=strut/tasks", openedAt: 100, title: "Tasks"
+            url: "https://acme.example.com/public/?app=strut/tasks", title: "Tasks"
         )))
         let file = try PreferencesFile(text: """
             {"items":[{"key":"\(Preferences.publicAppKey)","identifier":"https://evil.example.com other","date":"100","value":\(try encoded.text)}]}

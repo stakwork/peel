@@ -59,11 +59,15 @@ extension Storage {
 
     /// Remembers a public app as opened at `at` (unix seconds): one row per
     /// app on a seller, replaced by the later opening, and recorded in the
-    /// account's synced preferences (`peel.public_app`).
-    public func rememberPublicApp(_ link: PublicAppLink, at: Int64, syncedAt now: Date = .now) throws {
+    /// account's synced preferences (`peel.public_app`). Returns true when
+    /// the synced item changed (a first opening, or a new address): opening
+    /// the same app again changes only this device's order.
+    @discardableResult
+    public func rememberPublicApp(_ link: PublicAppLink, at: Int64) throws -> Bool {
         let seller = link.seller.absoluteString
         let app = link.app ?? ""
-        try pool.write { db in
+        let now = Date(timeIntervalSince1970: TimeInterval(at))
+        return try pool.write { db in
             try db.execute(
                 sql: """
                     INSERT INTO publicApp (seller, app, url, origin, openedAt) VALUES (?, ?, ?, ?, ?)
@@ -72,7 +76,7 @@ extension Storage {
                     """,
                 arguments: [seller, app, link.url.absoluteString, link.origin, at]
             )
-            _ = try Self.syncPublicAppPreference(seller: seller, app: app, at: now, in: db)
+            return try Self.syncPublicAppPreference(seller: seller, app: app, at: now, in: db)
         }
     }
 
@@ -140,12 +144,10 @@ extension Storage {
     static func syncPublicAppPreference(seller: String, app: String, at now: Date, in db: Database) throws -> Bool {
         guard let row = try Row.fetchOne(
             db,
-            sql: "SELECT url, openedAt, title, icon FROM publicApp WHERE seller = ? AND app = ?",
+            sql: "SELECT url, title, icon FROM publicApp WHERE seller = ? AND app = ?",
             arguments: [seller, app]
         ) else { return false }
-        let entry = SyncedPublicApp.Entry(
-            url: row["url"], openedAt: row["openedAt"], title: row["title"], icon: row["icon"]
-        )
+        let entry = SyncedPublicApp.Entry(url: row["url"], title: row["title"], icon: row["icon"])
         let identifier = SyncedPublicApp.identifier(seller: seller, app: app)
         return try Self.setPreference(.publicApp, .opened(entry), for: identifier, at: now, in: db)
     }
@@ -164,8 +166,10 @@ extension Storage {
     }
 
     /// Materializes a synced `peel.public_app` preference row into the local
-    /// `publicApp` table (upsert on `.opened`, delete on `.forgotten`).
-    static func applySyncedPublicApp(identifier: String, value: String, in db: Database) throws {
+    /// `publicApp` table (upsert on `.opened`, delete on `.forgotten`). An app
+    /// new here is dated by its item (`date`, unix seconds); one already here
+    /// keeps when it was last opened here.
+    static func applySyncedPublicApp(identifier: String, value: String, date: Double, in db: Database) throws {
         guard let json = JSONValue(text: value),
               let synced = Preference<SyncedPublicApp>.publicApp.read(json) else { return }
         switch synced {
@@ -181,11 +185,10 @@ extension Storage {
                     ON CONFLICT(seller, app) DO UPDATE SET
                         url = excluded.url,
                         origin = excluded.origin,
-                        openedAt = excluded.openedAt,
                         title = COALESCE(excluded.title, publicApp.title),
                         icon = COALESCE(excluded.icon, publicApp.icon)
                     """,
-                arguments: [seller, app, link.url.absoluteString, link.origin, entry.openedAt, entry.title, entry.icon]
+                arguments: [seller, app, link.url.absoluteString, link.origin, Int64(max(date, 0)), entry.title, entry.icon]
             )
         case .forgotten:
             guard let (seller, app) = SyncedPublicApp.split(identifier: identifier) else { return }

@@ -63,8 +63,8 @@ struct PreferencesTests {
             #expect(Preferences.isOfficialFixedPoint(try Preference.timeZoneSharing.write(sharing)))
         }
         let publicApps: [SyncedPublicApp] = [
-            .opened(.init(url: "https://acme.example.com/public/?app=strut/tasks", openedAt: 1_700_000_000, title: "Tasks", icon: "list-checks")),
-            .opened(.init(url: "https://acme.example.com/", openedAt: 1)),
+            .opened(.init(url: "https://acme.example.com/public/?app=strut/tasks", title: "Tasks", icon: "list-checks")),
+            .opened(.init(url: "https://acme.example.com/")),
             .forgotten,
         ]
         for app in publicApps {

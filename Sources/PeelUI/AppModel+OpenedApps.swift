@@ -29,9 +29,9 @@ extension AppModel {
         guard let engine else { return }
         let storage = engine.storage
         do {
-            try storage.rememberPublicApp(link, at: Int64(Date().timeIntervalSince1970))
+            let synced = try storage.rememberPublicApp(link, at: Int64(Date().timeIntervalSince1970))
             if invited { try WalletHost.grantInvitePage(link, storage: storage, now: Int64(Date().timeIntervalSince1970)) }
-            Task { await engine.publicAppsChanged() }
+            if synced { Task { await engine.publicAppsChanged() } }
         } catch {
             notice = PeelError.noted(error, couldNot: String(localized: "keep the app", table: "Shared"))
         }

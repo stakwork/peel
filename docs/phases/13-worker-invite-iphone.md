@@ -68,6 +68,14 @@ That is stakwork/strut's change, not made here.
   is the source, so the filter menu offers it and the search finds them); a tap opens one through the router; long-press › "Remove from Apps" takes one off (its connection stays). Chats'
   Apps tab lists opened apps even without a Stadeum workspace. Disconnect in You › Connected apps forgets that origin's
   apps in the same write as the connection (`Storage.deleteWalletConnection`). Each opening also asks the seller for the app's title (`PublicAppLink.appTitle`, `GET <seller>/public/apps/<name>`; v38 `publicApp.title`, kept across openings) and renames an invite's host-titled connection with it, so a worker whose page never signs in again still sees "Tasks"; the row shows a connection's title unless it is just the host, else that title, else the host. Tested in `OpenedPublicAppsTests`.
+- **Opened public apps follow the account** (2026-11-27, peel#625): each is an item of the encrypted preferences file
+  (`peel.public_app`, identifier `<seller>` or `<seller> <app>`, value its address, title and icon; a removal or a
+  Disconnect leaves a `deleted` item, so it is removed on every device). Every write to `publicApp` writes the item in the
+  same transaction, and an item from the file is written back into `publicApp` (`Storage.applySyncedPublicApp`), so a
+  restore from the words brings Apps back; v40 gave the apps opened before it their items. When an app was last opened
+  stays on each device: opening it again changes no item and uploads nothing, and a restored app is dated by its item.
+  The origin's connection is not synced, so the first opening after a restore asks to sign in. Tested in
+  `OpenedPublicAppsTests`, `MigrationTests` and `PreferencesJourneys.openedPublicAppsSurviveAccountRestore`.
 - Strings: "Apps you opened", "Remove from Apps", and two notice phrases, in English and Spanish.
 
 ## An app opens inside Apps (2026-11-23)
@@ -89,7 +97,6 @@ app hands Peel (strut kit), and strut's Tasks page dropping its own header when 
 
 - The Mac does not keep opened apps or read `peel://join` (the Mac gets only the shared sign-in change).
 - Strut's join page opening `peel://join` (above).
-- `public_app` rows are not synced or backed up: a restore starts with none.
 - `a=` lives in memory until signup: a Peel killed between the invite step and the end of signup loses it (the account and its
   invite are kept).
 - A cold launch that reaches Peel by the link while the account is *locked* works like any waiting link (opens after the PIN);

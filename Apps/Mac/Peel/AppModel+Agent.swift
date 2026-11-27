@@ -55,10 +55,8 @@ final class MacAgent: AgentHost {
     /// after (the model or strut changed while it ran).
     @ObservationIgnored var modelHanding: Task<Void, Never>?
     @ObservationIgnored var modelHandingAgain = false
-    /// The Automations view's tab and its one opened row, kept while the
-    /// view is away (and set by the offscreen driver's `automations-system`
-    /// and `system-open`).
-    var automationsTab = AutomationsView.Tab.yours
+    /// The automation picked in Automations' column, kept while the view is
+    /// away (and set by the offscreen driver's `system-open`).
     var openedAutomation: String?
     /// The device requests' cards and the send grants.
     let deviceCards = DeviceCards()
@@ -194,11 +192,6 @@ extension AppModel {
         get { macAgent.automations }
         // In place: `automations.runs[id] = …` copies nothing.
         _modify { yield &macAgent.automations }
-    }
-
-    var automationsTab: AutomationsView.Tab {
-        get { macAgent.automationsTab }
-        set { macAgent.automationsTab = newValue }
     }
 
     var openedAutomation: String? {

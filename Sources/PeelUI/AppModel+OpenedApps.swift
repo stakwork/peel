@@ -26,31 +26,39 @@ extension AppModel {
     /// (`WalletHost.grantInvitePage`), so its sign-in asks nothing. Only that
     /// link is granted: never a `peel://open` link or an open from Apps.
     public func openingPublicApp(_ link: PublicAppLink, invited: Bool) {
-        guard let storage = engine?.storage else { return }
+        guard let engine else { return }
+        let storage = engine.storage
         do {
             try storage.rememberPublicApp(link, at: Int64(Date().timeIntervalSince1970))
             if invited { try WalletHost.grantInvitePage(link, storage: storage, now: Int64(Date().timeIntervalSince1970)) }
+            Task { await engine.publicAppsChanged() }
         } catch {
             notice = PeelError.noted(error, couldNot: String(localized: "keep the app", table: "Shared"))
         }
-        refreshTitle(of: link, storage: storage)
+        refreshTitle(of: link, engine: engine)
     }
 
     /// Asks the seller for the app's title and icon at every opening, so rows
     /// made before it (and sessions that never sign in again) are named and
     /// drawn. Failures are silent: the old title and icon stay.
-    private func refreshTitle(of link: PublicAppLink, storage: Storage) {
+    private func refreshTitle(of link: PublicAppLink, engine: Engine) {
+        let storage = engine.storage
         Task {
             guard let listing = try? await link.appListing() else { return }
-            try? storage.setPublicAppIcon(seller: link.seller.absoluteString, app: link.app ?? "", icon: listing.icon)
-            guard let title = listing.title else { return }
-            try? storage.setPublicAppTitle(seller: link.seller.absoluteString, app: link.app ?? "", title: title)
-            // An invite's placeholder connection (titled by its place) is named as a first sign-in would.
-            let key = WalletScope.origin(link.origin).key
-            if var held = try? storage.walletConnection(key: key), held.title == held.place, held.title != title {
-                held.title = title
-                try? storage.saveWalletConnection(held)
+            let seller = link.seller.absoluteString
+            let app = link.app ?? ""
+            var changed = false
+            if (try? storage.setPublicAppIcon(seller: seller, app: app, icon: listing.icon)) == true { changed = true }
+            if let title = listing.title {
+                if (try? storage.setPublicAppTitle(seller: seller, app: app, title: title)) == true { changed = true }
+                // An invite's placeholder connection (titled by its place) is named as a first sign-in would.
+                let key = WalletScope.origin(link.origin).key
+                if var held = try? storage.walletConnection(key: key), held.title == held.place, held.title != title {
+                    held.title = title
+                    try? storage.saveWalletConnection(held)
+                }
             }
+            if changed { await engine.publicAppsChanged() }
         }
     }
 
@@ -64,8 +72,10 @@ extension AppModel {
 
     /// Takes one app off Apps' list; its connection stays.
     public func forgetOpenedApp(_ app: OpenedPublicApp) {
+        guard let engine else { return }
         do {
-            try engine?.storage.forgetPublicApp(seller: app.seller, app: app.app)
+            try engine.storage.forgetPublicApp(seller: app.seller, app: app.app)
+            Task { await engine.publicAppsChanged() }
         } catch {
             notice = PeelError.noted(error, couldNot: String(localized: "remove the app", table: "Shared"))
         }

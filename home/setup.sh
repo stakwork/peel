@@ -6,6 +6,7 @@
 #   setup.sh send-back [HOST[:PORT]]  sends Peel Home back to the Mac; prints the link.
 #                                     HOST is this box's address (default HOME_SETUP_HOST)
 #   setup.sh cancel [--force]         keeps Peel Home here; strut and the bridge start again
+#   setup.sh status                   where things are, as one line: STATE [LINK] (below)
 set -u
 umask 077
 state=/data/setup
@@ -14,6 +15,8 @@ events=$state/events
 request=$state/send-back
 strut_env=/data/env/strut
 bridge_env=/data/env/bridge
+# A page's folder (SETUP_PAGE; relay below), or none.
+page=${SETUP_PAGE:-}
 
 # Run in the background (`serve … &`): exec, so the pid a cancel kills is
 # node's. The link prefix comes from STRUT_MOVE_LINK.
@@ -99,10 +102,39 @@ send_back() {
     fi
 }
 
+# The go-between for a page (the Umbrel app's tile, umbrel/README.md) that
+# runs as another user and sees only $page: no shell on Peel Home's folders,
+# no keys. Every 2 s it writes `status` to $page/status, and runs what the
+# page left in $page/ask: "ACTION SHOWN", ACTION one of send-back, cancel and
+# keep (cancel --force), SHOWN the cksum of the status line the page showed.
+# A request from a page showing an older state is dropped.
+relay() {
+    while :; do
+        now=$(sh "$0" status)
+        if [ -f "$page/ask" ]; then
+            action= shown=
+            read -r action shown <"$page/ask" || :
+            rm -f "$page/ask"
+            if [ "$shown" = "$(printf '%s' "$now" | cksum | cut -d' ' -f1)" ]; then
+                case $action in
+                # It waits for the Mac; the page follows it through status.
+                send-back) sh "$0" send-back </dev/null >/dev/null 2>&1 & ;;
+                cancel) sh "$0" cancel >/dev/null 2>&1 ;;
+                keep) sh "$0" cancel --force >/dev/null 2>&1 ;;
+                esac
+                now=$(sh "$0" status)
+            fi
+        fi
+        printf '%s\n' "$now" >"$page/status.tmp" && chmod 644 "$page/status.tmp" && mv "$page/status.tmp" "$page/status"
+        nap 2
+    done
+}
+
 run() {
     mkdir -p "$state" "$gate"
     trap 'kill "$child" 2>/dev/null; exit 0' TERM INT
     child=
+    [ -z "$page" ] || { mkdir -p "$page"; relay & }
     put_away_sent
     # A send-back that a restart cut short is not served again under a new code
     # the Mac doesn't have. strut and the bridge stay stopped: the Mac may have
@@ -147,11 +179,15 @@ case "${1:-}" in
 "") run ;;
 send-back)
     [ -f "$strut_env/home.env" ] || fail "Peel Home is not on this box"
+    # A second one would empty the events, and with them the ready line cancel checks.
+    under_way="a send-back is already under way (setup.sh status)"
+    [ -f "$request" ] && fail "$under_way"
     host=${2:-${STRUT_MOVE_HOST:-}}
     [ -n "$host" ] || fail "say this box's address as the Mac reaches it: setup.sh send-back <address>[:<port>] (or set HOME_SETUP_HOST)"
-    # Emptied first, so the ready line is this send-back's.
+    # Emptied first, so the ready line is this send-back's. The request is
+    # made with noclobber: of two at once, one makes it, the other stops.
     : >"$events"
-    printf '%s' "$host" >"$request"
+    (set -C; printf '%s' "$host" >"$request") 2>/dev/null || fail "$under_way"
     echo "Stopping strut and the bridge, then packing Peel Home…"
     until saw ready; do
         [ -f "$request" ] || fail "the send-back stopped; see: docker compose logs setup"
@@ -171,6 +207,30 @@ cancel)
         [ "${2:-}" = --force ] || fail "the Mac may already have Peel Home; if it doesn't, run: setup.sh cancel --force"
     fi
     rm -f "$request" "$gate/stop"
+    ;;
+status)
+    # STATE is one of:
+    # - empty: waiting for a move in; LINK once serve is listening
+    # - incomplete: a move in was cut short (README.md, "When something is stuck")
+    # - failing: serve stopped with an error, and setup tries again (docker compose logs setup)
+    # - starting, then here: Peel Home is on this box, and strut answers once here
+    # - sending: a send-back; LINK once it is packed
+    # - stopped: a send-back was cut short; strut and the bridge stay stopped
+    link=
+    if [ -f "$request" ]; then
+        where=sending link=$(field 'ready","mode":"send-back' link)
+    elif [ -f "$strut_env/home.env" ]; then
+        where=starting
+        [ -s "$gate/strut.ready" ] && where=here
+        [ -f "$gate/stop" ] && where=stopped
+    elif saw already-here; then
+        where=incomplete
+    elif saw error; then
+        where=failing
+    else
+        where=empty link=$(field 'ready","mode":"receive' link)
+    fi
+    echo "$where${link:+ $link}"
     ;;
 *) fail "unknown command ${1}" ;;
 esac

@@ -457,7 +457,7 @@ Accepted from the iOS review (Tom, 2026-10-14):
   <amount> (the boost amount from You), Copy, Copy link, and Delete for
   your own. Delete is the only red item.
 - **Swipe right on a message** to reply in its thread.
-- **Large titles** on Chats and Payments, collapsing on scroll.
+- **Large titles** on Chats, Payments and Apps, collapsing on scroll.
 - **The tab bar hides** inside a conversation and its pushes.
 - **Pull to refresh**: on Chats (reconnect if needed, then catch up) and
   Payments.

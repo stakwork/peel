@@ -175,8 +175,8 @@ struct AppsScreen: View {
         .navigationDestination(item: $historyHome) { home in
             TalkHistoryScreen(home: home)
         }
+        // Large, collapsing on scroll, as Chats and Payments.
         .navigationTitle("Apps")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     /// Opens a workspace's app in Apps, kept for Recent.

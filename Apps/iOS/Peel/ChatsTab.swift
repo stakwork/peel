@@ -8,8 +8,9 @@ import SwiftUI
 /// above the chats unless the person pinned Mentions or Threads from •••.
 /// The bar: ••• (Mentions and Threads, and which of them show above the
 /// chats), then the connection bolt and New chat (Add contact, Invite
-/// someone, Join a tribe, Create a tribe). No search (Tom, 2026-11-27): the
-/// list is newest first. Its stack is the router's `chats`.
+/// someone, Join a tribe, Create a tribe). The large title is always shown
+/// and pulling the list down shows the search, as Apps does: it finds chats
+/// by name and messages by their words. Its stack is the router's `chats`.
 struct ChatsTab: View {
     @Environment(PhoneRouter.self) private var router
     @Environment(AppModel.self) private var model
@@ -18,10 +19,20 @@ struct ChatsTab: View {
 
     var body: some View {
         @Bindable var router = router
+        @Bindable var model = model
         NavigationStack(path: $router.chats) {
             ChatList(sheet: $sheet)
                 .onCallBannerInset()
                 .navigationTitle("Chats")
+                .searchable(text: $model.searchQuery, prompt: Text("Search chats and messages"))
+                .onChange(of: model.searchQuery) {
+                    // Cleared or cancelled: the plain list, and no stale messages.
+                    if model.searchQuery.isEmpty {
+                        model.clearSidebarSearch()
+                    } else {
+                        model.updateSidebarSearch()
+                    }
+                }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { ChatsMoreMenu() }
                     ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }
@@ -144,7 +155,9 @@ private struct NewChatMenu: View {
 }
 
 /// Pending invites, Peel's row, then every chat newest first
-/// (`AppModel.latestChats`); above them, the pages pinned from •••.
+/// (`AppModel.latestChats`); above them, the pages pinned from •••. While
+/// searching (pull down), the chats whose names match, then the messages
+/// that do (`AppModel.sidebarSearch`).
 struct ChatList: View {
     @Environment(AppModel.self) private var model
     @Binding var sheet: PeopleSheet?
@@ -156,7 +169,24 @@ struct ChatList: View {
         // The agent's DM is its own row, first.
         let agent = model.agentChat.flatMap { chat in model.conversations.first { $0.chat == chat } }
         let pinned = ChatsPage.allCases.filter { model.isPagePinned($0.rawValue) }
+        let query = model.searchQuery.trimmingCharacters(in: .whitespaces)
+        let searching = !query.isEmpty
         List {
+            if searching {
+                var matching = chats
+                if let agent, ChatSections.matches(agent.name, query: query) { matching.insert(agent, at: 0) }
+                let found = SidebarSearch.capped(matching)
+                if !found.isEmpty {
+                    Section {
+                        ForEach(found) { ChatLink(conversation: $0, state: states[$0.chat], isAgent: $0.chat == model.agentChat) }
+                    } header: {
+                        PhoneSectionHeader(String(localized: "Chats"))
+                    }
+                    .phoneRows()
+                    .listRowInsets(.vertical, 2)
+                }
+                MessageResults(search: model.sidebarSearch, chatsFound: !found.isEmpty)
+            } else {
             if !pinned.isEmpty {
                 Section { PinnedPages(pages: pinned) }
                     .phoneRows()
@@ -182,6 +212,7 @@ struct ChatList: View {
             }
             .phoneRows()
             .listRowInsets(.vertical, 2)
+            }
         }
         .phoneList()
         .scrollEdges()
@@ -316,5 +347,112 @@ private struct ChatLink: View {
     private func setLevel(_ level: MuteLevel) {
         let chat = conversation.chat
         Task { await model.setMute(chat, level) }
+    }
+}
+
+/// "Messages" while searching: those in every chat that match, each with a
+/// line around the match lit, its chat and when; "No results" when the chats
+/// found nothing either. A row opens its chat at the message (a thread's
+/// message, its thread).
+private struct MessageResults: View {
+    @Environment(AppModel.self) private var model
+    let search: SidebarSearch
+    /// The chats above found something.
+    let chatsFound: Bool
+
+    var body: some View {
+        if search.searching && search.messages.isEmpty {
+            Section {
+                HStack(spacing: 6) {
+                    ProgressView()
+                    Text("Searching…")
+                }
+                .phoneFont(.secondary)
+                .foregroundStyle(Theme.secondaryText)
+            } header: {
+                PhoneSectionHeader(String(localized: "Messages"))
+            }
+            .phoneRows()
+        } else if search.failed {
+            Section {
+                Text("Could not search messages")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.attention)
+            } header: {
+                PhoneSectionHeader(String(localized: "Messages"))
+            }
+            .phoneRows()
+        } else if !search.messages.isEmpty {
+            let terms = search.query?.terms ?? []
+            Section {
+                ForEach(Array(search.messages.enumerated()), id: \.offset) { _, message in
+                    MessageResultRow(
+                        message: message,
+                        conversation: model.conversations.first { $0.chat == message.chat },
+                        sender: model.sender(of: message),
+                        snippet: AttributedString(search.query?.snippet(of: message.preview) ?? message.preview)
+                            .highlighting(terms)
+                    )
+                }
+            } header: {
+                PhoneSectionHeader(String(localized: "Messages"))
+            }
+            .phoneRows()
+            .listRowInsets(.vertical, 2)
+        } else if search.foundNone && !chatsFound {
+            ContentUnavailableView.search(text: model.searchQuery)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+        }
+    }
+}
+
+/// A message found: its chat's icon, the sender and its line with the match
+/// lit, over its chat and when.
+private struct MessageResultRow: View {
+    @Environment(PhoneRouter.self) private var router
+    let message: Message
+    let conversation: Conversation?
+    let sender: Sender
+    let snippet: AttributedString
+
+    var body: some View {
+        Button {
+            router.open(message, inThread: message.threadUUID != nil)
+        } label: {
+            HStack(spacing: Theme.Space.md) {
+                if let conversation {
+                    ConversationIcon(conversation: conversation, size: 30)
+                } else {
+                    Avatar(name: sender.avatarName, url: sender.photoURL, size: 30, hue: sender.hue)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(sender.label)
+                            .phoneFont(PhoneFont.row.weight(.semibold))
+                            .foregroundStyle(sender.hue.name)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Text(snippet)
+                            .phoneFont(.row)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 6) {
+                        Text(conversation?.name ?? "")
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(Formatting.relative(message.date))
+                            .monospacedDigit()
+                            .fixedSize()
+                    }
+                    .phoneFont(.time)
+                    .foregroundStyle(Theme.tertiaryText)
+                }
+            }
+            .padding(.vertical, 7)
+            .frame(minHeight: Theme.touchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

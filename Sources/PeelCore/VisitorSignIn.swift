@@ -126,6 +126,19 @@ public enum Seller {
         guard let text = parts.string, isSellerURL(text) else { return nil }
         return parts.url
     }
+
+    /// The port a repo2graph (stakgraph) box serves on: its strut is mounted
+    /// under `/lab` there, and the root paths answer a plain-text 401.
+    public static let repo2graphPort = 3355
+
+    /// `base` with the `/lab` mount path when it is a repo2graph box's bare
+    /// origin (port 3355, no path). An address that already has a path, and every other port, is kept as it is: a strut served at the root elsewhere is not touched. (Peel cannot tell a box's kind from its address except by this port.)
+    public static func mounted(_ base: URL) -> URL {
+        guard var parts = URLComponents(url: base, resolvingAgainstBaseURL: false),
+              parts.port == repo2graphPort, parts.percentEncodedPath.isEmpty || parts.percentEncodedPath == "/" else { return base }
+        parts.percentEncodedPath = "/lab"
+        return parts.url ?? base
+    }
 }
 
 /// A `sign_in` request (strut's specs/WALLET.md §1.2, "sign_in"): strut's

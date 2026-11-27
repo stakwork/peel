@@ -41,7 +41,9 @@ Connect ends the token at once.
   names one (`Seller.base`: https, or http to this machine), and
   `problem(at:allowsLoopback:)`: Peel refuses a challenge for another host
   than the link's address, one run out, one naming nobody (a renewal's), and
-  an address on this machine outside a development profile.
+  an address on this machine outside a development profile. A bare port-3355
+  (repo2graph) address is taken as `<origin>/lab`, since strut is mounted
+  there; other hosts keep the path the link carries.
 - `BoxLink`: what is kept, `{ url, actor, name?, token, exp, linkedAt,
   renewedAt }`, several at once, never described with its token; `due`
   (a day since the last renewal, or the token within a day of its end);
@@ -50,7 +52,9 @@ Connect ends the token at once.
   `POST /people/token` (`renew`: `.renewed` or `.unlinked` on `403
   not_linked`), and `accepts` (a token's check on use, `GET /apps`: 401 is
   "no longer held"). Refusals in words: 401 ran out or used, 409 linked to
-  someone else, 413, 429, strut's own words for the rest.
+  someone else, 413, 429, strut's own words for the rest. A bare port-3355
+  (repo2graph) address is taken as `<origin>/lab`, since strut is mounted
+  there; other hosts keep the path the link carries.
 - `Engine.signBoxLink`: the challenge's UTF-8 bytes as a Lightning signed
   message with the account key (child 0), the visitor `sign_in`'s `.root`
   path (`signWithAccountKey`, which both now share), with the account's

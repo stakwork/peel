@@ -92,7 +92,7 @@ public struct BoxLinkOffer: Sendable, Equatable, Identifiable {
     /// A box's address (https, or http to this machine) and its challenge.
     public init?(box: String, challenge: String) {
         guard let base = Seller.base(box), let challenge = BoxChallenge(challenge) else { return nil }
-        self.box = base
+        self.box = Seller.mounted(base)
         self.challenge = challenge
     }
 
@@ -224,7 +224,7 @@ public struct BoxClient: Sendable {
     public let box: URL
 
     public init(box: URL) {
-        self.box = box
+        self.box = Seller.mounted(box)
     }
 
     /// The box's host, which a challenge must name; also how linking's own

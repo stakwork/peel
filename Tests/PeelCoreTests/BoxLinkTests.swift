@@ -201,6 +201,16 @@ struct BoxLinkTests {
                                                    "name": "Ada on Sphinx", "address": signed.address!])
     }
 
+    @Test func aRepo2graphBoxIsAddressedUnderLab() throws {
+        let bare = try #require(Seller.base("https://swarm38.sphinx.chat:3355"))
+        #expect(Seller.mounted(bare).absoluteString == "https://swarm38.sphinx.chat:3355/lab")
+        #expect(BoxClient(box: bare).box.absoluteString == "https://swarm38.sphinx.chat:3355/lab")
+        for kept in ["https://swarm38.sphinx.chat:3355/lab", "https://acme.example", "https://acme.example:8443"] {
+            let url = try #require(Seller.base(kept))
+            #expect(Seller.mounted(url) == url)
+        }
+    }
+
     /// strut's refusals of a link, in words the person can act on; an
     /// answer that is not a person token is not kept.
     @Test(arguments: [

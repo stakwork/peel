@@ -25,8 +25,8 @@ struct Sidebar: View {
     #endif
 
     var body: some View {
-        let chats = model.latestChats
-        let searching = !model.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
+        let chats = shownChats
+        let searching = searching
         // Read here and passed down: one chat's tick redraws only its own row.
         let readStates = model.readStates
         let agent = shownAgent
@@ -40,7 +40,7 @@ struct Sidebar: View {
                     if let agent {
                         AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
                     }
-                    ForEach(searching ? SidebarSearch.capped(chats) : chats) { conversation in
+                    ForEach(chats) { conversation in
                         ConversationLink(conversation: conversation, state: readStates[conversation.chat])
                     }
                     if !searching, chats.isEmpty {
@@ -116,11 +116,16 @@ struct Sidebar: View {
     /// The rows the arrows move through, top to bottom, as shown: the
     /// pinned pages, Peel, then the chats; not invites or the message results.
     private var rows: [(destination: AppModel.Destination, title: String)] {
-        let searching = !model.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
-        let chats = model.latestChats
         let pinned = searching ? [] : PeelPage.pinnedInChats(model).map { ($0.destination, $0.title) }
         let agent = shownAgent.map { [(model.agentDestination, $0.name)] } ?? []
-        return pinned + agent + (searching ? SidebarSearch.capped(chats) : chats).map { (.chat($0.chat), $0.name) }
+        return pinned + agent + shownChats.map { (.chat($0.chat), $0.name) }
+    }
+
+    private var searching: Bool { !model.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// The chats as listed: every one, or the first matches while searching.
+    private var shownChats: [Conversation] {
+        searching ? SidebarSearch.capped(model.latestChats) : model.latestChats
     }
 
     /// Peel's row, first: always, unless a search leaves it out.
@@ -349,12 +354,7 @@ private struct PinnedPageRows: View {
                 } accessory: {
                     if count > 0 { Badge(count: count) }
                 }
-                // Outlined while its menu is open, as a chat's row is.
-                .overlay {
-                    if presenter?.source == AnyHashable("chats-pinned-\(page.rawValue)") {
-                        RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(Theme.accent, lineWidth: 1.5)
-                    }
-                }
+                .menuOpenOutline(presenter?.source == AnyHashable("chats-pinned-\(page.rawValue)"))
                 .peelMenu(source: "chats-pinned-\(page.rawValue)") {
                     [.button(String(localized: "Remove from Chats"), systemImage: "pin.slash") {
                         model.setPagePinned(page.rawValue, false)
@@ -705,11 +705,7 @@ struct ConversationLink: View {
                     .help("Mentions only")
             }
         }
-        .overlay {
-            if presenter?.source == AnyHashable(conversation.chat) {
-                RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(Theme.accent, lineWidth: 1.5)
-            }
-        }
+        .menuOpenOutline(presenter?.source == AnyHashable(conversation.chat))
         .peelMenu(source: conversation.chat) { ConversationMenu.entries(for: conversation, model: model) }
     }
 }
@@ -932,5 +928,16 @@ struct RestoreBar: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+extension View {
+    /// A row's accent outline while its menu is open (a chat's, a pinned page's).
+    func menuOpenOutline(_ open: Bool) -> some View {
+        overlay {
+            if open {
+                RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(Theme.accent, lineWidth: 1.5)
+            }
+        }
     }
 }

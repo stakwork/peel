@@ -13,7 +13,7 @@ struct AppsColumn: View {
     var body: some View {
         let favorites = model.favoriteApps
         let starred = Set(favorites.map(\.id))
-        let recent = Array(model.recentApps(limit: ChatSections.Layout.recentAppsKept).filter { !starred.contains($0.id) }.prefix(5))
+        let recent = Array(model.recentApps.filter { !starred.contains($0.id) }.prefix(5))
         VStack(alignment: .leading, spacing: 0) {
             ColumnHeader(title: String(localized: "Apps")) { EmptyView() }
             ScrollView {

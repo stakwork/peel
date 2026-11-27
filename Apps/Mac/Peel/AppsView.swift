@@ -65,10 +65,13 @@ struct AppsView: View {
 
     /// The cards shown: from the source chosen, matching the search.
     private var shown: [WorkspaceApp] {
-        let sources = model.appSources
-        // A source no longer listed, or the only one: all of them, as the choice then shows none.
-        let shownSource = sources.count > 1 && sources.contains(source ?? "") ? source : nil
-        return WorkspaceApp.filter(model.stadeum.apps, query: query, source: shownSource)
+        WorkspaceApp.filter(model.stadeum.apps, query: query, source: shownSource(in: model.appSources))
+    }
+
+    /// The source chosen; nil (all of them) for one no longer listed, or the
+    /// only one, as the choice then shows none.
+    private func shownSource(in sources: [String]) -> String? {
+        sources.count > 1 && sources.contains(source ?? "") ? source : nil
     }
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -92,14 +95,14 @@ struct AppsView: View {
     @ViewBuilder
     private var list: some View {
         let sources = model.appSources
-        let shown = ordered
-        let lit = lit(in: shown)
         let grouped = groups(shown)
+        let shown = grouped.flatMap(\.apps)
+        let lit = lit(in: shown)
         HStack(spacing: Theme.Space.md) {
             SearchField(text: $query, prompt: String(localized: "Search apps"), focusRequest: model.sidebarSearchFocus,
                         focusOnAppear: true, focusChanged: { searchHasKeys = $0 }).frame(maxWidth: 440)
             if sources.count > 1 {
-                SegmentedChoice(selection: Binding(get: { sources.contains(source ?? "") ? source : nil }, set: { source = $0 }),
+                SegmentedChoice(selection: Binding(get: { shownSource(in: sources) }, set: { source = $0 }),
                                 options: [(nil, String(localized: "All"))] + sources.map { ($0, $0) })
             }
             Spacer(minLength: 0)

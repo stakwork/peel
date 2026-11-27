@@ -612,8 +612,8 @@ public final class AppModel {
     /// The Mac's chat list: every chat but the agent's (Peel has its own
     /// row, first), newest first, unread ones in place, matching its search.
     public var latestChats: [Conversation] {
-        let chats = agentChat.map { agent in conversations.filter { $0.chat != agent } } ?? conversations
-        return ChatSections(chats, states: readStates, query: searchQuery).latest
+        let query = searchQuery.trimmingCharacters(in: .whitespaces)
+        return conversations.filter { $0.chat != agentChat && ChatSections.matches($0.name, query: query) }
     }
 
     /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next unread
@@ -638,7 +638,11 @@ public final class AppModel {
     /// Threads), unless it went meanwhile;
     /// none open (the empty start) when there was none.
     public func openChats() {
-        destination = stillThere(chatsReturn)
+        switch chatsReturn {
+        case .chat(let chat)? where !conversations.contains(where: { $0.chat == chat }): destination = nil
+        case .agent? where agent == nil: destination = nil
+        default: destination = chatsReturn
+        }
     }
 
     /// The Mac rail's Apps (⌘2): the app last open there, unless it is no
@@ -649,16 +653,6 @@ public final class AppModel {
             destination = appsReturn
         } else {
             destination = .apps
-        }
-    }
-
-    /// `destination` unless what it shows went meanwhile (a chat left or
-    /// deleted, the agent's chat or automations with the agent gone).
-    private func stillThere(_ destination: Destination?) -> Destination? {
-        switch destination {
-        case .chat(let chat)? where !conversations.contains(where: { $0.chat == chat }): nil
-        case .agent? where agent == nil, .automations? where agent == nil: nil
-        default: destination
         }
     }
 

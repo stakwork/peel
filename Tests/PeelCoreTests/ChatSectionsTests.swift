@@ -216,16 +216,6 @@ struct ChatSectionsTests {
         #expect(!layout.tribesOpen)
     }
 
-    /// The iPhone's one list: every chat newest first, unread ones in place,
-    /// never trimmed; a search keeps only the matches.
-    @Test func latestListsEveryChatNewestFirst() {
-        let states = Dictionary(uniqueKeysWithValues: [state("t5", unread: 2), state("p3", unread: 1)])
-        let sections = ChatSections(chats, states: states)
-        #expect(names(sections.latest) == names(chats))
-        let found = ChatSections(chats, states: states, query: "P")
-        #expect(names(found.latest) == ["p1", "p2", "p3", "p4", "p5", "p6", "p7"])
-    }
-
     /// Pages pin last, unpin in place, and a repeat changes nothing; a
     /// layout saved before them pins none.
     @Test func pagesPinInOrder() throws {

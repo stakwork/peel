@@ -32,16 +32,14 @@ extension AppModel {
     }
 }
 
-/// The apps opened last (Recent in the iPhone's Apps) and the pages pinned
-/// above the iPhone's chats, kept with the account's sidebar layout. The
-/// iPhone no longer pins apps (Tom, 2026-11-26): Apps and its Recent row are
-/// the way in.
+/// The apps opened last (Recent in Apps' column) and the pages pinned
+/// above the chats, kept with the account's sidebar layout.
 extension AppModel {
-    /// The apps opened last that are still listed, newest first, at most
-    /// `limit`: Recent in Apps.
-    public func recentApps(limit: Int = 5) -> [WorkspaceApp] {
+    /// The apps opened last that are still listed, newest first: Recent in
+    /// Apps' column.
+    public var recentApps: [WorkspaceApp] {
         let listed = Dictionary(stadeum.apps.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return Array(sidebarLayout.recentApps.compactMap { listed[$0] }.prefix(limit))
+        return sidebarLayout.recentApps.compactMap { listed[$0] }
     }
 
     /// The app `name` (of the workspace `peer`, nil for the person's own)

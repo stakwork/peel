@@ -266,9 +266,7 @@ private struct RailTooltip: View {
         .lineLimit(1)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Theme.menu, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.divider))
-        .shadow(color: Theme.popoverShadow, radius: 8, y: 2)
+        .menuBoxed(cornerRadius: 6)
         .accessibilityHidden(true)
     }
 }
@@ -328,7 +326,7 @@ private struct RailButtonStyle: ButtonStyle {
 
     /// The filled form of the rail's symbols, where SF Symbols has one.
     static func filled(_ name: String) -> String {
-        let filled: Set = ["bubble.left.and.bubble.right", "bolt", "square.grid.2x2", "bubble.left", "record.circle"]
+        let filled: Set = ["bubble.left.and.bubble.right", "bolt", "square.grid.2x2", "record.circle"]
         return filled.contains(name) ? name + ".fill" : name
     }
 

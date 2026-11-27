@@ -31,9 +31,7 @@ struct PaymentsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                DetailHeader(title: String(localized: "Payments"),
-                             subtitle: model.waitingMsat > 0 ? "\(Sats.format(msat: model.waitingMsat)) waiting" : nil,
-                             leading: { EmptyView() }) {
+                DetailHeader(title: String(localized: "Payments"), leading: { EmptyView() }) {
                     HStack(spacing: Theme.Space.sm) {
                         HeaderAction(title: String(localized: "Receive"), systemImage: "arrow.down.left", active: pane == .receive) {
                             pane = pane == .receive ? nil : .receive
@@ -49,6 +47,7 @@ struct PaymentsView: View {
             if let pane {
                 Theme.divider.frame(width: 1)
                 paneView(pane)
+                    .environment(\.headerLeadingInset, 0)
                     .frame(width: 360)
                     .frame(maxHeight: .infinity, alignment: .top)
                     .background(Theme.panel)

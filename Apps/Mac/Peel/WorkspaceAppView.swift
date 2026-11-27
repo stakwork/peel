@@ -35,8 +35,8 @@ struct WorkspaceAppView: View {
                     AppVersionsControl(title: app.title, versions: versions, previewing: $previewing, busy: changing,
                                        change: change)
                 }
+                FavoriteButton(app: app)
                 AppShareButton(app: app)
-                AppPinButton(app: app)
                 IconButton("arrow.up.forward.app", help: String(localized: "Open in new window")) { openInNewWindow() }
                     .disabled(model.memoryServer == nil)
                 IconButton("arrow.clockwise", help: String(localized: "Reload")) { loads += 1 }
@@ -115,28 +115,6 @@ struct WorkspaceAppView: View {
         let release: String?
         let server: MemoryServer?
         let loads: Int
-    }
-}
-
-/// Pins an app under the sidebar's Apps row, or takes it off: in its header
-/// and on its card in Apps.
-struct AppPinButton: View {
-    @Environment(AppModel.self) private var model
-    let app: WorkspaceApp
-
-    var body: some View {
-        let pinned = model.isPinned(app)
-        IconButton(help: pinned ? String(localized: "Unpin from the sidebar") : String(localized: "Pin to the sidebar")) {
-            model.setPinned(app, !pinned)
-        } label: {
-            // As the call window's keep-on-top pin.
-            if pinned {
-                Image(systemName: "pin.fill").foregroundStyle(Theme.accent)
-            } else {
-                Image(systemName: "pin")
-            }
-        }
-        .accessibilityValue(pinned ? String(localized: "On") : String(localized: "Off"))
     }
 }
 

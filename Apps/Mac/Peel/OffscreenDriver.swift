@@ -13,7 +13,7 @@ import PeelUI
 ///
 /// The script is JSON lines, one step each (blank and `//` lines skipped):
 /// `{"select": "a chat's name"}` (or its chat id, or a workspace's app as
-/// `@<workspace>/<name>`; sets the destination a click on its sidebar row sets), `{"open": "send-sats"}` (what a button with no
+/// `@<workspace>/<name>`; sets the destination a click on its chat list row or rail button sets), `{"open": "send-sats"}` (what a button with no
 /// shortcut opens), `{"key": "f", "mods": ["cmd"]}`, `{"type": "text"}`, `{"wait": 0.5}`,
 /// `{"snapshot": "name"}`, `{"notification": "a chat's name"}` (a click on
 /// the notification for its newest message from someone else).
@@ -384,13 +384,15 @@ final class OffscreenDriver {
     /// Stadeum and its Unpair once confirmed;
     /// `agent-rows`, every tool row's chevron; `agent-memory`, the first fact
     /// in the newest memory row (its panel beside the chat); `resume-history`,
-    /// Resume on the sidebar's paused restore; `brain-this-mac`, Account ›
+    /// Resume on the chat list's paused restore; `brain-this-mac`, Account ›
     /// Brain's Use this Mac when where Peel Home is could not be read;
     /// `home-move`, `home-ping`, `home-copy`, its Peel Home moves; `account-<category>`, that row in Account's
-    /// categories (`account-dictation`); `connection`, the sidebar bolt’s status panel;
-    /// `connection-check`, its check/reconnect action; `apps`, the sidebar's
-    /// Apps; `apps-refresh`, its header's Refresh; `apps-seed`, sample workspace apps in memory; `apps-fold`, the
-    /// Apps row's chevron; `app-pin`, the open app's pin; `app-versions`, the
+    /// categories (`account-dictation`); `connection`, the rail's connection dot's status panel;
+    /// `connection-check`, its check/reconnect action; `chats`, the rail's
+    /// Chats; `chat-list`, the chat list's toggle (⌃⌘S); `chat-search`, its
+    /// search; `mentions` and `threads`, those pages, as Chats' ••• opens them; `page-pin-<page>`, the pin in Mentions' or Threads' header (a row above the chats); `apps`, the rail's
+    /// Apps (the app last open, or the store); `store`, Apps' column's All
+    /// apps; `favorite`, the open app's star; `apps-refresh`, the store's Refresh; `apps-seed`, sample workspace apps in memory; `app-versions`, the
     /// open app's version chip (its menu); `app-make-live`, Make live for the
     /// newest version waiting, as its panel's button; `box-link`, Link on a
     /// box's question (`BoxLinkConfirm`); `box-open` and `box-forget`, the
@@ -415,18 +417,41 @@ final class OffscreenDriver {
                 throw Failure(description: "no Account category \(name)")
             }
             model.openAccount(page)
+        case "chats":
+            // What the rail's Chats sets: the chat last open.
+            model.openChats()
         case "payments":
-            // What the sidebar's Payments row sets.
+            // What the rail's Payments sets.
             model.destination = .payments
+        case "mentions":
+            // What Chats' ••• Mentions (or its pinned row) sets.
+            model.destination = .mentions
         case "threads":
-            // What the sidebar's Threads row sets.
+            // What Chats' ••• Threads (or its pinned row) sets.
             model.destination = .threads
         case "automations":
-            // What the sidebar's Automations row sets.
+            // What the rail's Automations sets.
             model.destination = .automations
         case "apps":
-            // What the sidebar's Apps row sets.
+            // What the rail's Apps does: the app last open there, or the store.
+            model.openApps()
+        case "store":
+            // Apps' column's All apps: the store.
             model.destination = .apps
+        case "chat-list":
+            // The chat list's toggle beside the window's buttons (⌃⌘S).
+            let defaults = UserDefaults.standard
+            defaults.set(!defaults.bool(forKey: "chatListHidden"), forKey: "chatListHidden")
+        case "chat-search":
+            // The chat list's search button (or ⌘F with no chat open).
+            model.sidebarSearchFocus += 1
+        case let name where name.hasPrefix("page-pin-"):
+            // The pin in a page's header: `page-pin-mentions`, a row above the chats.
+            let key = String(name.dropFirst("page-pin-".count))
+            guard let page = PeelPage(rawValue: key), PeelPage.inChats.contains(page) else {
+                throw Failure(description: "no page \(key) to pin above the chats")
+            }
+            model.setPagePinned(key, !model.isPagePinned(key))
         case "apps-refresh":
             // Apps' header Refresh: the person's own and every workspace's.
             model.refreshApps()
@@ -436,9 +461,6 @@ final class OffscreenDriver {
             model.stadeum.apps = WorkspaceApp.byTitle(Self.sampleApps.compactMap { app in
                 WorkspaceApp(peer: app.peer, entry: Data(AgentKit.JSONValue.object(app.entry.merging(["pinned": .bool(true)]) { $1 }).jsonString.utf8))
             })
-        case "apps-fold":
-            // The Apps row's chevron.
-            model.sidebarLayout.appsOpen.toggle()
         case "app-versions", "app-make-live":
             // The open app's version chip: its menu, read from strut as the header reads it;
             // or the Make live panel's button, for the newest version waiting.
@@ -460,8 +482,8 @@ final class OffscreenDriver {
                     await model.makeLive(app, .version(waiting), done: "\(waiting) is live")
                 }
             }
-        case "app-pin":
-            // The open app's pin, in its header.
+        case "favorite":
+            // The open app's star, in its header.
             guard case .app(let peer, let name) = model.destination,
                   let app = model.app(peer: peer, name: name)
             else { throw Failure(description: "no app open") }

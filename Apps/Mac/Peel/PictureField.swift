@@ -22,6 +22,9 @@ struct PictureField<Label: View>: View {
     var remove: Removal?
     /// Hands out whether an upload runs, so a form can hold its Save.
     var uploading: Binding<Bool>?
+    /// Choose and Remove in a menu (•••) at the end rather than as buttons:
+    /// Profile's card (Tom, 2026-11-26).
+    var compact = false
     /// Beside the picture, before the buttons (the Account's name and key).
     @ViewBuilder var label: Label
 
@@ -49,14 +52,17 @@ struct PictureField<Label: View>: View {
                     }
                     .accessibilityLabel(working ? String(localized: "Uploading the picture") : String(localized: "Picture"))
                 label
-                if !confirmingRemove {
+                if compact {
+                    MenuButton(systemImage: "ellipsis", help: String(localized: "Picture"), source: "picture") { compactEntries }
+                        .disabled(working)
+                } else if !confirmingRemove {
                     Button { Task { await choose() } } label: {
                         Text("Choose picture…").buttonProgress(working)
                     }
                     .buttonStyle(.peel(.outline))
                     .disabled(working)
                 }
-                removeButton.disabled(working)
+                if !compact { removeButton.disabled(working) }
             }
             if let problem {
                 Text(problem)
@@ -82,15 +88,40 @@ struct PictureField<Label: View>: View {
             .buttonStyle(.peel(.outline))
         case .confirmed(let confirm, let action):
             InlineConfirm(trigger: String(localized: "Remove"), confirm: confirm, confirming: $confirmingRemove) {
-                problem = nil
-                do {
-                    try await action()
-                } catch {
-                    problem = PeelError.problem(error, couldNot: String(localized: "remove the picture"))
-                }
+                await removeConfirmed(action)
             }
         case nil:
             EmptyView()
+        }
+    }
+
+    /// Compact's menu: Choose picture…, and Remove (confirmed in the menu
+    /// when it asks for a second click).
+    private var compactEntries: [MenuEntry] {
+        var entries: [MenuEntry] = [.button(String(localized: "Choose picture…"), systemImage: "photo") { Task { await choose() } }]
+        switch remove {
+        case .now(let action):
+            entries.append(.button(String(localized: "Remove"), systemImage: "trash") {
+                problem = nil
+                action()
+            })
+        case .confirmed(let confirm, let action):
+            entries.append(.destructive(String(localized: "Remove"), systemImage: "trash", confirm: confirm) {
+                Task { await removeConfirmed(action) }
+            })
+        case nil:
+            break
+        }
+        return entries
+    }
+
+    /// A confirmed Remove, from the button or the menu: what failed says so under the picture.
+    private func removeConfirmed(_ action: () async throws -> Void) async {
+        problem = nil
+        do {
+            try await action()
+        } catch {
+            problem = PeelError.problem(error, couldNot: String(localized: "remove the picture"))
         }
     }
 

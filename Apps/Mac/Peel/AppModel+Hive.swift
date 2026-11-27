@@ -150,8 +150,8 @@ extension AppModel {
     /// (Apps opening: one just built shows), the workspaces' kept as they are.
     ///
     /// Asked again for the same strut and workspaces while a read of them is
-    /// under way, it joins that read (the sidebar, `syncHive` and Apps opening
-    /// all ask at launch); `force`, the Refresh button's, starts a new one.
+    /// under way, it joins that read (the rail's refresh, `syncHive` and Apps
+    /// opening all ask at launch); `force`, the Refresh button's, starts a new one.
     func refreshApps(workspaces: Bool = true, force: Bool = false) {
         // A read under way reads the person's own too: not cut short for less.
         guard workspaces || !stadeum.readingApps else { return }
@@ -228,7 +228,7 @@ extension AppModel {
         open(link.app, title: link.app.app?.name ?? String(localized: "App"), link: link)
     }
 
-    /// One the Apps list has opens where its sidebar row opens it, when the
+    /// One the Apps list has opens where Apps' column opens it, when the
     /// list shows what it names (no version, or the live one); any other,
     /// its page alone in the web pane beside the chat. With `link`, at the
     /// view it names, its page made again there; else as it was left.
@@ -250,7 +250,7 @@ extension AppModel {
     /// (`WorkspaceApp.sources`).
     var appSources: [String] { WorkspaceApp.sources(of: stadeum.apps) }
 
-    /// Whether an app's source shows (its sidebar row, card and header):
+    /// Whether an app's source shows (a card in a search's list, an app's header):
     /// only when the apps come from several (Tom, 2026-10-26).
     var showsAppSources: Bool {
         appSources.count > 1

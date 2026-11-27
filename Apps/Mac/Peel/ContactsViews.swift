@@ -6,19 +6,10 @@ import PeelUI
 import AppKit
 #endif
 
-// MARK: - Sidebar
+// MARK: - Chat list
 
-/// The end of Direct messages: invites waiting to be used, then Add contact
-/// and Invite someone.
-struct ContactsSidebarRows: View {
-    var body: some View {
-        PendingInviteRows()
-        SidebarActionLink(title: String(localized: "Add contact")) { AddContactForm(done: $0) }
-        SidebarActionLink(title: String(localized: "Invite someone")) { InviteForm(done: $0) }
-    }
-}
-
-private struct PendingInviteRows: View {
+/// Invites with sats waiting to be used, at the top of the chat list.
+struct PendingInviteRows: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {

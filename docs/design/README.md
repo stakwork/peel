@@ -28,62 +28,122 @@ option S2; the Peel logo shows only on the lock and welcome screens.
 
 ## Layout
 
-Three regions, left to right. On a narrow window the thread panel closes first,
-then the sidebar collapses; panels never overlay the conversation.
+Left to right: the rail, the chat list (on Chats), the page, and a panel
+opening on its right. On a narrow window the panel covers the page first;
+panels never overlay the chat list or the rail.
 
-### Sidebar (260 pt)
+### Rail, chat list and header band (Tom, 2026-11-26)
 
-Top to bottom:
+Replaces the sidebar of 2026-10-07 on the Mac. The iPhone took the same
+ideas the same day: one chat list, Mentions and Threads under •••, Recent
+in Apps, no pinned apps (`iphone.md`, "1. Chats"). It came out of Paul's notes (Threads and Mentions pinned
+at the top though he never used them; Separated / Recent taking room)
+and the design board "Peel sidebar directions": a thin rail as in Slack,
+Codex and Obsidian, the chat list only on Chats, as in Signal.
 
-1. **You, on top** (option S2, Tom, 2026-10-07). Your photo, your name,
-   and the balance in sats under it. Clicking it opens the Account screen,
-   as Account… (⌘,) does; no menu (Tom, 2026-10-12). On the right, Sphinx's connection
-   bolt: green when connected, orange otherwise; clicking it shows the state,
-   the retry countdown and the last connection error.
-2. **Search.** One field over every conversation.
-3. **Threads.** Threads you started or replied to that have new replies, with
-   an unread count.
-4. **Mentions.** Messages that mention you, across tribes. Its count
-   takes in muted tribes' mentions too, so it agrees with the rows' gold
-   counts; the Dock badge still leaves muted chats out.
-5. **Payments.** Payment history: received, sent, boosts, invoices. The
-   receive screen from the v1 scope lives here. Sats received while it is
-   not open show as "+350" (the sum, in the green of received amounts) in
-   the row's badge slot until it opens; the new rows then light once.
-6. **Unread** (Tom, 2026-10-09: with 14 tribes and many DMs, a "1" on a
-   DM below the fold was missed). Every chat with something unread, direct
-   messages first, then tribes that mention you, then the other tribes,
-   each newest first. A chat moves up into it while unread and leaves its
-   own section. Muted chats stay out unless they mention you (then they
-   count only those mentions, as a tribe set to mentions only does). The
-   chat you open from it stays there until you open another, so it does
-   not jump as it is read. While Peel is in the background nothing is
-   marked read, so the open chat can move into Unread when a message
-   arrives and back out when you return to it. No chevron, and no section at all when nothing
-   is unread.
-7. **Tribes.** The five most recent by last activity, then "Show all 14
-   tribes" (every tribe, unread ones included; "Show fewer" once open).
-   One row per tribe, led by the tribe's image or its initial on its own
-   colour, both on a rounded square (people are round). Ends with "Join a
-   tribe". The section collapses.
-8. **Direct messages.** The five most recent, then "Show all 10 people".
-   Ends with pending invites, "Add contact" and "Invite someone". The
-   section collapses.
+**Titles hold still** (Tom, 2026-11-27): the first title in the band
+starts at one place on every page (`HeaderBand.titleInset`, clear of the
+window's buttons and the column's toggle, shown or not), 16 pt bold, on
+one line: a page's own header (All apps) puts its subtitle
+after the title, not under it.
 
-Tribes come before direct messages: Tom lives in tribes. Unread rows are
-bold with a count, the count in the gold of a mention of you
-(`mentionYouFill`) when they mention you; read rows are in the secondary
-text colour. A direct message can show the gold count too, when a message
-in it names you. The chat you have open always shows, in a trimmed or a
-collapsed section alike. Each section's open or closed and shown-in-full
-state is kept with the account (`Setting.sidebarLayout`, through
-`Engine.sidebarLayout`), so it goes when the account is forgotten. The
-search finds every chat, untrimmed, in closed sections too; while it is
-on, the headers show no chevron, so a click cannot change the saved
-layout. A header without a chevron (Unread, and every header while
-searching) sits flush with the rows' icons; no room is kept for one. VoiceOver hears the headers as headings and "Show all 14 tribes" /
-"Show fewer tribes". The sections are `ChatSections` in PeelCore. No
-drag-and-drop ordering yet (later).
+**Chrome.** No line crosses the rail under the band (Tom, 2026-11-27):
+the band's line starts at the column beside it. Where the rail and the band meet
+what is beside the rail, the corner is rounded (10 pt, `InnerCorner`), so
+the content reads as a sheet set in the dark frame. The column's toggle
+sits after the window's buttons on every page, as Mail's and Notes' do,
+off where the page has no column (`ColumnToggle`). The rail and the header band are one colour (`Theme.rail`), a
+shade under the sidebar, so the rail reads as its own column beside the
+chat list and beside a page alike.
+
+**Header band.** The top 52 pt is one row in the chrome's colour across
+the window: the window's buttons, centred in it (`WindowButtonsInBand`
+moves them down from the hidden title bar's strip), then on Chats the
+list's toggle and its header, then the page's own header
+(`DetailHeader`, 52 pt, the chrome's colour). Page headers stay with
+their pages, level with "Chats", never a level above (a Codex-style
+toolbar holding them was tried and dropped). Where a page starts at the
+rail its header keeps clear of the buttons (`headerLeadingInset`); a
+side panel's never does.
+
+**Rail (52 pt).** Icons only, each named by its tooltip, its shortcut
+in it (Tom: labels are noise on a rail used all day). Always the same
+icons in the same places (Tom, 2026-11-27, the board's "Mentions and
+Threads belong to Chats"): no More, no pins.
+
+1. **Chats** (⌘1), with the unread count: back to the chat last open.
+2. **Apps** (⌘2): back to what was open in it, the app last open (while it is listed) or the store.
+3. **Payments** (⌘3), the bolt, with "+350" for a moment after sats
+   arrive, in the green of received amounts. The three go by use (Tom,
+   2026-11-27, the board's "Rail order"); the lists under them are A–Z.
+4. Under a short line, **Automations** (with the count of runs that
+   failed) and **Segments**. Mentions and Threads are Chats' (below). No
+   apps: an app opens from Apps (Tom, 2026-11-26).
+
+The selected button's tile is the accent with its icon filled in white,
+swapped at once (nav icons never animate: the interface skill's
+`motion-icon-crossfade` and frequency gate).
+5. At the foot, the **connection**: a small green dot while connected, a
+   hollow orange ring otherwise (option D; the bolt is Payments' alone);
+   a click shows its status card with a check or reconnect. Then **you**:
+   your photo, opening Account (⌘,), your name and balance in its tooltip.
+
+**Chat list (260 pt, on Chats only).** Its header: "Chats", search (⌘F
+with no chat open), ••• and + (Add contact, Invite someone, Join a tribe,
+Create a tribe, each opening its form). ••• lists Mentions and Threads
+with what is new, as the iPhone's does; a dot on it while one not pinned
+has something new. Mentions and Threads open beside the list, as part of
+Chats. The pin in either's header shows it as a row above the chats,
+drawn as a chat's is, with its count and a line under the pinned rows
+(`ChatSections.Layout.pinnedPages`, the iPhone's setting too; Tom,
+2026-11-27: rows, as pills above a list read as filters; the iPhone keeps
+chips, its pages pushed whole); a right-click on one, or the pin again,
+takes it off. None pinned at first. Peel's row carries AGENT beside its
+name, so its time stays in the column every row's is in. Each row's time
+sits alone at its top right; its count, @ (mentions only) or crossed bell
+(muted), and Peel's Set up, at its preview line's end (Tom, 2026-11-27,
+the board's "Unread counts", option A). Then pending invites, Peel's row,
+and every chat newest first, unread ones bold with their counts in place
+(`ChatSections.latest`): no sections, no Unread, no Separated / Recent, no
+"Show all". With no chats, "No chats yet" and the three ways in. The
+search filters the list and finds messages under it. The toggle beside
+the window's buttons (⌃⌘S, kept on this Mac) puts the list away, so a chat
+goes full width as Payments and Apps are.
+
+**Pages without the list.** Payments (its header the title alone; the balance is on Profile and the rail's you),
+Automations, Segments and Account take the whole width beside the rail;
+Apps has its own column. Account has its own categories column
+(Profile first, with its search). Profile opens on one card, after the
+iPhone's: your photo, name and key, the QR button (your contact info and
+Copy, in a card from it) and ••• (Choose picture…, Remove); under a line
+your balance, nothing else (Tom, 2026-11-26: no popover; Deposit and
+Withdraw are Payments' Receive and Pay, the history too).
+
+**Apps** (Tom, 2026-11-27; the board's "Favorites B"). Apps has a
+column beside the rail, as Chats has the chat list, there too while an
+app is open, so going from app to app is one click; ⌃⌘S or the toggle
+beside the window's buttons puts it away, remembered apart from the chat
+list's. The column: **All apps** (the store, with how many), **Favorites**
+(the apps starred, A–Z; before the first, a dashed hint:
+"Star an app to keep it here, one click from any app."), and **Recent**
+(the last five opened that are not favorites,
+`ChatSections.Layout.recentApps`). A star (☆, ★ in the accent while on)
+makes an app a favorite: on a store card (shown while it is one or under
+the pointer), in an open app's header, and on a column row under the
+pointer. Favorites are the app pins already kept with the account
+(`Layout.pinnedApps`, with `PinnedAppRecord` showing them at launch), so
+apps pinned before come back as favorites; pins on the rail are for pages.
+
+**All apps, the store.** The search has the cursor as it opens; beside
+it the source filter. The cards grouped by source, Yours, Built-in, then
+each workspace, each with its count: icon, title, two lines, version, a
+status only when something wants you (problems, a version waiting; no
+release chip), the star, and the link to share on hover. Typing drops the
+groups for one list of matches and lights the first; Down and Up move it,
+Return opens it, Escape clears the search. (Tom, 2026-11-26: rail pins, a
+Pinned row, pins on every card and three list, card and launcher
+redesigns were tried and dropped.) Rail tooltips are Peel's own, to the right of the icon: the
+first after 0.5 s, the next at once.
 
 **Next unread:** Go › Next Unread Chat (⌥⇧↓) and Previous Unread Chat
 (⌥⇧↑) open the next chat in Unread, going round, from anywhere in the
@@ -95,12 +155,9 @@ view, so in every text field (the composer, the sidebar's search, a
 chat's search, the forms) they open the next unread chat instead of the
 text view's ⌥⇧↓ and ⌥⇧↑ (select to the paragraph's end or start), as in
 Slack.
-**Keys.** Clicking a row gives the sidebar the keyboard: Down and Up move a
-soft highlight (the hover fill) through Apps and the apps under it,
-Automations, Mentions, Payments, Threads (A–Z), then
-the chats as shown (Unread, tribes, direct messages), skipping the section
-headers, the "+" and "Show all" rows (reached by a click only), invites
-and what a trimmed or collapsed section hides, and
+**Keys.** Clicking a row gives the chat list the keyboard: Down and Up move a
+soft highlight (the hover fill) through Peel's row and the chats as
+shown, skipping invites and the "+" rows (reached by a click only), and
 stopping at the ends; it scrolls into view and VoiceOver reads
 the row. Return opens the highlighted row as a click does, Escape clears it.
 A chat opened this way leaves the cursor in the sidebar; typing (or ⌘V)
@@ -112,7 +169,7 @@ a pane's default button.
 (The footer with your name and the Peel logo in the header are gone since
 S2; the app's icon still shows on the lock and welcome screens.)
 
-No tabs and no filter chips. Sorting inside each section: most recent first.
+No tabs and no filter chips. One list, most recent first.
 A chat opened another way (⌥⇧↓, a jump, a notification) scrolls into view
 and the arrows go on from it.
 

@@ -11,6 +11,10 @@ import UIKit
 /// system's light or dark appearance.
 enum Theme {
     static let sidebar = Color(light: 0xF2F3F5, dark: 0x1A242E)
+    /// The Mac's chrome: the rail and the header band across the top, a
+    /// shade under the sidebar, so the rail reads as its own column beside
+    /// the chat list and beside a page alike (Tom, 2026-11-26).
+    static let rail = Color(light: 0xE9ECEF, dark: 0x10161C)
     static let background = Color(light: 0xFFFFFF, dark: 0x151E27)
     static let panel = Color(light: 0xF7F8F9, dark: 0x1A232D)
     static let input = Color(light: 0xF2F3F5, dark: 0x13181D)

@@ -14,8 +14,11 @@ extension WorkspaceApp {
 /// What an app's page needs looked at, else a version of the person's own
 /// waiting to be made live, else the release it is held at: one of them, on
 /// its card and in its header (the Mac's), and on its row (the iPhone's).
+/// The Mac's card leaves the release out (`showsRelease`): only what wants
+/// the person shows there (Tom, 2026-11-26).
 struct AppStatus: View {
     let app: WorkspaceApp
+    var showsRelease = true
 
     var body: some View {
         if app.problems > 0 {
@@ -36,7 +39,7 @@ struct AppStatus: View {
             #if os(macOS)
                 .help(String(localized: "\(waiting) is built and waits for you to make it live; everyone opens \(app.version ?? "")", table: "Shared"))
             #endif
-        } else if let release = app.release {
+        } else if showsRelease, let release = app.release {
             Chip(String(localized: "Release \(release)", table: "Shared"))
                 .fixedSize()
             #if os(macOS)

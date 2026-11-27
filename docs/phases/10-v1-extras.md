@@ -454,3 +454,64 @@ badge was the only other cue. **Done (branch `sidebar-unread-first`):**
   chat opened from Unread stays there until you open another; ⌥⇧↓ goes
   round; the shortcuts win in every text field.
 - **Not built:** drag-and-drop ordering (later, Tom).
+
+## 7. The rail (Mac)
+
+**Asked by Tom on 2026-11-26**, from Paul's feedback (Threads and Mentions
+pinned at the top though he never used them, Separated / Recent taking
+room) and the design board "Peel sidebar directions". **Built (branch
+`mac-rail-sidebar`, 2026-11-27):**
+
+- **Rail.** Fixed (Tom, 2026-11-27): Chats ⌘1, Apps ⌘2, Payments ⌘3, by
+  use; under a line Automations and Segments; at the foot the connection
+  dot and you. No More, no pins (`PeelPage.onRail`). Icons only, Peel's own tooltips; the rail
+  and the 52 pt header band, where the window's buttons sit, in one
+  colour (`Theme.rail`). Chats goes back to the chat last open
+  (`openChats`), Apps to the app last open (`openApps`).
+- **Chats.** One list newest first, unread in place (`ChatSections.latest`,
+  `AppModel.latestChats`), with search, ••• and + in its header. Mentions
+  and Threads are Chats' (as the iPhone's, #620): ••• lists them, a dot
+  while one not pinned has something new; they open beside the list; the
+  pin in their header shows them as rows above the chats, a line under
+  them (`PinnedPageRows`, `PagePinButton`, `Layout.pinnedPages`; pills
+  were tried and read as filters); AGENT sits by Peel's name, its time in
+  the column; Next and
+  Previous Unread (⌥⇧↓, ⌥⇧↑) and the selection after a deleted contact
+  follow it. ⌃⌘S puts the list away.
+- **Apps.** A column as Chats has (`AppsColumn`): All apps (the store,
+  grouped by source: Yours, Built-in, each workspace), Favorites A–Z, and
+  Recent (`Layout.recentApps`), the same width as the chat list, hidden
+  apart from it with ⌃⌘S (`ColumnToggle`). A star on store cards, in an
+  app's header and on column rows (`FavoriteButton`). Favorites are the
+  app pins kept with the account (`Layout.pinnedApps`, shown at launch
+  through `PinnedAppRecord`), so earlier pins carry over.
+- **Account.** Its own categories column; Profile opens on one card: you,
+  your contact code behind its QR button, your balance (Deposit and
+  Withdraw stay Payments').
+- **Model**, shared with the iPhone's PR stakwork/peel#620:
+  `Layout.pinnedPages`, `recentApps`, `ChatSections.latest`,
+  `WorkspaceApp.id(peer:name:)`; tested in `ChatSectionsTests`.
+- **Checked** offscreen (`scripts/check-app.sh`) on `idl-me` (busy) and
+  `b13-empty` (first run, Favorites' hint); idle CPU 0–2%. Independent
+  review (2026-11-27), applied: ⌘F reaches the store's and Account's
+  search again; the store's keys act only while its search (or nothing)
+  has the keyboard, never an input method's; ⌘1 asks the list for the
+  keys only while it shows; next unread and delete follow the one list;
+  dead pieces (`closeAccount`, `ContactsSidebarRows`, 18 strings) gone;
+  one `ColumnHeader`. Not applied: the balance texts stay three (three
+  sentences, each on `Sats.format`; `waitingText` is not localized).
+  A second review (the fixed rail, Chats' rows, the row layout), applied:
+  AGENT shows on Peel's row without a preview too; pinned rows keep the
+  order pinned (`PeelPage.pinnedInChats`); Chats goes back to Mentions or
+  Threads when they were last open; pinned rows are outlined while their
+  menu is open; Set up and Waiting on you never wrap. Not applied: ••• is
+  not lit while an unpinned Mentions or Threads is open (the rail's Chats
+  is, and the page's header says which).
+- **Journal.** Tried and dropped on the way: pinned apps on the rail (up
+  to ten, "+N", drawn at launch from a cache), a Pinned row and pins on
+  every card, three list, card and launcher Apps pages, a Codex-style
+  toolbar for page headers.
+- **Not done yet:** drag-to-reorder pins; ⌘F on Chats with the list put
+  away does nothing.
+- **For Tom to confirm:** the window's buttons centred in the band (moved
+  with AppKit, which offscreen snapshots do not draw).

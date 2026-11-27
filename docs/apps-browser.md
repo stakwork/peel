@@ -27,6 +27,13 @@ Why it won't hold up:
 
 ## Proposal
 
+> **Superseded on the Mac (2026-11-27):** the sidebar below is gone. Apps
+> is on the rail with its own column (All apps, the store grouped by
+> source; Favorites, the starred apps, which are these pins; Recent), and
+> apps are never pinned to the rail. See `design/README.md`, "Rail, chat
+> list and header band", and `phases/10-v1-extras.md`, section 7. The
+> rest is kept as the record of what was proposed.
+
 ### Sidebar
 
 - **Apps becomes a nav row**, like Automations. The nav rows go A–Z:

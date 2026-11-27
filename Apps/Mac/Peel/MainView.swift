@@ -3,19 +3,40 @@ import SwiftUI
 import PeelCore
 import PeelUI
 
-/// Slack-style layout: sidebar, conversation; see docs/design/README.md.
-/// Content runs under the hidden title bar; the sidebar keeps clear of the
-/// traffic lights.
+/// The rail, the chat list on Chats, and the page (Tom, 2026-11-26); see
+/// docs/design/README.md. Content runs under the hidden title bar: the
+/// window's buttons sit in the header band across the top
+/// (`WindowButtonsInBand`), over the rail.
 struct MainView: View {
     @Environment(AppModel.self) private var model
-    /// Dragged on its divider; remembered on this Mac (a convenience).
+    /// The column beside the rail, the chat list's and Apps' alike, so its
+    /// edge stays put going between them: dragged on its divider,
+    /// remembered on this Mac (a convenience).
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 260
+    /// The chat list put away (⌃⌘S): Chats full width, as Payments is.
+    @AppStorage("chatListHidden") private var chatListHidden = false
+    /// Apps' column put away (⌃⌘S): an app full width.
+    @AppStorage("appsColumnHidden") private var appsColumnHidden = false
 
     var body: some View {
+        let onChats = PeelPage.isChats(model.destination)
+        let onApps = PeelPage.isApps(model.destination)
+        let showsList = onChats && !chatListHidden
+        let showsApps = onApps && !appsColumnHidden
         HStack(spacing: 0) {
-            SidebarColumn()
-                .frame(width: sidebarWidth)
-            PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
+            Rail()
+                // Its tooltips draw over the chat list or the page beside it.
+                .zIndex(1)
+            if showsList {
+                SidebarColumn()
+                    .frame(width: sidebarWidth)
+                PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
+            }
+            if showsApps {
+                AppsColumn()
+                    .frame(width: sidebarWidth)
+                PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
+            }
             VStack(spacing: 0) {
                 Detail()
                 if let notice = model.notice {
@@ -34,8 +55,26 @@ struct MainView: View {
                     FileSecretsBanner()
                 }
             }
+            // Where the page starts at the rail, its title starts where a
+            // column's does (`HeaderBand.titleInset`), toggle or not.
+            .environment(\.headerLeadingInset, showsList || showsApps ? 0 : HeaderBand.titleInset - Theme.Space.xl)
             .webPaneBeside(model.web)
         }
+        .overlay(alignment: .topLeading) {
+            // In one place on every page, as Mail's and Notes' (Tom, 2026-11-27):
+            // off where the page has no column.
+            ColumnToggle(hidden: onChats ? $chatListHidden : onApps ? $appsColumnHidden : nil, chats: onChats)
+                .padding(.leading, HeaderBand.buttonsEnd)
+                .frame(height: HeaderBand.height)
+        }
+        // Where the rail and the band meet whatever is beside the rail, a
+        // rounded corner (Tom, 2026-11-27, the board's "inner corner").
+        .overlay(alignment: .topLeading) {
+            InnerCorner()
+                .offset(x: HeaderBand.railWidth - 1, y: HeaderBand.height - 1)
+                .allowsHitTesting(false)
+        }
+        .background(WindowButtonsInBand())
         // A box's page goes with its link.
         .onChange(of: model.boxes.links) { model.web.boxesChanged(model.boxes) }
         // A Hive link to a paired workspace's app opens the app; any other
@@ -286,7 +325,86 @@ struct Detail: View {
     }
 }
 
-/// The bar across the top of the detail column.
+/// Put the column beside the rail away, or back (⌃⌘S): beside the window's
+/// buttons, the chat list on Chats and Apps' column on Apps.
+struct ColumnToggle: View {
+    static let width = HeaderBand.toggleWidth
+    /// The page's column's hidden state; nil on a page with no column, where
+    /// the toggle stays in its place, off.
+    let hidden: Binding<Bool>?
+    let chats: Bool
+
+    var body: some View {
+        if let hidden {
+            let help = chats
+                ? (hidden.wrappedValue ? String(localized: "Show chat list (⌃⌘S)") : String(localized: "Hide chat list (⌃⌘S)"))
+                : (hidden.wrappedValue ? String(localized: "Show apps list (⌃⌘S)") : String(localized: "Hide apps list (⌃⌘S)"))
+            IconButton("sidebar.left", help: help, size: .sm) { hidden.wrappedValue.toggle() }
+                .hiddenShortcut(KeyboardShortcut("s", modifiers: [.control, .command])) { hidden.wrappedValue.toggle() }
+                .frame(width: Self.width, alignment: .leading)
+        } else {
+            IconButton("sidebar.left", help: String(localized: "No list on this page"), size: .sm) {}
+                .disabled(true)
+                .frame(width: Self.width, alignment: .leading)
+        }
+    }
+}
+
+/// The corner where the rail and the band meet what is beside the rail
+/// (the chat list, Apps' column or a page), rounded: the chrome's colour
+/// outside a quarter circle, and the divider along its curve, joining the
+/// rail's edge and the band's line.
+struct InnerCorner: View {
+    static let radius: CGFloat = 10
+
+    var body: some View {
+        let r = Self.radius
+        ZStack(alignment: .topLeading) {
+            Path { path in
+                path.addRect(CGRect(x: 0, y: 0, width: r + 1, height: r + 1))
+                path.move(to: CGPoint(x: 0.5, y: r + 1))
+                path.addArc(center: CGPoint(x: r + 1, y: r + 1), radius: r + 0.5,
+                            startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+                path.addLine(to: CGPoint(x: r + 1, y: r + 1))
+                path.closeSubpath()
+            }
+            .fill(Theme.rail, style: FillStyle(eoFill: true))
+            Path { path in
+                path.addArc(center: CGPoint(x: r + 1, y: r + 1), radius: r + 0.5,
+                            startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+            }
+            .stroke(Theme.divider, lineWidth: 1)
+        }
+        .frame(width: r + 1, height: r + 1, alignment: .topLeading)
+    }
+}
+
+/// The header of the column beside the rail, in the band: its title, clear
+/// of the window's buttons and `ColumnToggle`, then its own buttons (the
+/// chat list's search and +).
+struct ColumnHeader<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: Theme.Space.xs) {
+            Text(title)
+                .font(Theme.font(16, .bold))
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: Theme.Space.sm)
+            trailing
+        }
+        .padding(.leading, HeaderBand.titleInset)
+        .padding(.trailing, Theme.Space.sm)
+        .frame(height: HeaderBand.height)
+        .background(Theme.rail)
+        .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
+    }
+}
+
+/// The bar across the top of the detail column, in the header band: the
+/// chrome's colour (`Theme.rail`), as tall as the band, clear of the window's buttons
+/// where it starts at the rail (`headerLeadingInset`).
 struct DetailHeader<Leading: View, Trailing: View>: View {
     let title: String
     var subtitle: String?
@@ -295,8 +413,13 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
     var onTitle: (() -> Void)?
     /// Beside the title: the agent chat's AGENT.
     var showsAgentTag = false
+    /// The subtitle on the title's line, after it, rather than under it: a
+    /// page's own header (Payments, All apps), so its title sits where a
+    /// column's does and does not move up for a second line.
+    var subtitleInline = false
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
+    @Environment(\.headerLeadingInset) private var inset
 
     var body: some View {
         HStack(spacing: 10) {
@@ -311,7 +434,9 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
             trailing
         }
         .padding(.horizontal, Theme.Space.xl)
-        .frame(height: 60)
+        .padding(.leading, inset)
+        .frame(height: HeaderBand.height)
+        .background(Theme.rail)
         .overlay(alignment: .bottom) { Theme.divider.frame(height: 1) }
     }
 
@@ -319,22 +444,25 @@ struct DetailHeader<Leading: View, Trailing: View>: View {
         HStack(spacing: 10) {
             leading
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(title)
                         .font(Theme.font(16, .bold))
                         .lineLimit(1)
                     if showsAgentTag { AgentTag() }
+                    if subtitleInline, let subtitle { subtitleText(subtitle) }
                 }
-                if let subtitle {
-                    Text(subtitle)
-                        .font(Theme.font(12))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                }
+                if !subtitleInline, let subtitle { subtitleText(subtitle) }
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private func subtitleText(_ subtitle: String) -> some View {
+        Text(subtitle)
+            .font(Theme.font(12))
+            .monospacedDigit()
+            .foregroundStyle(Theme.secondaryText)
+            .lineLimit(1)
     }
 }
 

@@ -596,8 +596,8 @@ public final class AppModel {
     /// The iPhone's chat list: every chat but the agent's (Peel has its own
     /// row, first), newest first, unread ones in place, matching its search.
     public var latestChats: [Conversation] {
-        let chats = agentChat.map { agent in conversations.filter { $0.chat != agent } } ?? conversations
-        return ChatSections(chats, states: readStates, query: searchQuery).latest
+        let query = searchQuery.trimmingCharacters(in: .whitespaces)
+        return conversations.filter { $0.chat != agentChat && ChatSections.matches($0.name, query: query) }
     }
 
     /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the

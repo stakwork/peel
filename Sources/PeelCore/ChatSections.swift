@@ -101,9 +101,6 @@ public struct ChatSections: Equatable, Sendable {
     /// while the section is closed, every match while searching.
     public private(set) var tribes: [Conversation] = []
     public private(set) var direct: [Conversation] = []
-    /// Every chat matching the search, unread ones included, newest first:
-    /// the iPhone's one chat list (Tom, 2026-11-26), never trimmed.
-    public private(set) var latest: [Conversation] = []
     /// Every tribe and direct message not in `unread` (matching the search),
     /// merged and newest first, for the Recent view: trimmed to
     /// `recentCombined` (with the open chat however far down) until shown in full.
@@ -137,7 +134,6 @@ public struct ChatSections: Equatable, Sendable {
         for conversation in conversations {
             if conversation.isTribe { tribeCount += 1 } else { directCount += 1 }
             guard Self.matches(conversation.name, query: query) else { continue }
-            latest.append(conversation)
             let state = states[conversation.chat]
             switch (state?.isUnread == true, conversation.isTribe) {
             case (true, false): unread.append(conversation)

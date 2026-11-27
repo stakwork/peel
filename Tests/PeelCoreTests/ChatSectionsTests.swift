@@ -215,4 +215,30 @@ struct ChatSectionsTests {
         #expect(layout.appsOpen)
         #expect(!layout.tribesOpen)
     }
+
+    /// Pages pin last, unpin in place, and a repeat changes nothing; a
+    /// layout saved before them pins none.
+    @Test func pagesPinInOrder() throws {
+        var layout = ChatSections.Layout()
+        layout.setPagePinned("mentions", true)
+        layout.setPagePinned("threads", true)
+        layout.setPagePinned("mentions", true)
+        #expect(layout.pinnedPages == ["threads", "mentions"])
+        layout.setPagePinned("threads", false)
+        #expect(layout.pinnedPages == ["mentions"])
+        let older = try JSONDecoder().decode(ChatSections.Layout.self, from: Data(#"{"tribesOpen":false}"#.utf8))
+        #expect(older.pinnedPages.isEmpty && older.recentApps.isEmpty && !older.tribesOpen)
+    }
+
+    /// An app opened goes first, once; the list keeps the newest few.
+    @Test func openedAppsAreRecentNewestFirst() {
+        var layout = ChatSections.Layout()
+        layout.noteOpened("@hive/one")
+        layout.noteOpened("two")
+        layout.noteOpened("@hive/one")
+        #expect(layout.recentApps == ["@hive/one", "two"])
+        for index in 0..<20 { layout.noteOpened("app-\(index)") }
+        #expect(layout.recentApps.count == ChatSections.Layout.recentAppsKept)
+        #expect(layout.recentApps.first == "app-19")
+    }
 }

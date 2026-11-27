@@ -23,3 +23,37 @@ extension AppModel {
         stadeum.pinsChanged()
     }
 }
+
+/// The apps opened last (Recent in the iPhone's Apps) and the pages pinned
+/// above the iPhone's chats, kept with the account's sidebar layout. The
+/// iPhone no longer pins apps (Tom, 2026-11-26): Apps and its Recent row are
+/// the way in.
+extension AppModel {
+    /// The apps opened last that are still listed, newest first, at most
+    /// `limit`: Recent in Apps.
+    public func recentApps(limit: Int = 5) -> [WorkspaceApp] {
+        let listed = Dictionary(stadeum.apps.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return Array(sidebarLayout.recentApps.compactMap { listed[$0] }.prefix(limit))
+    }
+
+    /// The app `name` (of the workspace `peer`, nil for the person's own)
+    /// was opened, kept with the account's sidebar layout for Recent.
+    public func noteOpenedApp(peer: String?, name: String) {
+        var layout = sidebarLayout
+        layout.noteOpened(WorkspaceApp.id(peer: peer, name: name))
+        if layout != sidebarLayout { sidebarLayout = layout }
+    }
+
+    /// Whether the page `key` (threads, mentions) is pinned above the chats.
+    public func isPagePinned(_ key: String) -> Bool {
+        sidebarLayout.pinnedPages.contains(key)
+    }
+
+    /// Pins the page `key` above the chats or takes it off, kept with the
+    /// account's sidebar layout.
+    public func setPagePinned(_ key: String, _ pinned: Bool) {
+        var layout = sidebarLayout
+        layout.setPagePinned(key, pinned)
+        if layout != sidebarLayout { sidebarLayout = layout }
+    }
+}

@@ -25,6 +25,13 @@ public struct ChatSections: Equatable, Sendable {
         public var combinedView = false
         /// "Show all 32 chats" was clicked in the Recent view.
         public var allRecent = false
+        /// The pages pinned above the iPhone's chats from Chats' More menu,
+        /// by key (threads, mentions), in the order pinned; none until
+        /// pinned (Tom, 2026-11-26).
+        public var pinnedPages: [String] = []
+        /// The apps opened last, by key (`WorkspaceApp.id`), newest first:
+        /// Apps shows them as Recent (Tom, 2026-11-26).
+        public var recentApps: [String] = []
 
         public init() {}
 
@@ -40,6 +47,8 @@ public struct ChatSections: Equatable, Sendable {
             appsOpen = try values.decodeIfPresent(Bool.self, forKey: .appsOpen) ?? true
             combinedView = try values.decodeIfPresent(Bool.self, forKey: .combinedView) ?? false
             allRecent = try values.decodeIfPresent(Bool.self, forKey: .allRecent) ?? false
+            pinnedPages = try values.decodeIfPresent([String].self, forKey: .pinnedPages) ?? []
+            recentApps = try values.decodeIfPresent([String].self, forKey: .recentApps) ?? []
         }
 
         /// Whether the app with key `id` (`WorkspaceApp.id`) is pinned.
@@ -60,6 +69,22 @@ public struct ChatSections: Equatable, Sendable {
         /// The pinned ones of `apps`, in their order.
         public func pinned(_ apps: [WorkspaceApp]) -> [WorkspaceApp] {
             apps.filter { isPinned($0.id) }
+        }
+
+        /// Pins the page `key` above the chats (last) or takes it off.
+        public mutating func setPagePinned(_ key: String, _ pinned: Bool) {
+            var items = pinnedPages.filter { $0 != key }
+            if pinned { items.append(key) }
+            if items != pinnedPages { pinnedPages = items }
+        }
+
+        /// How many opened apps `recentApps` keeps.
+        public static let recentAppsKept = 8
+
+        /// The app with key `id` was opened: first in `recentApps`.
+        public mutating func noteOpened(_ id: String) {
+            guard recentApps.first != id else { return }
+            recentApps = Array(([id] + recentApps.filter { $0 != id }).prefix(Self.recentAppsKept))
         }
     }
 

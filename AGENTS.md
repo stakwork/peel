@@ -426,11 +426,13 @@ is a short plan. Update the status and the journal when you finish something.
     (`byTitle`), and the version a held app of the person's own has
     waiting (`waiting`); its words for the person are PeelUI's
     (iPhone, 2026-11-19: Pinned apps on Chats.) The pins are
-    `ChatSections.Layout.pinnedApps` with the fold `appsOpen`, one logic for
-    both apps (`Layout.isPinned`, `setPinned`, `pinned(_:)`; `AppModel`'s in
+    `ChatSections.Layout.pinnedApps` with the fold `appsOpen`
+    (`Layout.isPinned`, `setPinned`, `pinned(_:)`; `AppModel`'s in
     PeelUI's `AppModel+PinnedApps.swift`): the Mac pins from the app's pin
-    button, the iPhone from Apps' context menu ("Pin to Chats") and shows
-    them under Chats' Apps row, a chevron folding them
+    button. The iPhone no longer pins apps (2026-11-27): its Apps shows
+    Recent (`Layout.recentApps`, `noteOpened`; `AppModel.recentApps`,
+    `noteOpenedApp`), and the pages pinned above its chats are
+    `Layout.pinnedPages` (`AppModel.isPagePinned`, `setPagePinned`)
   - `AppVersions.swift` — one of the person's own apps' versions and
     releases as strut gives them (`GET /apps/:name/versions`, strut's
     plans/app-releases.md): the live version, held or following latest,
@@ -918,7 +920,7 @@ is a short plan. Update the status and the journal when you finish something.
   touch target; `.phoneList` and `.phoneRows`, Peel's surfaces under every
   list and its rows), `Glass` (`GlassCapsule`, `GlassCapsuleButton`,
   `GlassButton`, `.floatingBar`, `.scrollEdges`: Liquid Glass on chrome
-  only), `PhoneComponents` (`CountBadge`, `PhoneSectionHeader`, `NavRow`,
+  only), `PhoneComponents` (`CountBadge`, `PhoneSectionHeader`,
   `ChatListRow`, `PhoneCard`), `PhonePlatform` (`Platform.phone()`:
   `UIApplication` presence and badge, `Clipboard`; files, playback and the
   web pane do nothing and are never offered; the web pane and calls throw
@@ -927,9 +929,10 @@ is a short plan. Update the status and the journal when you finish something.
   `readWorkspaceApps`, each org's pinned apps on its own strut; `BoxesSection`,
   You › Stadeum servers: each box linked, opened in `OrgPageSheet`, forgotten; the
   question is `MainTabs`' alert), `AppsScreen`
-  (Chats' Apps row: Talk to Jamie on each workspace, its screen a
-  full-screen cover; then the workspaces' pinned apps, A–Z, opened in
-  `OrgPageSheet`, pulled to read again), `OrgWallet` (the app wallet on the iPhone: `OrgWalletBridge`, keyed by
+  (the Apps tab: Talk to Jamie on each workspace, its screen a
+  full-screen cover; Recent, the apps opened last, one tap each; then the
+  workspaces' pinned apps, A–Z, opened in `OrgPageSheet`, pulled to read
+  again), `OrgWallet` (the app wallet on the iPhone: `OrgWalletBridge`, keyed by
   the org, or by the origin of a stranger's page, the main frame at its origin only; `PhoneWalletSheets` and the
   connect sheet with its sign-in choice, the payment and credit sheets with `TouchPayButton`, the toast; You ›
   Connected apps), `OrgPageSheet` (generic over `PhonePage`: an org's `OrgPageRequest`,
@@ -952,12 +955,12 @@ is a short plan. Update the status and the journal when you finish something.
   `ReceiveSheet`, `InvoiceScanner` (`CodeScanner`, VisionKit, QR only), `PayControls`
   (`TouchPayButton`, the touch-safe confirm; `SatsInput`, `NoteInput`,
   `FieldLabel`, `BalanceLine`, `SheetPage`), `Onboarding` (invite or restore,
-  pushed steps, `RestoreProgress`), `ChatsTab` (the top rows, Apps among
-  them once Stadeum is connected, then
-  Unread, Tribes and Direct messages over `AppModel.sidebarSections`,
-  the swipe actions and long-press menu, pull to refresh, the sections'
-  actions (Join and Create a tribe, pending invites, Add contact, Invite
-  someone), `chatsDestinations`), `ChatsConnection` (`ConnectionBolt`,
+  pushed steps, `RestoreProgress`), `ChatsTab` (one list newest first over
+  `AppModel.latestChats`, Peel's row first and pending invites above it;
+  ••• for Mentions and Threads (`ChatsPage`), each pinned as a chip above
+  the list from its page's bar (`PinPageButton`); the bolt and New chat (Add contact, Invite someone, Join and
+  Create a tribe); no search; the swipe actions and long-press menu, pull
+  to refresh, `chatsDestinations`), `ChatsConnection` (`ConnectionBolt`,
   green or orange, the orange countdown under the title and the bolt's
   `ConnectionPanel`), `PeopleControls` (`PeopleSheet`, `SheetStack`,
   `ActionRow`, `PendingInviteRow`, `CodeEntry`: a code typed, pasted,
@@ -1486,6 +1489,11 @@ xcrun simctl launch booted com.sphinx.peel
 xcodebuild -project Apps/Peel.xcodeproj -scheme 'Peel iOS' -destination 'generic/platform=iOS' \
   -derivedDataPath .build/xcode CODE_SIGNING_ALLOWED=NO build   # device, unsigned
 ```
+
+A simulator build needs signing to carry its entitlements: built with
+`CODE_SIGNING_ALLOWED=NO` it has no Keychain access group, and onboarding
+fails at the PIN with "Keychain write failed: A required entitlement is not
+present". Sign it ad hoc instead (`CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual`).
 
 Or open `Apps/Peel.xcodeproj` in Xcode (after `build-ffi.sh`), pick the
 `Peel iOS` scheme and a simulator, and Run. A simulator needs no team; for a

@@ -78,56 +78,20 @@ struct PhoneSectionHeader: View {
     }
 }
 
-/// A sidebar-style row at the top of Chats (Automations, Threads,
-/// Mentions): a 19 pt symbol in the avatars' 30 pt column, then the name,
-/// bold with a count when there is something new, `secondaryText` when
-/// not. The caller wraps it in its `NavigationLink`.
-struct NavRow<Icon: View>: View {
-    let title: String
-    let icon: Icon
-    var count = 0
-    var countStyle = Badge.Style.default
-
-    init(title: String, icon: Icon, count: Int = 0, countStyle: Badge.Style = .default) {
-        self.title = title
-        self.icon = icon
-        self.count = count
-        self.countStyle = countStyle
-    }
-
-    var body: some View {
-        let lit = count > 0
-        RowLayout {
-            icon
-                .font(.system(size: 19))
-                .frame(width: 30)
-                .accessibilityHidden(true)
-        } title: {
-            Text(title).phoneFont(PhoneFont.row.weight(lit ? .semibold : .regular))
-        } trailing: {
-            if lit { CountBadge(count: count, style: countStyle) }
-        }
-        .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(lit ? String(localized: "\(count) new") : "")
-    }
-}
-
-extension NavRow where Icon == Image {
-    /// A row with an SF Symbol.
-    init(title: String, systemImage: String, count: Int = 0, countStyle: Badge.Style = .default) {
-        self.init(title: title, icon: Image(systemName: systemImage), count: count, countStyle: countStyle)
-    }
-}
-
 /// A chat in a list: its icon (a tribe a rounded square, a person round),
 /// the name, and what it holds for you. Read: the name in
 /// `secondaryText`; unread: `text`, semibold, with the count in blue, or
 /// gold when it mentions you; orange while the agent waits on you. AGENT
 /// after the agent's name. The caller wraps it in its `NavigationLink`
 /// and adds the swipe actions.
+///
+/// Two lines, as the Mac's chat list (Tom, 2026-11-27): the name and its
+/// time alone on the first, so every time stays in one column; the last
+/// message under it with the count, @ or muted bell at its end. At
+/// accessibility text sizes the time and that end go on a line of their own.
 struct ChatListRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var typeSize
     let conversation: Conversation
     /// `model.readStates[chat]`.
     let state: ChatReadState?
@@ -142,38 +106,50 @@ struct ChatListRow: View {
         let mentionsYou = (state?.mentions ?? 0) > 0
         let lit = unread > 0 || waiting > 0
         let onCall = model.calls.liveCount(in: conversation.chat)
-        RowLayout {
+        let line = conversation.previewLine
+        let date = conversation.dateLabel()
+        HStack(spacing: Theme.Space.md) {
             icon
-        } title: {
-            HStack(spacing: 6) {
-                Text(conversation.name)
-                    .phoneFont(PhoneFont.row.weight(lit ? .semibold : .regular))
-                    .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
-                    .lineLimit(1)
-                if isAgent { AgentTag() }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(conversation.name)
+                        .phoneFont(PhoneFont.row.weight(lit ? .semibold : .regular))
+                        .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
+                        .lineLimit(1)
+                    if isAgent { AgentTag() }
+                    if !typeSize.isAccessibilitySize {
+                        Spacer(minLength: Theme.Space.sm)
+                        if let date { time(date) }
+                        if line == nil { end(onCall: onCall, unread: unread, mentionsYou: mentionsYou, level: level) }
+                    }
+                }
+                if let line {
+                    HStack(spacing: 5) {
+                        if unread > 0 {
+                            Circle().fill(Theme.accent).frame(width: 7, height: 7).accessibilityHidden(true)
+                        }
+                        Text(line)
+                            .phoneFont(PhoneFont.time.weight(unread > 0 ? .semibold : .regular))
+                            .foregroundStyle(unread > 0 ? Theme.text : Theme.tertiaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if !typeSize.isAccessibilitySize {
+                            Spacer(minLength: Theme.Space.sm)
+                            end(onCall: onCall, unread: unread, mentionsYou: mentionsYou, level: level)
+                        }
+                    }
+                }
+                if typeSize.isAccessibilitySize {
+                    HStack(spacing: 6) {
+                        if let date { time(date) }
+                        end(onCall: onCall, unread: unread, mentionsYou: mentionsYou, level: level)
+                    }
+                }
             }
-            .modifier(PreviewLine(line: conversation.previewLine,
-                                  date: conversation.dateLabel(), unread: unread > 0))
-        } trailing: {
-            if onCall > 0 {
-                Image(systemName: "phone.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.confirmed)
-                    .accessibilityHidden(true)
-            }
-            if waiting > 0 {
-                CountBadge(count: waiting, style: .attention)
-            } else if unread > 0 {
-                CountBadge(count: unread, style: mentionsYou ? .mention : .default)
-            } else if state?.isNew == true {
-                // Someone who added you; nothing to answer.
-                Badge(String(localized: "New"))
-            } else if level == .muted {
-                Image(systemName: "bell.slash").foregroundStyle(Theme.secondaryText)
-            } else if level == .mentionsOnly {
-                Image(systemName: "at").foregroundStyle(Theme.secondaryText)
-            }
+            if typeSize.isAccessibilitySize { Spacer(minLength: 0) }
         }
+        .padding(.vertical, 7)
+        .frame(minHeight: Theme.touchTarget)
         .opacity(level == .muted && !lit ? 0.6 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isAgent ? String(localized: "\(conversation.name), agent") : conversation.name)
@@ -188,6 +164,37 @@ struct ChatListRow: View {
         }
     }
 
+    private func time(_ date: String) -> some View {
+        Text(date)
+            .phoneFont(PhoneFont.time)
+            .foregroundStyle(Theme.tertiaryText)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    /// What the chat holds for you: a call, then the count, New, @ or the bell.
+    @ViewBuilder
+    private func end(onCall: Int, unread: Int, mentionsYou: Bool, level: MuteLevel) -> some View {
+        if onCall > 0 {
+            Image(systemName: "phone.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.confirmed)
+                .accessibilityHidden(true)
+        }
+        if waiting > 0 {
+            CountBadge(count: waiting, style: .attention)
+        } else if unread > 0 {
+            CountBadge(count: unread, style: mentionsYou ? .mention : .default)
+        } else if state?.isNew == true {
+            // Someone who added you; nothing to answer.
+            Badge(String(localized: "New"))
+        } else if level == .muted {
+            Image(systemName: "bell.slash").font(.system(size: 13)).foregroundStyle(Theme.secondaryText)
+        } else if level == .mentionsOnly {
+            Image(systemName: "at").font(.system(size: 13)).foregroundStyle(Theme.secondaryText)
+        }
+    }
+
     /// "3 unread, mentions you", "waiting on you", "muted".
     private func spoken(unread: Int, mentionsYou: Bool, level: MuteLevel, onCall: Int) -> String {
         if waiting > 0 { return String(localized: "waiting on you") }
@@ -198,74 +205,6 @@ struct ChatListRow: View {
         if state?.isNew == true, unread == 0 { parts.append(String(localized: "new")) }
         if level == .muted { parts.append(String(localized: "muted")) } else if level == .mentionsOnly { parts.append(String(localized: "mentions only")) }
         return parts.joined(separator: ", ")
-    }
-}
-
-/// Puts a chat's last message under its title on one line: `secondaryText`
-/// when read; `text`, semibold, with a blue dot when unread. The date of
-/// the message sits at the line's end and never gives way to the text.
-private struct PreviewLine: ViewModifier {
-    let line: String?
-    let date: String?
-    let unread: Bool
-
-    func body(content: Content) -> some View {
-        if let line {
-            VStack(alignment: .leading, spacing: 2) {
-                content
-                HStack(spacing: 5) {
-                    if unread {
-                        Circle().fill(Theme.accent).frame(width: 7, height: 7).accessibilityHidden(true)
-                    }
-                    Text(line)
-                        .phoneFont(PhoneFont.time.weight(unread ? .semibold : .regular))
-                        .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .layoutPriority(0)
-                    if let date {
-                        Spacer(minLength: 8)
-                        Text(date)
-                            .phoneFont(PhoneFont.time)
-                            .foregroundStyle(Theme.tertiaryText)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .layoutPriority(1)
-                    }
-                }
-            }
-        } else {
-            content
-        }
-    }
-}
-
-/// A row's layout: the icon column, the title, then what sits at its end.
-/// 44 tall at least (a list puts `Theme.phoneGutter` at its sides); at
-/// accessibility text sizes the end goes under the title rather than clipping it.
-private struct RowLayout<Leading: View, Title: View, Trailing: View>: View {
-    @ViewBuilder let leading: Leading
-    @ViewBuilder let title: Title
-    @ViewBuilder let trailing: Trailing
-    @Environment(\.dynamicTypeSize) private var typeSize
-
-    var body: some View {
-        HStack(spacing: Theme.Space.md) {
-            leading
-            if typeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    title
-                    trailing
-                }
-                Spacer(minLength: 0)
-            } else {
-                title
-                Spacer(minLength: Theme.Space.sm)
-                trailing
-            }
-        }
-        .padding(.vertical, 7)
-        .frame(minHeight: Theme.touchTarget)
     }
 }
 

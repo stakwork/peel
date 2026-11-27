@@ -41,6 +41,7 @@ struct ThreadsScreen: View {
                     Button("Mark all read") { Task { await model.markAllThreadsRead() } }
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) { PinPageButton(page: .threads) }
         }
     }
 }
@@ -185,6 +186,9 @@ struct MentionsScreen: View {
         }
         .navigationTitle("Mentions")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { PinPageButton(page: .mentions) }
+        }
         .task {
             do {
                 guard let updates = model.mentionUpdates() else { mentions = []; return }

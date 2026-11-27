@@ -33,6 +33,13 @@ public enum InviteLink {
     /// invite rides after its `#`.
     private static let joinPath = "/public/join"
 
+    /// The strut join page Stadeum's "Invite worker" flow uses today
+    /// (stakwork/strut `src/public-join.ts`). A shared invite is an https
+    /// link on it, since a `sphinx.chat://` link is not a link in most chat
+    /// apps and opens nothing for someone without the app. Change it here to
+    /// move the page.
+    public static let joinHost = "https://strut.stadeum.stakwork.ai"
+
     /// The section of a worker's invite link that names the app to open.
     private static let appSection = "a="
 
@@ -48,21 +55,57 @@ public enum InviteLink {
         return invite(linkPrefix + query)
     }
 
-    /// An invite link on the clipboard: only a whole `sphinx.chat://?action=i&…`
+    /// An invite link on the clipboard: a whole `sphinx.chat://?action=i&…`
     /// link, or strut's join link (`fromJoinLink`), which is taken as the same
-    /// link. Anything else someone copied is nil, so it never lands in the
-    /// invite field. The whole text must be the link: no whitespace inside.
+    /// link; or, when the text is a message around one (what `InviteShare`
+    /// writes), the first invite in it (`find(in:)`). Anything else someone
+    /// copied is nil, so it never lands in the invite field. The message is
+    /// capped at a few invites' length so a huge copy is never searched.
     public static func fromClipboard(_ text: String?) -> String? {
-        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        let link: String
-        if trimmed.lowercased().hasPrefix(linkPrefix) {
-            link = trimmed
-        } else if let joined = fromJoinLink(trimmed) {
-            link = joined
-        } else {
-            return nil
+        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              trimmed.utf16.count <= maxLength * 4 else { return nil }
+        if let whole = wholeLink(trimmed) { return whole }
+        // Text that opens with an invite link and goes on is someone's mangled link, not a message about one.
+        if let first = trimmed.split(whereSeparator: \.isWhitespace).first,
+           first.lowercased().hasPrefix(linkPrefix) || wholeLink(String(first)) != nil { return nil }
+        return find(in: trimmed)
+    }
+
+    /// The first invite in free text: the first piece between whitespace (with
+    /// the punctuation a sentence puts around a link taken off) that is an
+    /// invite link, as the `sphinx.chat://?…` link. Nil when there is none.
+    public static func find(in text: String) -> String? {
+        let edges = CharacterSet(charactersIn: "<>()[]\"'`.,;:!")
+        for piece in text.split(whereSeparator: \.isWhitespace) {
+            let token = String(piece)
+            if let link = wholeLink(token) { return link }
+            if let link = wholeLink(token.trimmingCharacters(in: edges)) { return link }
         }
-        return invite(link)
+        return nil
+    }
+
+    /// The link a share carries: `link` (a `sphinx.chat://?action=i&…` link)
+    /// as an https link on strut's join page, `<host>/public/join#action=i&…`,
+    /// which any chat app makes tappable and which sends someone without Peel
+    /// to get it. Mirrors strut's `joinLink` (`src/payments/invites.ts`): no
+    /// `a=` is added. Nil unless `link` is an invite with no `#` or
+    /// whitespace to break the address.
+    public static func joinLink(_ link: String, host: String = joinHost) -> String? {
+        var query = link.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.lowercased().hasPrefix(linkPrefix) { query.removeFirst(linkPrefix.count) }
+        guard query.hasPrefix("action=i&"), !query.contains("#"), !query.contains(where: \.isWhitespace),
+              query.split(separator: "&", omittingEmptySubsequences: false)
+                  .contains(where: { $0.hasPrefix("d=") && $0.count > 2 }) else { return nil }
+        var base = host
+        while base.hasSuffix("/") { base.removeLast() }
+        return "\(base)\(joinPath)#\(query)"
+    }
+
+    /// `text`, all of it, when it is one invite link (either form), as the
+    /// `sphinx.chat://?…` link.
+    private static func wholeLink(_ text: String) -> String? {
+        if text.lowercased().hasPrefix(linkPrefix) { return invite(text) }
+        return fromJoinLink(text).flatMap(invite)
     }
 
     /// The invite in strut's join link,

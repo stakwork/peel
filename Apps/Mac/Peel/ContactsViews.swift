@@ -404,11 +404,11 @@ private struct InviteDetail: View {
                 Text("Anyone with this invite can claim its sats.")
                     .muted()
                 HStack(spacing: Theme.Space.sm) {
-                    CopyButton(String(localized: "Copy invite"), text: invite.link)
+                    CopyButton(String(localized: "Copy invite"), text: InviteShare.message(link: invite.link, inviterAlias: model.myAlias, note: invite.message))
                     CopyButton("Copy QR", systemImage: "qrcode") { QRCode.copyImage(invite.link) }
                     // The system's share menu would hand it to another app.
                     if !Offscreen.isOn {
-                        ShareLink(item: invite.link) { Image(systemName: "square.and.arrow.up") }
+                        ShareLink(item: InviteShare.message(link: invite.link, inviterAlias: model.myAlias, note: invite.message)) { Image(systemName: "square.and.arrow.up") }
                             .help("Share the invite")
                             .accessibilityLabel("Share the invite")
                     }

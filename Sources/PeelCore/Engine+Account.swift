@@ -33,7 +33,9 @@ extension Engine {
     }
 
     public static func parseInvite(_ text: String) throws -> Invite {
-        let parsed = try Sphinxrs.parseInvite(inviteQr: text.trimmingCharacters(in: .whitespacesAndNewlines))
+        // A shared message, or a join link, becomes the invite link in it; a bare `d=…` code goes on as typed.
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsed = try Sphinxrs.parseInvite(inviteQr: InviteLink.fromClipboard(trimmed) ?? trimmed)
         return Invite(
             code: parsed.code,
             server: parsed.lspHost,

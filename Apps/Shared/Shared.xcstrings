@@ -14957,6 +14957,91 @@
           }
         }
       }
+    },
+    "%@ invited you to Peel, a private chat and wallet app." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ invited you to Peel, a private chat and wallet app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ te invitó a Peel, una app privada de chat y billetera."
+          }
+        }
+      }
+    },
+    "You're invited to Peel, a private chat and wallet app." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You're invited to Peel, a private chat and wallet app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tienes una invitación a Peel, una app privada de chat y billetera."
+          }
+        }
+      }
+    },
+    "1. Open this link on your phone and tap \"Get Peel\" (or \"Open in Peel\" if you have it):" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Open this link on your phone and tap \"Get Peel\" (or \"Open in Peel\" if you have it):"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Abre este enlace en tu teléfono y toca \"Obtener Peel\" (o \"Abrir en Peel\" si ya la tienes):"
+          }
+        }
+      }
+    },
+    "2. Open Peel. Your invite fills in by itself." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Open Peel. Your invite fills in by itself."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Abre Peel. Tu invitación se completa sola."
+          }
+        }
+      }
+    },
+    "3. If it doesn't, tap \"Join with an invite\" and paste this whole message." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. If it doesn't, tap \"Join with an invite\" and paste this whole message."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Si no, toca \"Unirme con una invitación\" y pega este mensaje completo."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

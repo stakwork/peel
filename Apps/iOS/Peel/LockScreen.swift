@@ -13,6 +13,8 @@ struct LockScreen: View {
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
+    /// Each refused PIN: the dots shake and the error haptic plays.
+    @State private var refusals = 0
     /// Whether the account is known to hold sats, for Forget; never how
     /// many (`AppModel.balanceBeforeForget`).
     @State private var holdsSats = false
@@ -73,10 +75,11 @@ struct LockScreen: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                PinPad(pin: $pin) {
+                PinPad(pin: $pin, refusals: refusals) {
                     Task { await unlock() }
                 }
                 .disabled(working)
+                .sensoryFeedback(.error, trigger: refusals)
                 PeelSpinner(active: working)
             }
             .padding(.horizontal, Theme.phoneGutter)
@@ -110,6 +113,7 @@ struct LockScreen: View {
         } catch {
             problem = PIN.problem(error)
             pin = ""
+            refusals += 1
         }
     }
 

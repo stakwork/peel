@@ -65,6 +65,7 @@ struct PayInvoicePane: View {
             .overlay(alignment: .top) { Theme.divider.frame(height: 1) }
             if let payment, payment.status != .failed {
                 outcome(payment, sent: sent)
+                    .animation(.arrive(0.2), value: payment.status)
             } else if let checked, checked.allowsPaying(check) {
                 payForm(invoice)
             } else {
@@ -157,6 +158,7 @@ struct PayInvoicePane: View {
                     Button("Done", action: close).buttonStyle(.peel(.outline))
                 }
             }
+            .transition(.rise(4))
         case .unsettled:
             Text(NotSettled.explanation + ".")
                 .font(Theme.font(13))
@@ -171,6 +173,7 @@ struct PayInvoicePane: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
             }
+            .transition(.opacity)
         }
     }
 }

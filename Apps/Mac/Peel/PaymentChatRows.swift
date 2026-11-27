@@ -50,6 +50,7 @@ private struct BoostChip: View {
     let inTribe: Bool
     /// Keys the hover card, so two chips never share one.
     let source: AnyHashable
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let shownBoosters = 3
     /// A booster without a photo shows their initial on their colour, as
@@ -76,8 +77,11 @@ private struct BoostChip: View {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.attention.opacity(pending ? 0.5 : 1))
+                    .popOnce(when: mine)
                 Text(String(localized: "\(Sats.number(msat: boosts.totalMsat)) sats")).font(Theme.font(11, .semibold))
                     .foregroundColor(mine ? Theme.boostMineText : Theme.text)
+                    .contentTransition(reduceMotion ? .identity : .numericText(value: Double(boosts.totalMsat)))
+                    .animation(.arrive(0.3), value: boosts.totalMsat)
                 HStack(spacing: -Self.overlap) {
                     ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,

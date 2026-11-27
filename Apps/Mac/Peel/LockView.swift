@@ -8,6 +8,8 @@ struct LockView: View {
     @State private var pin = ""
     @State private var working = false
     @State private var problem: String?
+    /// Each refused PIN: the boxes shake.
+    @State private var refusals = 0
     /// Whether the account is known to hold sats, for Forget; never how
     /// many (`AppModel.balanceBeforeForget`).
     @State private var holdsSats = false
@@ -25,7 +27,7 @@ struct LockView: View {
                             .foregroundStyle(Theme.secondaryText)
                     }
                 }
-                PinField(pin: $pin) { Task { await unlock() } }
+                PinField(pin: $pin, refusals: refusals) { Task { await unlock() } }
                     .disabled(working)
                     .frame(maxWidth: 360)
                 PeelSpinner(size: 16, active: working)
@@ -49,6 +51,7 @@ struct LockView: View {
         } catch {
             problem = PIN.problem(error)
             pin = ""
+            refusals += 1
         }
     }
 }

@@ -205,8 +205,8 @@ struct RunHeaderLine: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.quietText(on: surface))
                 .fixedSize()
-            if row.message.fromMe, row.message.delivery == .delivered {
-                DeliveredBolt()
+            if row.message.fromMe {
+                DeliveredBolt(delivered: row.message.delivery == .delivered)
             }
         }
     }
@@ -214,8 +214,11 @@ struct RunHeaderLine: View {
 
 /// The green bolt after the time on a delivered message of ours, in a
 /// `.firstTextBaseline` row. Its centre goes to the middle of the time's
-/// capitals and digits, from that font's own metrics.
+/// capitals and digits, from that font's own metrics. Laid out on every
+/// message of ours, so nothing moves when it arrives: it grows in as the
+/// server confirms (`arrival`), and a row drawn delivered shows it at once.
 struct DeliveredBolt: View {
+    let delivered: Bool
     /// The time's font beside it, `PhoneTheme`'s `.time` (12).
     private static let timeCapHeight = UIFont.systemFont(ofSize: 12).capHeight
 
@@ -223,8 +226,10 @@ struct DeliveredBolt: View {
         Image(systemName: "bolt.fill")
             .font(.system(size: 9))
             .foregroundStyle(Theme.confirmed)
+            .arrival(delivered, mark: true)
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Self.timeCapHeight / 2 }
             .accessibilityLabel("Delivered")
+            .accessibilityHidden(!delivered)
     }
 }
 
@@ -544,6 +549,7 @@ private struct BoostChipView: View {
     let inTribe: Bool
 
     @State private var showing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let shownBoosters = 3
     private static let overlap: CGFloat = 5
@@ -566,9 +572,12 @@ private struct BoostChipView: View {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.attention.opacity(pending ? 0.5 : 1))
+                    .popOnce(when: mine)
                 Text("\(Sats.number(msat: boosts.totalMsat)) sats")
                     .fontWeight(.semibold)
                     .foregroundStyle(mine ? Theme.boostMineText : Theme.text)
+                    .contentTransition(reduceMotion ? .identity : .numericText(value: Double(boosts.totalMsat)))
+                    .animation(.arrive(0.3), value: boosts.totalMsat)
                 HStack(spacing: -Self.overlap) {
                     ForEach(Array(people.prefix(Self.shownBoosters).enumerated()), id: \.offset) { index, boost in
                         let avatar = model.avatar(fromMe: boost.fromMe, alias: boost.alias, photoURL: boost.photoURL,

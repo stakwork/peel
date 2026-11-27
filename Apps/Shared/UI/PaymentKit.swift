@@ -45,13 +45,27 @@ struct BigAmount: View {
     var struck = false
     var unitSize: CGFloat = 15
     var spacing: CGFloat = 7
+    /// The number `amount` shows, for a figure that changes in place (the
+    /// balance): it rolls digit by digit when the change comes in an
+    /// animation (`MoneyArrivals` rolls only a rise a payment explains),
+    /// and otherwise just changes. nil for a figure that never changes.
+    var rolling: Double?
+    /// The widest the figure will be while it rolls, laid out hidden, so
+    /// "sats" never slides as digits come.
+    var widest: String?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: spacing) {
-            Text(amount)
-                .font(Theme.font(size, .bold))
-                .strikethrough(struck)
-                .foregroundStyle(color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.foreground))
+            ZStack(alignment: .leading) {
+                if let widest { Text(widest).hidden() }
+                Text(amount)
+                    .strikethrough(struck)
+                    .foregroundStyle(color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.foreground))
+                    .contentTransition(rolling.map { reduceMotion ? .identity : .numericText(value: $0) } ?? .identity)
+            }
+            .font(Theme.font(size, .bold))
             Text("sats", tableName: "Shared").font(Theme.font(unitSize)).foregroundStyle(Theme.secondaryText)
         }
         .monospacedDigit()

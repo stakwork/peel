@@ -25,7 +25,7 @@ struct PayInvoicePane: View {
     }
 
     var body: some View {
-        PaneFrame(title: String(localized: "Pay an invoice"), close: close) {
+        PaneFrame(title: String(localized: "Withdraw"), close: close) {
             let unreadable = !text.trimmed.isEmpty && invoice == nil
             FormItem(label: String(localized: "Invoice"), problem: unreadable ? String(localized: "That isn't an invoice.") : nil) {
                 FormTextField(label: String(localized: "Invoice"), prompt: "lnbc…", text: $text, axis: .vertical, problem: unreadable, monospaced: true)

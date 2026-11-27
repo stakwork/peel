@@ -17,6 +17,8 @@ struct MainView: View {
     @AppStorage("chatListHidden") private var chatListHidden = false
     /// Apps' column put away (⌃⌘S): an app full width.
     @AppStorage("appsColumnHidden") private var appsColumnHidden = false
+    /// Payments' list put away (⌃⌘S; `PaymentsView` draws its own column).
+    @AppStorage("paymentsListHidden") private var paymentsListHidden = false
 
     var body: some View {
         let onChats = PeelPage.isChats(model.destination)
@@ -63,7 +65,9 @@ struct MainView: View {
         .overlay(alignment: .topLeading) {
             // In one place on every page, as Mail's and Notes' (Tom, 2026-11-27):
             // off where the page has no column.
-            ColumnToggle(hidden: onChats ? $chatListHidden : onApps ? $appsColumnHidden : nil, chats: onChats)
+            ColumnToggle(hidden: onChats ? $chatListHidden : onApps ? $appsColumnHidden
+                            : model.destination == .payments ? $paymentsListHidden : nil,
+                         column: onChats ? .chats : onApps ? .apps : .payments)
                 .padding(.leading, HeaderBand.buttonsEnd)
                 .frame(height: HeaderBand.height)
         }
@@ -332,13 +336,17 @@ struct ColumnToggle: View {
     /// The page's column's hidden state; nil on a page with no column, where
     /// the toggle stays in its place, off.
     let hidden: Binding<Bool>?
-    let chats: Bool
+    enum Column { case chats, apps, payments }
+    let column: Column
 
     var body: some View {
         if let hidden {
-            let help = chats
-                ? (hidden.wrappedValue ? String(localized: "Show chat list (⌃⌘S)") : String(localized: "Hide chat list (⌃⌘S)"))
-                : (hidden.wrappedValue ? String(localized: "Show apps list (⌃⌘S)") : String(localized: "Hide apps list (⌃⌘S)"))
+            let shown = !hidden.wrappedValue
+            let help = switch column {
+            case .chats: shown ? String(localized: "Hide chat list (⌃⌘S)") : String(localized: "Show chat list (⌃⌘S)")
+            case .apps: shown ? String(localized: "Hide apps list (⌃⌘S)") : String(localized: "Show apps list (⌃⌘S)")
+            case .payments: shown ? String(localized: "Hide payments list (⌃⌘S)") : String(localized: "Show payments list (⌃⌘S)")
+            }
             IconButton("sidebar.left", help: help, size: .sm) { hidden.wrappedValue.toggle() }
                 .hiddenShortcut(KeyboardShortcut("s", modifiers: [.control, .command])) { hidden.wrappedValue.toggle() }
                 .frame(width: Self.width, alignment: .leading)

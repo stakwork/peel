@@ -137,6 +137,23 @@
         }
       }
     },
+    "Deposit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deposit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depositar"
+          }
+        }
+      }
+    },
     "Favorites" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -184,6 +201,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ocultar la lista de chats (⌃⌘S)"
+          }
+        }
+      }
+    },
+    "Hide payments list (⌃⌘S)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide payments list (⌃⌘S)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar la lista de pagos (⌃⌘S)"
           }
         }
       }
@@ -460,6 +494,23 @@
         }
       }
     },
+    "Show payments list (⌃⌘S)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show payments list (⌃⌘S)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar la lista de pagos (⌃⌘S)"
+          }
+        }
+      }
+    },
     "Something new" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -490,6 +541,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Marca una app con una estrella para tenerla aquí, a un clic desde cualquier app."
+          }
+        }
+      }
+    },
+    "Wallet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monedero"
+          }
+        }
+      }
+    },
+    "Withdraw" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Withdraw"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retirar"
           }
         }
       }
@@ -13751,23 +13836,6 @@
         }
       }
     },
-    "Pay an invoice" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pay an invoice"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pagar una factura"
-          }
-        }
-      }
-    },
     "Paying %@…" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15124,23 +15192,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Listo"
-          }
-        }
-      }
-    },
-    "Receive" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Receive"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recibir"
           }
         }
       }

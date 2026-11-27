@@ -173,9 +173,10 @@ struct ChatList: View {
         let searching = !query.isEmpty
         List {
             if searching {
-                var matching = chats
-                if let agent, ChatSections.matches(agent.name, query: query) { matching.insert(agent, at: 0) }
-                let found = SidebarSearch.capped(matching)
+                // One expression: a statement like `matching.insert` inside the
+                // view builder would be read as a view (`()`) and not compile.
+                let agentMatch = agent.flatMap { ChatSections.matches($0.name, query: query) ? $0 : nil }
+                let found = SidebarSearch.capped(agentMatch.map { [$0] + chats } ?? chats)
                 if !found.isEmpty {
                     Section {
                         ForEach(found) { ChatLink(conversation: $0, state: states[$0.chat], isAgent: $0.chat == model.agentChat) }

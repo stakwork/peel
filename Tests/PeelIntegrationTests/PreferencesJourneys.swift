@@ -349,7 +349,8 @@ extension Journeys {
         /// restore from recovery words, and removals sync too.
         @Test func openedPublicAppsSurviveAccountRestore() async throws {
             let alice = try await Person.create("alice")
-            let link = try #require(URL(string: "https://acme.example.com/public/?app=strut/tasks").flatMap(PublicAppLink.init))
+            let url = try #require(URL(string: "https://acme.example.com/public/?app=strut/tasks"))
+            let link = try #require(PublicAppLink(url))
             try alice.storage.rememberPublicApp(link, at: 1_700_000_100)
             try alice.storage.setPublicAppTitle(seller: link.seller.absoluteString, app: "strut/tasks", title: "Tasks")
             try alice.storage.setPublicAppIcon(seller: link.seller.absoluteString, app: "strut/tasks", icon: "list-checks")

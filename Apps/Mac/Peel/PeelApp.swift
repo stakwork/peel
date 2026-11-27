@@ -279,22 +279,36 @@ struct RootView: View {
     /// Voice Mode's screen in place of the standard one; its grid icon turns it off.
     @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
 
+    /// The phase last drawn, so an unlock can be told from other changes.
+    @State private var drawnPhase = AppModel.Phase.loading
+
+    /// Only an unlock animates: the lock fades out as the window fades in,
+    /// over 200 ms, opacity only. Every other change of phase cuts (Forget
+    /// on the lock included: the transitions carry no animation of their own).
     var body: some View {
-        switch model.phase {
-        case .loading:
-            PeelSpinner(size: 32)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .locked:
-            LockView()
-        case .onboarding:
-            OnboardingView()
-        case .ready:
-            if voiceMode {
-                VoiceModeScreen { voiceMode = false }
-            } else {
-                standard
+        ZStack {
+            switch model.phase {
+            case .loading:
+                PeelSpinner(size: 32)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .locked:
+                LockView()
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
+            case .onboarding:
+                OnboardingView()
+            case .ready:
+                Group {
+                    if voiceMode {
+                        VoiceModeScreen { voiceMode = false }
+                    } else {
+                        standard
+                    }
+                }
+                .transition(.asymmetric(insertion: .opacity, removal: .identity))
             }
         }
+        .animation(drawnPhase == .locked && model.phase == .ready ? .arrive(0.2) : nil, value: model.phase)
+        .onChange(of: model.phase, initial: true) { _, phase in drawnPhase = phase }
     }
 
     private var standard: some View {

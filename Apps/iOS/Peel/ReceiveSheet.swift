@@ -15,6 +15,8 @@ struct ReceiveSheet: View {
     @State private var invoice: InvoiceRecord?
     @State private var working = false
     @State private var problem: String?
+    /// Paid has come in: its check, then two beats (`arrival`).
+    @State private var paidShown = false
     @FocusState private var amountFocused: Bool
 
     var body: some View {
@@ -120,16 +122,22 @@ struct ReceiveSheet: View {
                     .foregroundStyle(full ? Theme.confirmed : Theme.attention)
                     .frame(width: 64, height: 64)
                     .background((full ? Theme.confirmed : Theme.attention).opacity(0.14), in: Circle())
+                    .arrival(paidShown, delay: 0.08, mark: true)
                     .accessibilityHidden(true)
-                Text(full ? String(localized: "Paid") : String(localized: "Partly paid"))
-                    .phoneFont(PhoneFont(size: 22, weight: .bold, style: .title2))
-                    .accessibilityAddTraits(.isHeader)
-                BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? String(localized: "Amount not known"),
-                          color: full ? Theme.confirmed : Theme.text)
-                if !invoice.memo.isEmpty { Text(invoice.memo).phoneFont(.row) }
+                VStack(spacing: Theme.Space.md) {
+                    Text(full ? String(localized: "Paid") : String(localized: "Partly paid"))
+                        .phoneFont(PhoneFont(size: 22, weight: .bold, style: .title2))
+                        .accessibilityAddTraits(.isHeader)
+                    BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? String(localized: "Amount not known"),
+                              color: full ? Theme.confirmed : Theme.text)
+                    if !invoice.memo.isEmpty { Text(invoice.memo).phoneFont(.row) }
+                }
+                .arrival(paidShown, delay: 0.18)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, Theme.Space.xl)
+            .onAppear { paidShown = true }
+            .onDisappear { paidShown = false }
             PhoneCard {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
                     if let paid = invoice.paid {
@@ -140,6 +148,7 @@ struct ReceiveSheet: View {
                 .padding(Theme.Space.md)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .arrival(paidShown, delay: 0.28)
         } actions: {
             HStack(spacing: Theme.Space.md) {
                 Button { dismiss() } label: { Text("Done").frame(maxWidth: .infinity) }

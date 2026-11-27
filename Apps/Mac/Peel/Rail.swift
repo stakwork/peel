@@ -377,7 +377,7 @@ private struct RailPaymentsButton: View {
                     .railCutout()
                     .offset(y: 9)
                     .allowsHitTesting(false)
-                    .transition(reduceMotion ? .identity : .scale(scale: 0.6).combined(with: .opacity))
+                    .transition(reduceMotion ? .identity : .scale(scale: 0.96).combined(with: .opacity))
                     .accessibilityLabel("Received \(Sats.format(msat: msat))")
             }
         }

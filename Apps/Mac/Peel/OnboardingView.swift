@@ -349,21 +349,27 @@ struct RestoreProgressView: View {
 
 struct RestoreRow: View {
     let line: AppModel.RestoreProgress.Line
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            Group {
+            // Each step's mark swaps in place (`.mark`).
+            ZStack {
                 switch line.state {
                 case .done:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
+                        .transition(reduceMotion ? .opacity : .mark)
                 case .active:
                     PeelSpinner(size: 18, delayed: false)
+                        .transition(reduceMotion ? .opacity : .mark)
                 case .waiting:
                     Image(systemName: "circle").foregroundStyle(Theme.divider)
+                        .transition(reduceMotion ? .opacity : .mark)
                 }
             }
             .font(.system(size: 18))
             .frame(width: 22, height: 22)
+            .animation(.arrive(0.3), value: line.state)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(line.title)
@@ -377,6 +383,7 @@ struct RestoreRow: View {
                 if let fraction = line.fraction, line.state == .active {
                     ProgressView(value: fraction)
                         .tint(Theme.accent)
+                        .animation(.linear(duration: 0.2), value: fraction)
                 }
             }
         }
@@ -565,6 +572,8 @@ struct WordCheckGrid: View {
 /// Six boxes over a hidden secure field, so the digits are never shown.
 struct PinField: View {
     @Binding var pin: String
+    /// Goes up with each refusal: the boxes shake once (`shake`).
+    var refusals = 0
     let complete: () -> Void
     @FocusState private var focused: Bool
     @Environment(\.isEnabled) private var isEnabled
@@ -582,7 +591,7 @@ struct PinField: View {
                     // The form's boxed field; the next digit's box ringed.
                     Color.clear
                         .frame(height: 52)
-                        .modifier(FieldChrome(focused: focused && index == pin.count))
+                        .modifier(FieldChrome(focused: focused && index == pin.count, animated: false))
                         .overlay {
                             if index < pin.count {
                                 Circle().fill(Theme.text).frame(width: 10, height: 10)
@@ -591,6 +600,7 @@ struct PinField: View {
                 }
             }
             .allowsHitTesting(false)
+            .shake(refusals)
         }
         .contentShape(Rectangle())
         .onTapGesture { focused = true }

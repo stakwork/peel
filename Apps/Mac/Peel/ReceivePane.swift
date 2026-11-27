@@ -16,6 +16,8 @@ struct ReceivePane: View {
     @State private var invoice: InvoiceRecord?
     @State private var working = false
     @State private var problem: String?
+    /// Paid has come in: its check, then two beats (`arrival`).
+    @State private var paidShown = false
 
     var body: some View {
         PaymentCard(title: String(localized: "Deposit")) {
@@ -107,17 +109,24 @@ struct ReceivePane: View {
                 .foregroundStyle(full ? Theme.confirmed : Theme.attention)
                 .frame(width: 64, height: 64)
                 .background((full ? Theme.confirmed : Theme.attention).opacity(0.14), in: Circle())
-            Text(full ? String(localized: "Paid") : String(localized: "Partly paid")).font(Theme.font(20, .bold))
-            BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? String(localized: "Amount not known"),
-                      color: full ? Theme.confirmed : Theme.text)
-            if !invoice.memo.isEmpty { Text(invoice.memo).font(Theme.font(14)) }
+                .arrival(paidShown, delay: 0.08, mark: true)
+            VStack(spacing: Theme.Space.md) {
+                Text(full ? String(localized: "Paid") : String(localized: "Partly paid")).font(Theme.font(20, .bold))
+                BigAmount(amount: invoice.paidMsat.map { Sats.signed(msat: $0, incoming: true) } ?? String(localized: "Amount not known"),
+                          color: full ? Theme.confirmed : Theme.text)
+                if !invoice.memo.isEmpty { Text(invoice.memo).font(Theme.font(14)) }
+            }
+            .arrival(paidShown, delay: 0.18)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
+        .onAppear { paidShown = true }
+        .onDisappear { paidShown = false }
         FactList {
             Fact(String(localized: "Received"), text: Formatting.time(invoice.paid ?? .now, seconds: true))
             Fact(String(localized: "Invoice for"), text: Sats.format(msat: invoice.amountMsat))
         }
+        .arrival(paidShown, delay: 0.28)
         HStack(spacing: Theme.Space.sm) {
             Button { close() } label: { Text("Done").frame(maxWidth: .infinity) }
                 .buttonStyle(.peel(.outline))
@@ -128,6 +137,7 @@ struct ReceivePane: View {
             } label: { Text("New invoice").frame(maxWidth: .infinity) }
                 .buttonStyle(.peel(.primary))
         }
+        .arrival(paidShown, delay: 0.28)
     }
 }
 

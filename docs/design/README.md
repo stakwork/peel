@@ -514,10 +514,11 @@ build: nothing in the header may move or wrap.
 - **Header balance:** rolls up digit by digit (`numericText`, about 0.7 s,
   tabular figures) only when a received payment explains the rise; the
   line keeps the larger number's width from the start, so nothing
-  jiggles. The connection bolt glows green for a moment. A first balance,
+  jiggles. The connection bolt glows green for a moment (a fixed
+  shadow faded in and out). A first balance,
   a restore, a fall, or sats no payment explains just change.
 - **Payments row:** "+350" in the badge slot, green text on a soft green
-  capsule, popping in with a 0.3 s scale and fade (no overshoot), rolling
+  capsule, coming in from 96% with a 0.3 s fade (no overshoot), rolling
   to "+420" as more comes, cleared when Payments opens; the matching rows
   light green and fade over 1.5 s, as a jump to a message does.
 - Payments within 0.7 s of each other (up to 3 s) are one arrival: one
@@ -602,6 +603,42 @@ glyph breathes between full and 40% opacity. VoiceOver reads "Loading".
 - On a fill or over a picture it takes that surface's text colour: the
   button's on a filled button or the voice note's play button, white in
   the image viewer, over a picture being uploaded and in the dictation pill.
+
+### Rare moments
+
+Tom picked these on 2026-11-27 from the motion board, the same on the
+iPhone and the Mac. The pieces are in `Apps/Shared/UI/Motion.swift`: one
+curve for what arrives (`.arrive`, ease-out 0.23, 1, 0.32, 1), a mark that
+grows in from a quarter of its size out of a 4 pt blur (`.mark`,
+`arrival(mark: true)`), a beat that fades up (`arrival`, `.rise`), the
+wrong-PIN shake (`shake`) and a single pop (`popOnce`). Under Reduce Motion
+each only fades, and the shake and the pop do nothing.
+
+- **Unlock:** a refused PIN shakes the dots (the boxes on the Mac) 10, 6,
+  then 2 pt over 360 ms, with the error haptic on the iPhone; focus stays,
+  so you can retype mid-shake. Only the lock screen shakes; other PIN
+  prompts (Change PIN, the words) keep their line of text. While it is
+  checked nothing new moves: the keypad dims and Peel's spinner shows. A
+  right PIN fades the lock out as the app comes in: Chats from 98% over
+  250 ms on the iPhone, a 200 ms fade on the Mac. Locking, launch,
+  onboarding and Forget still cut. On the Mac the next box's ring moves as
+  you type, never trailing the keys.
+- **Money:** the iPhone's Payments balance rolls its digits as the Mac's
+  header does: the same `MoneyArrivals` figure, rolling only a rise a
+  payment explains, its width held (`BigAmount(rolling:widest:)`). Paying
+  an invoice: "Paying…" fades out and Paid fades up 4 pt. Your boost
+  landing pops the chip's bolt once (1, 1.15, 1 over 260 ms) and its
+  total rolls. On the Mac the "+350" badge comes in from 96% and the
+  bolt's glow fades a fixed shadow.
+- **Sending:** on the iPhone a message you just sent fades up 4 pt into its
+  row over 150 ms; the Mac's Enter to send stays instant. The delivered
+  bolt is laid out on every message of ours and grows in when the server
+  confirms, so the time never shifts.
+- **Restore:** each step's mark (circle, spinner, check) swaps in place
+  and the bar eases to each value over 200 ms, linear.
+- **Someone pays your invoice:** the check grows in from 80 ms, then "Paid"
+  with the amount at 180 ms and the details at 280 ms, each fading up 8 pt
+  over 300 ms; all of it is laid out from the start.
 
 ## Component library
 

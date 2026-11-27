@@ -171,6 +171,7 @@ private struct PayInvoiceForm: View {
             PhoneCard { facts(expired: expired) }
             if let payment, payment.status != .failed {
                 outcome(payment, sent: sent)
+                    .animation(.arrive(0.2), value: payment.status)
             } else if let checked, let problem = checked.problem {
                 blocker(problem, paidAt: checked.paidAt, sent: sent)
             } else {
@@ -247,6 +248,7 @@ private struct PayInvoiceForm: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
             }
+            .transition(.rise(4))
         case .unsettled:
             ProblemText(PaymentItem.notSettled + ".")
         default:
@@ -257,6 +259,7 @@ private struct PayInvoiceForm: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.secondaryText)
             }
+            .transition(.opacity)
         }
     }
 }

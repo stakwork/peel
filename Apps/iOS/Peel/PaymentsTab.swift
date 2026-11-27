@@ -136,8 +136,11 @@ struct BalanceHeader: View {
                 Text("Balance")
                     .phoneFont(.secondary)
                     .foregroundStyle(Theme.tertiaryText)
-                BigAmount(amount: model.balanceMsat.map { Sats.number(msat: $0) } ?? "–", size: amountSize,
-                          unitSize: amountSize * 17 / 40, spacing: 6)
+                // As the Mac's header: `MoneyArrivals` rolls a rise a payment explains.
+                let shown = model.money.shownMsat
+                BigAmount(amount: shown.map { Sats.number(msat: $0) } ?? "–", size: amountSize,
+                          unitSize: amountSize * 17 / 40, spacing: 6, rolling: shown.map(Double.init),
+                          widest: shown.map { Sats.number(msat: max($0, model.money.balanceMsat ?? 0)) })
                     .foregroundStyle(Theme.text)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Balance")

@@ -12,7 +12,7 @@ struct MainView: View {
     /// The column beside the rail, the chat list's and Apps' alike, so its
     /// edge stays put going between them: dragged on its divider,
     /// remembered on this Mac (a convenience).
-    @AppStorage("sidebarWidth") private var sidebarWidth: Double = 260
+    @AppStorage("sidebarWidth") private var sidebarWidth = PaneDivider.columnStandard
     /// The chat list put away (⌃⌘S): Chats full width, as Payments is.
     @AppStorage("chatListHidden") private var chatListHidden = false
     /// Apps' column put away (⌃⌘S): an app full width.
@@ -32,12 +32,12 @@ struct MainView: View {
             if showsList {
                 SidebarColumn()
                     .frame(width: sidebarWidth)
-                PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
+                PaneDivider.column($sidebarWidth)
             }
             if showsApps {
                 AppsColumn()
                     .frame(width: sidebarWidth)
-                PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
+                PaneDivider.column($sidebarWidth)
             }
             VStack(spacing: 0) {
                 Detail()
@@ -65,9 +65,8 @@ struct MainView: View {
         .overlay(alignment: .topLeading) {
             // In one place on every page, as Mail's and Notes' (Tom, 2026-11-27):
             // off where the page has no column.
-            ColumnToggle(hidden: onChats ? $chatListHidden : onApps ? $appsColumnHidden
-                            : model.destination == .payments ? $paymentsListHidden : nil,
-                         column: onChats ? .chats : onApps ? .apps : .payments)
+            ColumnToggle(column: onChats ? (.chats, $chatListHidden) : onApps ? (.apps, $appsColumnHidden)
+                            : model.destination == .payments ? (.payments, $paymentsListHidden) : nil)
                 .padding(.leading, HeaderBand.buttonsEnd)
                 .frame(height: HeaderBand.height)
         }
@@ -329,24 +328,41 @@ struct Detail: View {
     }
 }
 
+extension PaneDivider {
+    /// The column beside the rail's (the chat list's, Apps' and Payments'
+    /// alike), so its edge stays put going between them.
+    static let columnStandard = 260.0
+
+    static func column(_ width: Binding<Double>) -> PaneDivider {
+        PaneDivider(width: width, range: 220...420, standard: columnStandard, growsTo: .trailing)
+    }
+}
+
 /// Put the column beside the rail away, or back (⌃⌘S): beside the window's
-/// buttons, the chat list on Chats and Apps' column on Apps.
+/// buttons, the chat list on Chats, Apps' column on Apps and the history on
+/// Payments.
 struct ColumnToggle: View {
     static let width = HeaderBand.toggleWidth
-    /// The page's column's hidden state; nil on a page with no column, where
-    /// the toggle stays in its place, off.
-    let hidden: Binding<Bool>?
-    enum Column { case chats, apps, payments }
-    let column: Column
+
+    enum Column {
+        case chats, apps, payments
+
+        func help(hidden: Bool) -> String {
+            switch self {
+            case .chats: hidden ? String(localized: "Show chat list (⌃⌘S)") : String(localized: "Hide chat list (⌃⌘S)")
+            case .apps: hidden ? String(localized: "Show apps list (⌃⌘S)") : String(localized: "Hide apps list (⌃⌘S)")
+            case .payments: hidden ? String(localized: "Show payments list (⌃⌘S)") : String(localized: "Hide payments list (⌃⌘S)")
+            }
+        }
+    }
+
+    /// The page's column and its hidden state; nil on a page with no column,
+    /// where the toggle stays in its place, off.
+    let column: (Column, Binding<Bool>)?
 
     var body: some View {
-        if let hidden {
-            let shown = !hidden.wrappedValue
-            let help = switch column {
-            case .chats: shown ? String(localized: "Hide chat list (⌃⌘S)") : String(localized: "Show chat list (⌃⌘S)")
-            case .apps: shown ? String(localized: "Hide apps list (⌃⌘S)") : String(localized: "Show apps list (⌃⌘S)")
-            case .payments: shown ? String(localized: "Hide payments list (⌃⌘S)") : String(localized: "Show payments list (⌃⌘S)")
-            }
+        if case let (column, hidden)? = column {
+            let help = column.help(hidden: hidden.wrappedValue)
             IconButton("sidebar.left", help: help, size: .sm) { hidden.wrappedValue.toggle() }
                 .hiddenShortcut(KeyboardShortcut("s", modifiers: [.control, .command])) { hidden.wrappedValue.toggle() }
                 .frame(width: Self.width, alignment: .leading)

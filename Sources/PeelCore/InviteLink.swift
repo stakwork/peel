@@ -78,8 +78,9 @@ public enum InviteLink {
         let edges = CharacterSet(charactersIn: "<>()[]\"'`.,;:!")
         for piece in text.split(whereSeparator: \.isWhitespace) {
             let token = String(piece)
-            if let link = wholeLink(token) { return link }
+            // Trimmed first: a sentence's full stop after a link is not part of it.
             if let link = wholeLink(token.trimmingCharacters(in: edges)) { return link }
+            if let link = wholeLink(token) { return link }
         }
         return nil
     }

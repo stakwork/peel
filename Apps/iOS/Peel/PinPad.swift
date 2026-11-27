@@ -10,6 +10,8 @@ struct PinPad: View {
     @Binding var pin: String
     /// Face ID's key, when it is on; nil leaves its place empty.
     var biometry: (name: String, action: () -> Void)?
+    /// Goes up with each refusal: the dots shake once (`shake`).
+    var refusals = 0
     let complete: () -> Void
     @Environment(\.isEnabled) private var isEnabled
     @ScaledMetric(relativeTo: .title) private var digit: CGFloat = 30
@@ -19,6 +21,7 @@ struct PinPad: View {
     var body: some View {
         VStack(spacing: 44) {
             PinDots(count: pin.count)
+                .shake(refusals)
             Grid(horizontalSpacing: 26, verticalSpacing: 18) {
                 ForEach([["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]], id: \.self) { row in
                     GridRow { ForEach(row, id: \.self) { digitKey($0) } }

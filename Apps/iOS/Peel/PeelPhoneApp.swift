@@ -138,6 +138,10 @@ struct RootView: View {
     /// Voice Mode's screen in place of the standard one; its grid icon turns it off.
     @AppStorage(VoiceModeSetting.key) private var voiceMode = VoiceModeSetting.defaultValue
 
+    /// The phase last drawn, so an unlock can be told from other changes.
+    @State private var drawnPhase = AppModel.Phase.loading
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         @Bindable var model = model
         @Bindable var router = router
@@ -201,22 +205,35 @@ struct RootView: View {
             .onAppear { if model.phase == .onboarding { router.reset(keepingInvite: true) } }
     }
 
-    @ViewBuilder private var phase: some View {
-        switch model.phase {
-        case .loading:
-            PeelSpinner(size: 28)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Theme.background.ignoresSafeArea())
-        case .locked:
-            LockScreen()
-        case .onboarding:
-            Onboarding()
-        case .ready:
-            if voiceMode {
-                VoiceModeScreen { voiceMode = false }
-            } else {
-                MainTabs()
+    /// Only an unlock animates: the lock fades out as Chats comes in from
+    /// 98%, over 250 ms. Every other change of phase cuts (Forget on the
+    /// lock included: the transitions carry no animation of their own).
+    private var phase: some View {
+        ZStack {
+            switch model.phase {
+            case .loading:
+                PeelSpinner(size: 28)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.background.ignoresSafeArea())
+            case .locked:
+                LockScreen()
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
+            case .onboarding:
+                Onboarding()
+            case .ready:
+                Group {
+                    if voiceMode {
+                        VoiceModeScreen { voiceMode = false }
+                    } else {
+                        MainTabs()
+                    }
+                }
+                .transition(.asymmetric(insertion: reduceMotion ? .opacity : .scale(scale: 0.98).combined(with: .opacity), removal: .identity))
             }
         }
+        .animation(unlocking ? .arrive(0.25) : nil, value: model.phase)
+        .onChange(of: model.phase, initial: true) { _, phase in drawnPhase = phase }
     }
+
+    private var unlocking: Bool { drawnPhase == .locked && model.phase == .ready }
 }

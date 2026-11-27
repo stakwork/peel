@@ -414,8 +414,8 @@ struct RunHeader: View {
                 .muted()
                 .help(tooltip)
             local()
-            if message.fromMe, message.delivery == .delivered {
-                DeliveredBolt()
+            if message.fromMe {
+                DeliveredBolt(delivered: message.delivery == .delivered)
             }
         }
     }
@@ -425,7 +425,11 @@ struct RunHeader: View {
 /// `.firstTextBaseline` row. A symbol sits on the baseline like text of its
 /// own (smaller) size, so it would ride low; its centre goes to the middle
 /// of the time's capitals and digits instead, from that font's own metrics.
+/// Laid out on every message of ours, so nothing moves when it arrives: it
+/// grows in as the server confirms (`arrival`), and a row drawn delivered
+/// shows it at once.
 struct DeliveredBolt: View {
+    let delivered: Bool
     /// The time's font beside it, `Theme.font(12)`.
     private static let timeCapHeight = NSFont.systemFont(ofSize: 12).capHeight
 
@@ -433,8 +437,10 @@ struct DeliveredBolt: View {
         Image(systemName: "bolt.fill")
             .font(.system(size: 9))
             .foregroundStyle(Theme.confirmed)
+            .arrival(delivered, mark: true)
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Self.timeCapHeight / 2 }
-            .help("Delivered")
+            .help(delivered ? String(localized: "Delivered") : "")
+            .accessibilityHidden(!delivered)
     }
 }
 

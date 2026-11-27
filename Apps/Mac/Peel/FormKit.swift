@@ -99,6 +99,9 @@ struct FieldChrome: ViewModifier {
     let focused: Bool
     var hovering = false
     var problem = false
+    /// False where focus moves as you type (the PIN's boxes): the ring
+    /// jumps with the keys rather than trailing them.
+    var animated = true
 
     @Environment(\.isEnabled) private var isEnabled
 
@@ -119,7 +122,7 @@ struct FieldChrome: ViewModifier {
                 }
             }
             .opacity(isEnabled ? 1 : 0.5)
-            .animation(.easeOut(duration: 0.12), value: focused)
+            .animation(animated ? .easeOut(duration: 0.12) : nil, value: focused)
     }
 }
 

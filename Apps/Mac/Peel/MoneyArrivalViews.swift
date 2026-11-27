@@ -67,7 +67,7 @@ struct PaymentsLink: View {
             if msat > 0 {
                 Badge(Sats.signed(msat: msat, incoming: true), .success)
                     .contentTransition(reduceMotion ? .identity : .numericText(value: Double(msat)))
-                    .transition(reduceMotion ? .identity : .scale(scale: 0.6).combined(with: .opacity))
+                    .transition(reduceMotion ? .identity : .scale(scale: 0.96).combined(with: .opacity))
                     .accessibilityLabel("Received \(Sats.format(msat: msat))")
             }
         }
@@ -89,7 +89,8 @@ private struct ReceivedGlow: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .shadow(color: Theme.confirmed.opacity(glowing ? 0.9 : 0), radius: glowing ? 5 : 0)
+            // A fixed shadow faded in and out: animating its radius redraws the blur each frame.
+            .shadow(color: Theme.confirmed.opacity(glowing ? 0.9 : 0), radius: 5)
             .onChange(of: arrivals) {
                 withAnimation(.easeOut(duration: 0.2)) { glowing = true }
                 Task {

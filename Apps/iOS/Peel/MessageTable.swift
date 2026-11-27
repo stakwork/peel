@@ -266,6 +266,8 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
         log("rows \(old.count)->\(rows.count) move \(move.to)\(move.animated ? " animated" : "")")
         if placed {
             apply(move, from: visual)
+            // After the move, so the fade starts as the list brings the row up.
+            arrive(difference.insertions)
         } else if move.to != .keep {
             pendingOpen = move
         }
@@ -339,6 +341,27 @@ final class MessageTableEngine: NSObject, ChatListEngine, UITableViewDataSource,
                 let reconfigured = changed.compactMap { position[$0].map { IndexPath(row: $0, section: 0) } }
                 if !reconfigured.isEmpty { table.reconfigureRows(at: reconfigured) }
                 table.layoutIfNeeded()
+            }
+        }
+    }
+
+    /// A message you just sent (ours, still pending, seconds old) fades up
+    /// 4 pt into its row over 150 ms; under Reduce Motion it only fades.
+    /// History, others' messages and rows scrolling into view never move.
+    private func arrive(_ insertions: [CollectionDifference<String>.Change]) {
+        // A move (`inferringMoves`) is an existing row, not a new one.
+        for case .insert(let offset, _, nil) in insertions {
+            guard rows.indices.contains(offset) else { continue }
+            let message = rows[offset].message
+            guard rows[offset].kind == .message, message.fromMe, message.delivery == .pending,
+                  Date.now.timeIntervalSince(message.date) < 10,
+                  let cell = table.cellForRow(at: IndexPath(row: offset, section: 0)) else { continue }
+            let view = cell.contentView
+            view.alpha = 0
+            if !UIAccessibility.isReduceMotionEnabled { view.transform = CGAffineTransform(translationX: 0, y: 4) }
+            UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+                view.alpha = 1
+                view.transform = .identity
             }
         }
     }

@@ -114,7 +114,7 @@ goes full width as Payments and Apps are.
 clickable prototype): the history is a column beside the rail, as the
 chat list is, at the same width; beside it the Wallet: the balance large,
 Deposit (filled) and Withdraw (outlined). Each opens its form as a card
-under the buttons, the button ringed while it is open (`PaneStyle.card`):
+under the buttons, the button ringed while it is open (`PaymentCard`):
 Deposit's amount and memo, then the invoice; Withdraw's pasted invoice,
 then Pay. A payment picked in the list shows its details beside it; its
 close goes back to the Wallet. ⌃⌘S puts the list away.

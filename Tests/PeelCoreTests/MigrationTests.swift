@@ -461,6 +461,39 @@ struct MigrationTests {
         #expect(try storage.preference(.pinTimeout).map(PINTimeout.peelHours(fromOfficial:)) == PINTimeout.never)
     }
 
+    /// v40 gives each app opened before sync its synced item, dated when it
+    /// was last opened and written exactly as `SyncedPublicApp` writes it,
+    /// so opening it again changes nothing synced.
+    @Test func openedPublicAppsAreBackfilledIntoSyncedPreferences() throws {
+        let tasks = try #require(URL(string: "https://acme.example.com/public/?app=strut/tasks").flatMap { PublicAppLink($0) })
+        let home = try #require(URL(string: "https://other.example.com/").flatMap { PublicAppLink($0) })
+        let queue = try profile.queue()
+        try Storage.migrator.migrate(queue, upTo: "v39")
+        try queue.write { db in
+            for (link, openedAt, title, icon) in [(tasks, 1_760_000_000, "Tasks", "list-checks"), (home, 1_760_000_100, nil, nil)] {
+                try db.execute(
+                    sql: "INSERT INTO publicApp (seller, app, url, origin, openedAt, title, icon) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    arguments: [link.seller.absoluteString, link.app ?? "", link.url.absoluteString, link.origin, openedAt, title, icon]
+                )
+            }
+        }
+        try queue.close()
+        let storage = try profile.storage()
+        let rows = try storage.preferenceRows().filter { $0.key == Preferences.publicAppKey }.sorted { $0.updatedAt < $1.updatedAt }
+        #expect(rows.map(\.identifier) == [
+            SyncedPublicApp.identifier(seller: tasks.seller.absoluteString, app: "strut/tasks"),
+            SyncedPublicApp.identifier(seller: home.seller.absoluteString, app: ""),
+        ])
+        #expect(rows.map(\.updatedAt) == [1_760_000_000, 1_760_000_100])
+        #expect(rows.map { JSONValue(text: $0.value).flatMap(Preference<SyncedPublicApp>.publicApp.read) } == [
+            .opened(.init(url: tasks.url.absoluteString, title: "Tasks", icon: "list-checks")),
+            .opened(.init(url: home.url.absoluteString)),
+        ])
+        for link in [tasks, home] {
+            #expect(try !storage.rememberPublicApp(link, at: 1_760_000_200))
+        }
+    }
+
     /// A boost amount under a sat (which no input of Peel's could make)
     /// becomes one sat, the nearest the file can hold, not the default.
     @Test func aBoostAmountUnderASatBecomesOne() throws {

@@ -19,7 +19,9 @@ Extended 2026-10-21: `chat_color` (import-only), `biometric_enabled` (iOS
 only, never enrolling) and `ai_agent_config` (a secret, Keychain only) now
 sync too (decisions 9 to 12). Extended 2026-11-02: `pin_timeout` syncs too,
 as an opt-in key on devices where the account has a PIN (decision 13,
-which replaces decisions 4 and 12).
+which replaces decisions 4 and 12). Extended 2026-11-27: the public apps
+opened on the iPhone sync as `peel.public_app` (peel#625), so a restore
+brings Apps back.
 
 Three PRs: (a) this file, (b) the layer and the migration onto it, (c) the
 sync. Earlier notes: `05-parity.md`, "Settings sync" (2026-10-08), and
@@ -159,6 +161,7 @@ The keys (`DataSyncModels.swift:13-23`; iOS has the first six only):
 | Colours others gave a person or chat | `preference` (`chat_color`, identifier the colour key) | `chat_color` | **Synced, import-only** (decision 9): shown as the nearest of the eight hues, never uploaded |
 | Face ID on/off (`BiometricUnlock`, Keychain) | `biometric_enabled` row = the person's wish; the PIN stays in the biometric Keychain item | `biometric_enabled` | **Synced on iOS only**, never silently enrolling (decision 10) |
 | The agent's model and key (`Profile.agentCredential`, Keychain) | the key only in the Keychain; a placeholder row holds the date | `ai_agent_config` | **Synced where there is an agent** (the Mac), the key only through the Keychain (decision 11) |
+| Public apps opened on the iPhone (Apps) | `publicApp` rows, each also a `preference` row in the item's shape | none | **Synced**, Peel-only: `peel.public_app`, one item per app (address, title, icon; `deleted` once removed); see `13-worker-invite-iphone.md` |
 | Mute levels | `chatState`, from the server | none (the server keeps them) | Unchanged: already account-wide |
 | Theme | none (Peel is always dark) | none | Nothing to sync |
 | Tribes, memes and call servers | `setting` | none | Account configuration, not preferences: stay in `setting` |

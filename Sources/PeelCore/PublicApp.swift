@@ -113,17 +113,22 @@ public struct PublicAppLink: Sendable, Equatable {
             }
         }
         guard let found = try? JSONDecoder().decode(Listing.self, from: reply) else { return (nil, nil) }
-        var title: String?
-        if let raw = found.title {
-            let clean = TextLine.clean(raw.trimmingCharacters(in: .whitespacesAndNewlines), max: 80)
-            title = clean.isEmpty ? nil : clean
-        }
-        var icon: String?
-        if let raw = found.icon?.trimmingCharacters(in: .whitespacesAndNewlines), raw.count <= 64,
-           raw.wholeMatch(of: try! Regex(#"[a-z0-9]+(-[a-z0-9]+)*"#)) != nil {
-            icon = raw
-        }
-        return (title, icon)
+        return (cleanTitle(found.title), cleanIcon(found.icon))
+    }
+
+    /// Trims and cleans a public app's title to one line; nil when empty.
+    static func cleanTitle(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let clean = TextLine.clean(raw.trimmingCharacters(in: .whitespacesAndNewlines), max: 80)
+        return clean.isEmpty ? nil : clean
+    }
+
+    /// Trims and validates a lucide icon name (lowercase kebab-case, at most
+    /// 64 characters); nil for anything else.
+    static func cleanIcon(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), raw.count <= 64,
+              raw.wholeMatch(of: try! Regex(#"[a-z0-9]+(-[a-z0-9]+)*"#)) != nil else { return nil }
+        return raw
     }
 
     /// The app a served box's page names in `<meta name="strut-serve"

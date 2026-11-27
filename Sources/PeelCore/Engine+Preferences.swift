@@ -128,6 +128,13 @@ extension Engine {
         schedulePreferencesSync(after: .zero)
     }
 
+    /// Opened public apps changed on this device (remembered, retitled,
+    /// re-iconed, forgotten or disconnected): schedule the debounced
+    /// preferences sync so the change goes up to the account's file.
+    public func publicAppsChanged() {
+        schedulePreferencesSync(after: Self.preferencesDebounce)
+    }
+
     /// A sync after `delay`, replacing one already waiting. Every sync
     /// retries what failed before, so a failure is reported once (as a core
     /// error), and again only once a sync has worked since. A server that

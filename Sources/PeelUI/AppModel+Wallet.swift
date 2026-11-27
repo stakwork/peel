@@ -65,8 +65,10 @@ extension AppModel {
 
     /// Revoked: the app must ask again. Its payments stay in Payments.
     public func revokeWalletConnection(_ key: String) {
+        guard let engine else { return }
         do {
-            try engine?.storage.deleteWalletConnection(key: key)
+            try engine.storage.deleteWalletConnection(key: key)
+            if key.hasPrefix("origin:") { Task { await engine.publicAppsChanged() } }
         } catch {
             notice = PeelError.noted(error, couldNot: String(localized: "disconnect the app", table: "Shared"))
         }

@@ -231,6 +231,9 @@ extension Storage {
                 let stored = try PreferenceRow.fetchOne(db, key: ["key": row.key, "identifier": row.identifier])
                 guard stored == change.expected else { continue }
                 try row.upsert(db)
+                if row.key == Preferences.publicAppKey {
+                    try Self.applySyncedPublicApp(identifier: row.identifier, value: row.value, date: row.updatedAt, in: db)
+                }
                 if stored?.value != row.value { changed += 1 }
             }
             return changed

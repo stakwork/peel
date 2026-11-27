@@ -107,12 +107,21 @@ extension Storage {
     /// person in. Its payments stay in history.
     ///
     /// A stranger's origin (`origin:<origin>`) leaves Apps with its
-    /// connection: its opened apps are forgotten in the same write.
+    /// connection: its opened apps are forgotten in the same write (and
+    /// tombstoned in synced preferences so the removal follows the account).
     public func deleteWalletConnection(key: String) throws {
         try pool.write { db in
             _ = try WalletConnection.deleteOne(db, key: key)
             if key.hasPrefix(Self.originKeyPrefix) {
-                try db.execute(sql: "DELETE FROM publicApp WHERE origin = ?", arguments: [String(key.dropFirst(Self.originKeyPrefix.count))])
+                let origin = String(key.dropFirst(Self.originKeyPrefix.count))
+                let rows = try Row.fetchAll(db, sql: "SELECT seller, app FROM publicApp WHERE origin = ?", arguments: [origin])
+                try db.execute(sql: "DELETE FROM publicApp WHERE origin = ?", arguments: [origin])
+                let now = Date.now
+                for row in rows {
+                    try Self.recordForgottenPublicApp(
+                        seller: row["seller"], app: row["app"], deletedLocal: true, at: now, in: db
+                    )
+                }
             }
         }
     }

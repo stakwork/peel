@@ -7,16 +7,12 @@ import PeelUI
 /// Payments (Tom, 2026-11-27; the board's "Payments as a column"): the
 /// history as a column beside the rail, as the chat list is on Chats, and
 /// beside it the wallet: the balance with Deposit and Withdraw, whose forms
-/// open as a card under them (`PaneStyle.card`), or a payment's details
+/// open as a card under them (`PaymentCard`), or a payment's details
 /// when one is picked. Older pages load as the list scrolls; ⌃⌘S puts the
 /// list away; an invoice dropped on the window opens Withdraw.
 struct PaymentsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.appearsActive) private var appearsActive
-    /// MainView's: where the page's header starts when it starts at the rail.
-    @Environment(\.headerLeadingInset) private var pageInset
-    /// The chat list's width, so the column's edge holds still going between them.
-    @AppStorage("sidebarWidth") private var columnWidth: Double = 260
     /// The list put away (⌃⌘S, `ColumnToggle`): the wallet full width.
     @AppStorage("paymentsListHidden") private var listHidden = false
 
@@ -39,13 +35,7 @@ struct PaymentsView: View {
     var body: some View {
         HStack(spacing: 0) {
             if !listHidden {
-                VStack(spacing: 0) {
-                    ColumnHeader(title: String(localized: "Payments")) { EmptyView() }
-                    list
-                }
-                .frame(width: columnWidth)
-                .background(Theme.sidebar)
-                PaneDivider(width: $columnWidth, range: 220...420, standard: 260, growsTo: .trailing)
+                PaymentsColumn(feed: feed, pane: $pane)
             }
             Group {
                 if case .detail(let id) = pane {
@@ -55,7 +45,9 @@ struct PaymentsView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .environment(\.headerLeadingInset, listHidden ? pageInset : 0)
+            // Beside the list its header starts at its edge; with the list
+            // away, where MainView starts a page at the rail.
+            .transformEnvironment(\.headerLeadingInset) { if !listHidden { $0 = 0 } }
         }
         .task(id: feed.paging.limit) { await feed.follow() }
         .task(id: feed.refreshTrigger) { await feed.refreshSoon() }
@@ -79,34 +71,22 @@ struct PaymentsView: View {
             DetailHeader(title: String(localized: "Wallet"))
             ScrollView {
                 VStack(spacing: Theme.Space.lg) {
-                    VStack(spacing: 4) {
-                        Text("Balance")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.tertiaryText)
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(model.money.shownMsat.map { Sats.number(msat: $0) } ?? "–")
-                                .font(Theme.font(44, .bold))
-                                .monospacedDigit()
-                            Text("sats")
-                                .font(Theme.font(18, .medium))
-                                .foregroundStyle(Theme.secondaryText)
-                        }
-                    }
+                    WalletBalance()
                     HStack(spacing: Theme.Space.sm) {
-                        WalletButton(title: String(localized: "Deposit"), systemImage: "arrow.down", primary: true,
-                                     open: pane == .receive) { pane = pane == .receive ? nil : .receive }
-                        WalletButton(title: String(localized: "Withdraw"), systemImage: "arrow.up", primary: false,
-                                     open: pane == .pay) { pane = pane == .pay ? nil : .pay }
+                        WalletButton(title: String(localized: "Deposit"), systemImage: "arrow.down", variant: .primary,
+                                     opens: .receive, pane: $pane)
+                        WalletButton(title: String(localized: "Withdraw"), systemImage: "arrow.up", variant: .outline,
+                                     opens: .pay, pane: $pane)
                     }
-                    Group {
-                        if pane == .receive {
-                            ReceivePane { pane = nil }
-                        } else if pane == .pay {
-                            PayInvoicePane(text: $invoiceText, history: items, show: { pane = .detail($0) },
-                                           receive: { pane = .receive }) { pane = nil }
-                        }
+                    switch pane {
+                    case .receive:
+                        ReceivePane { pane = nil }
+                    case .pay:
+                        PayInvoicePane(text: $invoiceText, history: items, show: { pane = .detail($0) },
+                                       receive: { pane = .receive }) { pane = nil }
+                    default:
+                        EmptyView()
                     }
-                    .environment(\.paneStyle, .card)
                 }
                 .frame(maxWidth: 440)
                 .padding(.top, 70)
@@ -126,6 +106,30 @@ struct PaymentsView: View {
                     .font(Theme.font(13))
                     .foregroundStyle(Theme.secondaryText)
             }
+        }
+    }
+}
+
+/// The history beside the rail, at the chat list's width: newest first,
+/// grouped by time, a row picked opening its details beside it.
+private struct PaymentsColumn: View {
+    @Environment(AppModel.self) private var model
+    let feed: PaymentsFeed
+    @Binding var pane: PaymentsView.Pane?
+    /// The chat list's width, so the column's edge holds still going between them.
+    @AppStorage("sidebarWidth") private var width = PaneDivider.columnStandard
+
+    private var items: [PaymentItem] { feed.items }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                ColumnHeader(title: String(localized: "Payments")) { EmptyView() }
+                list
+            }
+            .frame(width: width)
+            .background(Theme.sidebar)
+            PaneDivider.column($width)
         }
     }
 
@@ -174,21 +178,39 @@ struct PaymentsView: View {
     }
 }
 
+/// The wallet's balance, large: read here so a change to it redraws only
+/// this, not the list beside it.
+private struct WalletBalance: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("Balance")
+                .font(Theme.font(12))
+                .foregroundStyle(Theme.tertiaryText)
+            BigAmount(amount: model.money.shownMsat.map { Sats.number(msat: $0) } ?? "–",
+                      size: 44, unitSize: 18, spacing: 8)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// Deposit and Withdraw under the balance: Deposit filled, Withdraw
-/// outlined, each ringed while its form is open below.
+/// outlined, each opening its form below and ringed while it is open.
 private struct WalletButton: View {
     let title: String
     let systemImage: String
-    let primary: Bool
-    let open: Bool
-    let action: () -> Void
+    let variant: PeelButton.Variant
+    let opens: PaymentsView.Pane
+    @Binding var pane: PaymentsView.Pane?
 
     var body: some View {
-        Button(action: action) {
+        let open = pane == opens
+        Button { pane = open ? nil : opens } label: {
             Label(title, systemImage: systemImage)
                 .frame(minWidth: 120)
         }
-        .buttonStyle(.peel(primary ? .primary : .outline))
+        .buttonStyle(.peel(variant))
         .overlay {
             if open {
                 RoundedRectangle(cornerRadius: Theme.Radius.control + 3, style: .continuous)

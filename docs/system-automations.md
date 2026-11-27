@@ -157,7 +157,7 @@ Tom's lean: **on, but only once a model is connected.** This holds up.
 - **Privacy.** Memory text goes to the model's provider without the user
   asking. The chat agent already sends recalled memory to that provider,
   but only when the user asks something. This is new, so it is said once,
-  plainly, at the top of the System tab: "Built-in automations run on your
+  plainly, on each system automation's page in Automations: "Built-in automations run on your
   connected model (Claude Sonnet 5.5). They send parts of your memory to
   Anthropic."
 - **The key in strut's store.** Any strut workflow can read it: `agent`
@@ -249,11 +249,11 @@ instead of only `peel-automation`. The existing `AutomationsView` gains:
   text and the cost of each run). There is no prompt editor and no Delete.
   The prompt is the workflow's, and it is edited in strut, where editing
   makes a version of the user's own.
-- **Empty state:** the System tab says when this strut ships no built-ins
-  (an older strut).
+- **Empty state:** with no built-ins (an older strut), Automations' column
+  has no System section.
 - **The agent's tools** stay scoped to `peel-automation`. In v1 the agent
   cannot create, edit, pause, delete or run system automations. Only the
-  user can, from the switch in the System tab.
+  user can, from the switch in Automations' System section.
 
 ## Where it runs
 

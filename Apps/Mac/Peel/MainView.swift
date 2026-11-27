@@ -12,13 +12,16 @@ struct MainView: View {
     /// The column beside the rail, the chat list's and Apps' alike, so its
     /// edge stays put going between them: dragged on its divider,
     /// remembered on this Mac (a convenience).
-    @AppStorage("sidebarWidth") private var sidebarWidth: Double = 260
+    @AppStorage("sidebarWidth") private var sidebarWidth = PaneDivider.columnStandard
     /// The chat list put away (⌃⌘S): Chats full width, as Payments is.
     @AppStorage("chatListHidden") private var chatListHidden = false
     /// Apps' column put away (⌃⌘S): an app full width.
     @AppStorage("appsColumnHidden") private var appsColumnHidden = false
-    /// Payments' list put away (⌃⌘S; `PaymentsView` draws its own column).
+    /// Payments', Automations' and Segments' columns put away (⌃⌘S; each
+    /// page draws its own column).
     @AppStorage("paymentsListHidden") private var paymentsListHidden = false
+    @AppStorage("automationsListHidden") private var automationsListHidden = false
+    @AppStorage("segmentsListHidden") private var segmentsListHidden = false
 
     var body: some View {
         let onChats = PeelPage.isChats(model.destination)
@@ -32,12 +35,12 @@ struct MainView: View {
             if showsList {
                 SidebarColumn()
                     .frame(width: sidebarWidth)
-                PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
+                PaneDivider.column($sidebarWidth)
             }
             if showsApps {
                 AppsColumn()
                     .frame(width: sidebarWidth)
-                PaneDivider(width: $sidebarWidth, range: 220...420, standard: 260, growsTo: .trailing)
+                PaneDivider.column($sidebarWidth)
             }
             VStack(spacing: 0) {
                 Detail()
@@ -65,9 +68,7 @@ struct MainView: View {
         .overlay(alignment: .topLeading) {
             // In one place on every page, as Mail's and Notes' (Tom, 2026-11-27):
             // off where the page has no column.
-            ColumnToggle(hidden: onChats ? $chatListHidden : onApps ? $appsColumnHidden
-                            : model.destination == .payments ? $paymentsListHidden : nil,
-                         column: onChats ? .chats : onApps ? .apps : .payments)
+            ColumnToggle(column: pageColumn.map { ($0, hidden($0)) })
                 .padding(.leading, HeaderBand.buttonsEnd)
                 .frame(height: HeaderBand.height)
         }
@@ -329,24 +330,68 @@ struct Detail: View {
     }
 }
 
+extension PaneDivider {
+    /// The column beside the rail's (the chat list's, Apps' and Payments'
+    /// alike), so its edge stays put going between them.
+    static let columnStandard = 260.0
+
+    static func column(_ width: Binding<Double>) -> PaneDivider {
+        PaneDivider(width: width, range: 220...420, standard: columnStandard, growsTo: .trailing)
+    }
+}
+
+extension MainView {
+    /// The page's column, if it has one.
+    private var pageColumn: ColumnToggle.Column? {
+        if PeelPage.isChats(model.destination) { return .chats }
+        if PeelPage.isApps(model.destination) { return .apps }
+        switch model.destination {
+        case .payments?: return .payments
+        case .automations?: return .automations
+        case .segments?: return .segments
+        default: return nil
+        }
+    }
+
+    /// Whether `column` is put away, kept on this Mac.
+    private func hidden(_ column: ColumnToggle.Column) -> Binding<Bool> {
+        switch column {
+        case .chats: $chatListHidden
+        case .apps: $appsColumnHidden
+        case .payments: $paymentsListHidden
+        case .automations: $automationsListHidden
+        case .segments: $segmentsListHidden
+        }
+    }
+}
+
 /// Put the column beside the rail away, or back (⌃⌘S): beside the window's
-/// buttons, the chat list on Chats and Apps' column on Apps.
+/// buttons, the chat list on Chats, Apps' column on Apps, the history on
+/// Payments, and the lists on Automations and Segments.
 struct ColumnToggle: View {
     static let width = HeaderBand.toggleWidth
-    /// The page's column's hidden state; nil on a page with no column, where
-    /// the toggle stays in its place, off.
-    let hidden: Binding<Bool>?
-    enum Column { case chats, apps, payments }
-    let column: Column
+
+    enum Column {
+        case chats, apps, payments, automations, segments
+
+        func help(hidden: Bool) -> String {
+            switch self {
+            case .chats: hidden ? String(localized: "Show chat list (⌃⌘S)") : String(localized: "Hide chat list (⌃⌘S)")
+            case .apps: hidden ? String(localized: "Show apps list (⌃⌘S)") : String(localized: "Hide apps list (⌃⌘S)")
+            case .payments: hidden ? String(localized: "Show payments list (⌃⌘S)") : String(localized: "Hide payments list (⌃⌘S)")
+            case .automations: hidden ? String(localized: "Show automations list (⌃⌘S)") : String(localized: "Hide automations list (⌃⌘S)")
+            case .segments: hidden ? String(localized: "Show segments list (⌃⌘S)") : String(localized: "Hide segments list (⌃⌘S)")
+            }
+        }
+    }
+
+    /// The page's column and its hidden state; nil on a page with no column,
+    /// where the toggle stays in its place, off.
+    let column: (Column, Binding<Bool>)?
 
     var body: some View {
-        if let hidden {
-            let shown = !hidden.wrappedValue
-            let help = switch column {
-            case .chats: shown ? String(localized: "Hide chat list (⌃⌘S)") : String(localized: "Show chat list (⌃⌘S)")
-            case .apps: shown ? String(localized: "Hide apps list (⌃⌘S)") : String(localized: "Show apps list (⌃⌘S)")
-            case .payments: shown ? String(localized: "Hide payments list (⌃⌘S)") : String(localized: "Show payments list (⌃⌘S)")
-            }
+        if case let (column, hidden)? = column {
+            let help = column.help(hidden: hidden.wrappedValue)
             IconButton("sidebar.left", help: help, size: .sm) { hidden.wrappedValue.toggle() }
                 .hiddenShortcut(KeyboardShortcut("s", modifiers: [.control, .command])) { hidden.wrappedValue.toggle() }
                 .frame(width: Self.width, alignment: .leading)

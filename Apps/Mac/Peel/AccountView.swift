@@ -4,14 +4,39 @@ import PeelUI
 
 /// The account screen: who others see, how to be added, money, the agent,
 /// dictation, screen recording, notifications, the words and PIN that guard the account on
-/// this Mac, and leaving it. Opened from the top of the sidebar or with ⌘,;
-/// its categories (`AccountCategories`, in `SidebarColumn`) stand where the
-/// chats were, and the chosen one fills the detail. Every change is an `AppModel` operation.
+/// this Mac, and leaving it. Opened from your photo at the rail's foot or
+/// with ⌘,; its categories (`AccountCategories`) in a column of its own,
+/// the chosen one beside them. Every change is an `AppModel` operation.
 struct AccountView: View {
     @Environment(AppModel.self) private var model
+    /// What the categories' search holds; empty each time Account opens.
+    @State private var query = ""
 
     var body: some View {
         let page = AccountPage.shown(in: model)
+        let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        // Profile first, then the rest; the search finds any of them.
+        let found = searching ? AccountPage.matching(query, in: model) : [.profile] + AccountPage.matching("", in: model)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                DetailHeader(title: String(localized: "Settings"))
+                SearchField(text: $query, prompt: String(localized: "Search settings"), focusRequest: model.sidebarSearchFocus)
+                    // Return: the first category found.
+                    .onSubmit { if let first = found.first { model.accountPage = first } }
+                    .padding(Theme.Space.sm)
+                AccountCategories(pages: found, searching: searching)
+                    .padding(.horizontal, Theme.Space.sm)
+            }
+            .frame(width: 220)
+            .background(Theme.sidebar)
+            Theme.divider.frame(width: 1)
+            pageView(page)
+                // Only the column at the rail keeps clear of the window's buttons.
+                .environment(\.headerLeadingInset, 0)
+        }
+    }
+
+    private func pageView(_ page: AccountPage) -> some View {
         VStack(spacing: 0) {
             DetailHeader(title: page.title)
             ScrollView {
@@ -39,8 +64,7 @@ struct AccountView: View {
     @ViewBuilder private func content(_ page: AccountPage) -> some View {
         switch page {
         case .profile:
-            IdentitySection()
-            ContactInfoSection()
+            YouCard()
             SettingsSection {
                 NameRow()
                 TimeZoneRow()
@@ -173,11 +197,11 @@ extension AccountPage {
     }
 }
 
-/// Account's categories under you (Profile): a row for each of the others,
-/// or, while the search holds something, each it found.
+/// Account's categories, Profile first: a row for each, or, while the
+/// search holds something, each it found.
 struct AccountCategories: View {
     @Environment(AppModel.self) private var model
-    /// `AccountPage.matching`: every category but Profile, or what was found.
+    /// Every category, Profile first, or what the search found.
     let pages: [AccountPage]
     let searching: Bool
 
@@ -212,61 +236,87 @@ struct AccountCategories: View {
 
 // MARK: - Identity
 
-/// Photo, name and key. A photo is chosen or dropped, uploaded at once,
-/// and removed after a second click; its link is never shown.
-private struct IdentitySection: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        PictureField(
-            picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.xxl, hue: model.myHue),
-            upload: { try await model.uploadPhoto($0) },
-            remove: model.myPhotoURL == nil ? nil : .confirmed(String(localized: "Remove photo")) { try await model.removePhoto() }
-        ) {
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                Text(model.me.name)
-                    .font(Theme.font(24, .bold))
-                    .lineLimit(1)
-                if let key = model.myPubkey {
-                    Text(Formatting.shortKey(key))
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(Theme.secondaryText)
-                        .help(key)
-                }
-            }
-            .padding(.leading, Theme.Space.sm)
-            Spacer(minLength: 12)
-        }
-    }
-}
-
-/// The QR code and contact info someone needs to add this account.
-private struct ContactInfoSection: View {
+/// You at the top of Profile, in one card (Tom, 2026-11-26, after the
+/// iPhone's): your photo, name and key, the QR code of your contact info
+/// behind its button, and under a line your balance. Deposit and Withdraw
+/// are Payments' (Receive and Pay an invoice), the history too, the limits
+/// Account › Payments'. A photo is chosen or dropped, uploaded at once, and
+/// removed from the ••• menu; its link is never shown.
+private struct YouCard: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Card {
-            HStack(alignment: .center, spacing: Theme.Space.xl) {
-                QRCodeTile(text: model.myContactInfo, label: String(localized: "QR code of your contact info"))
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text("Your contact info")
-                        .font(Theme.font(15, .bold))
-                    if model.myContactInfo == nil {
-                        Text("Not ready yet")
-                            .font(Theme.font(13))
-                            .foregroundStyle(Theme.secondaryText)
+            VStack(alignment: .leading, spacing: 0) {
+                PictureField(
+                    picture: Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.xl, hue: model.myHue),
+                    upload: { try await model.uploadPhoto($0) },
+                    remove: model.myPhotoURL == nil ? nil : .confirmed(String(localized: "Remove photo")) { try await model.removePhoto() },
+                    compact: true
+                ) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.me.name)
+                            .font(Theme.font(18, .bold))
+                            .lineLimit(1)
+                        if let key = model.myPubkey {
+                            Text(Formatting.shortKey(key))
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Theme.secondaryText)
+                                .help(key)
+                        }
                     }
+                    Spacer(minLength: Theme.Space.md)
+                    ContactCodeButton()
+                }
+                .padding(Theme.Space.lg)
+                Theme.divider.frame(height: 1)
+                HStack(alignment: .center, spacing: Theme.Space.md) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Balance")
+                            .font(Theme.font(12))
+                            .foregroundStyle(Theme.secondaryText)
+                        Text(model.money.shownMsat.map { Sats.format(msat: $0) } ?? String(localized: "Known once connected"))
+                            .font(Theme.font(22, .bold))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                        if model.waitingMsat > 0 {
+                            Text("\(Sats.format(msat: model.waitingMsat)) waiting for people who are offline")
+                                .font(Theme.font(12))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(Theme.Space.lg)
+            }
+        }
+    }
+}
+
+/// The QR code of your contact info, the full `AppModel.myContactInfo`
+/// someone needs to add this account, in a card from its button, with
+/// Copy contact info under it.
+private struct ContactCodeButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var showing = false
+
+    var body: some View {
+        IconButton("qrcode", help: String(localized: "Your contact info"), lit: showing) { showing = true }
+            .peelPopover(isPresented: $showing, edge: .trailing) {
+                VStack(spacing: Theme.Space.md) {
+                    QRCodeTile(text: model.myContactInfo, label: String(localized: "QR code of your contact info"), size: 180)
                     if let info = model.myContactInfo {
                         CopyButton(String(localized: "Copy contact info"), text: info)
                             .buttonStyle(.peel(.outline))
                             .id(info)
-                            .padding(.top, Theme.Space.xs)
+                    } else {
+                        Text("Not ready yet")
+                            .font(Theme.font(13))
+                            .foregroundStyle(Theme.secondaryText)
                     }
                 }
-                Spacer(minLength: 0)
+                .padding(Theme.Space.lg)
             }
-            .padding(Theme.Space.lg)
-        }
     }
 }
 

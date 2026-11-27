@@ -344,5 +344,36 @@ extension Journeys {
             #expect(try Data(contentsOf: path) == before)
             await alice.close()
         }
+
+        /// Opened public apps (such as Tasks) follow the account across a
+        /// restore from recovery words, and removals sync too.
+        @Test func openedPublicAppsSurviveAccountRestore() async throws {
+            let alice = try await Person.create("alice")
+            let url = try #require(URL(string: "https://acme.example.com/public/?app=strut/tasks"))
+            let link = try #require(PublicAppLink(url))
+            try alice.storage.rememberPublicApp(link, at: 1_700_000_100)
+            try alice.storage.setPublicAppTitle(seller: link.seller.absoluteString, app: "strut/tasks", title: "Tasks")
+            try alice.storage.setPublicAppIcon(seller: link.seller.absoluteString, app: "strut/tasks", icon: "list-checks")
+            #expect(try await alice.engine.syncPreferences().uploaded)
+
+            let restored = try await Person.restore("alice", mnemonic: alice.mnemonic)
+            try await eventually("the restore to finish", timeout: .seconds(60)) { await !restored.engine.isSyncingHistory }
+            _ = try await restored.engine.syncPreferences()
+
+            let apps = try restored.storage.openedPublicApps()
+            #expect(apps.count == 1)
+            #expect(apps.first?.url == link.url.absoluteString)
+            #expect(apps.first?.title == "Tasks")
+            #expect(apps.first?.icon == "list-checks")
+
+            // Forgetting on the restored device syncs the removal back.
+            try restored.storage.forgetPublicApp(seller: link.seller.absoluteString, app: "strut/tasks")
+            #expect(try await restored.engine.syncPreferences().uploaded)
+            _ = try await alice.engine.syncPreferences()
+            #expect(try alice.storage.openedPublicApps().isEmpty)
+
+            await restored.close()
+            await alice.close()
+        }
     }
 }

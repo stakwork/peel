@@ -154,6 +154,8 @@ struct SidePanelSplit<Main: View, Panel: View, Item: Identifiable>: View {
                                 }
                                 panel(shown, both)
                                     .frame(width: both ? min(width, room) : nil)
+                                    // A side panel's header is never where the page meets the rail.
+                                    .environment(\.headerLeadingInset, 0)
                             }
                             .probedPanel()
                         }

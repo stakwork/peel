@@ -328,7 +328,11 @@ struct MentionsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: String(localized: "Mentions"))
+            DetailHeader(title: String(localized: "Mentions")) {
+                EmptyView()
+            } trailing: {
+                PagePinButton(page: .mentions)
+            }
             if mentions.isEmpty {
                 EmptyState(problem ?? String(localized: "No mentions yet."))
             } else {

@@ -4,8 +4,14 @@ import PeelAgent
 import PeelCore
 import PeelUI
 
-// MARK: - Sidebar
+// MARK: - Chat list
 
+/// The Mac's chat list, beside the rail on Chats (Tom, 2026-11-26): the
+/// pages pinned above it (`PinnedPageRows`), pending invites, Peel first,
+/// then every chat newest first, unread ones bold in place
+/// (`AppModel.latestChats`). No sections and no
+/// Separated / Recent: one list, as in Signal. The search filters it and
+/// finds messages under it.
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
     @Environment(\.menuPresenter) private var presenter
@@ -19,140 +25,56 @@ struct Sidebar: View {
     #endif
 
     var body: some View {
-        @Bindable var model = model
-        let unreadMentions = model.unreadMentions
-        let sections = model.sidebarSections
-        // Read here, where the mentions count already reads them all, and
-        // passed down: one chat's tick redraws only its own row.
+        let chats = shownChats
+        let searching = searching
+        // Read here and passed down: one chat's tick redraws only its own row.
         let readStates = model.readStates
-        // Chats, the agent or apps match the search: "No results" waits for none.
-        let chatsFound = !(sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty
-            && shownApps(searching: sections.searching).isEmpty && shownAgent(sections) == nil)
-        VStack(alignment: .leading, spacing: Theme.Space.md) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Space.lg) {
-                        // A–Z (Tom, 2026-10-26).
-                        VStack(spacing: 1) {
-                            SidebarLink(String(localized: "Apps"), to: .apps) {
-                                WorkspaceAppIcon(nil, size: 14)
-                            }
-                            .overlay(alignment: .trailing) {
-                                // Searching shows every match: no chevron, as for a section.
-                                if !sections.searching && model.stadeum.apps.contains(where: model.isPinned) {
-                                    AppsFoldButton(open: $model.sidebarLayout.appsOpen)
-                                }
-                            }
-                            let apps = shownApps(searching: sections.searching)
-                            if !apps.isEmpty {
-                                AppsUnderRow(apps: apps)
-                            }
-                            AutomationsLink()
-                            SidebarLink(String(localized: "Mentions"), to: .mentions, unread: unreadMentions > 0) {
-                                Image(systemName: "at").font(.system(size: 13))
-                            } accessory: {
-                                if unreadMentions > 0 { Badge(count: unreadMentions) }
-                            }
-                            PaymentsLink(money: model.money)
-                            let unreadThreads = model.unreadThreads
-                            SidebarLink(String(localized: "Threads"), to: .threads, unread: unreadThreads > 0) {
-                                Image(systemName: "bubble.left").font(.system(size: 13))
-                            } accessory: {
-                                if unreadThreads > 0 { Badge(count: unreadThreads) }
-                            }
-                            SidebarLink(String(localized: "Segments"), to: .segments) {
-                                Image(systemName: "record.circle").font(.system(size: 13))
-                            }
-                        }
-                        if !sections.unread.isEmpty {
-                            SidebarSection(String(localized: "Unread")) {
-                                ForEach(sections.unread) { conversation in
-                                    if conversation.chat == model.agentChat, let agent = model.agent {
-                                        AgentLink(agent: agent, conversation: conversation)
-                                    } else {
-                                        ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                                    }
-                                }
-                            }
-                        }
-                        if !sections.searching {
-                            SidebarViewToggle(combined: $model.sidebarLayout.combinedView)
-                        }
-                        if model.sidebarLayout.combinedView && !sections.searching {
-                            SidebarSection(String(localized: "Recent")) {
-                                if let agent = shownAgent(sections) {
-                                    AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
-                                }
-                                ForEach(sections.combined) { conversation in
-                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                                }
-                                if let all = sections.allCombined {
-                                    SidebarShowAll(kind: .chats, count: all, all: $model.sidebarLayout.allRecent)
-                                }
-                                SidebarActionLink(title: String(localized: "Join a tribe")) { JoinTribeForm(done: $0) }
-                                SidebarActionLink(title: String(localized: "Create a tribe")) { TribeSettingsForm(editing: nil, done: $0) }
-                                ContactsSidebarRows()
-                            }
-                        } else {
-                            // Searching shows every match: no chevron to say otherwise or
-                            // to change the saved layout.
-                            SidebarSection(String(localized: "Tribes"), expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
-                                ForEach(sections.searching ? SidebarSearch.capped(sections.tribes) : sections.tribes) { conversation in
-                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                                }
-                                if sections.tribesOpen {
-                                    if let all = sections.allTribes {
-                                        SidebarShowAll(kind: .tribes, count: all, all: $model.sidebarLayout.allTribes)
-                                    }
-                                    SidebarActionLink(title: String(localized: "Join a tribe")) { JoinTribeForm(done: $0) }
-                                    SidebarActionLink(title: String(localized: "Create a tribe")) { TribeSettingsForm(editing: nil, done: $0) }
-                                }
-                            }
-                            SidebarSection(String(localized: "Direct messages"),
-                                           expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
-                                if let agent = shownAgent(sections) {
-                                    AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
-                                }
-                                ForEach(sections.searching ? SidebarSearch.capped(sections.direct) : sections.direct) { conversation in
-                                    ConversationLink(conversation: conversation, state: readStates[conversation.chat])
-                                }
-                                if sections.directOpen {
-                                    if let all = sections.allDirect {
-                                        SidebarShowAll(kind: .people, count: all,
-                                                       all: $model.sidebarLayout.allDirect)
-                                    }
-                                    ContactsSidebarRows()
-                                }
-                            }
-                        }
-                        if sections.searching {
-                            SidebarMessageResults(search: model.sidebarSearch, chatsFound: chatsFound)
-                        }
+        let agent = shownAgent
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    if !searching {
+                        PinnedPageRows()
+                        PendingInviteRows()
                     }
-                    .padding(.bottom, Theme.Space.md)
+                    if let agent {
+                        AgentLink(agent: agent, conversation: model.conversations.first { $0.chat == model.agentChat })
+                    }
+                    ForEach(chats) { conversation in
+                        ConversationLink(conversation: conversation, state: readStates[conversation.chat])
+                    }
+                    if !searching, chats.isEmpty {
+                        NoChatsYet()
+                    }
+                    if searching {
+                        SidebarMessageResults(search: model.sidebarSearch, chatsFound: !chats.isEmpty || agent != nil)
+                    }
                 }
-                .scrollIndicators(.automatic)
-                .onChange(of: highlighted) { if let highlighted { proxy.scrollTo(highlighted) } }
-                // Opened by Go › Next Unread Chat, a jump or a notification:
-                // in view, and the arrows go on from it.
-                .onChange(of: model.destination) {
-                    highlighted = nil
-                    if let destination = model.destination { proxy.scrollTo(destination) }
-                }
-                // Back from Account, rebuilt: the open chat in view again.
-                .onAppear { if let destination = model.destination { proxy.scrollTo(destination) } }
+                .padding(.horizontal, 10)
+                .padding(.top, Theme.Space.xs)
+                .padding(.bottom, Theme.Space.md)
             }
-            .focusable()
-            .focusEffectDisabled()
-            .focused($focused)
-            .environment(\.sidebarHighlight, highlighted)
-            .environment(\.sidebarClicked) {
+            .scrollIndicators(.automatic)
+            .onChange(of: highlighted) { if let highlighted { proxy.scrollTo(highlighted) } }
+            // Opened by Go › Next Unread Chat, a jump or a notification:
+            // in view, and the arrows go on from it.
+            .onChange(of: model.destination) {
                 highlighted = nil
-                // Now, not on the focus change: the chat this click opens
-                // reads it as it appears.
-                model.sidebarHasKeys = true
-                focused = true
+                if let destination = model.destination { proxy.scrollTo(destination) }
             }
+            // Back from another rail section, rebuilt: the open chat in view again.
+            .onAppear { if let destination = model.destination { proxy.scrollTo(destination) } }
+        }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($focused)
+        .environment(\.sidebarHighlight, highlighted)
+        .environment(\.sidebarClicked) {
+            highlighted = nil
+            // Now, not on the focus change: the chat this click opens
+            // reads it as it appears.
+            model.sidebarHasKeys = true
+            focused = true
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: focused) {
@@ -170,16 +92,11 @@ struct Sidebar: View {
             }
             #endif
         }
-        // A newly published app shows within minutes (or as Apps opens); the
-        // workspaces or Peel's strut changing reads them at once.
-        .task(id: AppsSource(peers: model.stadeum.live.map(\.id), server: model.memoryServer)) {
-            while !Task.isCancelled {
-                model.refreshApps()
-                try? await Task.sleep(for: .seconds(300))
-            }
-        }
+        // The rail's Chats (⌘1): the keys here, as a click on a row gives them.
+        .onAppear { takeKeysIfAsked() }
+        .onChange(of: model.chatListWantsKeys) { takeKeysIfAsked() }
         .onDisappear {
-            // Locked or gone: nothing kept, nothing typed on.
+            // Locked, gone, or another rail section: nothing kept, nothing typed on.
             model.sidebarHasKeys = false
             #if os(macOS)
             keys.stop()
@@ -188,65 +105,49 @@ struct Sidebar: View {
         }
     }
 
-    /// The rows the arrows move through, top to bottom, as shown: not the
-    /// "+" or "Show all" rows or invites.
+    private func takeKeysIfAsked() {
+        guard model.chatListWantsKeys else { return }
+        model.chatListWantsKeys = false
+        highlighted = nil
+        model.sidebarHasKeys = true
+        focused = true
+    }
+
+    /// The rows the arrows move through, top to bottom, as shown: the
+    /// pinned pages, Peel, then the chats; not invites or the message results.
     private var rows: [(destination: AppModel.Destination, title: String)] {
-        let sections = model.sidebarSections
-        let agent = shownAgent(sections).map { [(model.agentDestination, $0.name)] } ?? []
-        let combined = model.sidebarLayout.combinedView && !sections.searching
-        // Built in typed steps: as one expression it is too much for the type checker.
-        typealias Row = (destination: AppModel.Destination, title: String)
-        let apps: [Row] = shownApps(searching: sections.searching).map { (.app(peer: $0.peer, name: $0.name), $0.title) }
-        let fixed: [Row] = [(.automations, String(localized: "Automations")), (.mentions, String(localized: "Mentions")), (.payments, String(localized: "Payments")), (.threads, String(localized: "Threads")), (.segments, String(localized: "Segments"))]
-        let chats: [Row]
-        if combined {
-            chats = (sections.unread + sections.combined).map { (.chat($0.chat), $0.name) } + agent
-        } else {
-            let tribes: [Row] = (sections.unread + (sections.searching ? SidebarSearch.capped(sections.tribes) : sections.tribes))
-                .map { (.chat($0.chat), $0.name) }
-            let direct: [Row] = (sections.searching ? SidebarSearch.capped(sections.direct) : sections.direct)
-                .map { (.chat($0.chat), $0.name) }
-            chats = tribes + agent + direct
-        }
-        return [(.apps, String(localized: "Apps"))] + apps + fixed + chats
+        let pinned = searching ? [] : PeelPage.pinnedInChats(model).map { ($0.destination, $0.title) }
+        let agent = shownAgent.map { [(model.agentDestination, $0.name)] } ?? []
+        return pinned + agent + shownChats.map { (.chat($0.chat), $0.name) }
     }
 
-    /// The apps under the Apps row, A–Z: those in the sidebar while it is
-    /// open, and the one open always, as a closed section keeps the open
-    /// chat; while searching, every app that matches.
-    private func shownApps(searching: Bool) -> [WorkspaceApp] {
-        if searching { return model.stadeum.apps.filter { $0.matches(model.searchQuery) } }
-        let open = model.destination, pinned = model.sidebarLayout.appsOpen
-        return model.stadeum.apps.filter { (pinned && model.isPinned($0)) || open == .app(peer: $0.peer, name: $0.name) }
+    private var searching: Bool { !model.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// The chats as listed: every one, or the first matches while searching.
+    private var shownChats: [Conversation] {
+        searching ? SidebarSearch.capped(model.latestChats) : model.latestChats
     }
 
-    /// The agent's row, first in Direct messages: while the section is open
-    /// or the chat is, and matching the search.
-    private func shownAgent(_ sections: ChatSections) -> AgentSession? {
-        // Like a chat: always while open or unread, in a closed section too.
-        guard let agent = model.agent, !sections.unread.contains(where: { $0.chat == model.agentChat }),
-              sections.directOpen || sections.searching || model.destination == model.agentDestination
-                || model.agentUnread > 0
-        else { return nil }
-        return ChatSections.matches(agent.name, query: model.searchQuery) ? agent : nil
+    /// Peel's row, first: always, unless a search leaves it out.
+    private var shownAgent: AgentSession? {
+        guard let agent = model.agent, ChatSections.matches(agent.name, query: model.searchQuery) else { return nil }
+        return agent
     }
 
     /// The row `offset` from `current` (the selection when nothing is
     /// highlighted), stopping at the ends; the first or last row from
     /// anywhere else.
-    static func step(_ rows: [AppModel.Destination], from current: AppModel.Destination?, by offset: Int)
-        -> AppModel.Destination? {
+    static func step<Row: Equatable>(_ rows: [Row], from current: Row?, by offset: Int) -> Row? {
         guard let index = current.flatMap(rows.firstIndex(of:)) else { return offset > 0 ? rows.first : rows.last }
         return rows[min(max(index + offset, 0), rows.count - 1)]
     }
 
     #if os(macOS)
-    /// While the sidebar has focus, in the main window, unlocked, with no
+    /// While the list has focus, in the main window, unlocked, with no
     /// menu, panel or viewer up: Down and Up move the highlight, Return
     /// opens it, Escape clears it. Typing goes to the open chat.
     private func handle(_ event: NSEvent, responder: NSResponder?) -> Bool {
-        // Not while Account is open, as the list fades out under its categories.
-        guard model.phase == .ready, !model.isLockDue, model.destination != .account, let presenter,
+        guard model.phase == .ready, !model.isLockDue, PeelPage.isChats(model.destination), let presenter,
               presenter.takesKeys(event), model.viewer == nil,
               responder != nil, !(responder is NSText), event.window?.firstResponder === responder,
               !event.modifierFlags.contains(.control)
@@ -324,115 +225,197 @@ struct Sidebar: View {
 }
 
 extension EnvironmentValues {
-    /// The sidebar row the arrow keys are on.
+    /// The chat list row the arrow keys are on.
     @Entry var sidebarHighlight: AppModel.Destination?
-    /// A sidebar row was clicked: the sidebar takes the keys.
+    /// A chat list row was clicked: the list takes the keys.
     @Entry var sidebarClicked: @MainActor () -> Void = {}
 }
 
-/// The sidebar column: you and the search at the top in both, the chats
-/// below or, while Account is open, its categories. Only your row moves:
-/// the way back slides in before you and the bolt out after; the search
-/// stays where it is and searches Account's categories instead.
-struct SidebarColumn: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// What the search holds while Account is open; empty each time it opens.
-    @State private var settingsQuery = ""
-
+/// No chats yet: what to do first, as the + menu offers it.
+private struct NoChatsYet: View {
     var body: some View {
-        @Bindable var model = model
-        let inAccount = model.destination == .account
-        let found = AccountPage.matching(settingsQuery, in: model)
-        VStack(alignment: .leading, spacing: Theme.Space.md) {
-            SidebarHeader()
-            SearchField(text: inAccount ? $settingsQuery : $model.searchQuery,
-                        prompt: inAccount ? String(localized: "Search settings") : String(localized: "Search"), focusRequest: model.sidebarSearchFocus,
-                        // Account clears its own bound text; chats reset the search model too.
-                        onClear: inAccount ? nil : { model.clearSidebarSearch() })
-                // Return: the first category found.
-                .onSubmit { if inAccount, let first = found.first { model.accountPage = first } }
-                // Escape clears the search: the normal chat list again.
-                .onKeyPress(.escape) {
-                    guard !inAccount, !model.searchQuery.isEmpty else { return .ignored }
-                    model.clearSidebarSearch()
-                    return .handled
-                }
-                .onChange(of: model.searchQuery) { if !inAccount { model.updateSidebarSearch() } }
-            // Stacked, not in the column: while one fades out and the other in,
-            // they share the space rather than each taking half.
-            ZStack(alignment: .top) {
-                if inAccount {
-                    AccountCategories(pages: found, searching: !settingsQuery.isEmpty)
-                        .transition(.opacity)
-                } else {
-                    Sidebar()
-                        .transition(.opacity)
-                }
+        VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Text("No chats yet")
+                    .font(Theme.font(14, .bold))
+                Text("Add someone you know, invite a friend with a few sats, or join a tribe.")
+                    .font(Theme.font(13))
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            // Under either, staying put as they swap. Its own view: each page
-            // restored redraws the bar, not the column.
-            RestoreBar()
-            if let call = model.calls.session {
-                OnCallBar(call: call)
-            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, Theme.Space.md)
+            SidebarActionLink(title: String(localized: "Add contact")) { AddContactForm(done: $0) }
+            SidebarActionLink(title: String(localized: "Invite someone")) { InviteForm(done: $0) }
+            SidebarActionLink(title: String(localized: "Join a tribe")) { JoinTribeForm(done: $0) }
         }
-        .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: inAccount)
-        .onChange(of: inAccount) { settingsQuery = "" }
-        .padding(.horizontal, 10)
-        .padding(.top, 34) // clear of the window's traffic lights
-        .padding(.bottom, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.sidebar.ignoresSafeArea())
     }
 }
 
-/// You, at the top of the sidebar: your photo, name and balance, opening
-/// the Account screen, and its Profile row while it is open; the connection
-/// bolt after it. While Account is open the way back to the chats (⌘[)
-/// slides in before you and the bolt slides out.
-struct SidebarHeader: View {
+/// The chat list's column, on Chats: its header in the band ("Chats",
+/// search, ••• for Mentions and Threads and +), the search when open, the list, and at its foot a
+/// restore's progress and the call you are on.
+struct SidebarColumn: View {
     @Environment(AppModel.self) private var model
-
-    @State private var hovering = false
-
-    private var inAccount: Bool { model.destination == .account }
+    /// The search field shows: opened by its button or ⌘F, or holding a query.
+    @State private var searchOpen = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            if inAccount {
-                IconButton("chevron.left", help: String(localized: "Back to your chats (⌘[)"), size: .sm, action: model.closeAccount)
-                    .keyboardShortcut("[", modifiers: .command)
-                    .transition(.offset(x: -16).combined(with: .opacity))
-            }
-            Button {
-                if inAccount { model.accountPage = .profile } else { model.destination = .account }
-            } label: {
-                HStack(spacing: 9) {
-                    Avatar(name: model.me.avatarName, url: model.myPhotoURL, size: Theme.AvatarSize.lg, hue: model.myHue)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(model.me.name)
-                            .font(Theme.font(15, .bold))
-                            .lineLimit(1)
-                        BalanceLabel(money: model.money, waitingMsat: model.waitingMsat)
-                    }
-                    Spacer(minLength: 0)
+        @Bindable var model = model
+        let showsSearch = searchOpen || !model.searchQuery.isEmpty
+        VStack(alignment: .leading, spacing: 0) {
+            ColumnHeader(title: String(localized: "Chats")) {
+                IconButton("magnifyingglass", help: String(localized: "Search chats (⌘F)"), size: .sm, lit: showsSearch) {
+                    if showsSearch { closeSearch() } else { searchOpen = true }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, Theme.Space.xs)
-                // Account's Profile row while it is open: selected as its categories are.
-                .background(inAccount && AccountPage.shown(in: model) == .profile ? Theme.selection
-                                : hovering ? Theme.hover : .clear,
-                            in: RoundedRectangle(cornerRadius: Theme.Radius.control))
-                .contentShape(Rectangle())
+                ChatsPagesButton()
+                NewChatButton()
             }
-            .buttonStyle(.plain)
-            .onHover { hovering = $0 }
-            .help(inAccount ? String(localized: "Profile") : String(localized: "Account"))
-            if !inAccount {
-                // In place: sliding, it would cross the column's edge and the divider.
-                ConnectionBolt()
-                    .transition(.scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
+            if showsSearch {
+                SearchField(text: $model.searchQuery, prompt: String(localized: "Search chats"),
+                            focusRequest: model.sidebarSearchFocus, focusOnAppear: true, onClear: closeSearch)
+                    // Escape clears the search and puts it away: the whole list again.
+                    .onKeyPress(.escape) {
+                        closeSearch()
+                        return .handled
+                    }
+                    .onChange(of: model.searchQuery) { model.updateSidebarSearch() }
+                    .padding(.horizontal, 10)
+                    .padding(.top, Theme.Space.sm)
+            }
+            Sidebar()
+            RestoreBar()
+                .padding(.horizontal, 10)
+            if let call = model.calls.session {
+                OnCallBar(call: call)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 10)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Theme.sidebar.ignoresSafeArea())
+        // ⌘F with no chat open.
+        .onChange(of: model.sidebarSearchFocus) { searchOpen = true }
+    }
+
+    private func closeSearch() {
+        searchOpen = false
+        model.clearSidebarSearch()
+    }
+}
+
+/// ••• in Chats' header (Tom, 2026-11-27, as the iPhone's): Mentions and
+/// Threads, each with what is new, each opening its page beside the list.
+/// A dot on it while one that is not pinned above the chats has something
+/// new, so nothing waits unseen.
+private struct ChatsPagesButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let unseen = PeelPage.inChats.contains { $0.count(in: model) > 0 && !model.isPagePinned($0.rawValue) }
+        MenuButton(systemImage: "ellipsis", help: String(localized: "Mentions and Threads"), source: "chats-pages") {
+            PeelPage.inChats.map { page in
+                let count = page.count(in: model)
+                return .button(page.title, systemImage: page.systemImage,
+                               detail: count > 0 ? String(localized: "\(count) new") : nil) {
+                    model.destination = page.destination
+                }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if unseen {
+                Circle().fill(Theme.accent).frame(width: 6, height: 6).offset(x: -3, y: 3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityValue(unseen ? String(localized: "Something new") : "")
+    }
+}
+
+/// The pages pinned above the chats from their headers (`PagePinButton`):
+/// rows like the chats' (Tom, 2026-11-27: pills read as filters), each
+/// selected as a chat is while its page opens beside the list, with its
+/// count; Remove from Chats on a right-click; a line under them. None
+/// until pinned.
+private struct PinnedPageRows: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.menuPresenter) private var presenter
+
+    var body: some View {
+        let pinned = PeelPage.pinnedInChats(model)
+        if !pinned.isEmpty {
+            ForEach(pinned) { page in
+                let count = page.count(in: model)
+                SidebarLink(page.title, to: page.destination, unread: count > 0) {
+                    Image(systemName: page.systemImage)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.secondaryText)
+                } accessory: {
+                    if count > 0 { Badge(count: count) }
+                }
+                .menuOpenOutline(presenter?.source == AnyHashable("chats-pinned-\(page.rawValue)"))
+                .peelMenu(source: "chats-pinned-\(page.rawValue)") {
+                    [.button(String(localized: "Remove from Chats"), systemImage: "pin.slash") {
+                        model.setPagePinned(page.rawValue, false)
+                    }]
+                }
+            }
+            Theme.divider
+                .frame(height: 1)
+                .padding(.horizontal, Theme.Space.sm)
+                .padding(.vertical, Theme.Space.xs)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// The pin in Mentions' and Threads' headers: shows the page as a row
+/// above the chats, or takes it off; filled in the accent while it is
+/// one.
+struct PagePinButton: View {
+    @Environment(AppModel.self) private var model
+    let page: PeelPage
+
+    var body: some View {
+        let on = model.isPagePinned(page.rawValue)
+        IconButton(help: on ? String(localized: "Remove from Chats") : String(localized: "Show on Chats")) {
+            model.setPagePinned(page.rawValue, !on)
+        } label: {
+            Image(systemName: on ? "pin.fill" : "pin")
+                .foregroundStyle(on ? Theme.accent : Theme.secondaryText)
+        }
+    }
+}
+
+/// +: a new chat. Add contact and Invite someone, Join a tribe and Create a
+/// tribe, each opening its form from the button.
+private struct NewChatButton: View {
+    private enum Form: Identifiable {
+        case addContact, invite, joinTribe, createTribe
+        var id: Self { self }
+    }
+
+    @State private var form: Form?
+
+    var body: some View {
+        MenuButton(systemImage: "plus", help: String(localized: "New chat"), source: "new-chat") {
+            .sections(
+                [.header(String(localized: "People")),
+                 .button(String(localized: "Add contact…"), systemImage: "person.badge.plus") { form = .addContact },
+                 .button(String(localized: "Invite someone…"), systemImage: "envelope") { form = .invite }],
+                [.header(String(localized: "Tribes")),
+                 .button(String(localized: "Join a tribe…"), systemImage: "person.3") { form = .joinTribe },
+                 .button(String(localized: "Create a tribe…"), systemImage: "plus.bubble") { form = .createTribe }]
+            )
+        }
+        .peelPopover(isPresented: Binding(get: { form != nil }, set: { if !$0 { form = nil } }), edge: .trailing) {
+            switch form {
+            case .addContact?: AddContactForm { form = nil }
+            case .invite?: InviteForm { form = nil }
+            case .joinTribe?: JoinTribeForm { form = nil }
+            case .createTribe?: TribeSettingsForm(editing: nil) { form = nil }
+            case nil: EmptyView()
             }
         }
     }
@@ -442,12 +425,15 @@ struct SearchField: View {
     @Binding var text: String
     var prompt = String(localized: "Search")
     var focusRequest = 0
+    /// Takes the keyboard as it appears: the chat list's, opened by its button or ⌘F.
+    var focusOnAppear = false
     /// What the clear button does; without one it empties `text`.
     var onClear: (() -> Void)?
+    var focusChanged: ((Bool) -> Void)?
 
     var body: some View {
         FormTextField(label: prompt, prompt: prompt, text: $text, systemImage: "magnifyingglass",
-                      focusRequest: focusRequest)
+                      focusOnAppear: focusOnAppear, focusRequest: focusRequest, focusChanged: focusChanged)
             .overlay(alignment: .trailing) {
                 if !text.isEmpty {
                     IconButton("xmark", help: String(localized: "Clear search"), size: .sm) {
@@ -555,50 +541,27 @@ private struct SidebarMessageRow: View {
     }
 }
 
-/// A sidebar section: its title, with a chevron that opens and closes it
-/// when given `expanded` (without one, the title sits flush with the rows'
-/// icons), over its rows. The rows are the caller's: a closed section still shows
-/// the open chat (`ChatSections`).
+/// A heading over a group of rows in the chat list (the search's Messages).
 struct SidebarSection<Content: View>: View {
     let title: String
-    let expanded: Binding<Bool>?
     @ViewBuilder let content: Content
 
-    init(_ title: String, expanded: Binding<Bool>? = nil, @ViewBuilder content: () -> Content) {
+    init(_ title: String, @ViewBuilder content: () -> Content) {
         self.title = title
-        self.expanded = expanded
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            if let expanded {
-                Button {
-                    expanded.wrappedValue.toggle()
-                } label: {
-                    header(open: expanded.wrappedValue)
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityValue(expanded.wrappedValue ? String(localized: "Expanded") : String(localized: "Collapsed"))
-            } else {
-                header(open: nil)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            content
-        }
-    }
-
-    private func header(open: Bool?) -> some View {
-        HStack(spacing: 6) {
-            if let open { FoldChevron(open: open) }
             Text(title)
                 .font(Theme.font(13, .medium))
+                .foregroundStyle(Theme.secondaryText)
+                .padding(.horizontal, 10)
+                .padding(.top, Theme.Space.md)
+                .padding(.bottom, Theme.Space.xs)
+                .accessibilityAddTraits(.isHeader)
+            content
         }
-        .foregroundStyle(Theme.secondaryText)
-        .padding(.horizontal, 10)
-        .padding(.bottom, Theme.Space.xs)
-        .contentShape(Rectangle())
     }
 }
 
@@ -615,12 +578,15 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
     var preview: String?
     /// When that message was sent, at the preview line's end.
     var previewDate: String?
+    /// AGENT beside the name (Tom, 2026-11-27: there, the time keeps its column).
+    var showsAgentTag = false
     @ViewBuilder let icon: Icon
     @ViewBuilder let accessory: Accessory
 
     init(
         _ title: String, to destination: AppModel.Destination, unread: Bool = false, dimmed: Bool = false,
-        preview: String? = nil, previewDate: String? = nil, @ViewBuilder icon: () -> Icon, @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+        preview: String? = nil, previewDate: String? = nil, showsAgentTag: Bool = false,
+        @ViewBuilder icon: () -> Icon, @ViewBuilder accessory: () -> Accessory = { EmptyView() }
     ) {
         self.title = title
         self.destination = destination
@@ -628,6 +594,7 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
         self.dimmed = dimmed
         self.preview = preview
         self.previewDate = previewDate
+        self.showsAgentTag = showsAgentTag
         self.icon = icon()
         self.accessory = accessory()
     }
@@ -637,13 +604,26 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
             model.destination = destination
             clicked()
         } label: {
-            // Row-level siblings, all centred on the row's height: icon, text
-            // stack, time, accessory. The time is not part of the preview line.
+            // With a preview, two lines (Tom, 2026-11-27, the board's "Unread
+            // counts", option A): the name and its time, alone at the top
+            // right; under them the preview and, at its end, the accessory (a
+            // count, @, the muted bell, Set up), so every time is in one column.
             HStack(alignment: .center, spacing: 9) {
                 icon.frame(width: Theme.AvatarSize.sm, height: Theme.AvatarSize.sm)
                 if let preview {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(title).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(title).lineLimit(1)
+                            if showsAgentTag { AgentTag() }
+                            Spacer(minLength: 4)
+                            if let previewDate {
+                                Text(previewDate)
+                                    .font(Theme.font(11, .regular))
+                                    .foregroundStyle(Theme.tertiaryText)
+                                    .lineLimit(1)
+                                    .fixedSize()
+                            }
+                        }
                         HStack(spacing: 4) {
                             if unread {
                                 Circle().fill(Theme.accent).frame(width: 6, height: 6).accessibilityHidden(true)
@@ -653,20 +633,16 @@ struct SidebarLink<Icon: View, Accessory: View>: View {
                                 .foregroundStyle(unread ? Theme.text : Theme.tertiaryText)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
+                            Spacer(minLength: 4)
+                            accessory
                         }
                     }
                 } else {
                     Text(title).lineLimit(1)
+                    if showsAgentTag { AgentTag() }
+                    Spacer(minLength: 4)
+                    accessory
                 }
-                Spacer(minLength: 4)
-                if preview != nil, let previewDate {
-                    Text(previewDate)
-                        .font(Theme.font(11, .regular))
-                        .foregroundStyle(Theme.tertiaryText)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-                accessory
             }
             .opacity(dimmed ? 0.6 : 1)
         }
@@ -692,7 +668,7 @@ struct ConversationLink: View {
         let level = state?.mute ?? .all
         let unread = state?.sidebarCount ?? 0
         let onCall = model.calls.liveCount(in: conversation.chat)
-        // A muted chat that mentions you is in Unread at full strength.
+        // A muted chat that mentions you shows at full strength.
         SidebarLink(conversation.name, to: .chat(conversation.chat), unread: unread > 0,
                     dimmed: level == .muted && unread == 0,
                     preview: conversation.previewLine, previewDate: conversation.dateLabel()) {
@@ -729,11 +705,7 @@ struct ConversationLink: View {
                     .help("Mentions only")
             }
         }
-        .overlay {
-            if presenter?.source == AnyHashable(conversation.chat) {
-                RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(Theme.accent, lineWidth: 1.5)
-            }
-        }
+        .menuOpenOutline(presenter?.source == AnyHashable(conversation.chat))
         .peelMenu(source: conversation.chat) { ConversationMenu.entries(for: conversation, model: model) }
     }
 }
@@ -792,33 +764,6 @@ enum ConversationMenu {
         return [.destructive(exit.title, systemImage: exit.systemImage, confirm: exit.confirm(conversation.name)) {
             Task { await model.leave(chat) }
         }]
-    }
-}
-
-/// Sphinx's bolt for the connection: green when connected, orange otherwise.
-/// Click for one status row and a check/reconnect action.
-struct ConnectionBolt: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var connected: Bool { model.connection == .connected }
-
-    var body: some View {
-        @Bindable var model = model
-        IconButton(help: model.showingConnection ? "" : String(localized: "Connection: \(model.connection.label)"),
-                   size: .sm, lit: model.showingConnection) {
-            model.showingConnection.toggle()
-        } label: {
-            Image(systemName: "bolt.fill")
-                .foregroundStyle(connected ? Theme.confirmed : Theme.attention)
-                // A quiet cross-fade between orange and green, none with Reduce Motion.
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: connected)
-                .receivedGlow(model.money)
-        }
-        .peelPopover(isPresented: $model.showingConnection, edge: .trailing) {
-            ConnectionCard()
-        }
-        .accessibilityLabel(String(localized: "Connection: \(model.connection.label)"))
     }
 }
 
@@ -883,45 +828,6 @@ struct SidebarActionLink<Form: View>: View {
     }
 }
 
-/// "Show all 14 tribes" under a section trimmed to its recent chats, then
-/// "Show fewer" ("Show fewer tribes" to VoiceOver); which one is kept with
-/// the account (`AppModel.sidebarLayout`).
-struct SidebarShowAll: View {
-    enum Kind { case chats, tribes, people }
-    let kind: Kind
-    let count: Int
-    @Binding var all: Bool
-
-    private var showAllTitle: String {
-        switch kind {
-        case .chats: String(localized: "Show all \(count) chats")
-        case .tribes: String(localized: "Show all \(count) tribes")
-        case .people: String(localized: "Show all \(count) people")
-        }
-    }
-
-    private var showFewerTitle: String {
-        switch kind {
-        case .chats: String(localized: "Show fewer chats")
-        case .tribes: String(localized: "Show fewer tribes")
-        case .people: String(localized: "Show fewer people")
-        }
-    }
-
-    var body: some View {
-        Button {
-            all.toggle()
-        } label: {
-            // In the link color, as on the iPhone, so it stands apart from the actions.
-            SidebarActionLabel(title: all ? String(localized: "Show fewer") : showAllTitle,
-                               systemImage: all ? "chevron.up" : "chevron.down")
-                .foregroundStyle(Theme.link)
-        }
-        .buttonStyle(SidebarRowStyle(selected: false))
-        .accessibilityLabel(all ? showFewerTitle : showAllTitle)
-    }
-}
-
 /// The icon and title of a sidebar row that acts rather than opens.
 private struct SidebarActionLabel: View {
     let title: String
@@ -969,95 +875,6 @@ struct SidebarRowStyle: ButtonStyle {
                 .contentShape(Rectangle())
                 .onHover { hovering = $0 }
         }
-    }
-}
-
-/// Automations, first in the sidebar, with a quiet count of those whose last
-/// run did not finish (not an alarm). Its own view, so the list's refreshes
-/// redraw this row and not the sidebar.
-private struct AutomationsLink: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let failed = model.automations.failed
-        SidebarLink(String(localized: "Automations"), to: .automations) {
-            Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
-        } accessory: {
-            if failed > 0 { Badge(count: failed, .outline) }
-        }
-    }
-}
-
-/// What the apps are read from: a change reads them again.
-private struct AppsSource: Hashable {
-    let peers: [String]
-    let server: MemoryServer?
-}
-
-/// The apps under the Apps row, nested as shadcn's sidebar sub-menu is
-/// (Tom, 2026-10-28): indented, behind a hairline that drops from under the
-/// row's icon (its row's 10 pt padding and half its 20 pt icon).
-private struct AppsUnderRow: View {
-    let apps: [WorkspaceApp]
-
-    var body: some View {
-        VStack(spacing: 1) {
-            ForEach(apps) { WorkspaceAppLink(app: $0) }
-        }
-        .padding(.leading, 6)
-        .overlay(alignment: .leading) { Theme.divider.frame(width: 1) }
-        .padding(.leading, 20)
-        .padding(.vertical, 2)
-    }
-}
-
-/// An app under the Apps row (`WorkspaceAppView`): its own icon, small and
-/// muted, and its title; where it comes from is its card's and header's to
-/// say (Tom, 2026-10-28).
-private struct WorkspaceAppLink: View {
-    let app: WorkspaceApp
-
-    var body: some View {
-        SidebarLink(app.title, to: .app(peer: app.peer, name: app.name)) {
-            WorkspaceAppIcon(app, size: 12)
-                .foregroundStyle(Theme.secondaryText)
-        }
-        .help(app.about ?? app.title)
-    }
-}
-
-/// The chevron at the end of the Apps row: shows or hides the pinned apps
-/// under it, kept with the sidebar's layout.
-private struct AppsFoldButton: View {
-    @Binding var open: Bool
-
-    var body: some View {
-        Button {
-            open.toggle()
-        } label: {
-            FoldChevron(open: open)
-                .foregroundStyle(Theme.secondaryText)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.trailing, Theme.Space.xs)
-        .help(open ? String(localized: "Hide pinned apps") : String(localized: "Show pinned apps"))
-        .accessibilityLabel("Pinned apps")
-        .accessibilityValue(open ? String(localized: "Expanded") : String(localized: "Collapsed"))
-    }
-}
-
-/// The sidebar's fold: down while open, right while closed (a section's
-/// header, the Apps row).
-private struct FoldChevron: View {
-    let open: Bool
-
-    var body: some View {
-        Image(systemName: "chevron.down")
-            .font(.system(size: 9, weight: .bold))
-            .rotationEffect(.degrees(open ? 0 : -90))
-            .accessibilityHidden(true)
     }
 }
 
@@ -1114,29 +931,13 @@ struct RestoreBar: View {
     }
 }
 
-/// Switches the sidebar between separate Tribes and Direct messages sections
-/// and one Recent list.
-struct SidebarViewToggle: View {
-    @Binding var combined: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            option(String(localized: "Separated"), selected: !combined) { combined = false }
-            option(String(localized: "Recent"), selected: combined) { combined = true }
+extension View {
+    /// A row's accent outline while its menu is open (a chat's, a pinned page's).
+    func menuOpenOutline(_ open: Bool) -> some View {
+        overlay {
+            if open {
+                RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(Theme.accent, lineWidth: 1.5)
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, Theme.Space.xs)
-    }
-
-    private func option(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(Theme.font(12))
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(selected ? Theme.selection : Color.clear,
-                            in: RoundedRectangle(cornerRadius: Theme.Radius.control))
-                .foregroundStyle(selected ? Theme.selectionText : Theme.secondaryText)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

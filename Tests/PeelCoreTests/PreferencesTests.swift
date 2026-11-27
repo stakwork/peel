@@ -25,7 +25,7 @@ struct PreferencesTests {
         #expect(Preferences.registry["pin_timeout"]?.optIn == true)
         #expect(!Preferences.synced.contains("pin_timeout"))
         #expect(Preferences.syncedKeys(enabling: ["pin_timeout"]).contains("pin_timeout"))
-        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.auto_download_media", "peel.chats_recent_view", "peel.time_zone"])
+        #expect(Preferences.synced == ["tip_amount", "timezone", "chat_color", "peel.payment_confirmation_msat", "peel.auto_download_media", "peel.chats_recent_view", "peel.time_zone", "peel.public_app"])
         #expect(Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("biometric_enabled"))
         #expect(!Preferences.syncedKeys(enabling: ["biometric_enabled"]).contains("ai_agent_config"))
         #expect(Preferences.syncedKeys(enabling: ["ai_agent_config"]).contains("ai_agent_config"))
@@ -61,6 +61,14 @@ struct PreferencesTests {
         }
         for sharing in [true, false].flatMap({ on in [nil, "Asia/Bangkok"].map { TimeZoneSharing(enabled: on, identifier: $0) } }) {
             #expect(Preferences.isOfficialFixedPoint(try Preference.timeZoneSharing.write(sharing)))
+        }
+        let publicApps: [SyncedPublicApp] = [
+            .opened(.init(url: "https://acme.example.com/public/?app=strut/tasks", title: "Tasks", icon: "list-checks")),
+            .opened(.init(url: "https://acme.example.com/")),
+            .forgotten,
+        ]
+        for app in publicApps {
+            #expect(Preferences.isOfficialFixedPoint(try Preference.publicApp.write(app)))
         }
         // The fixed-point check refuses what the official apps would change or choke on.
         for value: JSONValue in [.string("007"), .string("nan"), .int(5), .bool(true), .null, .array([]),

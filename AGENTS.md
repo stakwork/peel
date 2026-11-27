@@ -428,10 +428,13 @@ is a short plan. Update the status and the journal when you finish something.
     (iPhone, 2026-11-19: Pinned apps on Chats.) The pins are
     `ChatSections.Layout.pinnedApps` with the fold `appsOpen`
     (`Layout.isPinned`, `setPinned`, `pinned(_:)`; `AppModel`'s in
-    PeelUI's `AppModel+PinnedApps.swift`): the Mac pins from the app's pin
-    button. The iPhone no longer pins apps (2026-11-27): its Apps shows
-    Recent (`Layout.recentApps`, `noteOpened`; `AppModel.recentApps`,
-    `noteOpenedApp`), and the pages pinned above its chats are
+    PeelUI's `AppModel+PinnedApps.swift`). Since 2026-11-27 the Mac shows
+    them as Favorites (Apps' column, `AppModel.favoriteApps`, starred with
+    `FavoriteButton`), with their records (`PinnedAppRecord`) drawing them
+    at launch. The iPhone no longer pins apps (2026-11-27): its Apps shows
+    Recent only. Recent is `Layout.recentApps`
+    (`noteOpened`; `AppModel.recentApps`, `noteOpenedApp`).
+    The pages pinned (the Mac's rail, above the iPhone's chats) are
     `Layout.pinnedPages` (`AppModel.isPagePinned`, `setPagePinned`)
   - `AppVersions.swift` — one of the person's own apps' versions and
     releases as strut gives them (`GET /apps/:name/versions`, strut's
@@ -677,19 +680,18 @@ is a short plan. Update the status and the journal when you finish something.
   started again for another person, the workspaces' "Always allow" rules,
   Pair again after a revoke, Unpair; and the apps, the person's own on
   Peel's strut and those the workspaces pinned read through it,
-  `refreshApps`, `appSources`; the person's pins under the
-  sidebar's Apps row, `isPinned`, `setPinned`: none until the person
-  pins one, `ChatSections.Layout.pinnedApps`, folded by the row's chevron,
-  `appsOpen`; `makeLive`, what everyone opens of one of the person's own
-  apps), `AppsView` (the sidebar's Apps row: every listed app
-  as a card, A–Z, its icon, version and status (`AppStatus`), with a
-  search and the source to show, Yours or a workspace;
-  `docs/apps-browser.md`), `WorkspaceAppView` (one of
-  those apps alone in the detail column, opened from Apps or its pinned
-  row: Peel's own strut's UI showing its page, in a `WKWebView` whose store
+  `refreshApps`, `appSources`; `makeLive`,
+  what everyone opens of one of the person's own apps), `AppsColumn` (on Apps and
+  while an app is open, beside the page as the chat list is on Chats: All
+  apps, Favorites, `AppModel.favoriteApps`, starred with `FavoriteButton`,
+  and Recent, `AppModel.recentApps` less the favorites), `AppsView` (All
+  apps, the store: the search with the cursor in it, every listed app as
+  a card grouped by source (Yours, Built-in, each workspace), its icon,
+  version, status (`AppStatus`, no release) and star; one list while
+  searching; ↓↑, Return and Escape over the cards; `docs/apps-browser.md`), `WorkspaceAppView` (one of
+  those apps alone in the detail column, opened from Apps: Peel's own strut's UI showing its page, in a `WKWebView` whose store
   keeps nothing and which goes nowhere but that strut, opened at the view
-  it was last on (`AppPlace`, `AppModel.appPlaces`), and `AppPinButton`,
-  its pin in the header and on its card; `docs/agent-on-strut.md`, "Built:
+  it was last on (`AppPlace`, `AppModel.appPlaces`); `docs/agent-on-strut.md`, "Built:
   a workspace's apps"), `AppVersionsViews` (the person's own app's version
   chip in that header and its menu: the newest versions, one picked shown
   in that window only under `AppPreviewBar`, History's releases to roll
@@ -717,14 +719,30 @@ is a short plan. Update the status and the journal when you finish something.
   list, its header button, the highlight in message text);
   `FilePanels` (`FilePicking`: the open and save panels and Show in Finder, the only
   callers of `NSOpenPanel`, `NSSavePanel` and the Finder reveal), `MainView` (the
-  shell, `PaneDivider`, `Detail`), `Sidebar` (the rows at its top A–Z, Apps with the pinned apps under it, then the Unread, Tribes and Direct messages sections over `ChatSections`, rows, header, connection bolt (one status row and a check/reconnect action), arrow keys and Return while it has focus, `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
+  shell: the rail, the chat list on Chats, the page; `ColumnToggle`
+  (⌃⌘S: the chat list on Chats, Apps' column on Apps), `PaneDivider`, `Detail`, `DetailHeader` in the header band),
+  `Rail` (fixed: Chats ⌘1, Apps ⌘2, Payments ⌘3, then under a line
+  Automations and Segments, `ConnectionDot` (one status card and a
+  check/reconnect action) and you; `PeelPage`, the pages beside the main
+  three: Automations and Segments on the rail, Mentions and Threads
+  Chats'; `HeaderBand` and `WindowButtonsInBand`, which centres the
+  window's buttons in the band), `Sidebar` (the chat list: the pages
+  pinned above it, `PinnedPageRows`, kept as `Layout.pinnedPages`
+  (`AppModel.isPagePinned`, `setPagePinned`, the pin in their headers
+  `PagePinButton`); pending invites, Peel (AGENT by its name), every chat
+  newest first over `AppModel.latestChats` (each row's time at its top
+  right, its count, @ or muted bell at its preview's end: `SidebarLink`),
+  the search's message results, arrow keys and Return while it has focus;
+  `SidebarColumn`, its header with search, ••• (`ChatsPagesButton`:
+  Mentions and Threads) and + (`NewChatButton`),
+  `RestoreBar` at its foot (a restore's progress, or history paused and Resume),
   and `ConversationMenu`, whose pieces the chat header's More shares), `SidebarForms` (join a tribe), `ContactsViews` (add
-  a contact by code or QR picture, invites with sats, the sidebar's pending
+  a contact by code or QR picture, invites with sats, the chat list's pending
   invites and "New" contacts),
   `Avatar` (people's and tribes' icons, `InviteIcon`, `AppIcon`),
   `AnimatedPicture` (a GIF played by Core Animation, paused off the screen; `.gifPlayback`, Reduce Motion's play button over a tile), `Styles` (the `…Boxed` helpers and `.muted()`, the muted line), `Clipboard` (with `ClipboardPasteboard`, the model's `Pasteboard` on the Mac and the iPhone),
   `ConversationView` (with the tribe header and
-  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, its Jamie for its owner, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories` stands in the chats' place, in `Sidebar`'s `SidebarColumn`, while it is open, under the sidebar's search, which then searches them);
+  `HeaderMoreButton`, the chat header's More), `TribeViews`, `TribeDetails` (a tribe's details, `TagChips`, its Jamie for its owner, how you appear in a tribe), `OnboardingView`, `LockView`, `AccountView` (Account's categories, `AppModel.AccountPage`, one page each; `AccountCategories`, Account's own column beside its page, with the search over the categories (⌘F));
   for the chat: `MessageViews` (`MessageList` with its pill and Page
   keys, `ListRowContent`, the rows), `MessageTable` (the Mac's list
   engine for the chat, a thread and the agent chat, over any `TableRow`: a non-flipped `NSTableView` of reused hosting
@@ -866,8 +884,6 @@ is a short plan. Update the status and the journal when you finish something.
   `RecordingBarPanel`, and Account › Recording in `RecordingSettingsView`;
   its pure parts, the captions, the transcript and the file's audio and
   caption track, are in `Sources/PeelUI/Recording/`);
-  `MoneyArrivalViews` for sats received (`BalanceLabel`, the header's
-  count-up; `PaymentsLink`, the Payments row's "+350"; the bolt's glow);
   `CallTestRoom`, the development-only LiveKit
   test room (phase 6, PR 3); `Offscreen` (the `-offscreen` check mode) and
   `OffscreenDriver` (its `-drive` script), see "Checking the app". The Mac app is the only target that links LiveKit
@@ -1529,14 +1545,14 @@ quitting before any window opens.
 - A drive file is JSON lines, one step each; `//` lines are comments:
 
   ```
-  {"select": "Offscreen Check"}           // sets the destination its sidebar row sets
+  {"select": "Offscreen Check"}           // sets the destination its chat list row or rail button sets
   {"open": "send-sats"}                   // the open chat's Send sats panel, as its bolt opens it
-  {"open": "connection"}                  // the sidebar bolt’s status panel
+  {"open": "connection"}                  // the rail’s connection dot’s status panel
   {"open": "connection-check"}            // its check/reconnect action
   {"open": "account"}                     // the Account screen, as Account… (⌘,) opens it
   {"open": "account-dictation"}           // Account at one category, as its row opens it
   {"notification": "Offscreen Check"}     // a click on the notification for its newest message from someone else
-  {"open": "payments"}                    // the Payments screen, as its sidebar row opens it
+  {"open": "payments"}                    // the Payments screen, as the rail opens it
   {"open": "message-menu"}                // the open chat's newest row from someone else: its ••• menu
   {"key": "f", "mods": ["cmd"]}           // also return, escape, tab, space, delete, up, down, left, right
   {"link": "peel://home-setup?host=…&code=…"}  // a link macOS hands Peel, through its app delegate

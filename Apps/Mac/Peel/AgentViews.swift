@@ -6,11 +6,11 @@ import PeelUI
 
 // MARK: - Pieces
 
-/// Peel's row at the top of Direct messages: "Set up" in link blue until the
-/// agent has its own account, then AGENT ("Needs a model" beside it, quiet,
-/// while none is connected); bold with a count for replies that
-/// came while it was not open; "Waiting on you" in orange while a send's
-/// card waits for an answer.
+/// Peel's row, first in the chat list: AGENT beside its name; at its
+/// preview line's end "Set up" in link blue until the agent has its own
+/// account, "Needs a model", quiet, while none is connected, a count for
+/// replies that came while it was not open, and "Waiting on you" in orange
+/// while a send's card waits for an answer.
 struct AgentLink: View {
     @Environment(AppModel.self) private var model
     let agent: AgentSession
@@ -20,29 +20,28 @@ struct AgentLink: View {
     var body: some View {
         let unread = model.agentUnread
         SidebarLink(agent.name, to: model.agentDestination, unread: unread > 0,
-                    preview: conversation?.previewLine, previewDate: conversation?.dateLabel()) {
+                    preview: conversation?.previewLine, previewDate: conversation?.dateLabel(), showsAgentTag: true) {
             PeelLogo(size: 18)
         } accessory: {
             if model.agentWaiting {
                 Text("Waiting on you")
                     .font(Theme.font(12, .medium))
                     .foregroundStyle(Theme.attention)
+                    .lineLimit(1)
+                    .fixedSize()
             } else if unread > 0 {
                 Badge(count: unread)
             } else if model.agentChat == nil && (agent.connection == nil || model.agentSetUp.action != nil) {
                 Text("Set up")
                     .font(Theme.font(12, .medium))
                     .foregroundStyle(Theme.link)
-            } else {
-                HStack(spacing: 6) {
-                    if model.agentNeedsModel {
-                        Text("Needs a model")
-                            .font(Theme.font(12))
-                            .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(1)
-                    }
-                    AgentTag()
-                }
+                    .lineLimit(1)
+                    .fixedSize()
+            } else if model.agentNeedsModel {
+                Text("Needs a model")
+                    .font(Theme.font(12))
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(1)
             }
         }
     }

@@ -141,7 +141,17 @@ public final class AppModel {
     public private(set) var loadedChat: String?
     public var destination: Destination? {
         didSet {
-            if destination == .account, oldValue != .account { accountReturn = oldValue }
+            // The Mac rail's Chats goes back to what was last open in it: a chat, Mentions or Threads.
+            switch destination {
+            case .chat?, .agent?, .mentions?, .threads?: chatsReturn = destination
+            // The Mac rail's Apps goes back to what was open in it: the store or an app.
+            case .apps?: appsReturn = destination
+            case .app(let peer, let name)?:
+                appsReturn = destination
+                // The Mac's Apps lists the apps opened last as Recent.
+                if destination != oldValue { noteOpenedApp(peer: peer, name: name) }
+            default: break
+            }
             // The agent chat is its DM while it has one (`agentChat`).
             followAgentChat()
             if selectedChat != oldValue?.chat {
@@ -268,6 +278,10 @@ public final class AppModel {
     @ObservationIgnored private var savedLayout = ChatSections.Layout()
     /// Bumped to put the cursor in the sidebar's search (⌘F with no chat open).
     public var sidebarSearchFocus = 0
+    /// The rail's Chats (⌘1) asks the chat list for the keyboard, so Down
+    /// and Up move through the chats at once; the list takes it as it
+    /// shows and clears this (Tom, 2026-11-26).
+    public var chatListWantsKeys = false
     public var myAlias: String?
     /// The photo sent with this account's messages, https or nil.
     public var myPhotoURL: String?
@@ -484,8 +498,8 @@ public final class AppModel {
             if chat == nil { agentUnanswered = nil }
             // Not as the account closes, which takes the agent first.
             if let old, agent != nil, destination == .chat(old) { destination = .agent }
-            // The same for where Account's Chats goes back to (the brain moved from Account › Brain).
-            if let old, agent != nil, accountReturn == .chat(old) { accountReturn = .agent }
+            // The same for where the rail's Chats goes back to.
+            if let old, agent != nil, chatsReturn == .chat(old) { chatsReturn = .agent }
             if selectedChat == chat || selectedChat == old { rebuildChatRows() }
         }
         if destination == .agent, let agentChat { destination = .chat(agentChat) }
@@ -494,8 +508,10 @@ public final class AppModel {
     public var agentConnectFrom: AgentConnectSource?
     /// The Account category shown, kept while Account is closed (`openAccount`).
     public var accountPage = AccountPage.profile
-    /// What Account's Chats goes back to: what was open before it (`closeAccount`).
-    private var accountReturn: Destination?
+    /// The chat last open, for the Mac rail's Chats (`openChats`).
+    private var chatsReturn: Destination?
+    /// What was open in Apps last, the store or an app, for the Mac rail's Apps (`openApps`).
+    private var appsReturn: Destination?
     private var messagesTask: Task<Void, Never>?
     private var threadTask: Task<Void, Never>?
     private var pinTask: Task<Void, Never>?
@@ -593,18 +609,21 @@ public final class AppModel {
         return ChatSections(chats, states: readStates, layout: sidebarLayout, query: searchQuery, open: selectedChat)
     }
 
-    /// The iPhone's chat list: every chat but the agent's (Peel has its own
+    /// The chat list, on the Mac and the iPhone: every chat but the agent's (Peel has its own
     /// row, first), newest first, unread ones in place, matching its search.
     public var latestChats: [Conversation] {
         let query = searchQuery.trimmingCharacters(in: .whitespaces)
         return conversations.filter { $0.chat != agentChat && ChatSections.matches($0.name, query: query) }
     }
 
-    /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the
-    /// sidebar's Unread section, going round. From anywhere in the main
-    /// window, as ⌘F (`takesCommands`).
+    /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next unread
+    /// chat as the chat list shows them (Peel's row first, then newest
+    /// first), going round. From anywhere in the main window, as ⌘F
+    /// (`takesCommands`).
     public func openUnread(by offset: Int) {
-        guard takesCommands, let chat = sidebarSections.unread(from: selectedChat, by: offset) else { return }
+        let shown = (agentChat.map { [$0] } ?? []) + latestChats.map(\.chat)
+        let unread = shown.filter { readStates[$0]?.isUnread == true }
+        guard takesCommands, let chat = ChatSections.step(unread, from: selectedChat, by: offset) else { return }
         destination = .chat(chat)
     }
 
@@ -615,17 +634,25 @@ public final class AppModel {
         destination = .account
     }
 
-    /// Account's Chats: back to what was open before, unless it went
-    /// meanwhile (a chat left or deleted, the agent's chat or automations
-    /// with the agent gone).
-    public func closeAccount() {
-        switch accountReturn {
-        case .chat(let chat)? where !conversations.contains(where: { $0.chat == chat }):
-            destination = nil
-        case .agent? where agent == nil, .automations? where agent == nil:
-            destination = nil
-        default:
-            destination = accountReturn
+    /// The Mac rail's Chats: what was last open in it (a chat, Mentions or
+    /// Threads), unless it went meanwhile;
+    /// none open (the empty start) when there was none.
+    public func openChats() {
+        switch chatsReturn {
+        case .chat(let chat)? where !conversations.contains(where: { $0.chat == chat }): destination = nil
+        case .agent? where agent == nil: destination = nil
+        default: destination = chatsReturn
+        }
+    }
+
+    /// The Mac rail's Apps (⌘2): the app last open there, unless it is no
+    /// longer listed; else the store (Tom, 2026-11-27).
+    public func openApps() {
+        if case .app(let peer, let name)? = appsReturn,
+           stadeum.apps.contains(where: { $0.id == WorkspaceApp.id(peer: peer, name: name) }) {
+            destination = appsReturn
+        } else {
+            destination = .apps
         }
     }
 

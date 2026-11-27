@@ -209,6 +209,17 @@ extension Preference where Value == TimeZoneSharing {
     }
 }
 
+extension Preference where Value == SyncedPublicApp {
+    /// One opened public app (its URL and display metadata, or a tombstone
+    /// when forgotten): Peel-only (`peel.public_app`), identifier
+    /// `SyncedPublicApp.identifier(seller:app:)`. Stored as a compact JSON
+    /// string so the official apps keep and ignore it unchanged.
+    public static var publicApp: Self {
+        Self(key: Preferences.publicAppKey, scope: .account, read: SyncedPublicApp.init(item:),
+             write: { try $0.item() }, canonical: true)
+    }
+}
+
 extension Preference where Value == Int {
     /// How long before the app asks for the PIN again: the official
     /// `pin_timeout`, in the file's form, whole hours 0 to 25 (0 = every
@@ -302,6 +313,8 @@ public enum Preferences {
     static let chatColorKey = "chat_color"
     static let biometricKey = "biometric_enabled"
     static let agentConfigKey = "ai_agent_config"
+    /// Peel-only key for opened public apps (one item per `(seller, app)`).
+    static let publicAppKey = "peel.public_app"
 
     /// A registered key: where it goes, and its apply policy
     /// (`Preference.takes`, false for a value that is not one of its) over
@@ -335,6 +348,7 @@ public enum Preferences {
         Preference<Bool>.chatsRecentView.entry,
         Preference<AgentConfig>.agentConfig.entry,
         Preference<TimeZoneSharing>.timeZoneSharing.entry,
+        Preference<SyncedPublicApp>.publicApp.entry,
         Preference<Int>.pinTimeout.entry,
         Preference<Bool>.notificationText.entry,
         Preference<NotificationPolicy.Style>.notificationStyle.entry,
@@ -417,6 +431,90 @@ public struct TimeZoneSharing: Sendable, Equatable {
 
     var item: JSONValue {
         .object(["timezone_enabled": .string(enabled ? "true" : "false"), "timezone_identifier": .string(identifier ?? "")])
+    }
+}
+
+/// One opened public app as kept in the encrypted preferences file
+/// (`peel.public_app`, one item per `(seller, app)`): its URL and display
+/// metadata (never credentials or session tokens), or a tombstone when
+/// forgotten so removals sync across devices and restores. When it was
+/// last opened stays on each device: the item changes only when the app is
+/// first opened, renamed, re-iconed or removed, so opening it again does
+/// not upload the file. A restore orders apps by their items' dates.
+public enum SyncedPublicApp: Sendable, Equatable {
+    public struct Entry: Sendable, Equatable {
+        public var url: String
+        public var title: String?
+        public var icon: String?
+
+        public init(url: String, title: String? = nil, icon: String? = nil) {
+            self.url = url
+            self.title = title
+            self.icon = icon
+        }
+    }
+
+    case opened(Entry)
+    case forgotten
+
+    private struct Payload: Codable {
+        var deleted: Bool?
+        var url: String?
+        var title: String?
+        var icon: String?
+    }
+
+    /// The preferences item identifier for one `(seller, app)` pair:
+    /// `seller` alone for the seller's own page, else `"<seller> <app>"`.
+    static func identifier(seller: String, app: String) -> String {
+        app.isEmpty ? seller : "\(seller) \(app)"
+    }
+
+    /// Splits a preference identifier back into `(seller, app)`.
+    static func split(identifier: String) -> (seller: String, app: String)? {
+        guard !identifier.isEmpty else { return nil }
+        if let space = identifier.firstIndex(of: " ") {
+            let seller = String(identifier[..<space])
+            let app = String(identifier[identifier.index(after: space)...])
+            guard !seller.isEmpty, !app.isEmpty, !app.contains(" ") else { return nil }
+            return (seller, app)
+        }
+        return (identifier, "")
+    }
+
+    init?(item value: JSONValue) {
+        guard case .string(let text) = value, let data = text.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return nil }
+        if payload.deleted == true {
+            self = .forgotten
+            return
+        }
+        guard let url = payload.url, let parsed = URL(string: url), PublicAppLink(parsed) != nil else { return nil }
+        self = .opened(Entry(
+            url: url,
+            title: PublicAppLink.cleanTitle(payload.title),
+            icon: PublicAppLink.cleanIcon(payload.icon)
+        ))
+    }
+
+    func item() throws -> JSONValue {
+        let payload: Payload
+        switch self {
+        case .forgotten:
+            payload = Payload(deleted: true)
+        case .opened(let entry):
+            guard let parsed = URL(string: entry.url), PublicAppLink(parsed) != nil else {
+                throw UnwritablePreference(key: Preferences.publicAppKey)
+            }
+            payload = Payload(
+                url: entry.url,
+                title: PublicAppLink.cleanTitle(entry.title),
+                icon: PublicAppLink.cleanIcon(entry.icon)
+            )
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return .string(String(decoding: try encoder.encode(payload), as: UTF8.self))
     }
 }
 
@@ -556,6 +654,16 @@ extension Storage {
         _ preference: Preference<Value>, _ value: Value, for identifier: String = Preferences.accountWide,
         at now: Date = .now
     ) throws -> Bool {
+        try pool.write { db in
+            try Self.setPreference(preference, value, for: identifier, at: now, in: db)
+        }
+    }
+
+    @discardableResult
+    static func setPreference<Value>(
+        _ preference: Preference<Value>, _ value: Value, for identifier: String = Preferences.accountWide,
+        at now: Date = .now, in db: Database
+    ) throws -> Bool {
         // A secret's value goes to the Keychain, never through here.
         guard preference.scope != .secret else { throw UnwritablePreference(key: preference.key) }
         let item = try preference.write(value)
@@ -563,13 +671,11 @@ extension Storage {
             throw UnwritablePreference(key: preference.key)
         }
         let text = try item.text
-        return try pool.write { db in
-            let old = try PreferenceRow.fetchOne(db, key: ["key": preference.key, "identifier": identifier])
-            if let old, old.value == text, old.updatedAt > 0 { return false }
-            let date = (max(now.timeIntervalSince1970, (old?.updatedAt ?? 0) + 1)).rounded(.down)
-            try PreferenceRow(key: preference.key, identifier: identifier, value: text, updatedAt: date).upsert(db)
-            return true
-        }
+        let old = try PreferenceRow.fetchOne(db, key: ["key": preference.key, "identifier": identifier])
+        if let old, old.value == text, old.updatedAt > 0 { return false }
+        let date = (max(now.timeIntervalSince1970, (old?.updatedAt ?? 0) + 1)).rounded(.down)
+        try PreferenceRow(key: preference.key, identifier: identifier, value: text, updatedAt: date).upsert(db)
+        return true
     }
 }
 

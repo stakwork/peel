@@ -154,6 +154,23 @@
         }
       }
     },
+    "Discard recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard recording"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar grabación"
+          }
+        }
+      }
+    },
     "Favorites" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -541,6 +558,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Marca una app con una estrella para tenerla aquí, a un clic desde cualquier app."
+          }
+        }
+      }
+    },
+    "Start over" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start over"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empezar de nuevo"
+          }
+        }
+      }
+    },
+    "Start over or discard the recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start over or discard the recording"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empezar de nuevo o descartar la grabación"
           }
         }
       }
@@ -6726,23 +6777,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Descartar"
-          }
-        }
-      }
-    },
-    "Discard the recording" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Discard the recording"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Descartar la grabación"
           }
         }
       }

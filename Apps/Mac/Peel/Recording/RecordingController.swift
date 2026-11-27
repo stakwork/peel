@@ -46,6 +46,10 @@ final class RecordingController {
     private(set) var timeLeft: TimeInterval?
     /// That nothing is heard from the mic. Shown on the bar.
     private(set) var micNote: String?
+    /// ✕'s menu (Start over, Discard) is open above the bar.
+    var endMenuOpen = false {
+        didSet { if endMenuOpen != oldValue { bar.showEndMenu(endMenuOpen) } }
+    }
     /// What last went wrong, or why the last recording stopped on its own.
     private(set) var problem: String?
     /// What is in the folder, newest first.
@@ -69,6 +73,8 @@ final class RecordingController {
     /// What Record records: the display picked, and its screen.
     @ObservationIgnored private var picked: (filter: SCContentFilter, screen: NSScreen?)?
     @ObservationIgnored private var discarding = false
+    /// The take being thrown away goes back to Ready, not away (`startOver`).
+    @ObservationIgnored private var restarting = false
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private lazy var bubble = CameraBubblePanel()
     @ObservationIgnored private lazy var bar = RecordingBarPanel(controller: self)
@@ -188,6 +194,7 @@ final class RecordingController {
     /// Ends the recording and throws it away; before Record, puts the
     /// bubble and the bar away.
     func discard() {
+        endMenuOpen = false
         switch phase {
         case .ready:
             putAway()
@@ -200,8 +207,22 @@ final class RecordingController {
         }
     }
 
+    /// Throws the take away and goes back to Ready on the same display, the
+    /// bubble and the bar where they are, for another try (Tom, 2026-11-27).
+    func startOver() {
+        endMenuOpen = false
+        guard phase == .recording || phase == .paused, let recorder else { return }
+        discarding = true
+        restarting = true
+        phase = .stopping
+        ticker?.invalidate()
+        ticker = nil
+        Task { await recorder.stop() }
+    }
+
     /// The bar, the bubble and the clock, once the recording is over.
     private func putAway() {
+        endMenuOpen = false
         picked = nil
         ticker?.invalidate()
         ticker = nil
@@ -230,12 +251,22 @@ final class RecordingController {
     /// The file at `url` is finished, or the recording failed (after `stop`,
     /// or macOS ending the capture, or as it started).
     private func ended(_ url: URL, _ error: (any Error)?) {
+        let again = restarting && picked != nil
+        restarting = false
         // macOS ended it, or it failed as Record started: nothing to stop.
-        if phase != .idle { putAway() }
+        if phase != .idle, !again { putAway() }
         recorder = nil
-        phase = .idle
         let discarded = discarding
         discarding = false
+        if again {
+            elapsed = 0
+            timeLeft = nil
+            micNote = nil
+            phase = .ready
+            bar.refit()
+        } else {
+            phase = .idle
+        }
         if discarded {
             try? FileManager.default.removeItem(at: url)
             return

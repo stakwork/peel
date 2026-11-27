@@ -25,6 +25,13 @@ public struct ChatSections: Equatable, Sendable {
         public var combinedView = false
         /// "Show all 32 chats" was clicked in the Recent view.
         public var allRecent = false
+        /// The pages pinned above the iPhone's chats from Chats' More menu,
+        /// by key (threads, mentions), in the order pinned; none until
+        /// pinned (Tom, 2026-11-26).
+        public var pinnedPages: [String] = []
+        /// The apps opened last, by key (`WorkspaceApp.id`), newest first:
+        /// Apps shows them as Recent (Tom, 2026-11-26).
+        public var recentApps: [String] = []
 
         public init() {}
 
@@ -40,6 +47,8 @@ public struct ChatSections: Equatable, Sendable {
             appsOpen = try values.decodeIfPresent(Bool.self, forKey: .appsOpen) ?? true
             combinedView = try values.decodeIfPresent(Bool.self, forKey: .combinedView) ?? false
             allRecent = try values.decodeIfPresent(Bool.self, forKey: .allRecent) ?? false
+            pinnedPages = try values.decodeIfPresent([String].self, forKey: .pinnedPages) ?? []
+            recentApps = try values.decodeIfPresent([String].self, forKey: .recentApps) ?? []
         }
 
         /// Whether the app with key `id` (`WorkspaceApp.id`) is pinned.
@@ -61,6 +70,22 @@ public struct ChatSections: Equatable, Sendable {
         public func pinned(_ apps: [WorkspaceApp]) -> [WorkspaceApp] {
             apps.filter { isPinned($0.id) }
         }
+
+        /// Pins the page `key` above the chats (last) or takes it off.
+        public mutating func setPagePinned(_ key: String, _ pinned: Bool) {
+            var items = pinnedPages.filter { $0 != key }
+            if pinned { items.append(key) }
+            if items != pinnedPages { pinnedPages = items }
+        }
+
+        /// How many opened apps `recentApps` keeps.
+        public static let recentAppsKept = 8
+
+        /// The app with key `id` was opened: first in `recentApps`.
+        public mutating func noteOpened(_ id: String) {
+            guard recentApps.first != id else { return }
+            recentApps = Array(([id] + recentApps.filter { $0 != id }).prefix(Self.recentAppsKept))
+        }
     }
 
     /// How many tribes and direct messages show before "Show all".
@@ -76,6 +101,9 @@ public struct ChatSections: Equatable, Sendable {
     /// while the section is closed, every match while searching.
     public private(set) var tribes: [Conversation] = []
     public private(set) var direct: [Conversation] = []
+    /// Every chat matching the search, unread ones included, newest first:
+    /// the iPhone's one chat list (Tom, 2026-11-26), never trimmed.
+    public private(set) var latest: [Conversation] = []
     /// Every tribe and direct message not in `unread` (matching the search),
     /// merged and newest first, for the Recent view: trimmed to
     /// `recentCombined` (with the open chat however far down) until shown in full.
@@ -109,6 +137,7 @@ public struct ChatSections: Equatable, Sendable {
         for conversation in conversations {
             if conversation.isTribe { tribeCount += 1 } else { directCount += 1 }
             guard Self.matches(conversation.name, query: query) else { continue }
+            latest.append(conversation)
             let state = states[conversation.chat]
             switch (state?.isUnread == true, conversation.isTribe) {
             case (true, false): unread.append(conversation)

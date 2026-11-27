@@ -145,6 +145,20 @@ with Dynamic Type.
 
 ### 1. Chats
 
+**Since 2026-11-27 (Tom, after the Mac's rail; the board "Peel sidebar
+directions", row "Phones"):** one list, newest first, Peel's row first and
+pending invites above it; unread chats stay in place, bold with their
+counts. Gone: Unread, Tribes and Direct messages, "Show all", the Apps,
+Threads and Mentions rows, pinned apps, the "+" rows at the end, and
+search (the magnifying glass). The bar: ••• on the left (Mentions and
+Threads with what is new, each pushing its page; each page's bar has a
+pin that shows it as a chip over the list); on the right the
+connection bolt, unchanged, and New chat (`plus`: Add contact, Invite
+someone, Join a tribe, Create a tribe). With no chats, the empty state
+holds those ways in. Apps gains Recent (the apps opened last, one tap
+each) and loses its pins. You is unchanged. What follows is the earlier
+design.
+
 - **Title row.** The large title "Chats" (34 bold) and, on its right, one
   glass capsule (44 pt) with the connection bolt: green when connected,
   orange when not (screen 9). Its label says the state, so colour is not

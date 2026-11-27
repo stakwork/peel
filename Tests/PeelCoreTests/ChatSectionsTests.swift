@@ -215,4 +215,40 @@ struct ChatSectionsTests {
         #expect(layout.appsOpen)
         #expect(!layout.tribesOpen)
     }
+
+    /// The iPhone's one list: every chat newest first, unread ones in place,
+    /// never trimmed; a search keeps only the matches.
+    @Test func latestListsEveryChatNewestFirst() {
+        let states = Dictionary(uniqueKeysWithValues: [state("t5", unread: 2), state("p3", unread: 1)])
+        let sections = ChatSections(chats, states: states)
+        #expect(names(sections.latest) == names(chats))
+        let found = ChatSections(chats, states: states, query: "P")
+        #expect(names(found.latest) == ["p1", "p2", "p3", "p4", "p5", "p6", "p7"])
+    }
+
+    /// Pages pin last, unpin in place, and a repeat changes nothing; a
+    /// layout saved before them pins none.
+    @Test func pagesPinInOrder() throws {
+        var layout = ChatSections.Layout()
+        layout.setPagePinned("mentions", true)
+        layout.setPagePinned("threads", true)
+        layout.setPagePinned("mentions", true)
+        #expect(layout.pinnedPages == ["threads", "mentions"])
+        layout.setPagePinned("threads", false)
+        #expect(layout.pinnedPages == ["mentions"])
+        let older = try JSONDecoder().decode(ChatSections.Layout.self, from: Data(#"{"tribesOpen":false}"#.utf8))
+        #expect(older.pinnedPages.isEmpty && older.recentApps.isEmpty && !older.tribesOpen)
+    }
+
+    /// An app opened goes first, once; the list keeps the newest few.
+    @Test func openedAppsAreRecentNewestFirst() {
+        var layout = ChatSections.Layout()
+        layout.noteOpened("@hive/one")
+        layout.noteOpened("two")
+        layout.noteOpened("@hive/one")
+        #expect(layout.recentApps == ["@hive/one", "two"])
+        for index in 0..<20 { layout.noteOpened("app-\(index)") }
+        #expect(layout.recentApps.count == ChatSections.Layout.recentAppsKept)
+        #expect(layout.recentApps.first == "app-19")
+    }
 }

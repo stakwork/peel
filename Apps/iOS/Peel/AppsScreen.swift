@@ -4,7 +4,8 @@ import SwiftUI
 import UIKit
 
 /// Apps, the tab between Payments and You: Talk to Jamie on each workspace (docs/talk.md),
-/// then the apps the Stadeum workspaces pinned as tabs, A–Z, each read and
+/// the apps opened last (Recent, as on the Mac: one tap each, no pins; Tom,
+/// 2026-11-26), then the apps the Stadeum workspaces pinned as tabs, A–Z, each read and
 /// opened on its workspace's own strut with the person's token
 /// (`Stadeum.readApps`, `Stadeum.opening`; strut's specs/DESKTOP.md, "A
 /// device with no strut of its own"). A tap opens one in the org page
@@ -34,6 +35,8 @@ struct AppsScreen: View {
         let unread = stadeum.unreadApps.compactMap { id in stadeum.live.first { $0.id == id }?.name }
         // Not while searching: the search is of the apps.
         let homes = query.isEmpty ? model.talkHomes : []
+        let listed = Set(apps.map(\.id))
+        let recent = query.isEmpty && shownSource == nil ? model.recentApps().filter { listed.contains($0.id) } : []
         List {
             if !homes.isEmpty {
                 Section {
@@ -54,31 +57,28 @@ struct AppsScreen: View {
                 }
                 .phoneRows()
             }
+            if !recent.isEmpty {
+                Section {
+                    RecentApps(apps: recent) { open($0) }
+                        .listRowSeparator(.hidden)
+                } header: {
+                    PhoneSectionHeader(String(localized: "Recent"))
+                }
+                .phoneRows()
+            }
             Section {
                 ForEach(shown) { row in
                     switch row {
                     case .workspace(let app):
                     Button {
-                        if case .page(let page) = stadeum.opening(app) { router.openInApps(page) }
+                        open(app)
                     } label: {
-                        AppRow(app: app, showsSource: several, pinned: model.isPinned(app))
+                        AppRow(app: app, showsSource: several)
                     }
                     .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing) {
-                        let pinned = model.isPinned(app)
-                        Button(pinned ? String(localized: "Unpin") : String(localized: "Pin to Chats"), systemImage: pinned ? "pin.slash" : "pin") {
-                            model.setPinned(app, !pinned)
-                        }
-                        .tint(Theme.accent)
-                    }
                     // Copies a link to the app: nothing is sent, and it opens
                     // here only for someone with that workspace connected.
                     .contextMenu {
-                        let pinned = model.isPinned(app)
-                        Button(pinned ? String(localized: "Unpin from Chats") : String(localized: "Pin to Chats"),
-                               systemImage: pinned ? "pin.slash" : "pin") {
-                            model.setPinned(app, !pinned)
-                        }
                         if let link = app.shareLink() {
                             Button("Share link", systemImage: "link") {
                                 Clipboard.copy(link.absoluteString)
@@ -100,6 +100,8 @@ struct AppsScreen: View {
                         }
                     }
                 }
+            } header: {
+                if !recent.isEmpty { PhoneSectionHeader(String(localized: "All apps")) }
             } footer: {
                 if !unread.isEmpty, !apps.isEmpty {
                     UnreadNote(names: unread)
@@ -176,6 +178,44 @@ struct AppsScreen: View {
         .navigationTitle("Apps")
         .navigationBarTitleDisplayMode(.inline)
     }
+
+    /// Opens a workspace's app in Apps, kept for Recent.
+    private func open(_ app: WorkspaceApp) {
+        guard case .page(let page) = model.stadeum.opening(app) else { return }
+        model.noteOpenedApp(peer: app.peer, name: app.name)
+        router.openInApps(page)
+    }
+}
+
+/// The apps opened last, newest first, in one row that scrolls sideways:
+/// each its icon and title, a tap to open it.
+private struct RecentApps: View {
+    let apps: [WorkspaceApp]
+    let open: (WorkspaceApp) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Space.sm) {
+                ForEach(apps) { app in
+                    Chip(.field, action: { open(app) }) {
+                        HStack(spacing: 7) {
+                            WorkspaceAppIcon(app, size: 15)
+                                .foregroundStyle(Theme.secondaryText)
+                                .accessibilityHidden(true)
+                            Text(app.title)
+                                .phoneFont(.secondary)
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: Theme.touchTarget)
+                    }
+                    .accessibilityHint("Opens it")
+                }
+            }
+        }
+        .scrollClipDisabled()
+    }
 }
 
 /// One app: its icon, its title and what it is for, and under them where it
@@ -183,8 +223,6 @@ struct AppsScreen: View {
 private struct AppRow: View {
     let app: WorkspaceApp
     let showsSource: Bool
-    /// Pinned to Chats: a small accent pin at the row's end.
-    var pinned = false
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.md) {
@@ -212,18 +250,11 @@ private struct AppRow: View {
                 AppStatus(app: app)
             }
             Spacer(minLength: 0)
-            if pinned {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.accent)
-                    .accessibilityHidden(true)
-            }
         }
         .padding(.vertical, 7)
         .frame(minHeight: Theme.touchTarget)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityValue(pinned ? Text("Pinned to Chats") : Text(verbatim: ""))
         .accessibilityHint("Opens it")
     }
 }

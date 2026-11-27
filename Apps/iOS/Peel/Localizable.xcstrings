@@ -739,6 +739,23 @@
         }
       }
     },
+    "Add someone or join a tribe, and they show here." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add someone or join a tribe, and they show here."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añade a alguien o únete a una tribu, y aparecerán aquí."
+          }
+        }
+      }
+    },
     "Added on top" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -837,6 +854,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Todo"
+          }
+        }
+      }
+    },
+    "All apps" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All apps"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todas las apps"
           }
         }
       }
@@ -3051,23 +3085,6 @@
         }
       }
     },
-    "Direct messages" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Direct messages"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mensajes directos"
-          }
-        }
-      }
-    },
     "Discard" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4462,23 +4479,6 @@
         }
       }
     },
-    "Join a tribe or add someone below, and they show here." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Join a tribe or add someone below, and they show here."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Únete a una tribu o agrega a alguien abajo, y aparecerán aquí."
-          }
-        }
-      }
-    },
     "Join with an invite" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4989,6 +4989,23 @@
         }
       }
     },
+    "Mentions and Threads" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mentions and Threads"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menciones e hilos"
+          }
+        }
+      }
+    },
     "Mentions did not load" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5172,6 +5189,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nuevo"
+          }
+        }
+      }
+    },
+    "New chat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New chat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuevo chat"
           }
         }
       }
@@ -6876,23 +6910,6 @@
         }
       }
     },
-    "Pin to Chats" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pin to Chats"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fijar en Chats"
-          }
-        }
-      }
-    },
     "Ping" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6940,23 +6957,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mensaje fijado"
-          }
-        }
-      }
-    },
-    "Pinned to Chats" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pinned to Chats"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fijada en Chats"
           }
         }
       }
@@ -7624,6 +7624,23 @@
         }
       }
     },
+    "Remove from Chats" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from Chats"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar de Chats"
+          }
+        }
+      }
+    },
     "Remove from list" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8151,23 +8168,6 @@
         }
       }
     },
-    "Search chats" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Search chats"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscar chats"
-          }
-        }
-      }
-    },
     "Search cities or GMT+…" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8389,23 +8389,6 @@
         }
       }
     },
-    "Separated" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Separated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Separados"
-          }
-        }
-      }
-    },
     "Server" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8610,197 +8593,6 @@
         }
       }
     },
-    "Show all %lld chats" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show all %lld chat"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show all %lld chats"
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Mostrar %lld chat"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Mostrar los %lld chats"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Show all %lld people" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show all %lld person"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show all %lld people"
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Mostrar %lld persona"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Mostrar las %lld personas"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Show all %lld tribes" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show all %lld tribe"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show all %lld tribes"
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Mostrar %lld tribu"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Mostrar las %lld tribus"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Show fewer" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show fewer"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar menos"
-          }
-        }
-      }
-    },
-    "Show fewer chats" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show fewer chats"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar menos chats"
-          }
-        }
-      }
-    },
-    "Show fewer people" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show fewer people"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar menos personas"
-          }
-        }
-      }
-    },
-    "Show fewer tribes" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show fewer tribes"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar menos tribus"
-          }
-        }
-      }
-    },
     "Show my contact code" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8814,6 +8606,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostrar mi código de contacto"
+          }
+        }
+      }
+    },
+    "Show on Chats" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show on Chats"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar en Chats"
           }
         }
       }
@@ -9957,23 +9766,6 @@
         }
       }
     },
-    "Tribes" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tribes"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tribus"
-          }
-        }
-      }
-    },
     "Tribes and people by name." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10157,57 +9949,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Activar sonido"
-          }
-        }
-      }
-    },
-    "Unpin" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unpin"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desanclar"
-          }
-        }
-      }
-    },
-    "Unpin from Chats" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unpin from Chats"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quitar de Chats"
-          }
-        }
-      }
-    },
-    "Unread" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unread"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No leídos"
           }
         }
       }

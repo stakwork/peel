@@ -46,7 +46,8 @@ public struct WorkspaceApp: Sendable, Hashable, Identifiable {
 
     /// strut's key for it, the `?app=` its UI takes: `@<peer>/<name>`, or
     /// the name alone for one of the person's own.
-    public var id: String { peer.map { "@\($0)/\(name)" } ?? name }
+    public var id: String { Self.id(peer: peer, name: name) }
+    public static func id(peer: String?, name: String) -> String { peer.map { "@\($0)/\(name)" } ?? name }
 
     /// The link Share copies: Hive's page for the app, `/w/<peer>/apps/<name>`
     /// (the peer id is the workspace's slug there), each `/`-separated

@@ -593,6 +593,13 @@ public final class AppModel {
         return ChatSections(chats, states: readStates, layout: sidebarLayout, query: searchQuery, open: selectedChat)
     }
 
+    /// The iPhone's chat list: every chat but the agent's (Peel has its own
+    /// row, first), newest first, unread ones in place, matching its search.
+    public var latestChats: [Conversation] {
+        let chats = agentChat.map { agent in conversations.filter { $0.chat != agent } } ?? conversations
+        return ChatSections(chats, states: readStates, query: searchQuery).latest
+    }
+
     /// Go › Next (⌥⇧↓) or Previous (⌥⇧↑) Unread Chat: the next chat in the
     /// sidebar's Unread section, going round. From anywhere in the main
     /// window, as ⌘F (`takesCommands`).

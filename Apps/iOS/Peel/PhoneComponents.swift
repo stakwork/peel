@@ -78,48 +78,6 @@ struct PhoneSectionHeader: View {
     }
 }
 
-/// A sidebar-style row at the top of Chats (Automations, Threads,
-/// Mentions): a 19 pt symbol in the avatars' 30 pt column, then the name,
-/// bold with a count when there is something new, `secondaryText` when
-/// not. The caller wraps it in its `NavigationLink`.
-struct NavRow<Icon: View>: View {
-    let title: String
-    let icon: Icon
-    var count = 0
-    var countStyle = Badge.Style.default
-
-    init(title: String, icon: Icon, count: Int = 0, countStyle: Badge.Style = .default) {
-        self.title = title
-        self.icon = icon
-        self.count = count
-        self.countStyle = countStyle
-    }
-
-    var body: some View {
-        let lit = count > 0
-        RowLayout {
-            icon
-                .font(.system(size: 19))
-                .frame(width: 30)
-                .accessibilityHidden(true)
-        } title: {
-            Text(title).phoneFont(PhoneFont.row.weight(lit ? .semibold : .regular))
-        } trailing: {
-            if lit { CountBadge(count: count, style: countStyle) }
-        }
-        .foregroundStyle(lit ? Theme.text : Theme.secondaryText)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(lit ? String(localized: "\(count) new") : "")
-    }
-}
-
-extension NavRow where Icon == Image {
-    /// A row with an SF Symbol.
-    init(title: String, systemImage: String, count: Int = 0, countStyle: Badge.Style = .default) {
-        self.init(title: title, icon: Image(systemName: systemImage), count: count, countStyle: countStyle)
-    }
-}
-
 /// A chat in a list: its icon (a tribe a rounded square, a person round),
 /// the name, and what it holds for you. Read: the name in
 /// `secondaryText`; unread: `text`, semibold, with the count in blue, or

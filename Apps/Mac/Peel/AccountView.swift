@@ -378,7 +378,7 @@ private struct ChangePINRow: View {
                     .id(step)
                     .frame(maxWidth: 360)
                     .disabled(working)
-                    ProgressView().controlSize(.small).opacity(working ? 1 : 0)
+                    PeelSpinner(size: 16, active: working)
                 }
                 .padding(.horizontal, settingsRowPadding)
                 .padding(.bottom, Theme.Space.sm)
@@ -472,7 +472,7 @@ private struct WordsRow: View {
                     PinField(pin: $pin) { Task { await reveal() } }
                         .frame(maxWidth: 360)
                         .disabled(working)
-                    ProgressView().controlSize(.small).opacity(working ? 1 : 0)
+                    PeelSpinner(size: 16, active: working)
                 }
                 .padding(.horizontal, settingsRowPadding)
                 .padding(.bottom, Theme.Space.sm)

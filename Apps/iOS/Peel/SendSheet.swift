@@ -251,7 +251,7 @@ private struct PayInvoiceForm: View {
             ProblemText(PaymentItem.notSettled + ".")
         default:
             HStack(spacing: Theme.Space.sm) {
-                ProgressView()
+                PeelSpinner(delayed: false)
                 Text("Paying \(Sats.format(msat: payment.amountMsat))…")
                     .phoneFont(.row)
                     .monospacedDigit()

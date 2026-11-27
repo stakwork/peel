@@ -36,7 +36,7 @@ struct VoiceControls: View {
                     if needsTap {
                         Image(systemName: "arrow.down.circle").font(.system(size: 16))
                     } else if state == .loading || state == .uploading {
-                        ProgressView().controlSize(.small).tint(Theme.buttonText)
+                        PeelSpinner(size: 16, delayed: false, tint: Theme.buttonText)
                     } else {
                         Image(systemName: state == .failed ? "exclamationmark.triangle" : player.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 16))

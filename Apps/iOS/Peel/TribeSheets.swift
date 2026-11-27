@@ -126,7 +126,7 @@ struct TribeSettingsSheet: View {
                         .padding(.top, Theme.Space.lg)
                 }
             } else if problem == nil {
-                ProgressView().frame(maxWidth: .infinity)
+                PeelSpinner().frame(maxWidth: .infinity)
             }
             if let problem { ProblemText(problem) }
         } actions: {

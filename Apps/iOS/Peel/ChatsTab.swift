@@ -365,7 +365,7 @@ private struct MessageResults: View {
         if search.searching && search.messages.isEmpty {
             Section {
                 HStack(spacing: 6) {
-                    ProgressView()
+                    PeelSpinner(size: 16, delayed: false)
                     Text("Searching…")
                 }
                 .phoneFont(.secondary)

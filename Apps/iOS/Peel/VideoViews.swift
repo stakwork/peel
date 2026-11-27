@@ -210,7 +210,7 @@ struct VideoTile: View {
                     Text(AttachmentFormat.progress(progress.bytes, of: progress.total))
                         .phoneFont(.time).monospacedDigit().foregroundStyle(Theme.secondaryText)
                 } else {
-                    ProgressView()
+                    PeelSpinner()
                 }
             }
             .padding(Theme.Space.lg)
@@ -252,7 +252,7 @@ struct VideoTile: View {
                     .accessibilityHidden(true)
             }
         } else {
-            ProgressView()
+            PeelSpinner()
         }
     }
 

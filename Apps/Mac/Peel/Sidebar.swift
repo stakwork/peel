@@ -472,7 +472,7 @@ struct SidebarMessageResults: View {
         if search.searching && search.messages.isEmpty {
             SidebarSection(String(localized: "Messages")) {
                 HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini)
+                    PeelSpinner(size: 12, delayed: false)
                     Text("Searching…")
                 }
                 .font(Theme.font(13))

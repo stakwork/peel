@@ -42,7 +42,7 @@ struct BoxesSection: View {
                     Fact(offer.host) {
                         Text("Linking Peel…").muted()
                     } trailing: {
-                        ProgressView().controlSize(.small)
+                        PeelSpinner(size: 16, delayed: false)
                     }
                 }
                 ForEach(boxes.links) { box in

@@ -177,7 +177,7 @@ struct AddContactForm: View {
                 .disabled(reading || attempt.working)
             }
             Spacer(minLength: 0)
-            if reading { ProgressView().controlSize(.small) }
+            if reading { PeelSpinner(size: 16) }
         }
         .padding(10)
         .background(
@@ -369,7 +369,7 @@ private struct InviteDetail: View {
             if let invite {
                 content(invite)
             } else {
-                ProgressView().controlSize(.small).padding(.vertical, Theme.Space.md)
+                PeelSpinner(size: 16).padding(.vertical, Theme.Space.md)
             }
         } footer: {
             if let invite { footer(invite) }

@@ -140,7 +140,7 @@ struct ActionLabel: View {
     var body: some View {
         ZStack {
             Text(LocalizedStringKey(title)).opacity(working ? 0 : 1)
-            if working { ProgressView() }
+            if working { PeelSpinner(delayed: false) }
         }
         .frame(maxWidth: .infinity)
     }

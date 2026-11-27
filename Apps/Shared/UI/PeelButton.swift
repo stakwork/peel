@@ -191,20 +191,25 @@ private struct ButtonProgress: ViewModifier {
     let working: Bool
     let size: ControlSize
     @Environment(\.filledButton) private var filled
-    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content
             .opacity(working ? 0 : 1)
             .accessibilityValue(working ? String(localized: "Working", table: "Shared") : "")
             .overlay {
+                // At once, not after the spinner's usual wait: the label is already hidden.
                 if working {
-                    ProgressView()
-                        .controlSize(size)
-                        // The system spinner draws in its scheme's grey; on a fill
-                        // the other scheme's grey reads like the button's text.
-                        .environment(\.colorScheme, filled ? (colorScheme == .dark ? .light : .dark) : colorScheme)
+                    PeelSpinner(size: spinner, delayed: false, tint: filled ? Theme.buttonText : Theme.secondaryText)
+                        .accessibilityHidden(true)
                 }
             }
+    }
+
+    private var spinner: CGFloat {
+        switch size {
+        case .mini: 12
+        case .small: 16
+        default: 20
+        }
     }
 }

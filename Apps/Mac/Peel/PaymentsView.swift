@@ -96,7 +96,7 @@ struct PaymentsView: View {
                     }
                     if feed.loadingOlder || (feed.problem != nil && feed.paging.hasMore) {
                         HStack(spacing: Theme.Space.sm) {
-                            if feed.loadingOlder { ProgressView().controlSize(.small) }
+                            if feed.loadingOlder { PeelSpinner(size: 16, delayed: false) }
                             Text(feed.loadingOlder ? String(localized: "Loading older payments") : feed.problem ?? "")
                                 .muted()
                         }

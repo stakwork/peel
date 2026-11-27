@@ -500,6 +500,31 @@ spins; the others are off. A spinner that stands for a status rather than a
 click (restore progress, "Asking the tribes server…", "Paying…", a PIN being
 checked under its field) stays where it is.
 
+### Peel's spinner
+
+Tom picked it on 2026-11-27 (the motion board, "Wind"). `PeelSpinner`
+(`Apps/Shared/UI/PeelSpinner.swift`) draws the peel's spiral from the app
+icon as a line glyph (`PeelGlyph`) over a faint copy of itself: the line
+winds out from the centre to the tail, rests a beat, and draws back to the
+centre, 2.4 s a cycle, eased in and out. Under Reduce Motion the whole
+glyph breathes between full and 40% opacity. VoiceOver reads "Loading".
+
+- It is every indeterminate spinner in both apps; a system `ProgressView()`
+  is no longer used (a bar with a value still is). Sizes follow the old
+  control sizes: 12 for mini, 16 for small, 20 for the iPhone's default,
+  32 on the Mac where a pane waits (launch, the image viewer).
+- It stands for a wait, so on its own (a sheet, a list or a picture
+  loading) it shows only once the wait passes 400 ms and then stays at
+  least 400 ms: a quick answer never flickers it (`active:` where its
+  frame stays laid out). Beside words that already say it is waiting
+  ("Searching…", "Paying…", "Loading older payments") and in the place of
+  a control or a label (`buttonProgress`, a restore step, a member's
+  Approve and Decline, a voice note's play button) it shows at once
+  (`delayed: false`).
+- On a fill or over a picture it takes that surface's text colour: the
+  button's on a filled button or the voice note's play button, white in
+  the image viewer, over a picture being uploaded and in the dictation pill.
+
 ## Component library
 
 The library lives in `Sources/PeelApp/UI/`, shadcn-style, built over

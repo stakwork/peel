@@ -180,7 +180,7 @@ struct InviteDetailScreen: View {
             if let invite {
                 content(invite)
             } else {
-                ProgressView().frame(maxWidth: .infinity)
+                PeelSpinner().frame(maxWidth: .infinity)
             }
         } actions: {
             if let invite { actions(invite) }

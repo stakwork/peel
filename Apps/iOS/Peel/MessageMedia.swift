@@ -106,7 +106,7 @@ struct ImageTile: View {
                         } else if case .idle? = handle?.state {
                             note("clock", String(localized: "Waiting to download"))
                         } else {
-                            ProgressView()
+                            PeelSpinner()
                         }
                     }
             }

@@ -267,7 +267,7 @@ struct MemoryPanelView: View {
                         case .episode(let episode): EpisodeDetail(episode: episode)
                         }
                     } else {
-                        ProgressView().controlSize(.small)
+                        PeelSpinner(size: 16)
                             .frame(maxWidth: .infinity)
                     }
                 }

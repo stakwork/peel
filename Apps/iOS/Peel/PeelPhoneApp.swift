@@ -204,7 +204,7 @@ struct RootView: View {
     @ViewBuilder private var phase: some View {
         switch model.phase {
         case .loading:
-            ProgressView()
+            PeelSpinner(size: 28)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.background.ignoresSafeArea())
         case .locked:

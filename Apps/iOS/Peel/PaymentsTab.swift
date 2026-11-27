@@ -97,7 +97,7 @@ struct PaymentsTab: View {
             if feed.loadingOlder || (feed.problem != nil && feed.paging.hasMore) {
                 Section {
                     HStack(spacing: Theme.Space.sm) {
-                        if feed.loadingOlder { ProgressView() }
+                        if feed.loadingOlder { PeelSpinner(delayed: false) }
                         Text(feed.loadingOlder ? String(localized: "Loading older payments") : feed.problem ?? "")
                             .phoneFont(.secondary)
                             .foregroundStyle(Theme.tertiaryText)

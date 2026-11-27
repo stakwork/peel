@@ -77,7 +77,7 @@ struct LockScreen: View {
                     Task { await unlock() }
                 }
                 .disabled(working)
-                ProgressView().opacity(working ? 1 : 0)
+                PeelSpinner(active: working)
             }
             .padding(.horizontal, Theme.phoneGutter)
             .padding(.top, 56)

@@ -119,7 +119,7 @@ private struct ViewerPage: View {
                 .multilineTextAlignment(.center)
                 .padding(Theme.Space.xl)
             } else if image == nil {
-                ProgressView().tint(.white)
+                PeelSpinner(tint: .white)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

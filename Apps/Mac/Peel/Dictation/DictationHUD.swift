@@ -100,9 +100,7 @@ struct DictationHUDView: View {
                 .hudCapsule()
         case .working:
             // The same size as the recording pill, so letting go doesn't jump.
-            ProgressView()
-                .controlSize(.small)
-                .colorScheme(.dark)
+            PeelSpinner(size: 16, delayed: false, tint: .white.opacity(0.85))
                 .padding(.horizontal, Theme.Space.md)
                 .frame(minWidth: 52)
                 .frame(height: 24)

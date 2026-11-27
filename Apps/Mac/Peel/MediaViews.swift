@@ -298,7 +298,7 @@ struct VideoTile: View {
             } else if handle.isIdle {
                 Text("Waiting to download").muted()
             } else {
-                ProgressView().controlSize(.small)
+                PeelSpinner(size: 16)
             }
         }
         .multilineTextAlignment(.center)

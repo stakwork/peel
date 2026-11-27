@@ -79,7 +79,7 @@ struct LockedAttachment: View {
         switch state {
         case .processing:
             HStack(spacing: Theme.Space.sm) {
-                ProgressView().controlSize(.small)
+                PeelSpinner(size: 16, delayed: false)
                 Text("Waiting for \(seller)…")
                     .font(Theme.font(12))
                     .foregroundStyle(Theme.secondaryText)

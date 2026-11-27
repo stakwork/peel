@@ -81,7 +81,7 @@ struct PhoneChatSearchBar: View {
                 .autocorrectionDisabled()
                 .onSubmit(submit)
             if search.searching, search.matches.isEmpty {
-                ProgressView().controlSize(.small)
+                PeelSpinner(size: 16)
             } else {
                 Text(hint)
                     .phoneFont(.secondary)

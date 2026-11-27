@@ -400,7 +400,7 @@ struct PaymentRequestRow: View {
                 .muted()
         case .paying:
             HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
+                PeelSpinner(size: 12, delayed: false)
                 Text("Paying…")
             }
             .muted()

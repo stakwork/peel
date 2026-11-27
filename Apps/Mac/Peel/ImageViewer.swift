@@ -46,7 +46,7 @@ struct ImageViewer: View {
                                 .font(Theme.font(13))
                                 .foregroundStyle(Theme.secondaryText)
                         } else {
-                            ProgressView()
+                            PeelSpinner(size: 32)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -122,7 +122,7 @@ struct PinPrompt: View {
                 }
                 PinPad(pin: $pin, biometry: biometry, complete: complete)
                     .disabled(working)
-                ProgressView().opacity(working ? 1 : 0)
+                PeelSpinner(active: working)
             }
             .padding(.horizontal, Theme.phoneGutter)
             .padding(.top, Theme.Space.xl)

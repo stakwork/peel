@@ -292,6 +292,9 @@ struct ShareableCode: View {
     /// "Copy key", "Copy link".
     let copyTitle: String
     var showsText = false
+    /// What Copy and Share hand on when it is not the QR's text: an invite's
+    /// message around its https link. The QR keeps `text`.
+    var shareText: String?
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
@@ -309,9 +312,9 @@ struct ShareableCode: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             buttons {
-                CopyButton(copyTitle, text: text)
+                CopyButton(copyTitle, text: shareText ?? text)
                     .buttonStyle(.peel(.outline, size: .touch))
-                ShareLink(item: text) {
+                ShareLink(item: shareText ?? text) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.peel(.outline, size: .touch))

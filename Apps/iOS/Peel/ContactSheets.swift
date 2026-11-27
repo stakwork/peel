@@ -200,7 +200,8 @@ struct InviteDetailScreen: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
         if invite.status == .ready {
-            ShareableCode(text: invite.link, label: String(localized: "QR code of the invite"), copyTitle: String(localized: "Copy invite"))
+            ShareableCode(text: invite.link, label: String(localized: "QR code of the invite"), copyTitle: String(localized: "Copy invite"),
+                          shareText: InviteShare.message(link: invite.link, inviterAlias: model.myAlias, note: invite.message))
             Text("Anyone with this invite can claim its sats.")
                 .phoneFont(.secondary)
                 .foregroundStyle(Theme.secondaryText)

@@ -141,3 +141,51 @@ struct InviteLinkTests {
         #expect(InviteLink.appOf("https://s.example/public/join#action=i&d=abc") == nil)
     }
 }
+
+/// A shared invite: its https join link and the message around it.
+struct InviteShareLinkTests {
+    let link = "sphinx.chat://?action=i&d=abc&c=BBBB"
+
+    @Test func joinLinkReadsBackAsTheSameSphinxLink() throws {
+        let joined = try #require(InviteLink.joinLink(link))
+        #expect(joined == "https://strut.stadeum.stakwork.ai/public/join#action=i&d=abc&c=BBBB")
+        #expect(InviteLink.fromJoinLink(joined) == link)
+        #expect(InviteLink.joinLink("action=i&d=abc", host: "https://h.example/") == "https://h.example/public/join#action=i&d=abc")
+    }
+
+    @Test(arguments: ["", "hello", "sphinx.chat://?action=i", "sphinx.chat://?action=i&d=", "sphinx.chat://?action=i&d=a#b",
+                      "sphinx.chat://?action=i&d=a b", "sphinx.chat://?action=x&d=abc"])
+    func joinLinkRefusesWhatIsNotAnInvite(_ text: String) {
+        #expect(InviteLink.joinLink(text) == nil)
+    }
+
+    @Test func findTakesTheFirstInviteInText() {
+        let english = InviteShare.message(link: link, inviterAlias: "Ana", note: nil)
+        #expect(InviteLink.find(in: english) == link)
+        #expect(InviteLink.fromClipboard(english) == link)
+        #expect(InviteLink.find(in: "Join me: \(link).") == link)
+        #expect(InviteLink.find(in: "(\(link))") == link)
+        #expect(InviteLink.find(in: "a sphinx.chat://?action=i&d=one b sphinx.chat://?action=i&d=two") == "sphinx.chat://?action=i&d=one")
+        #expect(InviteLink.find(in: "nothing to see https://example.com/x") == nil)
+        #expect(InviteLink.fromClipboard("just words") == nil)
+        #expect(InviteLink.fromClipboard(String(repeating: "word ", count: 5000) + link) == nil)
+    }
+
+    @Test func findReadsTheSpanishMessage() {
+        let spanish = "Ana te invitó a Peel, una app privada de chat y billetera.\n\n1. Abre este enlace en tu teléfono:\n"
+            + "https://strut.stadeum.stakwork.ai/public/join#action=i&d=abc&c=BBBB\n2. Abre Peel."
+        #expect(InviteLink.find(in: spanish) == link)
+    }
+
+    @Test func theMessageCarriesTheJoinLinkAndWhoInvited() {
+        let named = InviteShare.message(link: link, inviterAlias: " Ana ", note: "Come chat with me")
+        #expect(named.hasPrefix("Come chat with me\n\n"))
+        #expect(named.contains("https://strut.stadeum.stakwork.ai/public/join#action=i&d=abc&c=BBBB"))
+        #expect(!named.contains("sphinx.chat://"))
+        #expect(named.contains("Ana invited you to Peel"))
+        #expect(named.contains("\"Join with an invite\""))
+        let anonymous = InviteShare.message(link: link, inviterAlias: nil, note: nil)
+        #expect(anonymous.hasPrefix("You're invited to Peel, a private chat and wallet app."))
+        #expect(InviteShare.message(link: "junk", inviterAlias: "", note: nil).contains("junk"))
+    }
+}

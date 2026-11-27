@@ -609,7 +609,7 @@ public final class AppModel {
         return ChatSections(chats, states: readStates, layout: sidebarLayout, query: searchQuery, open: selectedChat)
     }
 
-    /// The Mac's chat list: every chat but the agent's (Peel has its own
+    /// The chat list, on the Mac and the iPhone: every chat but the agent's (Peel has its own
     /// row, first), newest first, unread ones in place, matching its search.
     public var latestChats: [Conversation] {
         let query = searchQuery.trimmingCharacters(in: .whitespaces)

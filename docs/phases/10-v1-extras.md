@@ -454,6 +454,22 @@ badge was the only other cue. **Done (branch `sidebar-unread-first`):**
   chat opened from Unread stays there until you open another; ⌥⇧↓ goes
   round; the shortcuts win in every text field.
 - **Not built:** drag-and-drop ordering (later, Tom).
+- **iPhone, round three (2026-11-27, Tom, after the Mac's rail; the board
+  "Peel sidebar directions", row "Phones"):** Chats is one list newest
+  first (`ChatSections.latest`, `AppModel.latestChats`); ••• holds Mentions
+  and Threads, each pinned above the chats from its own page's bar
+  (`PinPageButton`, `Layout.pinnedPages`); the bar
+  keeps the bolt and gains New chat; search is gone from Chats. Apps gains
+  Recent (`Layout.recentApps`, `AppModel.noteOpenedApp`) and loses its
+  pins; the Mac's pins are untouched (`Layout.pinnedApps` stays for it).
+  Tested in `ChatSectionsTests`; built for the simulator, not walked with
+  an account (no seeded iPhone mode, and agents never put an account into
+  the phone app). Android follows in peel-android.
+  Review (2026-11-27), not applied: app pins made on the iPhone before this
+  stay in `Layout.pinnedApps` with no way to clear them there (harmless:
+  they only seed Apps at launch); `latestChats` builds a whole
+  `ChatSections` for one list (cheap at today's sizes); Recent fills in as
+  each workspace answers, as the list does.
 
 ## 7. The rail (Mac)
 

@@ -2,52 +2,45 @@ import PeelCore
 import PeelUI
 import SwiftUI
 
-/// Chats (docs/design/iphone.md, screen 1): the large title with the
-/// connection bolt in its glass capsule (green when connected, orange when
-/// not), the top rows, then Unread, Tribes and Direct messages in the Mac
-/// sidebar's order and trimming (`AppModel.sidebarSections`), each section
-/// ending in its actions as on the Mac; or, with Recent chosen, one list of
-/// both, newest first. Its stack is the router's `chats`. The magnifying
-/// glass top left brings up a search field under the title that narrows the
-/// list to chats whose name matches (`sidebarSections` filters by
-/// `searchQuery`); Cancel puts it away and clears it. There is no Search tab.
+/// Chats (docs/design/iphone.md, screen 1; Tom, 2026-11-26, after the Mac's
+/// rail): one list, newest first, Peel's own row first, unread chats bold
+/// with their counts in place: no sections, no Separated / Recent, no rows
+/// above the chats unless the person pinned Mentions or Threads from •••.
+/// The bar: ••• (Mentions and Threads, and which of them show above the
+/// chats), then the connection bolt and New chat (Add contact, Invite
+/// someone, Join a tribe, Create a tribe). The large title is always shown
+/// and pulling the list down shows the search, as Apps does: it finds chats
+/// by name and messages by their words. Its stack is the router's `chats`.
 struct ChatsTab: View {
     @Environment(PhoneRouter.self) private var router
     @Environment(AppModel.self) private var model
-    @State private var searching = false
+    /// The form or invite open over the list, as a sheet.
+    @State private var sheet: PeopleSheet?
 
     var body: some View {
         @Bindable var router = router
         @Bindable var model = model
         NavigationStack(path: $router.chats) {
-            ChatList()
+            ChatList(sheet: $sheet)
                 .onCallBannerInset()
                 .navigationTitle("Chats")
-                .modifier(ChatsSearchField(on: $searching, query: $model.searchQuery))
-                .onChange(of: searching) { if !searching { model.searchQuery = "" } }
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Search chats", systemImage: "magnifyingglass") { searching = true }
+                .searchable(text: $model.searchQuery, prompt: Text("Search chats and messages"))
+                .onChange(of: model.searchQuery) {
+                    // Cleared or cancelled: the plain list, and no stale messages.
+                    if model.searchQuery.isEmpty {
+                        model.clearSidebarSearch()
+                    } else {
+                        model.updateSidebarSearch()
                     }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) { ChatsMoreMenu() }
                     ToolbarItem(placement: .topBarTrailing) { ConnectionBolt() }
+                    ToolbarItem(placement: .topBarTrailing) { NewChatMenu(sheet: $sheet) }
                 }
                 .chatsDestinations()
         }
-    }
-}
-
-/// Chats' search field, there only while it is up: under the title, focused
-/// as it comes.
-private struct ChatsSearchField: ViewModifier {
-    @Binding var on: Bool
-    @Binding var query: String
-
-    func body(content: Content) -> some View {
-        if on {
-            content.searchable(text: $query, isPresented: $on, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search chats"))
-        } else {
-            content
-        }
+        .sheet(item: $sheet) { $0.screen }
     }
 }
 
@@ -80,233 +73,200 @@ extension View {
     }
 }
 
-/// The top rows, then the chats by section, Tribes ending in Join and
-/// Create a tribe and Direct messages in the pending invites, Add contact
-/// and Invite someone, as the Mac's sidebar ends them. Recent (the layout's
-/// `combinedView`, shared with the Mac) puts tribes and people in one list,
-/// newest first, trimmed to ten, ending in all those actions. Search shows it too,
-/// filtered by name: then only the matching chats, every section open, no
-/// actions.
-struct ChatList: View {
+/// The pages ••• opens on the iPhone, A–Z: Mentions and Threads
+/// (Automations and Segments are the Mac's for now). A pinned one shows
+/// above the chats, kept with the account's layout
+/// (`AppModel.isPagePinned`).
+enum ChatsPage: String, CaseIterable, Identifiable {
+    case mentions, threads
+
+    var id: String { rawValue }
+
+    var route: ChatsRoute { self == .mentions ? .mentions : .threads }
+
+    var title: String { self == .mentions ? String(localized: "Mentions") : String(localized: "Threads") }
+
+    var systemImage: String { self == .mentions ? "at" : "bubble.left" }
+
+    @MainActor func count(in model: AppModel) -> Int {
+        self == .mentions ? model.unreadMentions : model.unreadThreads
+    }
+}
+
+/// ••• on Chats: Mentions and Threads with how many are new, each pushing
+/// its page. Each is pinned above the chats from its own page's bar
+/// (`PinPageButton`), as the Mac pins from a page's header (Tom, 2026-11-27).
+private struct ChatsMoreMenu: View {
     @Environment(AppModel.self) private var model
-    /// The form or invite open over the list, as a sheet.
-    @State private var sheet: PeopleSheet?
+    @Environment(PhoneRouter.self) private var router
 
     var body: some View {
-        @Bindable var model = model
-        let sections = model.sidebarSections
+        Menu {
+            ForEach(ChatsPage.allCases) { page in
+                let count = page.count(in: model)
+                Button {
+                    router.chats.append(page.route)
+                } label: {
+                    Label {
+                        Text(page.title)
+                        if count > 0 { Text("\(count) new") }
+                    } icon: {
+                        Image(systemName: page.systemImage)
+                    }
+                }
+            }
+        } label: {
+            Label("More", systemImage: "ellipsis")
+        }
+        .accessibilityHint("Mentions and Threads")
+    }
+}
+
+/// The pin in a Mentions or Threads page's bar: shows the page as a chip
+/// above the chats, or takes it off; accent while pinned.
+struct PinPageButton: View {
+    @Environment(AppModel.self) private var model
+    let page: ChatsPage
+
+    var body: some View {
+        let pinned = model.isPagePinned(page.rawValue)
+        Button(pinned ? String(localized: "Remove from Chats") : String(localized: "Show on Chats"),
+               systemImage: pinned ? "pin.fill" : "pin") {
+            model.setPagePinned(page.rawValue, !pinned)
+        }
+        .tint(pinned ? Theme.accent : Theme.text)
+    }
+}
+
+/// New chat on Chats: the four ways in, each opening its form as a sheet.
+private struct NewChatMenu: View {
+    @Binding var sheet: PeopleSheet?
+
+    var body: some View {
+        Menu {
+            Button("Add contact", systemImage: "person.badge.plus") { sheet = .addContact }
+            Button("Invite someone", systemImage: "envelope") { sheet = .inviteSomeone }
+            Button("Join a tribe", systemImage: "person.3") { sheet = .joinTribe }
+            Button("Create a tribe", systemImage: "plus.bubble") { sheet = .createTribe }
+        } label: {
+            Label("New chat", systemImage: "plus")
+        }
+    }
+}
+
+/// Pending invites, Peel's row, then every chat newest first
+/// (`AppModel.latestChats`); above them, the pages pinned from •••. While
+/// searching (pull down), the chats whose names match, then the messages
+/// that do (`AppModel.sidebarSearch`).
+struct ChatList: View {
+    @Environment(AppModel.self) private var model
+    @Binding var sheet: PeopleSheet?
+
+    var body: some View {
+        let chats = model.latestChats
         // Read once here and passed down: a row redraws only when its own state changes.
         let states = model.readStates
-        // The agent's DM is its own row, first in Direct messages, as on the
-        // Mac (never in the sections), and found by its name as a chat is.
+        // The agent's DM is its own row, first.
         let agent = model.agentChat.flatMap { chat in model.conversations.first { $0.chat == chat } }
-            .flatMap { ChatSections.matches($0.name, query: model.searchQuery) ? $0 : nil }
-            // Unread, it is in the Unread section instead.
-            .flatMap { agent in sections.unread.contains { $0.chat == agent.chat } ? nil : agent }
-        let empty = sections.unread.isEmpty && sections.tribes.isEmpty && sections.direct.isEmpty && agent == nil
-        let recent = model.sidebarLayout.combinedView && !sections.searching
-        // The apps pinned to Chats, A–Z: the pinned ones, or, searching,
-        // every app that matches. Only with Stadeum connected here.
-        let stadeumLive = !model.stadeum.live.isEmpty
-        let livePeers = Set(model.stadeum.live.map(\.id))
-        let listedApps = model.stadeum.apps.filter { $0.peer.map(livePeers.contains) ?? false }
-        let pinnedApps: [WorkspaceApp] = {
-            guard stadeumLive else { return [] }
-            if sections.searching { return listedApps.filter { $0.matches(model.searchQuery) } }
-            return model.sidebarLayout.pinned(listedApps)
-        }()
-        let showsSources = Set(listedApps.compactMap(\.peer)).count > 1
+        let pinned = ChatsPage.allCases.filter { model.isPagePinned($0.rawValue) }
+        let query = model.searchQuery.trimmingCharacters(in: .whitespaces)
+        let searching = !query.isEmpty
         List {
-            if !sections.searching {
-                Section {
-                    // The apps pinned to Chats, A–Z (Apps itself is a tab).
-                    ForEach(pinnedApps) { PinnedAppRow(app: $0, showsSource: showsSources) }
-                    // Automations is Mac-only for now; hidden on iOS until ready.
-                    NavigationLink(value: ChatsRoute.threads) {
-                        NavRow(title: String(localized: "Threads"), systemImage: "bubble.left", count: model.unreadThreads)
+            if searching {
+                // One expression: a statement like `matching.insert` inside the
+                // view builder would be read as a view (`()`) and not compile.
+                let agentMatch = agent.flatMap { ChatSections.matches($0.name, query: query) ? $0 : nil }
+                let found = SidebarSearch.capped(agentMatch.map { [$0] + chats } ?? chats)
+                if !found.isEmpty {
+                    Section {
+                        ForEach(found) { ChatLink(conversation: $0, state: states[$0.chat], isAgent: $0.chat == model.agentChat) }
+                    } header: {
+                        PhoneSectionHeader(String(localized: "Chats"))
                     }
-                    NavigationLink(value: ChatsRoute.mentions) {
-                        NavRow(title: String(localized: "Mentions"), systemImage: "at", count: model.unreadMentions)
-                    }
+                    .phoneRows()
+                    .listRowInsets(.vertical, 2)
                 }
-                .phoneRows()
-                .listRowInsets(.vertical, 2)
-                .navigationLinkIndicatorVisibility(.hidden)
+                MessageResults(search: model.sidebarSearch, chatsFound: !found.isEmpty)
+            } else {
+            if !pinned.isEmpty {
+                Section { PinnedPages(pages: pinned) }
+                    .phoneRows()
+                    .listRowSeparator(.hidden)
             }
-            // Searching hides the top rows, but the apps that match still show.
-            if sections.searching, !pinnedApps.isEmpty {
-                Section {
-                    ForEach(pinnedApps) { PinnedAppRow(app: $0, showsSource: showsSources) }
-                }
-                .phoneRows()
-                .listRowInsets(.vertical, 2)
-            }
-            if model.diagnosticsNotice, !sections.searching {
+            if model.diagnosticsNotice {
                 Section { DiagnosticsNotice() }
                     .phoneRows()
             }
-            if model.conversations.isEmpty, !sections.searching {
-                Section { NoChats() }
+            if model.conversations.isEmpty {
+                Section { NoChats(sheet: $sheet) }
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }
-            if !sections.unread.isEmpty {
-                ChatsSection(title: String(localized: "Unread")) {
-                    ForEach(sections.unread) {
-                        ChatLink(conversation: $0, state: states[$0.chat], isAgent: $0.chat == model.agentChat)
-                    }
+            Section {
+                ForEach(model.pendingInvites) { invite in
+                    PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
                 }
+                if let agent {
+                    ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
+                }
+                ForEach(chats) { ChatLink(conversation: $0, state: states[$0.chat]) }
             }
-            if !sections.searching {
-                Section {
-                    Picker("Chats", selection: $model.sidebarLayout.combinedView) {
-                        Text("Separated").tag(false)
-                        Text("Recent").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.top, Theme.Space.lg)
-                    .listRowSeparator(.hidden)
-                }
-                .phoneRows()
-            }
-            if recent {
-                ChatsSection(title: String(localized: "Recent")) {
-                    if let agent {
-                        ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
-                    }
-                    ForEach(sections.combined) { ChatLink(conversation: $0, state: states[$0.chat]) }
-                    if let all = sections.allCombined {
-                        ShowAll(kind: .chats(all), all: $model.sidebarLayout.allRecent)
-                    }
-                    ActionRow(title: String(localized: "Join a tribe")) { sheet = .joinTribe }
-                    ActionRow(title: String(localized: "Create a tribe")) { sheet = .createTribe }
-                    ForEach(model.pendingInvites) { invite in
-                        PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
-                    }
-                    ActionRow(title: String(localized: "Add contact")) { sheet = .addContact }
-                    ActionRow(title: String(localized: "Invite someone")) { sheet = .inviteSomeone }
-                }
-            } else {
-                // Searching shows every match, a section only with matches,
-                // with no chevron to say otherwise or to change the saved
-                // layout, and no actions. Otherwise a section is always there,
-                // for its actions.
-                if !sections.searching || !sections.tribes.isEmpty {
-                    ChatsSection(title: String(localized: "Tribes"),
-                                 expanded: sections.searching ? nil : $model.sidebarLayout.tribesOpen) {
-                        ForEach(sections.tribes) { ChatLink(conversation: $0, state: states[$0.chat]) }
-                        if let all = sections.allTribes {
-                            ShowAll(kind: .tribes(all), all: $model.sidebarLayout.allTribes)
-                        }
-                        if sections.tribesOpen, !sections.searching {
-                            ActionRow(title: String(localized: "Join a tribe")) { sheet = .joinTribe }
-                            ActionRow(title: String(localized: "Create a tribe")) { sheet = .createTribe }
-                        }
-                    }
-                }
-                if !sections.searching || !sections.direct.isEmpty || agent != nil {
-                    ChatsSection(title: String(localized: "Direct messages"),
-                                 expanded: sections.searching ? nil : $model.sidebarLayout.directOpen) {
-                        if let agent {
-                            ChatLink(conversation: agent, state: states[agent.chat], isAgent: true)
-                        }
-                        ForEach(sections.direct) { ChatLink(conversation: $0, state: states[$0.chat]) }
-                        if let all = sections.allDirect {
-                            ShowAll(kind: .people(all), all: $model.sidebarLayout.allDirect)
-                        }
-                        if sections.directOpen, !sections.searching {
-                            ForEach(model.pendingInvites) { invite in
-                                PendingInviteRow(invite: invite) { sheet = .invite(invite.code) }
-                            }
-                            ActionRow(title: String(localized: "Add contact")) { sheet = .addContact }
-                            ActionRow(title: String(localized: "Invite someone")) { sheet = .inviteSomeone }
-                        }
-                    }
-                }
+            .phoneRows()
+            .listRowInsets(.vertical, 2)
             }
         }
         .phoneList()
         .scrollEdges()
         // Reconnects if need be, then catches up from where history stands.
         .refreshable { await model.refresh() }
-        .overlay {
-            if sections.searching, empty {
-                ContentUnavailableView.search(text: model.searchQuery)
-            }
-        }
-        .sheet(item: $sheet) { $0.screen }
-        // Pinned apps are read without opening Apps first, and again when the
-        // workspaces change (a read under way is cut short by the next one).
-        .task(id: model.stadeum.live.map(\.id)) {
-            // Before any are listed there is no telling which pins are still
-            // there, so the saved pins decide.
-            if !model.sidebarLayout.pinnedApps.isEmpty, !model.stadeum.live.isEmpty {
-                model.stadeum.readWorkspaceApps()
-            }
-        }
     }
 }
 
-/// A pinned app on Chats: its icon and title (with its workspace
-/// when the apps come from several). A tap opens it as Apps does; Unpin is
-/// its swipe and its menu.
-private struct PinnedAppRow: View {
+/// The pages pinned from •••, above the chats: each a chip with its icon,
+/// title and how many are new, pushing its page; Remove from Chats in its
+/// menu.
+private struct PinnedPages: View {
     @Environment(AppModel.self) private var model
     @Environment(PhoneRouter.self) private var router
-    let app: WorkspaceApp
-    let showsSource: Bool
+    let pages: [ChatsPage]
 
     var body: some View {
-        Button {
-            if case .page(let page) = model.stadeum.opening(app) { router.orgPage = page }
-        } label: {
-            NavRow(title: showsSource ? "\(app.title) · \(app.source)" : app.title,
-                   icon: WorkspaceAppIcon(app, size: 20))
+        HStack(spacing: Theme.Space.sm) {
+            ForEach(pages) { page in
+                let count = page.count(in: model)
+                Chip(.field, action: { router.chats.append(page.route) }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: page.systemImage)
+                            .foregroundStyle(Theme.secondaryText)
+                        Text(page.title)
+                            .foregroundStyle(Theme.text)
+                        if count > 0 {
+                            Text(Badge.text(count))
+                                .monospacedDigit()
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                    .phoneFont(.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 34)
+                }
+                .accessibilityValue(count > 0 ? String(localized: "\(count) new") : "")
+                .contextMenu {
+                    Button("Remove from Chats", systemImage: "pin.slash") { model.setPagePinned(page.rawValue, false) }
+                }
+            }
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("Opens it")
-        .contextMenu { PinToggle(app: app) }
-        .swipeActions(edge: .trailing) { PinToggle(app: app).tint(Theme.accent) }
-    }
-}
-
-/// Pin to Chats, or Unpin once it is: the menu's and the swipe's one button.
-private struct PinToggle: View {
-    @Environment(AppModel.self) private var model
-    let app: WorkspaceApp
-
-    var body: some View {
-        let pinned = model.isPinned(app)
-        Button(pinned ? String(localized: "Unpin") : String(localized: "Pin to Chats"), systemImage: pinned ? "pin.slash" : "pin") {
-            model.setPinned(app, !pinned)
-        }
-    }
-}
-
-/// A section of chats under its header. The header is the section's first
-/// row rather than a sticky header, which would sit see-through over the
-/// rows scrolling under the glass bar.
-private struct ChatsSection<Rows: View>: View {
-    let title: String
-    var expanded: Binding<Bool>?
-    @ViewBuilder let rows: Rows
-
-    var body: some View {
-        Section {
-            PhoneSectionHeader(title, expanded: expanded)
-                .padding(.top, Theme.Space.lg)
-                .listRowSeparator(.hidden)
-            rows
-        }
-        .phoneRows()
-        .listRowInsets(.vertical, 2)
+        .padding(.top, Theme.Space.xs)
     }
 }
 
 /// No chats on the account yet: what fills the list, in Peel's words, or
-/// that a restore is still bringing them.
+/// that a restore is still bringing them, with the ways in.
 private struct NoChats: View {
     @Environment(AppModel.self) private var model
+    @Binding var sheet: PeopleSheet?
 
     var body: some View {
         if model.restoreProgress.restoring {
@@ -319,7 +279,14 @@ private struct NoChats: View {
             ContentUnavailableView {
                 Label("No chats yet", systemImage: "bubble.left.and.bubble.right")
             } description: {
-                Text("Join a tribe or add someone below, and they show here.")
+                Text("Add someone or join a tribe, and they show here.")
+            } actions: {
+                Button("Add contact") { sheet = .addContact }
+                    .buttonStyle(.peel(.primary, size: .touch))
+                Button("Join a tribe") { sheet = .joinTribe }
+                    .buttonStyle(.peel(.outline, size: .touch))
+                Button("Invite someone") { sheet = .inviteSomeone }
+                    .buttonStyle(.peel(.ghost, size: .touch))
             }
         }
     }
@@ -384,43 +351,109 @@ private struct ChatLink: View {
     }
 }
 
-/// "Show all 14 tribes", then "Show fewer" ("Show fewer tribes" to
-/// VoiceOver); kept with the account, as the Mac's sidebar keeps it.
-private struct ShowAll: View {
-    enum Kind {
-        case chats(Int), tribes(Int), people(Int)
+/// "Messages" while searching: those in every chat that match, each with a
+/// line around the match lit, its chat and when; "No results" when the chats
+/// found nothing either. A row opens its chat at the message (a thread's
+/// message, its thread).
+private struct MessageResults: View {
+    @Environment(AppModel.self) private var model
+    let search: SidebarSearch
+    /// The chats above found something.
+    let chatsFound: Bool
 
-        var showAll: String {
-            switch self {
-            case .chats(let n): String(localized: "Show all \(n) chats")
-            case .tribes(let n): String(localized: "Show all \(n) tribes")
-            case .people(let n): String(localized: "Show all \(n) people")
+    var body: some View {
+        if search.searching && search.messages.isEmpty {
+            Section {
+                HStack(spacing: 6) {
+                    ProgressView()
+                    Text("Searching…")
+                }
+                .phoneFont(.secondary)
+                .foregroundStyle(Theme.secondaryText)
+            } header: {
+                PhoneSectionHeader(String(localized: "Messages"))
             }
-        }
-
-        var showFewer: String {
-            switch self {
-            case .chats: String(localized: "Show fewer chats")
-            case .tribes: String(localized: "Show fewer tribes")
-            case .people: String(localized: "Show fewer people")
+            .phoneRows()
+        } else if search.failed {
+            Section {
+                Text("Could not search messages")
+                    .phoneFont(.secondary)
+                    .foregroundStyle(Theme.attention)
+            } header: {
+                PhoneSectionHeader(String(localized: "Messages"))
             }
+            .phoneRows()
+        } else if !search.messages.isEmpty {
+            let terms = search.query?.terms ?? []
+            Section {
+                ForEach(Array(search.messages.enumerated()), id: \.offset) { _, message in
+                    MessageResultRow(
+                        message: message,
+                        conversation: model.conversations.first { $0.chat == message.chat },
+                        sender: model.sender(of: message),
+                        snippet: AttributedString(search.query?.snippet(of: message.preview) ?? message.preview)
+                            .highlighting(terms)
+                    )
+                }
+            } header: {
+                PhoneSectionHeader(String(localized: "Messages"))
+            }
+            .phoneRows()
+            .listRowInsets(.vertical, 2)
+        } else if search.foundNone && !chatsFound {
+            ContentUnavailableView.search(text: model.searchQuery)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
         }
     }
+}
 
-    let kind: Kind
-    @Binding var all: Bool
+/// A message found: its chat's icon, the sender and its line with the match
+/// lit, over its chat and when.
+private struct MessageResultRow: View {
+    @Environment(PhoneRouter.self) private var router
+    let message: Message
+    let conversation: Conversation?
+    let sender: Sender
+    let snippet: AttributedString
 
     var body: some View {
         Button {
-            all.toggle()
+            router.open(message, inThread: message.threadUUID != nil)
         } label: {
-            Text(all ? String(localized: "Show fewer") : kind.showAll)
-                .phoneFont(.row)
-                .foregroundStyle(Theme.link)
-                .frame(maxWidth: .infinity, minHeight: Theme.touchTarget, alignment: .leading)
-                .contentShape(Rectangle())
+            HStack(spacing: Theme.Space.md) {
+                if let conversation {
+                    ConversationIcon(conversation: conversation, size: 30)
+                } else {
+                    Avatar(name: sender.avatarName, url: sender.photoURL, size: 30, hue: sender.hue)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(sender.label)
+                            .phoneFont(PhoneFont.row.weight(.semibold))
+                            .foregroundStyle(sender.hue.name)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Text(snippet)
+                            .phoneFont(.row)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 6) {
+                        Text(conversation?.name ?? "")
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(Formatting.relative(message.date))
+                            .monospacedDigit()
+                            .fixedSize()
+                    }
+                    .phoneFont(.time)
+                    .foregroundStyle(Theme.tertiaryText)
+                }
+            }
+            .padding(.vertical, 7)
+            .frame(minHeight: Theme.touchTarget)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(all ? kind.showFewer : kind.showAll)
     }
 }

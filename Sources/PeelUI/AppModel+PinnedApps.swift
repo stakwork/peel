@@ -63,3 +63,13 @@ extension AppModel {
         if layout != sidebarLayout { sidebarLayout = layout }
     }
 }
+
+/// The iPhone's Recent row. The iPhone no longer pins apps (Tom,
+/// 2026-11-26): Apps and its Recent row are the way in.
+extension AppModel {
+    /// The apps opened last that are still listed, newest first, at most
+    /// `limit`: Recent in the iPhone's Apps.
+    public func recentApps(limit: Int = 5) -> [WorkspaceApp] {
+        Array(recentApps.prefix(limit))
+    }
+}

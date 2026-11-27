@@ -24,7 +24,7 @@ struct ChatDetailsScreen: View {
                 } else if let tribe = model.tribes[chat] {
                     TribeDetailsView(conversation: conversation, tribe: tribe)
                 } else {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    PeelSpinner().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
                 // Removed meanwhile; the router takes it off the stack.
@@ -694,7 +694,7 @@ struct TribeMembersScreen: View {
         .phoneList()
         .scrollEdges()
         .overlay {
-            if members == nil, problem == nil { ProgressView() }
+            if members == nil, problem == nil { PeelSpinner() }
         }
         .refreshable { await load() }
         .navigationTitle(members?.complete == false ? Text("Seen in #\(name)") : Text("Members"))
@@ -730,7 +730,7 @@ struct TribeMembersScreen: View {
     private func requestButtons(_ member: TribeMember) -> some View {
         HStack(spacing: Theme.Space.sm) {
             if answering.contains(member.id) {
-                ProgressView()
+                PeelSpinner(delayed: false)
             } else {
                 Button("Decline") { Task { await answer(member, approve: false) } }
                     .buttonStyle(.peel(.ghost, size: .touch))

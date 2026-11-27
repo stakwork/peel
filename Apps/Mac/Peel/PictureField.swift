@@ -44,7 +44,7 @@ struct PictureField<Label: View>: View {
                 picture
                     .overlay {
                         if working {
-                            picture.outline.fill(.black.opacity(0.45)).overlay { ProgressView().controlSize(.small) }
+                            picture.outline.fill(.black.opacity(0.45)).overlay { PeelSpinner(size: 16, delayed: false, tint: .white) }
                         }
                     }
                     .overlay {

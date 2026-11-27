@@ -144,7 +144,7 @@ struct AppsScreen: View {
                 ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
             } else if apps.isEmpty, opened.isEmpty, !homes.isEmpty {
                 // The Talk rows show; the apps section says why it is empty.
-                if stadeum.readingApps { ProgressView() }
+                if stadeum.readingApps { PeelSpinner() }
             } else if apps.isEmpty, opened.isEmpty {
                 if stadeum.live.isEmpty {
                     ContentUnavailableView {
@@ -153,7 +153,7 @@ struct AppsScreen: View {
                         Text("Connect Hive under You to open the apps your workspaces pin.")
                     }
                 } else if stadeum.readingApps {
-                    ProgressView()
+                    PeelSpinner()
                 } else if !unread.isEmpty {
                     ContentUnavailableView {
                         Label { Text("Couldn't read the apps") } icon: { WorkspaceAppIcon(nil, size: 44) }

@@ -330,7 +330,7 @@ private struct ProposalStatus: View {
         if let label = shown.label {
             if shown.isWorking {
                 HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini)
+                    PeelSpinner(size: 12, delayed: false)
                     Text(label).muted()
                 }
                 .fixedSize()

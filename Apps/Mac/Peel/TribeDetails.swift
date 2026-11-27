@@ -293,7 +293,7 @@ private struct TribeJamieSection: View {
                         .buttonStyle(.peel(.outline))
                         .disabled(picker.working)
                     } else if picker.working {
-                        ProgressView().controlSize(.small)
+                        PeelSpinner(size: 16, delayed: false)
                     }
                 }
             }

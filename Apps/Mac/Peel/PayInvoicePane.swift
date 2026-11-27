@@ -165,7 +165,7 @@ struct PayInvoicePane: View {
                 .fixedSize(horizontal: false, vertical: true)
         default:
             HStack(spacing: Theme.Space.sm) {
-                ProgressView().controlSize(.small)
+                PeelSpinner(size: 16, delayed: false)
                 Text("Paying \(Sats.format(msat: payment.amountMsat))…")
                     .font(Theme.font(13))
                     .monospacedDigit()

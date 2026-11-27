@@ -70,7 +70,7 @@ struct ChatSearchBar: View {
                     .font(Theme.font(13))
                     .focused($focused)
                 if search.searching, search.matches.isEmpty {
-                    ProgressView().controlSize(.mini)
+                    PeelSpinner(size: 12)
                 } else {
                     Text(hint)
                         .font(Theme.font(12))

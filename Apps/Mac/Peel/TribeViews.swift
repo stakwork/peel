@@ -166,7 +166,7 @@ struct TribeSettingsForm: View {
 struct TribeServerProgress: View {
     var body: some View {
         HStack {
-            ProgressView().controlSize(.small)
+            PeelSpinner(size: 16, delayed: false)
             Text("Loading…")
                 .muted()
         }

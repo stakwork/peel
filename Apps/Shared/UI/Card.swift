@@ -130,8 +130,7 @@ struct Callout<Actions: View>: View {
         case .problem:
             symbol("exclamationmark.circle", Theme.attention)
         case .progress:
-            ProgressView()
-                .controlSize(.small)
+            PeelSpinner(size: 16, delayed: false)
                 // A spinner has no baseline: centre it on the first line's.
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
         case .symbol(let name, let color):

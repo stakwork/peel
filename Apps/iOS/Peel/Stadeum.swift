@@ -118,7 +118,7 @@ struct BoxesSection: View {
                                 Text(box.title)
                                 Text(box.host)
                             }
-                            if opening == box.url { ProgressView() }
+                            if opening == box.url { PeelSpinner(delayed: false) }
                         }
                     }
                     .disabled(opening != nil)
@@ -128,7 +128,7 @@ struct BoxesSection: View {
                 }
                 if let offer = boxes.linking {
                     HStack(spacing: Theme.Space.sm) {
-                        ProgressView()
+                        PeelSpinner(delayed: false)
                         Text("Linking Peel to \(offer.host)…")
                             .foregroundStyle(Theme.quietText(on: .raised))
                     }

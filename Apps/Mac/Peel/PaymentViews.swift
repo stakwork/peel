@@ -194,7 +194,7 @@ struct TemplatePicker: View {
             case .loaded(let templates) where !templates.isEmpty:
                 row([nil] + templates.map(\.muid))
             case .loading:
-                ProgressView().controlSize(.small).frame(height: Self.tile)
+                PeelSpinner(size: 16).frame(height: Self.tile)
             case .loaded, .failed:
                 EmptyView()
             }
@@ -302,7 +302,7 @@ struct TemplateImage: View {
                     .foregroundStyle(Theme.secondaryText)
                     .help("Picture not available")
             } else {
-                ProgressView().controlSize(.small)
+                PeelSpinner(size: 16)
             }
         }
         .frame(width: side, height: side)

@@ -282,7 +282,7 @@ struct RootView: View {
     var body: some View {
         switch model.phase {
         case .loading:
-            ProgressView()
+            PeelSpinner(size: 32)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .locked:
             LockView()

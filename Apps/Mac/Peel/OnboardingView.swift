@@ -357,7 +357,7 @@ struct RestoreRow: View {
                 case .done:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
                 case .active:
-                    ProgressView().controlSize(.small)
+                    PeelSpinner(size: 18, delayed: false)
                 case .waiting:
                     Image(systemName: "circle").foregroundStyle(Theme.divider)
                 }

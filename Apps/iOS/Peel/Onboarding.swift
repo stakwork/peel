@@ -340,7 +340,7 @@ struct RestoreLine: View {
             Group {
                 switch line.state {
                 case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
-                case .active: ProgressView()
+                case .active: PeelSpinner(delayed: false)
                 case .waiting: Image(systemName: "circle").foregroundStyle(Theme.divider)
                 }
             }

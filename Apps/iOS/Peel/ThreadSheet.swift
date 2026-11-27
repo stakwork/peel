@@ -33,7 +33,7 @@ struct ThreadSheet: View {
                 } else {
                     // Until its rows load, or if they never do: the sheet
                     // closes as ever.
-                    ProgressView()
+                    PeelSpinner()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }

@@ -28,9 +28,7 @@ struct LockView: View {
                 PinField(pin: $pin) { Task { await unlock() } }
                     .disabled(working)
                     .frame(maxWidth: 360)
-                ProgressView()
-                    .controlSize(.small)
-                    .opacity(working ? 1 : 0)
+                PeelSpinner(size: 16, active: working)
                 // For a lost PIN.
                 ForgetAccountControl(
                     trigger: String(localized: "Forgot your PIN? Forget this account on this Mac"),

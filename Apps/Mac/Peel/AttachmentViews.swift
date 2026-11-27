@@ -165,7 +165,7 @@ struct ImageTile: View {
                         Label("Waiting to download", systemImage: "clock")
                             .muted()
                     } else {
-                        ProgressView().controlSize(.small)
+                        PeelSpinner(size: 16)
                     }
                 }
             }
@@ -219,7 +219,7 @@ struct GiphyTile: View {
                         Label("GIF not available", systemImage: "photo")
                             .muted()
                     } else {
-                        ProgressView().controlSize(.small)
+                        PeelSpinner(size: 16)
                     }
                 }
             }

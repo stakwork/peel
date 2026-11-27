@@ -30,14 +30,19 @@ class HUDPanel: NSPanel {
 /// its own near-black and white hairline rather than `menuBoxed`'s navy.
 extension View {
     func hudCapsule() -> some View {
+        hudBox(in: Capsule())
+    }
+
+    /// The same look in any shape: the recording bar's ✕ menu.
+    func hudBox(in shape: some InsettableShape) -> some View {
         // The shadow is on the shape alone: the bars move without re-blurring it.
         background {
-            Capsule()
+            shape
                 .fill(Color(white: 0.06).opacity(0.94))
                 .shadow(color: Theme.menuShadow, radius: 1, y: 0.5)
                 .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
         }
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+        .overlay(shape.strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
     }
 }
 

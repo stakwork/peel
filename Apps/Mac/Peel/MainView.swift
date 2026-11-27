@@ -17,8 +17,11 @@ struct MainView: View {
     @AppStorage("chatListHidden") private var chatListHidden = false
     /// Apps' column put away (⌃⌘S): an app full width.
     @AppStorage("appsColumnHidden") private var appsColumnHidden = false
-    /// Payments' list put away (⌃⌘S; `PaymentsView` draws its own column).
+    /// Payments', Automations' and Segments' columns put away (⌃⌘S; each
+    /// page draws its own column).
     @AppStorage("paymentsListHidden") private var paymentsListHidden = false
+    @AppStorage("automationsListHidden") private var automationsListHidden = false
+    @AppStorage("segmentsListHidden") private var segmentsListHidden = false
 
     var body: some View {
         let onChats = PeelPage.isChats(model.destination)
@@ -65,8 +68,7 @@ struct MainView: View {
         .overlay(alignment: .topLeading) {
             // In one place on every page, as Mail's and Notes' (Tom, 2026-11-27):
             // off where the page has no column.
-            ColumnToggle(column: onChats ? (.chats, $chatListHidden) : onApps ? (.apps, $appsColumnHidden)
-                            : model.destination == .payments ? (.payments, $paymentsListHidden) : nil)
+            ColumnToggle(column: pageColumn.map { ($0, hidden($0)) })
                 .padding(.leading, HeaderBand.buttonsEnd)
                 .frame(height: HeaderBand.height)
         }
@@ -338,20 +340,47 @@ extension PaneDivider {
     }
 }
 
+extension MainView {
+    /// The page's column, if it has one.
+    private var pageColumn: ColumnToggle.Column? {
+        if PeelPage.isChats(model.destination) { return .chats }
+        if PeelPage.isApps(model.destination) { return .apps }
+        switch model.destination {
+        case .payments?: return .payments
+        case .automations?: return .automations
+        case .segments?: return .segments
+        default: return nil
+        }
+    }
+
+    /// Whether `column` is put away, kept on this Mac.
+    private func hidden(_ column: ColumnToggle.Column) -> Binding<Bool> {
+        switch column {
+        case .chats: $chatListHidden
+        case .apps: $appsColumnHidden
+        case .payments: $paymentsListHidden
+        case .automations: $automationsListHidden
+        case .segments: $segmentsListHidden
+        }
+    }
+}
+
 /// Put the column beside the rail away, or back (⌃⌘S): beside the window's
-/// buttons, the chat list on Chats, Apps' column on Apps and the history on
-/// Payments.
+/// buttons, the chat list on Chats, Apps' column on Apps, the history on
+/// Payments, and the lists on Automations and Segments.
 struct ColumnToggle: View {
     static let width = HeaderBand.toggleWidth
 
     enum Column {
-        case chats, apps, payments
+        case chats, apps, payments, automations, segments
 
         func help(hidden: Bool) -> String {
             switch self {
             case .chats: hidden ? String(localized: "Show chat list (⌃⌘S)") : String(localized: "Hide chat list (⌃⌘S)")
             case .apps: hidden ? String(localized: "Show apps list (⌃⌘S)") : String(localized: "Hide apps list (⌃⌘S)")
             case .payments: hidden ? String(localized: "Show payments list (⌃⌘S)") : String(localized: "Hide payments list (⌃⌘S)")
+            case .automations: hidden ? String(localized: "Show automations list (⌃⌘S)") : String(localized: "Hide automations list (⌃⌘S)")
+            case .segments: hidden ? String(localized: "Show segments list (⌃⌘S)") : String(localized: "Hide segments list (⌃⌘S)")
             }
         }
     }

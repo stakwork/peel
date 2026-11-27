@@ -103,6 +103,23 @@
         }
       }
     },
+    "Ask Peel for a new one" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ask Peel for a new one"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pide a Peel una nueva"
+          }
+        }
+      }
+    },
     "Chats" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -154,6 +171,57 @@
         }
       }
     },
+    "didn't finish" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "didn't finish"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no terminaron"
+          }
+        }
+      }
+    },
+    "Discard recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard recording"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar grabación"
+          }
+        }
+      }
+    },
+    "Drag it into a chat to send it." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag it into a chat to send it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrástralo a un chat para enviarlo."
+          }
+        }
+      }
+    },
     "Favorites" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -188,6 +256,23 @@
         }
       }
     },
+    "Hide automations list (⌃⌘S)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide automations list (⌃⌘S)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar la lista de automatizaciones (⌃⌘S)"
+          }
+        }
+      }
+    },
     "Hide chat list (⌃⌘S)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -218,6 +303,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ocultar la lista de pagos (⌃⌘S)"
+          }
+        }
+      }
+    },
+    "Hide segments list (⌃⌘S)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide segments list (⌃⌘S)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar la lista de segmentos (⌃⌘S)"
           }
         }
       }
@@ -273,6 +375,23 @@
         }
       }
     },
+    "Made by asking Peel: “every Monday at 9, send me…”" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Made by asking Peel: “every Monday at 9, send me…”"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se crean pidiéndoselo a Peel: «cada lunes a las 9, envíame…»"
+          }
+        }
+      }
+    },
     "Mentions and Threads" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -303,6 +422,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nuevo chat"
+          }
+        }
+      }
+    },
+    "Next: %@, %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next: %1$@, %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siguiente: %1$@, %2$@"
           }
         }
       }
@@ -341,6 +477,40 @@
         }
       }
     },
+    "No segments yet. Each one you record shows here, to drag into a chat." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No segments yet. Each one you record shows here, to drag into a chat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay segmentos. Cada uno que grabes aparece aquí, para arrastrarlo a un chat."
+          }
+        }
+      }
+    },
+    "Overview" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overview"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resumen"
+          }
+        }
+      }
+    },
     "People" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -354,6 +524,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Personas"
+          }
+        }
+      }
+    },
+    "Record your screen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Record your screen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Graba tu pantalla"
+          }
+        }
+      }
+    },
+    "Recordings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recordings"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabaciones"
           }
         }
       }
@@ -460,6 +664,23 @@
         }
       }
     },
+    "Show automations list (⌃⌘S)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show automations list (⌃⌘S)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar la lista de automatizaciones (⌃⌘S)"
+          }
+        }
+      }
+    },
     "Show chat list (⌃⌘S)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -511,6 +732,23 @@
         }
       }
     },
+    "Show segments list (⌃⌘S)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show segments list (⌃⌘S)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar la lista de segmentos (⌃⌘S)"
+          }
+        }
+      }
+    },
     "Something new" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -545,6 +783,57 @@
         }
       }
     },
+    "Start over" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start over"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empezar de nuevo"
+          }
+        }
+      }
+    },
+    "Start over or discard the recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start over or discard the recording"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empezar de nuevo o descartar la grabación"
+          }
+        }
+      }
+    },
+    "system on" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "system on"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "del sistema activas"
+          }
+        }
+      }
+    },
     "Wallet" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -575,6 +864,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Retirar"
+          }
+        }
+      }
+    },
+    "yours" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "yours"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tuyas"
           }
         }
       }
@@ -6726,23 +7032,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Descartar"
-          }
-        }
-      }
-    },
-    "Discard the recording" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Discard the recording"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Descartar la grabación"
           }
         }
       }

@@ -110,7 +110,16 @@ search filters the list and finds messages under it. The toggle beside
 the window's buttons (⌃⌘S, kept on this Mac) puts the list away, so a chat
 goes full width as Payments and Apps are.
 
-**Pages without the list.** Payments (its header the title alone; the balance is on Profile and the rail's you),
+**Payments** (Tom, 2026-11-27; the board's "Payments as a column" and its
+clickable prototype): the history is a column beside the rail, as the
+chat list is, at the same width; beside it the Wallet: the balance large,
+Deposit (filled) and Withdraw (outlined). Each opens its form as a card
+under the buttons, the button ringed while it is open (`PaneStyle.card`):
+Deposit's amount and memo, then the invoice; Withdraw's pasted invoice,
+then Pay. A payment picked in the list shows its details beside it; its
+close goes back to the Wallet. ⌃⌘S puts the list away.
+
+**Pages without the list.**
 Automations, Segments and Account take the whole width beside the rail;
 Apps has its own column. Account has its own categories column
 (Profile first, with its search). Profile opens on one card, after the

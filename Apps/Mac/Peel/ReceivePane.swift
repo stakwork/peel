@@ -18,7 +18,7 @@ struct ReceivePane: View {
     @State private var problem: String?
 
     var body: some View {
-        PaneFrame(title: String(localized: "Receive"), close: close) {
+        PaneFrame(title: String(localized: "Deposit"), close: close) {
             if let invoice, invoice.status == .paid || invoice.status == .underpaid {
                 paid(invoice)
             } else if let invoice {
